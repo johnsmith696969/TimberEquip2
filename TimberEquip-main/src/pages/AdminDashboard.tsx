@@ -6,7 +6,7 @@ import {
   CheckCircle2, Clock, AlertCircle, ArrowUpRight,
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
-  FileText, Image, Layers
+  FileText, Image, Layers, Database, Upload, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
@@ -14,14 +14,16 @@ import { userService } from '../services/userService';
 import { cmsService } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
 import { billingService, Invoice, Subscription, BillingAuditLog } from '../services/billingService';
+import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { InquiryList } from '../components/admin/InquiryList';
 import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
+import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
 
-type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content';
+type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
 
 export function AdminDashboard() {
   const { user: authUser, logout: authLogout } = useAuth();
@@ -74,6 +76,18 @@ export function AdminDashboard() {
     company: '',
     phoneNumber: ''
   });
+
+  // ── Dealer Feed state ──────────────────────────────────────────────
+  const [dfSubTab,     setDfSubTab]     = useState<'ingest' | 'logs'>('ingest');
+  const [dfSource,     setDfSource]     = useState('');
+  const [dfDealerId,   setDfDealerId]   = useState('');
+  const [dfItemsJson,  setDfItemsJson]  = useState('[]');
+  const [dfDryRun,     setDfDryRun]     = useState(true);
+  const [dfLoading,    setDfLoading]    = useState(false);
+  const [dfResult,     setDfResult]     = useState<DealerFeedIngestResult | null>(null);
+  const [dfError,      setDfError]      = useState('');
+  const [dfLogs,       setDfLogs]       = useState<DealerFeedLog[]>([]);
+  const [dfLogsLoading, setDfLogsLoading] = useState(false);
 
   // ── CMS state ────────────────────────────────────────────────────
   const [blogPosts,      setBlogPosts]      = useState<BlogPost[]>([]);
@@ -810,57 +824,13 @@ export function AdminDashboard() {
   );
 
   const renderTracking = () => (
-    <div className="space-y-12">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="bg-surface border border-line p-8 rounded-sm">
-          <span className="label-micro text-accent mb-2 block">Traffic Analytics</span>
-          <h3 className="text-3xl font-black tracking-tighter">142.5K</h3>
-          <p className="text-[10px] font-bold text-muted uppercase mt-2">Total Monthly Sessions</p>
-        </div>
-        <div className="bg-surface border border-line p-8 rounded-sm">
-          <span className="label-micro text-accent mb-2 block">Lead Velocity</span>
-          <h3 className="text-3xl font-black tracking-tighter">+18.2%</h3>
-          <p className="text-[10px] font-bold text-muted uppercase mt-2">Week-over-Week Growth</p>
-        </div>
-        <div className="bg-surface border border-line p-8 rounded-sm">
-          <span className="label-micro text-accent mb-2 block">Inventory Value</span>
-          <h3 className="text-3xl font-black tracking-tighter">$84.2M</h3>
-          <p className="text-[10px] font-bold text-muted uppercase mt-2">Total Marketplace Equipment Value</p>
-        </div>
-      </div>
-
-      <div className="bg-bg border border-line rounded-sm overflow-hidden">
-        <div className="p-6 border-b border-line bg-surface/50">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em]">Geographic Lead Distribution</h3>
-        </div>
-        <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-12">
-          <div className="space-y-6">
-            {[
-              { region: 'Pacific Northwest', value: 42, color: 'bg-accent' },
-              { region: 'Southeast US', value: 28, color: 'bg-data' },
-              { region: 'Eastern Canada', value: 18, color: 'bg-secondary' },
-              { region: 'Scandinavia', value: 12, color: 'bg-line' }
-            ].map((region, i) => (
-              <div key={i} className="space-y-2">
-                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
-                  <span>{region.region}</span>
-                  <span>{region.value}%</span>
-                </div>
-                <div className="w-full bg-line h-2 rounded-full overflow-hidden">
-                  <div className={`${region.color} h-full`} style={{ width: `${region.value}%` }}></div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-center bg-surface/30 border border-dashed border-line rounded-sm">
-            <div className="text-center p-8">
-              <MapPin size={48} className="mx-auto mb-4 text-muted opacity-20" />
-              <p className="text-[10px] font-bold text-muted uppercase tracking-[0.2em]">Interactive Map Initializing...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AnalyticsDashboard
+      listings={listings}
+      inquiries={inquiries}
+      accounts={accounts}
+      invoices={invoices}
+      subscriptions={subscriptions}
+    />
   );
 
   const renderUsers = () => (
@@ -1389,6 +1359,306 @@ export function AdminDashboard() {
     </div>
   );
 
+  const renderDealerFeeds = () => {
+    const handleIngest = async () => {
+      setDfError('');
+      setDfResult(null);
+
+      let items: unknown[];
+      try {
+        items = JSON.parse(dfItemsJson);
+        if (!Array.isArray(items)) throw new Error('Items must be a JSON array');
+      } catch (e) {
+        setDfError(e instanceof Error ? e.message : 'Invalid JSON');
+        return;
+      }
+      if (!dfSource.trim()) { setDfError('Source name is required'); return; }
+      if (!dfDealerId.trim()) { setDfError('Dealer ID is required'); return; }
+
+      setDfLoading(true);
+      try {
+        const result = await dealerFeedService.ingest({
+          sourceName: dfSource.trim(),
+          dealerId: dfDealerId.trim(),
+          dryRun: dfDryRun,
+          items: items as Parameters<typeof dealerFeedService.ingest>[0]['items'],
+        });
+        setDfResult(result);
+      } catch (e) {
+        setDfError(e instanceof Error ? e.message : 'Ingest failed');
+      } finally {
+        setDfLoading(false);
+      }
+    };
+
+    const handleLoadLogs = async () => {
+      setDfLogsLoading(true);
+      try {
+        setDfLogs(await dealerFeedService.getRecentLogs(20));
+      } catch (e) {
+        console.error('Failed to load dealer feed logs:', e);
+      } finally {
+        setDfLogsLoading(false);
+      }
+    };
+
+    const formatLogTime = (ts: DealerFeedLog['processedAt']) => {
+      if (!ts) return '—';
+      if (typeof ts === 'object' && 'toDate' in ts && typeof ts.toDate === 'function') {
+        return ts.toDate().toLocaleString();
+      }
+      return new Date(ts as string | number).toLocaleString();
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Sub-tab nav */}
+        <div className="flex space-x-1 bg-surface border border-line p-2 rounded-sm w-fit">
+          {(['ingest', 'logs'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => {
+                setDfSubTab(tab);
+                if (tab === 'logs' && dfLogs.length === 0) handleLoadLogs();
+              }}
+              className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-colors ${
+                dfSubTab === tab ? 'bg-ink text-bg' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {tab === 'ingest' ? 'Ingest Feed' : 'Ingest Logs'}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Ingest Feed ─────────────────────────────────────────── */}
+        {dfSubTab === 'ingest' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Form */}
+            <div className="space-y-6">
+              <div className="bg-surface border border-line p-6 rounded-sm space-y-5">
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink flex items-center gap-2">
+                  <Upload size={14} /> Feed Configuration
+                </h3>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Source Name</label>
+                  <input
+                    type="text"
+                    value={dfSource}
+                    onChange={e => setDfSource(e.target.value)}
+                    placeholder="e.g. JohnDeereDealerFeed"
+                    className="input-industrial w-full text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Dealer UID / ID</label>
+                  <input
+                    type="text"
+                    value={dfDealerId}
+                    onChange={e => setDfDealerId(e.target.value)}
+                    placeholder="Firebase UID or dealer identifier"
+                    className="input-industrial w-full text-xs"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDfDryRun(v => !v)}
+                    className={`w-10 h-5 rounded-full relative transition-colors ${dfDryRun ? 'bg-accent' : 'bg-line'}`}
+                  >
+                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${dfDryRun ? 'right-1' : 'left-1'}`} />
+                  </button>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted">
+                    Dry Run {dfDryRun ? '(preview only — no writes)' : '(disabled — will write to Firestore)'}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">
+                    Items JSON Array
+                  </label>
+                  <textarea
+                    rows={12}
+                    value={dfItemsJson}
+                    onChange={e => setDfItemsJson(e.target.value)}
+                    spellCheck={false}
+                    className="input-industrial w-full text-[11px] font-mono resize-y"
+                    placeholder={`[\n  {\n    "externalId": "JD-1234",\n    "title": "2022 John Deere 748L Skidder",\n    "price": 185000,\n    "year": 2022,\n    "manufacturer": "John Deere",\n    "category": "Skidder"\n  }\n]`}
+                  />
+                </div>
+
+                {dfError && (
+                  <div className="flex items-start gap-2 bg-accent/10 border border-accent/30 rounded-sm p-3">
+                    <AlertCircle size={14} className="text-accent mt-0.5 shrink-0" />
+                    <p className="text-[10px] font-bold text-accent">{dfError}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleIngest}
+                  disabled={dfLoading}
+                  className="btn-industrial btn-accent py-3 px-8 flex items-center gap-2 w-full justify-center disabled:opacity-50"
+                >
+                  {dfLoading
+                    ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Processing…</>
+                    : <><Database size={14} /> {dfDryRun ? 'Run Dry Run Preview' : 'Run Ingest'}</>
+                  }
+                </button>
+              </div>
+            </div>
+
+            {/* Result panel */}
+            <div>
+              {dfResult ? (
+                <div className="space-y-4">
+                  <div className="bg-surface border border-line p-6 rounded-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <CheckCircle2 size={16} className="text-data" />
+                      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">
+                        {dfResult.dryRun ? 'Dry Run Complete' : 'Ingest Complete'}
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                      {[
+                        { label: 'Processed', value: dfResult.processed, color: 'text-ink' },
+                        { label: 'Upserted', value: dfResult.upserted, color: 'text-data' },
+                        { label: 'Skipped', value: dfResult.skipped, color: 'text-muted' },
+                      ].map(s => (
+                        <div key={s.label} className="bg-bg border border-line p-4 rounded-sm text-center">
+                          <div className={`text-2xl font-black tracking-tighter ${s.color}`}>{s.value}</div>
+                          <div className="text-[9px] font-bold text-muted uppercase mt-1">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {dfResult.errors.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-accent mb-2">Errors ({dfResult.errors.length})</h4>
+                        <ul className="space-y-1 max-h-32 overflow-y-auto">
+                          {dfResult.errors.map((err, i) => (
+                            <li key={i} className="text-[10px] font-mono text-accent bg-accent/5 px-2 py-1 rounded-sm">{err}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {dfResult.preview && dfResult.preview.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Preview</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-[10px]">
+                            <thead>
+                              <tr className="border-b border-line text-[9px] font-black uppercase text-muted">
+                                <th className="pb-2 pr-4">External ID</th>
+                                <th className="pb-2 pr-4">Title</th>
+                                <th className="pb-2">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-line">
+                              {dfResult.preview.map((p, i) => (
+                                <tr key={i} className="py-1">
+                                  <td className="py-1.5 pr-4 font-mono text-muted">{p.externalId}</td>
+                                  <td className="py-1.5 pr-4 font-bold text-ink truncate max-w-[140px]">{p.title}</td>
+                                  <td className="py-1.5">
+                                    <span className={`px-2 py-0.5 rounded-sm font-black text-[9px] uppercase ${
+                                      p.action === 'insert' ? 'bg-data/10 text-data' :
+                                      p.action === 'update' ? 'bg-yellow-500/10 text-yellow-500' :
+                                      'bg-line text-muted'
+                                    }`}>{p.action}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-surface border border-dashed border-line rounded-sm p-12 flex flex-col items-center justify-center text-center">
+                  <Database size={40} className="text-muted opacity-20 mb-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">Results will appear here after running an ingest</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Ingest Logs ─────────────────────────────────────────── */}
+        {dfSubTab === 'logs' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-surface p-6 border border-line rounded-sm">
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Recent Ingest Runs</h3>
+              <button
+                onClick={handleLoadLogs}
+                disabled={dfLogsLoading}
+                className="btn-industrial py-2 px-4 flex items-center gap-2 text-[10px] disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={dfLogsLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+
+            {dfLogsLoading ? (
+              <div className="flex justify-center py-16">
+                <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : dfLogs.length === 0 ? (
+              <div className="bg-surface border border-dashed border-line rounded-sm p-12 flex flex-col items-center justify-center text-center">
+                <Clock size={36} className="text-muted opacity-20 mb-4" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">No ingest logs found</p>
+              </div>
+            ) : (
+              <div className="bg-bg border border-line rounded-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
+                        <th className="px-6 py-4">Source</th>
+                        <th className="px-6 py-4">Dealer ID</th>
+                        <th className="px-6 py-4">Processed</th>
+                        <th className="px-6 py-4">Upserted</th>
+                        <th className="px-6 py-4">Skipped</th>
+                        <th className="px-6 py-4">Errors</th>
+                        <th className="px-6 py-4">Mode</th>
+                        <th className="px-6 py-4">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {dfLogs.map(log => (
+                        <tr key={log.id} className="hover:bg-surface/20 transition-colors">
+                          <td className="px-6 py-4 text-xs font-black text-ink uppercase">{log.sourceName}</td>
+                          <td className="px-6 py-4 text-[10px] font-mono text-muted truncate max-w-[100px]">{log.dealerId}</td>
+                          <td className="px-6 py-4 text-xs font-black text-ink">{log.processed}</td>
+                          <td className="px-6 py-4 text-xs font-black text-data">{log.upserted}</td>
+                          <td className="px-6 py-4 text-xs font-black text-muted">{log.skipped}</td>
+                          <td className="px-6 py-4">
+                            <span className={`text-[10px] font-black ${log.errors?.length ? 'text-accent' : 'text-data'}`}>
+                              {log.errors?.length ?? 0}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-sm ${log.dryRun ? 'bg-yellow-500/10 text-yellow-500' : 'bg-data/10 text-data'}`}>
+                              {log.dryRun ? 'Dry Run' : 'Live'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-[10px] font-bold text-muted">{formatLogTime(log.processedAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-bg flex">
       {/* Sidebar */}
@@ -1412,6 +1682,7 @@ export function AdminDashboard() {
             { id: 'accounts',  label: 'Accounts',  icon: Building2 },
             { id: 'billing',   label: 'Billing',   icon: CreditCard },
             { id: 'content',   label: 'Content',   icon: FileText },
+            { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
             { id: 'users',     label: 'Users',     icon: Users },
             { id: 'settings',  label: 'Settings',  icon: Settings }
           ].map(item => (
@@ -1460,6 +1731,7 @@ export function AdminDashboard() {
                  activeTab === 'accounts'  ? 'Account Directory' : 
                  activeTab === 'billing'   ? 'Billing Account' :
                  activeTab === 'content'   ? 'Content Studio' :
+                 activeTab === 'dealer_feeds' ? 'Dealer Feed Manager' :
                  activeTab === 'users'     ? 'Operator Directory' : 'Profile Settings'}
               </h2>
             </div>
@@ -1493,6 +1765,7 @@ export function AdminDashboard() {
               {activeTab === 'accounts'  && renderAccounts()}
               {activeTab === 'billing'   && renderBilling()}
               {activeTab === 'content'   && renderContent()}
+              {activeTab === 'dealer_feeds' && renderDealerFeeds()}
               {activeTab === 'users'     && renderUsers()}
               {activeTab === 'settings'  && renderSettings()}
             </motion.div>
