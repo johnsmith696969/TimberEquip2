@@ -1659,6 +1659,20 @@ export function AdminDashboard() {
     );
   };
 
+  const dashboardTabs = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'listings', label: 'Machines', icon: Package },
+    { id: 'inquiries', label: 'Leads', icon: MessageSquare },
+    { id: 'calls', label: 'Calls', icon: Phone },
+    { id: 'tracking', label: 'Performance', icon: Activity },
+    { id: 'accounts', label: 'Accounts', icon: Building2 },
+    { id: 'billing', label: 'Billing', icon: CreditCard },
+    { id: 'content', label: 'Content', icon: FileText },
+    { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ] as const;
+
   return (
     <div className="min-h-screen bg-bg flex">
       {/* Sidebar */}
@@ -1673,22 +1687,10 @@ export function AdminDashboard() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          {[
-            { id: 'overview',  label: 'Overview',  icon: LayoutDashboard },
-            { id: 'listings',  label: 'Machines',  icon: Package },
-            { id: 'inquiries', label: 'Leads',     icon: MessageSquare },
-            { id: 'calls',     label: 'Calls',     icon: Phone },
-            { id: 'tracking',  label: 'Performance',  icon: Activity },
-            { id: 'accounts',  label: 'Accounts',  icon: Building2 },
-            { id: 'billing',   label: 'Billing',   icon: CreditCard },
-            { id: 'content',   label: 'Content',   icon: FileText },
-            { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
-            { id: 'users',     label: 'Users',     icon: Users },
-            { id: 'settings',  label: 'Settings',  icon: Settings }
-          ].map(item => (
+          {dashboardTabs.map(item => (
             <button 
               key={item.id}
-              onClick={() => setActiveTab(item.id as DashboardTab)}
+              onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-sm text-xs font-bold uppercase tracking-widest transition-colors ${
                 activeTab === item.id ? 'bg-ink text-bg' : 'text-muted hover:bg-ink/5 hover:text-ink'
               }`}
@@ -1717,12 +1719,47 @@ export function AdminDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 md:p-12">
+      <main className="flex-1 p-4 sm:p-6 md:p-10 lg:p-12">
         <div className="max-w-6xl mx-auto">
+          <section className="lg:hidden mb-6 bg-surface border border-line rounded-sm p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold text-muted uppercase truncate">{profileName}</div>
+                <div className="text-[10px] font-black uppercase text-ink truncate">{roleLabel}</div>
+              </div>
+              <button
+                onClick={authLogout}
+                className="btn-industrial py-2 px-3 text-[10px] flex items-center"
+              >
+                <LogOut size={12} className="mr-1.5" />
+                Sign Out
+              </button>
+            </div>
+          </section>
+
+          <section className="lg:hidden mb-6 -mx-1 px-1 overflow-x-auto">
+            <div className="flex gap-2 pb-2 min-w-max">
+              {dashboardTabs.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-ink text-bg border-ink'
+                      : 'bg-surface text-muted border-line hover:text-ink hover:border-ink/20'
+                  }`}
+                >
+                  <item.icon size={13} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
           <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
             <div>
               <span className="label-micro text-accent mb-2 block">Account Dashboard</span>
-              <h2 className="text-4xl font-black uppercase tracking-tighter text-ink">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase tracking-tighter text-ink">
                 {activeTab === 'overview'  ? 'System Overview' :
                  activeTab === 'listings'  ? 'Machine Inventory' :
                  activeTab === 'inquiries' ? 'Lead Monitoring' :
