@@ -71,7 +71,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   maxHours: '',
   condition: '',
   location: '',
-  locationRadius: '250',
+  locationRadius: '',
   attachment: '',
   feature: '',
   stockNumber: '',
@@ -199,6 +199,18 @@ const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   serialNumber: params.get('serialNumber') || '',
   sortBy: (params.get('sortBy') as SortBy) || DEFAULT_FILTERS.sortBy
 });
+
+const serializeFiltersToParams = (filters: SearchFilters): URLSearchParams => {
+  const params = new URLSearchParams();
+
+  (Object.entries(filters) as Array<[keyof SearchFilters, string]>).forEach(([key, value]) => {
+    if (!value) return;
+    if (value === DEFAULT_FILTERS[key]) return;
+    params.set(key, value);
+  });
+
+  return params;
+};
 
 const applyDependentFilterResets = (
   previous: SearchFilters,
@@ -336,10 +348,7 @@ export function Search() {
   }, [searchParams]);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    (Object.entries(filters) as Array<[keyof SearchFilters, string]>).forEach(([key, value]) => {
-      if (value) params.set(key, value);
-    });
+    const params = serializeFiltersToParams(filters);
     setSearchParams(params, { replace: true });
   }, [filters, setSearchParams]);
 
@@ -994,6 +1003,7 @@ export function Search() {
                             onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
                             className="select-industrial w-full"
                           >
+                            <option value="">Any radius</option>
                             {LOCATION_RADIUS_OPTIONS.map((radius) => (
                               <option key={radius} value={radius}>
                                 {radius}
