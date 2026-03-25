@@ -16,6 +16,10 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { Seo } from '../components/Seo';
+import { buildListingPath } from '../utils/listingPath';
+
+const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
 
 export function ListingDetail() {
   const { id } = useParams<{ id: string }>();
@@ -74,7 +78,31 @@ export function ListingDetail() {
 
   const getListingUrl = (targetListing?: Listing | null) => {
     if (typeof window !== 'undefined') return window.location.href;
-    return targetListing ? `https://timberequip.com/listing/${targetListing.id}` : '';
+    return targetListing ? `https://timberequip.com${buildListingPath(targetListing)}` : '';
+  };
+
+  const formatSpecValue = (value: unknown): string => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => {
+          if (entry === null || entry === undefined) return '';
+          if (typeof entry === 'object') return JSON.stringify(entry);
+          return String(entry);
+        })
+        .filter(Boolean)
+        .join(', ');
+    }
+
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return '';
+      }
+    }
+
+    return String(value);
   };
 
   const createInitialInquiryForm = () => ({
@@ -162,7 +190,8 @@ export function ListingDetail() {
     return { lat, lng };
   };
 
-  const isFavorite = id ? user?.favorites?.includes(id) : false;
+  const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
+  const isFavorite = id ? favoriteIds.includes(id) : false;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -472,11 +501,55 @@ export function ListingDetail() {
     }
   };
 
-  const handleCallSeller = () => {
-    // Simulated VOIP lead tracking
-    console.log('VOIP LEAD LOGGED: Call initiated to', seller?.phone);
-    window.location.href = `tel:${seller?.phone}`;
+  const handleCallSeller = async () => {
+    if (!listing) return;
+
+    const rawSellerPhone = String(seller?.phone || '').trim();
+    const dialablePhone = rawSellerPhone.replace(/[^\d+]/g, '');
+
+    if (!dialablePhone) {
+      window.alert('Seller phone number is not available on this listing yet.');
+      return;
+    }
+
+    const callerName = (user?.displayName || user?.email || 'Guest User').trim();
+    const callerPhone = String(user?.phoneNumber || '').trim();
+
+    try {
+      await equipmentService.createCallLog({
+        listingId: listing.id,
+        listingTitle: listing.title,
+        sellerId: listing.sellerUid || listing.sellerId || seller?.id || '',
+        sellerUid: listing.sellerUid || listing.sellerId || seller?.id || '',
+        sellerName: seller?.name || 'Unknown Seller',
+        sellerPhone: rawSellerPhone,
+        callerUid: user?.uid || null,
+        callerName,
+        callerEmail: user?.email || '',
+        callerPhone,
+        duration: 0,
+        status: 'Initiated',
+        source: 'listing_detail',
+        isAuthenticated,
+      });
+    } catch (error) {
+      console.error('Failed to log call event:', error);
+    }
+
+    window.location.href = `tel:${dialablePhone}`;
   };
+
+  useEffect(() => {
+    const detailImages =
+      listing?.imageVariants?.length
+        ? listing.imageVariants.map((variant) => variant.detailUrl)
+        : Array.isArray(listing?.images)
+          ? listing.images.filter(Boolean)
+          : [];
+    const galleryLength = detailImages.length ? detailImages.length : 1;
+    if (activeImage < galleryLength) return;
+    setActiveImage(0);
+  }, [activeImage, listing]);
 
   const submitFinanceRequestFromCalculator = async (payload: {
     buyerName: string;
@@ -493,7 +566,7 @@ export function ListingDetail() {
     if (!listing) return;
     if (!(await runRecaptchaCheck('PAYMENT_CALCULATOR_FINANCING'))) return;
     const sellerUid = listing.sellerUid || listing.sellerId || seller?.id || '';
-    const summary = `Payment calculator financing request for ${listing.title || `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim()}.`;
+    const summary = `Payment calculator financing request for ${listing.title || `${safeYear} ${safeMake} ${safeModel}`.trim()}.`;
     const terms = `Requested amount: ${formatPrice(payload.requestedAmount, listing.currency || 'USD', 0)}, term: ${payload.termMonths} months, interest: ${payload.interestRatePct.toFixed(2)}%, down payment: ${payload.downPaymentPct}%, est monthly: ${formatPrice(payload.monthlyPaymentEstimate, listing.currency || 'USD', 0)}.`;
     const combinedMessage = [summary, terms, payload.message || ''].filter(Boolean).join(' ');
 
@@ -533,20 +606,58 @@ export function ListingDetail() {
     </div>
   );
 
-  const hasAmv = typeof listing.marketValueEstimate === 'number' && listing.marketValueEstimate > 0;
-  const amvDiff = hasAmv ? listing.price - (listing.marketValueEstimate as number) : 0;
+  const safeCategory = formatSpecValue(listing.category) || 'Equipment';
+  const safeYear = toFiniteNumber(listing.year) ?? new Date().getFullYear();
+  const safeMake = formatSpecValue(listing.make || listing.manufacturer) || 'Unknown Make';
+  const safeModel = formatSpecValue(listing.model) || 'Unknown Model';
+  const safeLocation = formatSpecValue(listing.location) || 'Location Pending';
+  const safeLocationParts = safeLocation
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const safeCityState = [
+    safeLocationParts[0] || '',
+    safeLocationParts.length > 1 ? safeLocationParts[1] : ''
+  ]
+    .filter(Boolean)
+    .join(', ') || safeLocation;
+  const safeCondition = formatSpecValue(listing.condition) || 'Unspecified';
+  const safeDescription = formatSpecValue(listing.description) || 'No description provided.';
+  const safeHours = toFiniteNumber(listing.hours) ?? 0;
+  const safePrice = toFiniteNumber(listing.price) ?? 0;
+  const safeMarketValueEstimate = toFiniteNumber(listing.marketValueEstimate);
+  const safeSellerName = formatSpecValue(seller?.name) || 'Unknown Seller';
+  const safeSellerLocation = formatSpecValue(seller?.location) || 'Location Not Available';
+  const safeSellerType = formatSpecValue(seller?.type) || 'Seller';
+  const safeSellerLogo = typeof seller?.logo === 'string' ? seller.logo : '';
+  const safeSellerId = formatSpecValue(seller?.id) || '';
+  const safeSellerTotalListings = toFiniteNumber(seller?.totalListings) ?? 0;
+
+  const hasAmv = typeof safeMarketValueEstimate === 'number' && safeMarketValueEstimate > 0;
+  const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
   const detailImages =
     listing.imageVariants?.length
       ? listing.imageVariants.map((variant) => variant.detailUrl)
-      : listing.images;
+      : Array.isArray(listing.images)
+        ? listing.images.filter(Boolean)
+        : [];
+  const galleryImages = detailImages.length ? detailImages : [LISTING_IMAGE_PLACEHOLDER];
+  const hasGallery = detailImages.length > 0;
+  const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
+  const listingPath = buildListingPath(listing);
+  const detailSeoTitle = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''}`.replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
+  const detailSeoDescription = `${detailSeoTitle} listed on TimberEquip.com. View price, hours, specs, seller information, financing, and logistics options.`;
+  const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
+  const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
+  const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
 
   const showPrevImage = () => {
-    setActiveImage((prev) => (prev === 0 ? detailImages.length - 1 : prev - 1));
+    setActiveImage((prev) => (prev === 0 ? galleryImages.length - 1 : prev - 1));
   };
 
   const showNextImage = () => {
-    setActiveImage((prev) => (prev === detailImages.length - 1 ? 0 : prev + 1));
+    setActiveImage((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1));
   };
 
   const openFullscreenImage = () => setShowFullscreenImage(true);
@@ -554,6 +665,7 @@ export function ListingDetail() {
 
   return (
     <div className="min-h-screen bg-bg pb-24">
+      <Seo title={`TimberEquip.com | ${detailSeoTitle}`} description={detailSeoDescription} canonicalPath={listingPath} />
       {/* Breadcrumbs & Actions */}
       <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
@@ -582,29 +694,29 @@ export function ListingDetail() {
             <div className="flex flex-col space-y-2">
               <div className="flex items-center space-x-3">
                 <span className="px-2 py-1 bg-accent/10 text-accent text-[10px] font-black uppercase tracking-widest rounded-sm">
-                  {listing.category}
+                  {safeCategory}
                 </span>
                 <span className="text-xs font-bold text-muted uppercase tracking-widest">
-                  {t('listingDetail.stockId', 'Stock ID')}: {listing.id.slice(0, 8).toUpperCase()}
+                  {t('listingDetail.stockId', 'Stock ID')}: {safeStockId}
                 </span>
               </div>
               <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none">
-                {listing.year} {listing.make || listing.manufacturer} {listing.model}
+                {safeYear} {safeMake} {safeModel}
               </h1>
               <div className="flex items-center space-x-4 text-muted">
                 <div className="flex items-center space-x-1.5">
                   <MapPin size={14} className="text-accent" />
                   {isMobileViewport ? (
-                    <a href={machineMapsHref} className="text-xs font-bold uppercase tracking-widest hover:text-accent" aria-label={`Open ${listing.location} in maps`}>
-                      {listing.location}
+                    <a href={machineMapsHref} className="text-xs font-bold uppercase tracking-widest hover:text-accent" aria-label={`Open ${safeCityState} in maps`}>
+                      {safeCityState}
                     </a>
                   ) : (
-                    <span className="text-xs font-bold uppercase tracking-widest">{listing.location}</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">{safeCityState}</span>
                   )}
                 </div>
                 <div className="flex items-center space-x-1.5">
                   <Clock size={14} className="text-accent" />
-                  <span className="text-xs font-bold uppercase tracking-widest">{formatNumber(listing.hours)} {t('listingDetail.hours', 'Hours')}</span>
+                  <span className="text-xs font-bold uppercase tracking-widest">{formatNumber(safeHours)} {t('listingDetail.hours', 'Hours')}</span>
                 </div>
               </div>
             </div>
@@ -619,10 +731,10 @@ export function ListingDetail() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.3 }}
-                    src={detailImages[activeImage]} 
+                    src={galleryImages[activeImage]} 
                     alt={listing.title}
                     className="w-full h-full object-cover cursor-zoom-in"
-                    onClick={openFullscreenImage}
+                    onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
                   />
                 </AnimatePresence>
@@ -644,18 +756,20 @@ export function ListingDetail() {
                 </div>
 
                 <div className="absolute bottom-4 right-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm">
-                  {activeImage + 1} / {detailImages.length}
+                  {activeImage + 1} / {galleryImages.length}
                 </div>
 
-                <button
-                  onClick={openFullscreenImage}
-                  className="absolute bottom-4 left-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-ink transition-colors"
-                >
-                  {t('listingDetail.fullscreen', 'Fullscreen')}
-                </button>
+                {hasGallery && (
+                  <button
+                    onClick={openFullscreenImage}
+                    className="absolute bottom-4 left-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-ink transition-colors"
+                  >
+                    {t('listingDetail.fullscreen', 'Fullscreen')}
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
-                {detailImages.map((img, i) => (
+                {galleryImages.map((img, i) => (
                   <button 
                     key={i}
                     onClick={() => setActiveImage(i)}
@@ -670,12 +784,12 @@ export function ListingDetail() {
             {/* Core Specs Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-1 bg-line border border-line">
               {[
-                { label: t('listingDetail.year', 'Year'), value: listing.year, icon: Clock },
-                { label: t('listingDetail.hours', 'Hours'), value: formatNumber(listing.hours), icon: Activity },
-                { label: t('listingDetail.condition', 'Condition'), value: listing.condition, icon: ShieldCheck },
-                { label: t('listingDetail.location', 'Location'), value: listing.location, icon: MapPin },
-                { label: t('listingDetail.make', 'Make'), value: listing.make || listing.manufacturer, icon: Info },
-                { label: t('listingDetail.model', 'Model'), value: listing.model, icon: Info }
+                { label: t('listingDetail.year', 'Year'), value: safeYear, icon: Clock },
+                { label: t('listingDetail.hours', 'Hours'), value: formatNumber(safeHours), icon: Activity },
+                { label: t('listingDetail.condition', 'Condition'), value: safeCondition, icon: ShieldCheck },
+                { label: t('listingDetail.location', 'Location'), value: safeLocation, icon: MapPin },
+                { label: t('listingDetail.make', 'Make'), value: safeMake, icon: Info },
+                { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info }
               ].map((spec, i) => (
                 <div key={i} className="bg-bg p-6 flex flex-col">
                   <div className="flex items-center space-x-2 mb-2">
@@ -709,22 +823,22 @@ export function ListingDetail() {
                   <div className="flex flex-col space-y-6">
                     <div className="flex justify-between items-end">
                       <span className="label-micro">{t('listingDetail.listingPrice', 'Listing Price')}</span>
-                      <span className="text-2xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
+                      <span className="text-2xl font-black tracking-tighter">{formatPrice(safePrice, listing.currency || 'USD', 0)}</span>
                     </div>
                     <div className="flex justify-between items-end text-muted">
                       <span className="label-micro">{t('listingDetail.averageMarketValue', 'Average Market Value')}</span>
                       <span className="text-xl font-black tracking-tighter">
-                        {formatPrice(listing.marketValueEstimate as number, listing.currency || 'USD', 0)}
+                        {formatPrice(safeMarketValueEstimate as number, listing.currency || 'USD', 0)}
                       </span>
                     </div>
                     <div className="h-2 bg-line rounded-full overflow-hidden relative">
                       <div
                         className={`absolute top-0 bottom-0 left-0 transition-all duration-1000 ${isBelowAmv ? 'bg-data' : 'bg-accent'}`}
-                        style={{ width: `${(listing.price / ((listing.marketValueEstimate as number) * 1.5)) * 100}%` }}
+                        style={{ width: `${(safePrice / ((safeMarketValueEstimate as number) * 1.5)) * 100}%` }}
                       ></div>
                       <div
                         className="absolute top-0 bottom-0 w-1 bg-ink z-10"
-                        style={{ left: `${((listing.marketValueEstimate as number) / ((listing.marketValueEstimate as number) * 1.5)) * 100}%` }}
+                        style={{ left: `${((safeMarketValueEstimate as number) / ((safeMarketValueEstimate as number) * 1.5)) * 100}%` }}
                       ></div>
                     </div>
                     <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
@@ -741,7 +855,7 @@ export function ListingDetail() {
                       </span>
                     </div>
                     <p className="text-xs text-muted leading-relaxed">
-                      {`This equipment is currently priced ${Math.abs(((listing.price - (listing.marketValueEstimate as number)) / (listing.marketValueEstimate as number)) * 100).toFixed(1)}% ${isBelowAmv ? 'below' : 'above'} the AMV index for this configuration.`}
+                      {`This equipment is currently priced ${Math.abs(((safePrice - (safeMarketValueEstimate as number)) / (safeMarketValueEstimate as number)) * 100).toFixed(1)}% ${isBelowAmv ? 'below' : 'above'} the AMV index for this configuration.`}
                     </p>
                   </div>
                 </div>
@@ -752,7 +866,7 @@ export function ListingDetail() {
             <div className="flex flex-col space-y-6">
               <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.equipmentOverview', 'Equipment Overview')}</h3>
               <p className="text-muted font-medium leading-loose whitespace-pre-line">
-                {listing.description}
+                {safeDescription}
               </p>
             </div>
 
@@ -779,11 +893,11 @@ export function ListingDetail() {
                   })}
                   
                   {/* Original Specs */}
-                  {Object.entries(listing.specs).map(([key, value], i) => (
+                  {Object.entries(listingSpecs).map(([key, value], i) => (
                     <div key={i} className="data-row">
                       <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
                       <span className="value-mono uppercase">
-                        {Array.isArray(value) ? value.join(', ') : value}
+                        {formatSpecValue(value)}
                       </span>
                     </div>
                   ))}
@@ -800,7 +914,7 @@ export function ListingDetail() {
                 <div className="flex flex-col mb-8">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Listed Price</span>
                   <div className="flex items-baseline space-x-3">
-                    <span className="text-4xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
+                    <span className="text-4xl font-black tracking-tighter">{formatPrice(safePrice, listing.currency || 'USD', 0)}</span>
                     <span className="text-white/40 text-xs font-bold uppercase">{t('listingDetail.exclVat', 'Excl. VAT')}</span>
                   </div>
                 </div>
@@ -817,7 +931,9 @@ export function ListingDetail() {
                     className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-ink"
                   >
                     <Phone size={18} className="mr-3" />
-                    {t('listingDetail.callSeller', 'Call Seller')}
+                    {seller?.phone
+                      ? `${t('listingDetail.callSeller', 'Call Seller')} ${seller.phone}`
+                      : t('listingDetail.callSeller', 'Call Seller')}
                   </button>
                 </div>
 
@@ -854,25 +970,29 @@ export function ListingDetail() {
                     <span className="label-micro mb-2">
                       {listing.sellerVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
                     </span>
-                    <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{seller.name}</h4>
+                    <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
                     <a 
-                      href={`https://maps.apple.com/?q=${encodeURIComponent(seller.location)}`}
+                      href={`https://maps.apple.com/?q=${encodeURIComponent(safeSellerLocation)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center text-[10px] font-bold text-muted uppercase hover:text-accent transition-colors"
                     >
                       <MapPin size={10} className="mr-1" />
-                      {seller.location}
+                      {safeSellerLocation}
                     </a>
                   </div>
-                  <div className="w-16 h-16 bg-bg border border-line p-2">
-                    <img src={seller.logo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  <div className="w-16 h-16 bg-bg border border-line p-2 flex items-center justify-center">
+                    {safeSellerLogo ? (
+                      <img src={safeSellerLogo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                    ) : (
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted text-center">Seller</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 mb-8">
                   <div className="bg-bg border border-line p-4 flex flex-col items-center text-center">
-                    <span className="text-lg font-black tracking-tighter">{seller.totalListings}</span>
+                    <span className="text-lg font-black tracking-tighter">{safeSellerTotalListings}</span>
                     <span className="label-micro">Equipment</span>
                   </div>
                 </div>
@@ -887,12 +1007,13 @@ export function ListingDetail() {
                   <div className="flex items-center space-x-3 text-xs font-bold text-muted">
                     <Clock size={16} />
                     <span className="uppercase tracking-widest">
-                      {seller.type} • Member Since {new Date(seller.memberSince).getFullYear()}
+                      {safeSellerType}
+                      {hasSellerMemberSinceYear ? ` • Member Since ${sellerMemberSinceYear}` : ''}
                     </span>
                   </div>
                 </div>
 
-                <Link to={`/seller/${seller.id}`} className="btn-industrial w-full mt-8 py-3">
+                <Link to={`/seller/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
                   {t('listingDetail.viewFullProfile', 'View Full Profile')}
                 </Link>
               </div>
@@ -914,6 +1035,7 @@ export function ListingDetail() {
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">OpenStreetMap</span>
                     <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{safeCityState}</p>
                   </div>
                   <a href={openStreetMapHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
                     Open Full Map
@@ -925,7 +1047,7 @@ export function ListingDetail() {
                   </div>
                 ) : locationCoords ? (
                   <iframe
-                    title={`Map for ${listing.location}`}
+                    title={`Map for ${safeLocation}`}
                     src={buildOpenStreetMapEmbedUrl(locationCoords.lat, locationCoords.lng)}
                     className="h-64 w-full border-0"
                     loading="lazy"
@@ -992,8 +1114,8 @@ export function ListingDetail() {
                     <TransformComponent wrapperClass="w-full h-full !overflow-visible" contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10">
                       <AnimatePresence mode="wait">
                         <motion.img
-                          key={detailImages[activeImage]}
-                          src={detailImages[activeImage]}
+                          key={galleryImages[activeImage]}
+                          src={galleryImages[activeImage]}
                           alt={listing.title}
                           className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
                           referrerPolicy="no-referrer"
@@ -1384,8 +1506,8 @@ export function ListingDetail() {
       <PaymentCalculatorModal
         isOpen={showPaymentCalcModal}
         onClose={() => setShowPaymentCalcModal(false)}
-        equipmentName={listing ? `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim() : ''}
-        price={listing?.price ?? 0}
+        equipmentName={listing ? `${safeYear} ${safeMake} ${safeModel}`.trim() : ''}
+        price={safePrice}
         currency={listing?.currency || 'USD'}
         onSubmitFinancingRequest={submitFinanceRequestFromCalculator}
       />

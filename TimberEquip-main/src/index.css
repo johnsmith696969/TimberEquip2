@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-accent: var(--accent);
+  --color-secondary: var(--secondary);
+  --color-data: var(--data);
+  --color-muted: var(--muted);
+}
+
+:root {
+  --bg: #FFFFFF;
+  --surface: #F5F5F4;
+  --line: #E7E5E4;
+  --ink: #1C1917;
+  --btn-text: #FFFFFF;
+  --accent: #16A34A; /* Timber Green */
+  --secondary: #334155; /* Slate */
+  --data: #10B981; /* Success Green */
+  --muted: #78716C;
+}
+
+.dark {
+  --bg: #0C0A09;
+  --surface: #1C1917;
+  --line: #292524;
+  --ink: #FAFAF9;
+  --btn-text: #FAFAF9;
+  --muted: #A8A29E;
+}
+
+/* Prevent horizontal overflow site-wide */
+html,
+body {
+  overflow-x: hidden;
+  /* Smooth momentum scrolling on iOS Safari */
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Pre-promote card & animated image elements to GPU composite layer */
+.group {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.group img {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Industrial Grid */
+.industrial-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1px;
+  background-color: var(--line);
+  border: 1px solid var(--line);
+}
+
+.industrial-grid > * {
+  background-color: var(--bg);
+}
+
+/* Data Row */
+.data-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.label-micro {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.value-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Buttons */
+.btn-industrial {
+  @apply bg-secondary font-black uppercase tracking-widest px-2.5 flex items-center justify-center gap-1.5 hover:opacity-90 transition-all active:scale-95 rounded-sm;
+  color: var(--btn-text);
+  font-size: 11px;
+  line-height: 1;
+  min-height: 34px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.btn-accent {
+  @apply bg-accent border-accent;
+}
+
+.btn-outline {
+  @apply bg-transparent border border-line text-ink hover:bg-ink hover:text-bg;
+  font-size: 9px;
+  min-height: 32px;
+}
+
+/* Inputs */
+.input-industrial {
+  @apply bg-surface border px-2 py-1 text-[10px] font-bold text-ink outline-none transition-all rounded-sm placeholder:text-muted/50;
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.select-industrial {
+  @apply bg-surface border px-2 py-1 text-[10px] font-bold text-ink outline-none transition-all rounded-sm appearance-none cursor-pointer;
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.input-industrial:focus,
+.select-industrial:focus {
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18);
+}
+
+/* Override browser autofill blue/yellow backgrounds */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset !important;
+  -webkit-text-fill-color: var(--ink) !important;
+  caret-color: var(--ink);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  animation: marquee 34s linear infinite;
+  will-change: transform;
+}
+
+@keyframes marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}

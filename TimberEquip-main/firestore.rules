@@ -59,14 +59,32 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function currentUserDocExists() {
+      return isAuthenticated() && exists(currentUserPath());
+    }
+
     function currentUserPath() {
       return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
     function getUserRole() {
-      return isAuthenticated() && exists(currentUserPath())
+      return currentUserDocExists()
         ? get(currentUserPath()).data.role
         : '';
+    }
+
+    function getParentAccountUid() {
+      return currentUserDocExists() && ('parentAccountUid' in get(currentUserPath()).data)
+        ? get(currentUserPath()).data.parentAccountUid
+        : request.auth.uid;
+    }
+
+    function isDealerAccountScope(accountUid) {
+      return isAuthenticated() && accountUid is string && (
+        isAdmin() ||
+        request.auth.uid == accountUid ||
+        getParentAccountUid() == accountUid
+      );
     }
 
     function hasRole(role) {
@@ -94,7 +112,10 @@ service cloud.firestore {
     }
 
     function isListingOwner(data) {
-      return isAuthenticated() && data.sellerUid == request.auth.uid;
+      return isAuthenticated() && (
+        (('sellerUid' in data) && data.sellerUid == request.auth.uid) ||
+        (('sellerId' in data) && data.sellerId == request.auth.uid)
+      );
     }
 
     function isValidListingCreate(data) {
@@ -135,6 +156,32 @@ service cloud.firestore {
              (!('favorites' in data) || (data.favorites is list && data.favorites.size() < 1000));
     }
 
+    function isValidUserSelfUpdate(data, existing) {
+      return data.uid == existing.uid &&
+             data.role == existing.role &&
+             (!('parentAccountUid' in existing) || (('parentAccountUid' in data) && data.parentAccountUid == existing.parentAccountUid)) &&
+             data.displayName is string && data.displayName.size() < 100 &&
+             isValidEmail(data.email) &&
+             (!('emailVerified' in data) || data.emailVerified is bool) &&
+             (!('createdAt' in existing) || data.createdAt == existing.createdAt || data.createdAt is timestamp) &&
+             (!('favorites' in data) || (data.favorites is list && data.favorites.size() < 1000)) &&
+             (!('photoURL' in data) || data.photoURL == null || isValidUrl(data.photoURL)) &&
+             (!('coverPhotoUrl' in data) || data.coverPhotoUrl == null || isValidUrl(data.coverPhotoUrl)) &&
+             (!('logo' in data) || data.logo == null || isValidUrl(data.logo)) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 60)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
+             (!('about' in data) || (data.about is string && data.about.size() <= 5000)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
+             (!('company' in data) || (data.company is string && data.company.size() <= 200)) &&
+             (!('website' in data) || (data.website is string && (data.website.size() == 0 || isValidUrl(data.website)))) &&
+             (!('storefrontName' in data) || (data.storefrontName is string && data.storefrontName.size() <= 180)) &&
+             (!('storefrontTagline' in data) || (data.storefrontTagline is string && data.storefrontTagline.size() <= 240)) &&
+             (!('storefrontDescription' in data) || (data.storefrontDescription is string && data.storefrontDescription.size() <= 5000)) &&
+             (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
+             (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
+             (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30));
+    }
+
     function isValidManagedUserCreate(userId, data) {
       return isValidUser(data) &&
              data.uid == userId &&
@@ -144,9 +191,17 @@ service cloud.firestore {
     }
 
     function isValidListing(data) {
-      return data.keys().hasAll(['sellerUid', 'title', 'category', 'make', 'model', 'price', 'status', 'approvalStatus', 'createdAt']) &&
-             data.sellerUid == request.auth.uid &&
+      return data.keys().hasAll(['sellerUid', 'title', 'category', 'model', 'price', 'status', 'approvalStatus', 'createdAt']) &&
+             (
+               isAdmin() ||
+               data.sellerUid == request.auth.uid ||
+               (('sellerId' in data) && data.sellerId == request.auth.uid)
+             ) &&
              data.title is string && data.title.size() < 200 &&
+             (
+               (('make' in data) && data.make is string && data.make.size() > 0) ||
+               (('manufacturer' in data) && data.manufacturer is string && data.manufacturer.size() > 0)
+             ) &&
              data.price is number && data.price >= 0 &&
              data.status in ['active', 'sold', 'pending'] &&
              data.approvalStatus in ['pending', 'approved', 'rejected'] &&
@@ -157,7 +212,7 @@ service cloud.firestore {
       return data.keys().hasAll(['title', 'content', 'authorUid', 'status']) &&
              data.title is string && data.title.size() < 500 &&
              data.content is string && data.content.size() < 50000 &&
-             data.authorUid == request.auth.uid &&
+             data.authorUid is string && data.authorUid.size() > 0 &&
              data.status in ['draft', 'published'];
     }
 
@@ -216,7 +271,7 @@ service cloud.firestore {
     function isValidMediaKitRequest(data) {
       return data.keys().hasOnly(['firstName', 'companyName', 'email', 'phone', 'notes', 'requestType', 'createdAt', 'source']) &&
              isNonEmptyString(data.firstName, 120) &&
-             isNonEmptyString(data.companyName, 160) &&
+             (!('companyName' in data) || (data.companyName is string && data.companyName.size() <= 160)) &&
              isValidEmail(data.email) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 40)) &&
              (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
@@ -241,6 +296,27 @@ service cloud.firestore {
              data.updatedAt is timestamp;
     }
 
+    function isValidCallLogCreate(data) {
+      return data.keys().hasOnly(['id', 'listingId', 'listingTitle', 'sellerId', 'sellerUid', 'sellerName', 'sellerPhone', 'callerUid', 'callerName', 'callerEmail', 'callerPhone', 'duration', 'status', 'source', 'isAuthenticated', 'recordingUrl', 'createdAt']) &&
+             data.id is string &&
+             isNonEmptyString(data.listingId, 120) &&
+             isNonEmptyString(data.sellerId, 120) &&
+             (!('sellerUid' in data) || data.sellerUid is string) &&
+             isNonEmptyString(data.callerName, 160) &&
+             (!('callerEmail' in data) || data.callerEmail is string) &&
+             (!('callerPhone' in data) || data.callerPhone is string) &&
+             data.duration is number && data.duration >= 0 &&
+             data.status in ['Initiated', 'Completed', 'Missed', 'Voicemail'] &&
+             (!('source' in data) || data.source in ['listing_detail', 'seller_profile', 'unknown']) &&
+             (!('isAuthenticated' in data) || data.isAuthenticated is bool) &&
+             (
+               !isAuthenticated()
+                 ? (!('callerUid' in data) || data.callerUid == null)
+                 : (!('callerUid' in data) || data.callerUid == null || data.callerUid == request.auth.uid)
+             ) &&
+             data.createdAt is timestamp;
+    }
+
     function isValidStorefront(data) {
       return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
@@ -263,6 +339,108 @@ service cloud.firestore {
              data.updatedAt is timestamp;
     }
 
+    function isValidDealerFeedIngestLog(data) {
+      return data.keys().hasOnly(['actorUid', 'actorRole', 'sellerUid', 'sourceName', 'dryRun', 'totalReceived', 'created', 'updated', 'skipped', 'errorCount', 'errors', 'processedAt', 'createdAt']) &&
+             isNonEmptyString(data.actorUid, 128) &&
+             isNonEmptyString(data.actorRole, 80) &&
+             isNonEmptyString(data.sellerUid, 128) &&
+             isNonEmptyString(data.sourceName, 120) &&
+             data.dryRun is bool &&
+             data.totalReceived is number && data.totalReceived >= 0 &&
+             data.created is number && data.created >= 0 &&
+             data.updated is number && data.updated >= 0 &&
+             data.skipped is number && data.skipped >= 0 &&
+             data.errorCount is number && data.errorCount >= 0 &&
+             data.errors is list &&
+             ((('processedAt' in data) && data.processedAt is timestamp) || (('createdAt' in data) && data.createdAt is timestamp));
+    }
+
+    function isValidDealer(data) {
+      return data.keys().hasOnly(['businessName', 'accountType', 'status', 'billingProfile', 'createdAt', 'updatedAt']) &&
+             isNonEmptyString(data.businessName, 200) &&
+             data.accountType in ['dealer', 'fleet_dealer'] &&
+             data.status in ['active', 'inactive', 'pending'] &&
+             (!('billingProfile' in data) || data.billingProfile is map) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidDealerUser(data) {
+      return data.keys().hasOnly(['dealerId', 'userUid', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
+             isNonEmptyString(data.dealerId, 128) &&
+             isNonEmptyString(data.userUid, 128) &&
+             data.role in ['dealer_admin', 'dealer_staff'] &&
+             data.permissions is map &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidDealerBranch(data) {
+      return data.keys().hasOnly(['dealerId', 'name', 'location', 'metaOverrides', 'createdAt', 'updatedAt']) &&
+             isNonEmptyString(data.dealerId, 128) &&
+             isNonEmptyString(data.name, 200) &&
+             (!('location' in data) || data.location is map || data.location is string) &&
+             (!('metaOverrides' in data) || data.metaOverrides is map) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidDealerMetaConnection(data) {
+      return data.keys().hasOnly(['dealerId', 'branchId', 'businessId', 'pageId', 'adAccountId', 'catalogId', 'pixelId', 'instagramBusinessId', 'permissions', 'connectedByUserId', 'connectedAt', 'status', 'lastValidatedAt', 'lastError']) &&
+             isNonEmptyString(data.dealerId, 128) &&
+             (!('branchId' in data) || data.branchId == null || data.branchId is string) &&
+             (!('businessId' in data) || data.businessId == null || data.businessId is string) &&
+             (!('pageId' in data) || data.pageId == null || data.pageId is string) &&
+             (!('adAccountId' in data) || data.adAccountId == null || data.adAccountId is string) &&
+             (!('catalogId' in data) || data.catalogId == null || data.catalogId is string) &&
+             (!('pixelId' in data) || data.pixelId == null || data.pixelId is string) &&
+             (!('instagramBusinessId' in data) || data.instagramBusinessId == null || data.instagramBusinessId is string) &&
+             (!('permissions' in data) || data.permissions is map) &&
+             isNonEmptyString(data.connectedByUserId, 128) &&
+             data.connectedAt is timestamp &&
+             data.status in ['connected', 'disconnected', 'error', 'pending'] &&
+             (!('lastValidatedAt' in data) || data.lastValidatedAt == null || data.lastValidatedAt is timestamp) &&
+             (!('lastError' in data) || data.lastError == null || (data.lastError is string && data.lastError.size() <= 2000));
+    }
+
+    function isValidDealerMetaValidationLog(data) {
+      return data.keys().hasOnly(['dealerId', 'branchId', 'connectionId', 'status', 'message', 'validatedAt']) &&
+             isNonEmptyString(data.dealerId, 128) &&
+             (!('branchId' in data) || data.branchId == null || data.branchId is string) &&
+             (!('connectionId' in data) || data.connectionId == null || data.connectionId is string) &&
+             data.status in ['passed', 'failed', 'warning'] &&
+             (!('message' in data) || (data.message is string && data.message.size() <= 2000)) &&
+             data.validatedAt is timestamp;
+    }
+
+    function isValidListingAuditReport(data) {
+      return data.keys().hasOnly(['reportType', 'status', 'summary', 'createdAt', 'createdByUid']) &&
+             isNonEmptyString(data.reportType, 120) &&
+             data.status in ['queued', 'completed', 'failed'] &&
+             (!('summary' in data) || (data.summary is string && data.summary.size() <= 10000)) &&
+             data.createdAt is timestamp &&
+             isNonEmptyString(data.createdByUid, 128);
+    }
+
+    function isValidListingStateTransition(data) {
+      return data.keys().hasOnly(['listingId', 'transitionType', 'fromState', 'toState', 'actorUid', 'createdAt']) &&
+             isNonEmptyString(data.listingId, 128) &&
+             isNonEmptyString(data.transitionType, 80) &&
+             data.fromState is map &&
+             data.toState is map &&
+             isNonEmptyString(data.actorUid, 128) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidListingMediaAudit(data) {
+      return data.keys().hasOnly(['listingId', 'status', 'summary', 'createdAt', 'createdByUid']) &&
+             isNonEmptyString(data.listingId, 128) &&
+             data.status in ['queued', 'completed', 'failed'] &&
+             (!('summary' in data) || (data.summary is string && data.summary.size() <= 10000)) &&
+             data.createdAt is timestamp &&
+             isNonEmptyString(data.createdByUid, 128);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -276,7 +454,7 @@ service cloud.firestore {
       );
       allow update: if isAuthenticated() && (
         isAdmin() ||
-        (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) ||
+        (isOwner(userId) && isValidUserSelfUpdate(request.resource.data, resource.data)) ||
         (isOwner(userId) && isPrivilegedAdminEmail() && isValidUser(request.resource.data) && request.resource.data.role == 'super_admin')
       );
       allow delete: if isAdmin();
@@ -317,8 +495,14 @@ service cloud.firestore {
     }
 
     match /blogPosts/{postId} {
-      allow read: if resource.data.status == 'published' || isEditor();
+      allow read: if resource.data.status == 'published' || resource.data.reviewStatus == 'published' || isEditor();
       allow create, update: if isEditor() && isValidBlogPost(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /news/{postId} {
+      allow read: if true;
+      allow create, update: if isEditor();
       allow delete: if isAdmin();
     }
 
@@ -356,6 +540,16 @@ service cloud.firestore {
     match /subscriptions/{subscriptionId} {
       allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
       allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid && request.resource.data.status == 'pending_payment';
+      allow update, delete: if isAdmin();
+    }
+
+    match /calls/{callId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.sellerUid ||
+        request.auth.uid == resource.data.sellerId
+      );
+      allow create: if isValidCallLogCreate(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
@@ -421,6 +615,63 @@ service cloud.firestore {
       match /webhook_events/{eventId} {
         allow read: if isAdmin();
         allow write: if false;
+      }
+
+      match /dealerFeedIngestLogs/{logId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
+        allow create: if isAdmin() && isValidDealerFeedIngestLog(request.resource.data);
+        allow update, delete: if isAdmin();
+      }
+
+      match /dealers/{dealerId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(dealerId));
+        allow create, update: if isAdmin() && isValidDealer(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /dealerUsers/{membershipId} {
+        allow read: if isAdmin() || (isAuthenticated() && (
+          request.auth.uid == resource.data.userUid ||
+          isDealerAccountScope(resource.data.dealerId)
+        ));
+        allow create, update: if isAdmin() && isValidDealerUser(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /dealerBranches/{branchId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.dealerId));
+        allow create, update: if isAdmin() && isValidDealerBranch(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /dealerMetaConnections/{connectionId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.dealerId));
+        allow create, update: if isAdmin() && isValidDealerMetaConnection(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /dealerMetaValidationLogs/{logId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.dealerId));
+        allow create, update: if isAdmin() && isValidDealerMetaValidationLog(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /listingAuditReports/{reportId} {
+        allow read: if isAdmin();
+        allow create, update: if isAdmin() && isValidListingAuditReport(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /listingStateTransitions/{transitionId} {
+        allow read: if isAdmin();
+        allow create, update: if isAdmin() && isValidListingStateTransition(request.resource.data);
+        allow delete: if isAdmin();
+      }
+
+      match /listingMediaAudit/{auditId} {
+        allow read: if isAdmin();
+        allow create, update: if isAdmin() && isValidListingMediaAudit(request.resource.data);
+        allow delete: if isAdmin();
       }
   }
 }

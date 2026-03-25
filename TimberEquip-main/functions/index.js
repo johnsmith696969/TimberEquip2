@@ -7,10 +7,10 @@ const { defineSecret } = require('firebase-functions/params');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
+const sgMail = require('@sendgrid/mail');
 const sharp = require('sharp');
-const nodemailer = require('nodemailer');
 const Stripe = require('stripe');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes } = require('node:crypto');
 const { templates } = require('./email-templates/index.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 
@@ -25,18 +25,12 @@ const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 function getDb() { return getFirestore(FIRESTORE_DB_ID); }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SMTP configuration via Firebase secrets.
+// SendGrid configuration via Firebase secrets.
 // Set up with:
-//   firebase functions:secrets:set SMTP_HOST
-//   firebase functions:secrets:set SMTP_PORT
-//   firebase functions:secrets:set SMTP_USER
-//   firebase functions:secrets:set SMTP_PASS
+//   firebase functions:secrets:set SENDGRID_API_KEY
 //   firebase functions:secrets:set EMAIL_FROM
 // ─────────────────────────────────────────────────────────────────────────────
-const SMTP_HOST = defineSecret('SMTP_HOST');
-const SMTP_PORT = defineSecret('SMTP_PORT');
-const SMTP_USER = defineSecret('SMTP_USER');
-const SMTP_PASS = defineSecret('SMTP_PASS');
+const SENDGRID_API_KEY = defineSecret('SENDGRID_API_KEY');
 const EMAIL_FROM = defineSecret('EMAIL_FROM');
 const ADMIN_EMAILS = defineSecret('ADMIN_EMAILS');
 const FRED_API_KEY = defineSecret('FRED_API_KEY');
@@ -45,23 +39,55 @@ const EXCHANGERATE_API_KEY = defineSecret('EXCHANGERATE_API_KEY');
 const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: SMTP_HOST.value(),
-    port: parseInt(SMTP_PORT.value() || '587', 10),
-    secure: SMTP_PORT.value() === '465',
-    auth: {
-      user: SMTP_USER.value(),
-      pass: SMTP_PASS.value(),
-    },
-  });
+let configuredSendGridApiKey = '';
+
+function ensureSendGridClientConfigured() {
+  const apiKey = String(SENDGRID_API_KEY.value() || '').trim();
+  if (!apiKey) {
+    throw new Error('SENDGRID_API_KEY is not configured.');
+  }
+
+  if (configuredSendGridApiKey !== apiKey) {
+    sgMail.setApiKey(apiKey);
+    configuredSendGridApiKey = apiKey;
+  }
+}
+
+function htmlToText(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
 }
 
 async function sendEmail({ to, subject, html }) {
-  const transporter = createTransporter();
-  const from = EMAIL_FROM.value() || '"TimberEquip" <noreply@timberequip.com>';
-  await transporter.sendMail({ from, to, subject, html });
-  logger.info(`Email sent to ${to}: ${subject}`);
+  ensureSendGridClientConfigured();
+  const from = String(EMAIL_FROM.value() || '"TimberEquip" <noreply@timberequip.com>').trim();
+  const recipients = (Array.isArray(to) ? to : [to])
+    .map((recipient) => String(recipient || '').trim())
+    .filter(Boolean);
+
+  if (recipients.length === 0) {
+    throw new Error('No email recipients were provided.');
+  }
+
+  await sgMail.send({
+    to: recipients,
+    from,
+    subject,
+    html,
+    text: htmlToText(html),
+  });
+
+  logger.info(`Email sent to ${recipients.join(', ')}: ${subject}`);
 }
 
 function parseEmailAddress(input) {
@@ -81,7 +107,7 @@ function getAdminRecipients() {
     return fromSecret;
   }
 
-  const fallback = parseEmailAddress(EMAIL_FROM.value() || 'noreply@timberequip.com');
+  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || 'noreply@timberequip.com').trim());
   return fallback ? [fallback] : ['noreply@timberequip.com'];
 }
 
@@ -107,6 +133,27 @@ function normalizeNonEmptyString(value, fallback = '') {
 function normalizeFiniteNumber(value, fallback = 0) {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+async function buildEmailVerificationLink(email) {
+  try {
+    return await admin.auth().generateEmailVerificationLink(email, {
+      url: `${APP_URL}/login`,
+    });
+  } catch (error) {
+    logger.warn(`Could not generate verification link for ${email}: ${error.message}`);
+    return `${APP_URL}/login`;
+  }
+}
+
+async function sendVerificationEmailMessage({ email, displayName }) {
+  const verificationLink = await buildEmailVerificationLink(email);
+  const payload = templates.welcomeVerification({
+    displayName: displayName || 'there',
+    verificationLink,
+  });
+
+  await sendEmail({ to: email, ...payload });
 }
 
 function normalizeImageUrls(value) {
@@ -203,9 +250,55 @@ function listingMatchesSavedSearch(listing, savedSearch) {
   return true;
 }
 
+function listingLooselyMatchesSavedSearch(listing, savedSearch) {
+  const filters = savedSearch.filters || {};
+  if (listingMatchesSavedSearch(listing, savedSearch)) return false;
+
+  const locationParts = String(listing.location || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const listingCountry = locationParts.length > 0 ? locationParts[locationParts.length - 1] : '';
+  const listingState = locationParts.length > 1 ? locationParts[locationParts.length - 2] : '';
+  const listingText = [listing.title, listing.category, listing.subcategory, listing.make, listing.manufacturer, listing.model, listing.description]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (filters.category && normalize(listing.category) !== normalize(filters.category)) return false;
+  if (filters.subcategory && normalize(listing.subcategory) !== normalize(filters.subcategory)) return false;
+  if (filters.manufacturer && ![listing.make, listing.manufacturer, listing.brand].some((value) => normalize(value) === normalize(filters.manufacturer))) return false;
+  if (filters.condition && normalize(listing.condition) !== normalize(filters.condition)) return false;
+  if (filters.state && !includesNormalized(listingState, filters.state)) return false;
+  if (filters.country && !includesNormalized(listingCountry, filters.country)) return false;
+
+  const hasIdentityFilter = Boolean(filters.category || filters.subcategory || filters.manufacturer || filters.model || filters.q);
+  if (!hasIdentityFilter) return false;
+
+  const qSimilar = !filters.q || listingText.includes(normalize(filters.q));
+  const modelSimilar = !filters.model || includesNormalized(listing.model, filters.model);
+  return qSimilar || modelSimilar || Boolean(filters.category || filters.subcategory || filters.manufacturer);
+}
+
+function formatListingMoney(listing, explicitPrice) {
+  return `${listing.currency || 'USD'} ${Number(explicitPrice ?? listing.price ?? 0).toLocaleString()}`;
+}
+
+async function getSavedSearchDisplayName(savedSearch) {
+  let displayName = 'there';
+  if (!savedSearch.userUid) return displayName;
+
+  const userSnap = await getDb().collection('users').doc(savedSearch.userUid).get();
+  if (userSnap.exists) {
+    displayName = userSnap.data().displayName || displayName;
+  }
+
+  return displayName;
+}
+
 async function notifyMatchingSavedSearches(listingId, listing) {
   const listingUrl = `${APP_URL}/listing/${listingId}`;
-  const listingPrice = `${listing.currency || 'USD'} ${Number(listing.price || 0).toLocaleString()}`;
+  const listingPrice = formatListingMoney(listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
 
   if (searchSnap.empty) return;
@@ -213,30 +306,98 @@ async function notifyMatchingSavedSearches(listingId, listing) {
   await Promise.all(
     searchSnap.docs.map(async (searchDoc) => {
       const savedSearch = searchDoc.data();
-      if (!savedSearch.alertPreferences?.newListingAlerts) return;
-      if (!listingMatchesSavedSearch(listing, savedSearch)) return;
-
       const recipient = savedSearch.alertEmail;
       if (!recipient) return;
 
-      let displayName = 'there';
-      if (savedSearch.userUid) {
-        const userSnap = await getDb().collection('users').doc(savedSearch.userUid).get();
-        if (userSnap.exists) {
-          displayName = userSnap.data().displayName || displayName;
-        }
+      const exactMatch = listingMatchesSavedSearch(listing, savedSearch);
+      const similarMatch = listingLooselyMatchesSavedSearch(listing, savedSearch);
+
+      if (savedSearch.alertPreferences?.newListingAlerts && exactMatch) {
+        const displayName = await getSavedSearchDisplayName(savedSearch);
+        const emailPayload = templates.newMatchingListing({
+          displayName,
+          searchName: savedSearch.name || 'Saved Search',
+          listingTitle: listing.title || 'New Equipment Listing',
+          listingUrl,
+          listingPrice,
+          location: listing.location || 'Unknown',
+        });
+
+        await sendEmail({ to: recipient, ...emailPayload });
+        return;
       }
 
-      const emailPayload = templates.newMatchingListing({
+      if (savedSearch.alertPreferences?.restockSimilarAlerts && similarMatch) {
+        const displayName = await getSavedSearchDisplayName(savedSearch);
+        const emailPayload = templates.similarListingRestocked({
+          displayName,
+          searchName: savedSearch.name || 'Saved Search',
+          listingTitle: listing.title || 'Equipment Listing',
+          listingUrl,
+          listingPrice,
+          location: listing.location || 'Unknown',
+        });
+
+        await sendEmail({ to: recipient, ...emailPayload });
+      }
+    })
+  );
+}
+
+async function notifySavedSearchPriceDrop(listingId, before, after) {
+  const listingUrl = `${APP_URL}/listing/${listingId}`;
+  const previousPrice = formatListingMoney(after, before.price);
+  const currentPrice = formatListingMoney(after, after.price);
+  const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
+
+  if (searchSnap.empty) return;
+
+  await Promise.all(
+    searchSnap.docs.map(async (searchDoc) => {
+      const savedSearch = searchDoc.data();
+      if (!savedSearch.alertPreferences?.priceDropAlerts) return;
+      if (!savedSearch.alertEmail) return;
+      if (!listingMatchesSavedSearch(after, savedSearch)) return;
+
+      const displayName = await getSavedSearchDisplayName(savedSearch);
+      const emailPayload = templates.matchingListingPriceDrop({
         displayName,
         searchName: savedSearch.name || 'Saved Search',
-        listingTitle: listing.title || 'New Equipment Listing',
+        listingTitle: after.title || 'Equipment Listing',
         listingUrl,
-        listingPrice,
+        previousPrice,
+        currentPrice,
+        location: after.location || 'Unknown',
+      });
+
+      await sendEmail({ to: savedSearch.alertEmail, ...emailPayload });
+    })
+  );
+}
+
+async function notifySavedSearchSoldStatus(listingId, listing) {
+  const listingUrl = `${APP_URL}/listing/${listingId}`;
+  const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
+
+  if (searchSnap.empty) return;
+
+  await Promise.all(
+    searchSnap.docs.map(async (searchDoc) => {
+      const savedSearch = searchDoc.data();
+      if (!savedSearch.alertPreferences?.soldStatusAlerts) return;
+      if (!savedSearch.alertEmail) return;
+      if (!listingMatchesSavedSearch(listing, savedSearch)) return;
+
+      const displayName = await getSavedSearchDisplayName(savedSearch);
+      const emailPayload = templates.matchingListingSold({
+        displayName,
+        searchName: savedSearch.name || 'Saved Search',
+        listingTitle: listing.title || 'Equipment Listing',
+        listingUrl,
         location: listing.location || 'Unknown',
       });
 
-      await sendEmail({ to: recipient, ...emailPayload });
+      await sendEmail({ to: savedSearch.alertEmail, ...emailPayload });
     })
   );
 }
@@ -383,7 +544,7 @@ exports.onInquiryCreated = onDocumentCreated(
     document: 'inquiries/{inquiryId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, ADMIN_EMAILS],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
   },
   async (event) => {
     const inquiry = event.data?.data();
@@ -438,6 +599,7 @@ exports.onInquiryCreated = onDocumentCreated(
           listingTitle,
           listingUrl,
           sellerName,
+          inquiryType: inquiry.type || 'Inquiry',
         });
         await sendEmail({ to: buyerEmail, subject, html });
       } catch (err) {
@@ -480,28 +642,18 @@ exports.onUserProfileCreated = onDocumentCreated(
     document: 'users/{uid}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
   },
   async (event) => {
     const profile = event.data?.data();
     if (!profile?.email) return;
-
-    // Generate an email verification link via Admin SDK
-    let verificationLink = `${APP_URL}/login`;
-    try {
-      verificationLink = await admin.auth().generateEmailVerificationLink(profile.email, {
-        url: `${APP_URL}/login`,
-      });
-    } catch (err) {
-      logger.warn(`Could not generate verification link for ${profile.email}: ${err.message}`);
-    }
+    if (String(profile.onboardingSource || '').trim() === 'managed_invite') return;
 
     try {
-      const { subject, html } = templates.welcomeVerification({
+      await sendVerificationEmailMessage({
+        email: profile.email,
         displayName: profile.displayName || 'there',
-        verificationLink,
       });
-      await sendEmail({ to: profile.email, subject, html });
     } catch (err) {
       logger.error('Failed to send welcome email', err);
     }
@@ -517,7 +669,7 @@ exports.onListingStatusChanged = onDocumentUpdated(
     document: 'listings/{listingId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
   },
   async (event) => {
     const before = event.data?.before?.data();
@@ -526,6 +678,30 @@ exports.onListingStatusChanged = onDocumentUpdated(
 
     const prevApproval = before.approvalStatus;
     const newApproval = after.approvalStatus;
+    const previousStatus = normalize(before.status || 'active');
+    const newStatus = normalize(after.status || 'active');
+    const beforePrice = Number(before.price || 0);
+    const afterPrice = Number(after.price || 0);
+
+    if (newApproval === 'approved' && prevApproval !== 'approved') {
+      await notifyMatchingSavedSearches(event.params.listingId, after);
+    }
+
+    if (previousStatus !== 'sold' && newStatus === 'sold') {
+      await notifySavedSearchSoldStatus(event.params.listingId, after);
+    }
+
+    if (
+      newApproval === 'approved' &&
+      prevApproval === 'approved' &&
+      previousStatus !== 'sold' &&
+      newStatus !== 'sold' &&
+      beforePrice > 0 &&
+      afterPrice > 0 &&
+      afterPrice < beforePrice
+    ) {
+      await notifySavedSearchPriceDrop(event.params.listingId, before, after);
+    }
 
     if (prevApproval === newApproval) return;
     if (newApproval !== 'approved' && newApproval !== 'rejected') return;
@@ -547,7 +723,6 @@ exports.onListingStatusChanged = onDocumentUpdated(
       let emailPayload;
       if (newApproval === 'approved') {
         emailPayload = templates.listingApproved({ sellerName: seller.displayName || 'Seller', listingTitle, listingUrl });
-        await notifyMatchingSavedSearches(event.params.listingId, after);
       } else {
         const editUrl = `${APP_URL}/sell?edit=${event.params.listingId}`;
         emailPayload = templates.listingRejected({
@@ -569,13 +744,58 @@ exports.onListingCreated = onDocumentCreated(
     document: 'listings/{listingId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
   },
   async (event) => {
     const listing = event.data?.data();
     if (!listing) return;
-    if (listing.approvalStatus !== 'approved') return;
-    await notifyMatchingSavedSearches(event.params.listingId, listing);
+
+    const sellerUid = String(listing.sellerUid || listing.sellerId || '').trim();
+    let seller = null;
+    if (sellerUid) {
+      const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
+      if (sellerSnap.exists) {
+        seller = sellerSnap.data();
+      }
+    }
+
+    const sellerEmail = String(seller?.email || '').trim();
+    const sellerName = String(seller?.displayName || 'Seller').trim();
+    const listingTitle = String(listing.title || 'Your Listing').trim();
+    const listingUrl = `${APP_URL}/listing/${event.params.listingId}`;
+    const dashboardUrl = `${APP_URL}/profile?tab=${encodeURIComponent('My Listings')}`;
+
+    if (listing.approvalStatus === 'approved') {
+      await notifyMatchingSavedSearches(event.params.listingId, listing);
+
+      if (sellerEmail) {
+        try {
+          const payload = templates.listingApproved({
+            sellerName,
+            listingTitle,
+            listingUrl,
+          });
+          await sendEmail({ to: sellerEmail, ...payload });
+        } catch (error) {
+          logger.error('Failed to send listing approved email on create', error);
+        }
+      }
+      return;
+    }
+
+    if (sellerEmail) {
+      try {
+        const payload = templates.listingSubmitted({
+          sellerName,
+          listingTitle,
+          dashboardUrl,
+          reviewEta: 'Typically within 1 business day',
+        });
+        await sendEmail({ to: sellerEmail, ...payload });
+      } catch (error) {
+        logger.error('Failed to send listing submitted email', error);
+      }
+    }
   }
 );
 
@@ -584,13 +804,13 @@ exports.onMediaKitRequestCreated = onDocumentCreated(
     document: 'mediaKitRequests/{requestId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, ADMIN_EMAILS],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
   },
   async (event) => {
     const request = event.data?.data();
     if (!request) return;
 
-    const payload = templates.mediaKitRequest({
+    const adminPayload = templates.mediaKitRequest({
       requesterName: request.firstName || '',
       companyName: request.companyName || '',
       email: request.email || '',
@@ -598,7 +818,22 @@ exports.onMediaKitRequestCreated = onDocumentCreated(
       notes: request.notes || '',
     });
 
-    await sendEmail({ to: getAdminRecipients(), ...payload });
+    await sendEmail({ to: getAdminRecipients(), ...adminPayload });
+
+    if (request.email) {
+      try {
+        const confirmationPayload = templates.mediaKitRequestConfirmation({
+          requesterName: request.firstName || 'there',
+          requestType: request.requestType || 'media-kit',
+          companyName: request.companyName || '',
+          supportUrl: `${APP_URL}/ad-programs`,
+        });
+
+        await sendEmail({ to: request.email, ...confirmationPayload });
+      } catch (error) {
+        logger.error('Failed to send media kit confirmation email', error);
+      }
+    }
   }
 );
 
@@ -607,7 +842,7 @@ exports.onFinancingRequestCreated = onDocumentCreated(
     document: 'financingRequests/{requestId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, ADMIN_EMAILS],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
   },
   async (event) => {
     const request = event.data?.data();
@@ -624,6 +859,20 @@ exports.onFinancingRequestCreated = onDocumentCreated(
     });
 
     await sendEmail({ to: getAdminRecipients(), ...payload });
+
+    if (request.applicantEmail) {
+      try {
+        const confirmationPayload = templates.financingRequestConfirmation({
+          applicantName: request.applicantName || 'there',
+          requestedAmount: typeof request.requestedAmount === 'number' ? request.requestedAmount : null,
+          company: request.company || '',
+          dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Financing')}`,
+        });
+        await sendEmail({ to: request.applicantEmail, ...confirmationPayload });
+      } catch (error) {
+        logger.error('Failed to send financing confirmation email', error);
+      }
+    }
   }
 );
 
@@ -632,7 +881,7 @@ exports.onContactRequestCreated = onDocumentCreated(
     document: 'contactRequests/{requestId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, ADMIN_EMAILS],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
   },
   async (event) => {
     const request = event.data?.data();
@@ -647,6 +896,19 @@ exports.onContactRequestCreated = onDocumentCreated(
     });
 
     await sendEmail({ to: getAdminRecipients(), ...payload });
+
+    if (request.email) {
+      try {
+        const confirmationPayload = templates.contactRequestConfirmation({
+          name: request.name || 'there',
+          category: request.category || 'General Support',
+          supportUrl: `${APP_URL}/contact`,
+        });
+        await sendEmail({ to: request.email, ...confirmationPayload });
+      } catch (error) {
+        logger.error('Failed to send contact confirmation email', error);
+      }
+    }
   }
 );
 
@@ -655,7 +917,7 @@ exports.onSubscriptionCreated = onDocumentCreated(
     document: 'subscriptions/{subscriptionId}',
     database: FIRESTORE_DB_ID,
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
   },
   async (event) => {
     const subscription = event.data?.data();
@@ -669,7 +931,7 @@ exports.onSubscriptionCreated = onDocumentCreated(
 
     const payload = templates.subscriptionCreated({
       displayName: user.displayName || 'there',
-      planName: subscription.planId || 'subscription',
+      planName: getPlanDisplayName(subscription.planId),
     });
 
     await sendEmail({ to: user.email, ...payload });
@@ -683,7 +945,7 @@ exports.subscriptionExpiryReminder = onSchedule(
   {
     schedule: 'every 24 hours',
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
   },
   async (_context) => {
     const now = admin.firestore.Timestamp.now();
@@ -727,7 +989,7 @@ exports.subscriptionExpiryReminder = onSchedule(
         try {
           const { subject, html } = templates.subscriptionExpiring({
             displayName: user.displayName || 'Seller',
-            planName: sub.planId || 'Pro',
+            planName: getPlanDisplayName(sub.planId),
             expiryDate,
             renewUrl,
           });
@@ -750,7 +1012,7 @@ exports.subscriptionExpiredNotice = onSchedule(
   {
     schedule: 'every 24 hours',
     region: 'us-central1',
-    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM],
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
   },
   async (_context) => {
     const now = admin.firestore.Timestamp.now();
@@ -786,7 +1048,7 @@ exports.subscriptionExpiredNotice = onSchedule(
         try {
           const { subject, html } = templates.subscriptionExpired({
             displayName: user.displayName || 'Seller',
-            planName: sub.planId || 'Pro',
+            planName: getPlanDisplayName(sub.planId),
             renewUrl,
           });
           await sendEmail({ to: user.email, subject, html });
@@ -1137,29 +1399,33 @@ async function assessRecaptchaToken(token, action) {
 const LISTING_CHECKOUT_PLANS = {
   individual_seller: {
     id: 'individual_seller',
-    name: 'Individual Seller Plan',
-    amountUsd: 20,
+    name: 'Owner Operator Ad Program',
+    amountUsd: 39,
     listingCap: 1,
     productId: 'prod_UBpeOgS2Xbot2e',
+    priceId: 'price_1TDRzJEFuycUwY0KZiFBQxTF',
   },
   dealer: {
     id: 'dealer',
-    name: 'Dealer Plan',
-    amountUsd: 250,
+    name: 'Dealer Ad Package',
+    amountUsd: 499,
     listingCap: 50,
     productId: 'prod_UBpeHg3FydOSdD',
+    priceId: 'price_1TDRzJEFuycUwY0KnU6HzAg2',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
-    name: 'Fleet Dealer Plan',
-    amountUsd: 500,
+    name: 'Pro Dealer Ad Package',
+    amountUsd: 999,
     listingCap: 150,
     productId: 'prod_UBpek9mEeZPlyC',
+    priceId: 'price_1TDRzKEFuycUwY0KPkBneTyh',
   },
 };
 
 const DEALER_MANAGED_ACCOUNT_LIMIT = 3;
 const MANAGED_ACCOUNT_PLAN_IDS = ['dealer', 'fleet_dealer'];
+const MAX_OWNER_OPERATOR_LISTINGS = 10;
 
 function getListingCheckoutPlan(rawPlanId) {
   const planId = String(rawPlanId || '').trim();
@@ -1167,6 +1433,198 @@ function getListingCheckoutPlan(rawPlanId) {
     return null;
   }
   return LISTING_CHECKOUT_PLANS[planId];
+}
+
+function getSellerRoleForPlan(planId) {
+  return planId === 'individual_seller' ? 'individual_seller' : 'dealer';
+}
+
+function getPlanDisplayName(planId) {
+  const plan = getListingCheckoutPlan(planId);
+  return plan?.name || String(planId || 'subscription').trim() || 'subscription';
+}
+
+function clampOwnerOperatorQuantity(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(MAX_OWNER_OPERATOR_LISTINGS, Math.floor(parsed)));
+}
+
+function resolveSubscriptionQuantityForPlan(planId, quantity, listingCap) {
+  if (planId !== 'individual_seller') return 1;
+  if (Number.isFinite(Number(quantity)) && Number(quantity) > 0) {
+    return clampOwnerOperatorQuantity(quantity);
+  }
+  if (Number.isFinite(Number(listingCap)) && Number(listingCap) > 0) {
+    return clampOwnerOperatorQuantity(listingCap);
+  }
+  return 1;
+}
+
+async function resolveAccountSubscriptionAccessSummary(userUid) {
+  const normalizedUserUid = String(userUid || '').trim();
+  if (!normalizedUserUid) {
+    return {
+      planId: null,
+      listingCap: 0,
+      managedAccountCap: 0,
+      subscriptionStatus: 'pending',
+      currentSubscriptionId: null,
+      currentPeriodEndIso: null,
+      ownerOperatorQuantity: 0,
+    };
+  }
+
+  const subscriptionsSnap = await getDb().collection('subscriptions').where('userUid', '==', normalizedUserUid).get();
+
+  let ownerOperatorQuantity = 0;
+  let hasDealer = false;
+  let hasFleetDealer = false;
+  let dealerSubId = null;
+  let fleetSubId = null;
+  let ownerSubId = null;
+  let maxPeriodEndMillis = 0;
+
+  subscriptionsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const planId = String(data.planId || '').trim();
+    const checkoutScope = String(data.checkoutScope || '').trim();
+    const listingId = String(data.listingId || '').trim();
+
+    const isAccountSubscription = checkoutScope === 'account' || (checkoutScope === '' && !listingId);
+    if (!isAccountSubscription) return;
+
+    const status = String(data.status || '').trim();
+    const cancelAtPeriodEnd = Boolean(data.cancelAtPeriodEnd);
+    const currentPeriodEnd = data.currentPeriodEnd;
+    const currentPeriodEndMillis = currentPeriodEnd && typeof currentPeriodEnd.toMillis === 'function'
+      ? currentPeriodEnd.toMillis()
+      : 0;
+    const hasRemainingPeriod = currentPeriodEndMillis > Date.now();
+    const retainsAccess = statusAllowsSellerAccess(status, cancelAtPeriodEnd, hasRemainingPeriod);
+    if (!retainsAccess) return;
+
+    if (currentPeriodEndMillis > maxPeriodEndMillis) {
+      maxPeriodEndMillis = currentPeriodEndMillis;
+    }
+
+    if (planId === 'fleet_dealer') {
+      hasFleetDealer = true;
+      fleetSubId = fleetSubId || doc.id;
+      return;
+    }
+
+    if (planId === 'dealer') {
+      hasDealer = true;
+      dealerSubId = dealerSubId || doc.id;
+      return;
+    }
+
+    if (planId === 'individual_seller') {
+      ownerSubId = ownerSubId || doc.id;
+      const quantity = resolveSubscriptionQuantityForPlan(planId, data.subscriptionQuantity, data.listingCap);
+      ownerOperatorQuantity += quantity;
+    }
+  });
+
+  ownerOperatorQuantity = Math.min(MAX_OWNER_OPERATOR_LISTINGS, ownerOperatorQuantity);
+
+  const currentPeriodEndIso = maxPeriodEndMillis > 0 ? new Date(maxPeriodEndMillis).toISOString() : null;
+
+  if (hasFleetDealer) {
+    return {
+      planId: 'fleet_dealer',
+      listingCap: LISTING_CHECKOUT_PLANS.fleet_dealer.listingCap,
+      managedAccountCap: DEALER_MANAGED_ACCOUNT_LIMIT,
+      subscriptionStatus: 'active',
+      currentSubscriptionId: fleetSubId,
+      currentPeriodEndIso,
+      ownerOperatorQuantity,
+    };
+  }
+
+  if (hasDealer) {
+    return {
+      planId: 'dealer',
+      listingCap: LISTING_CHECKOUT_PLANS.dealer.listingCap,
+      managedAccountCap: DEALER_MANAGED_ACCOUNT_LIMIT,
+      subscriptionStatus: 'active',
+      currentSubscriptionId: dealerSubId,
+      currentPeriodEndIso,
+      ownerOperatorQuantity,
+    };
+  }
+
+  if (ownerOperatorQuantity > 0) {
+    return {
+      planId: 'individual_seller',
+      listingCap: ownerOperatorQuantity,
+      managedAccountCap: 0,
+      subscriptionStatus: 'active',
+      currentSubscriptionId: ownerSubId,
+      currentPeriodEndIso,
+      ownerOperatorQuantity,
+    };
+  }
+
+  return {
+    planId: null,
+    listingCap: 0,
+    managedAccountCap: 0,
+    subscriptionStatus: 'pending',
+    currentSubscriptionId: null,
+    currentPeriodEndIso,
+    ownerOperatorQuantity,
+  };
+}
+
+function statusAllowsSellerAccess(status, cancelAtPeriodEnd, hasRemainingPeriod) {
+  return status === 'active' || status === 'trialing' || ((status === 'past_due' || cancelAtPeriodEnd) && hasRemainingPeriod);
+}
+
+function firestoreTimestampToIso(value) {
+  if (!value || typeof value.toDate !== 'function') return null;
+  return value.toDate().toISOString();
+}
+
+async function applyAccountSubscriptionToUserProfile({ userUid, planId, subscriptionStatus, subscriptionId, currentPeriodEnd, cancelAtPeriodEnd = false, source }) {
+  const normalizedUserUid = String(userUid || '').trim();
+  const normalizedPlanId = String(planId || '').trim();
+  if (!normalizedUserUid || !normalizedPlanId) return;
+
+  const userRef = getDb().collection('users').doc(normalizedUserUid);
+  const userSnap = await userRef.get();
+  const existingUser = userSnap.data() || {};
+  const existingRole = String(existingUser.role || '').trim();
+  const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid);
+  const retainsSellerAccess = !!summary.planId;
+
+  const updatePayload = {
+    activeSubscriptionPlanId: summary.planId,
+    subscriptionStatus: summary.subscriptionStatus,
+    listingCap: summary.listingCap,
+    managedAccountCap: summary.managedAccountCap,
+    currentSubscriptionId: summary.currentSubscriptionId,
+    currentPeriodEnd: summary.currentPeriodEndIso,
+    accountStatus: retainsSellerAccess ? 'active' : 'pending',
+    onboardingIntent: normalizedPlanId,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const nextRole = retainsSellerAccess && summary.planId ? getSellerRoleForPlan(summary.planId) : 'member';
+  if (!['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer_manager', 'dealer_staff'].includes(existingRole)) {
+    updatePayload.role = nextRole;
+  }
+
+  await userRef.set(updatePayload, { merge: true });
+
+  await getDb().collection('billingAuditLogs').add({
+    action: 'ACCOUNT_SUBSCRIPTION_SYNC',
+    userUid: normalizedUserUid,
+    listingId: null,
+    details: `Applied ${normalizedPlanId} subscription access as ${subscriptionStatus} via ${source}. Effective plan: ${summary.planId || 'none'}, listing cap: ${summary.listingCap}.`,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
 }
 
 async function getManagedAccountSeatContext(ownerUid) {
@@ -1214,7 +1672,7 @@ async function getManagedAccountSeatContext(ownerUid) {
 }
 
 function createStripeClient() {
-  const secret = STRIPE_SECRET_KEY.value();
+  const secret = String(STRIPE_SECRET_KEY.value() || '').trim();
   if (!secret) return null;
   return new Stripe(secret, { apiVersion: '2026-02-25.clover' });
 }
@@ -1241,6 +1699,10 @@ async function getDecodedUserFromBearer(req) {
 }
 
 async function resolveStripePriceIdForPlan(stripe, plan) {
+  if (plan.priceId) {
+    return plan.priceId;
+  }
+
   const product = await stripe.products.retrieve(plan.productId, {
     expand: ['default_price'],
   });
@@ -1317,7 +1779,7 @@ async function finalizeListingPaymentFromCheckoutSession(session, source) {
   fallbackPeriodEndDate.setMonth(fallbackPeriodEndDate.getMonth() + 1);
   let listingExpiresAt = admin.firestore.Timestamp.fromDate(fallbackPeriodEndDate);
 
-  await getDb().collection('invoices').doc(session.id).set(
+  await getDb().collection('invoices').doc(String(session.invoice || session.id)).set(
     {
       userUid,
       listingId,
@@ -1386,6 +1848,89 @@ async function finalizeListingPaymentFromCheckoutSession(session, source) {
   return { paid: true, listingId, planId };
 }
 
+async function finalizeAccountPaymentFromCheckoutSession(session, source) {
+  const planId = String(session.metadata?.planId || '');
+  const userUid = String(session.metadata?.userUid || '');
+  const paid = session.payment_status === 'paid';
+
+  if (!planId || !userUid || !paid) {
+    return { paid: false, listingId: null, planId: planId || null, scope: 'account' };
+  }
+
+  const plan = getListingCheckoutPlan(planId);
+  const amountUsd = typeof session.amount_total === 'number' ? session.amount_total / 100 : plan?.amountUsd || 0;
+  const subscriptionObject = typeof session.subscription === 'object' && session.subscription ? session.subscription : null;
+  const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id || null;
+  const rawQuantity = subscriptionObject?.items?.data?.[0]?.quantity;
+  const requestedQuantity = Number(session.metadata?.subscriptionQuantity || 1);
+  const subscriptionQuantity = planId === 'individual_seller'
+    ? resolveSubscriptionQuantityForPlan(planId, rawQuantity, requestedQuantity)
+    : 1;
+  const listingCap = plan?.id === 'individual_seller'
+    ? subscriptionQuantity * (plan?.listingCap || 1)
+    : plan?.listingCap || 0;
+  const currentPeriodEnd = typeof subscriptionObject?.current_period_end === 'number'
+    ? admin.firestore.Timestamp.fromMillis(subscriptionObject.current_period_end * 1000)
+    : null;
+
+  await getDb().collection('invoices').doc(String(session.invoice || session.id)).set(
+    {
+      userUid,
+      listingId: null,
+      stripeInvoiceId: session.invoice || null,
+      stripeCheckoutSessionId: session.id,
+      amount: amountUsd,
+      currency: session.currency || 'usd',
+      status: 'paid',
+      items: [`${plan?.name || planId} seller account subscription x${subscriptionQuantity}`],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      source,
+    },
+    { merge: true }
+  );
+
+  if (subscriptionId) {
+    await getDb().collection('subscriptions').doc(subscriptionId).set(
+      {
+        userUid,
+        listingId: null,
+        planId,
+        stripeSubscriptionId: subscriptionId,
+        status: 'active',
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd,
+        checkoutScope: 'account',
+        subscriptionQuantity,
+        listingCap,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
+
+  await applyAccountSubscriptionToUserProfile({
+    userUid,
+    planId,
+    subscriptionStatus: 'active',
+    subscriptionId,
+    currentPeriodEnd,
+    source,
+  });
+
+  return { paid: true, listingId: null, planId, scope: 'account' };
+}
+
+async function finalizeCheckoutSession(session, source) {
+  const checkoutScope = String(session.metadata?.checkoutScope || '').trim();
+  if (checkoutScope === 'account') {
+    return finalizeAccountPaymentFromCheckoutSession(session, source);
+  }
+
+  const listingResult = await finalizeListingPaymentFromCheckoutSession(session, source);
+  return { ...listingResult, scope: 'listing' };
+}
+
 function normalizeStripeSubscriptionStatus(rawStatus) {
   const status = String(rawStatus || '').toLowerCase();
   if (status === 'active' || status === 'trialing' || status === 'canceled' || status === 'past_due') {
@@ -1437,6 +1982,16 @@ async function syncSubscriptionStateFromStripeObject(rawSubscription, source) {
 
   const listingId = String(metadata.listingId || '').trim();
   const planId = String(metadata.planId || '').trim();
+  const checkoutScope = String(metadata.checkoutScope || '').trim();
+  const rawQuantity = rawSubscription?.items?.data?.[0]?.quantity;
+  const requestedQuantity = Number(metadata.subscriptionQuantity || 1);
+  const subscriptionQuantity = planId === 'individual_seller'
+    ? resolveSubscriptionQuantityForPlan(planId, rawQuantity, requestedQuantity)
+    : 1;
+  const plan = getListingCheckoutPlan(planId);
+  const listingCap = plan?.id === 'individual_seller'
+    ? subscriptionQuantity * (plan?.listingCap || 1)
+    : plan?.listingCap || 0;
 
   await getDb().collection('subscriptions').doc(stripeSubscriptionId).set(
     {
@@ -1444,9 +1999,12 @@ async function syncSubscriptionStateFromStripeObject(rawSubscription, source) {
       listingId: listingId || null,
       planId: planId || null,
       stripeSubscriptionId,
+      checkoutScope: checkoutScope || (listingId ? 'listing' : 'account'),
       status: subscriptionStatus,
       cancelAtPeriodEnd,
       currentPeriodEnd,
+      subscriptionQuantity,
+      listingCap,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       source,
     },
@@ -1454,9 +2012,7 @@ async function syncSubscriptionStateFromStripeObject(rawSubscription, source) {
   );
 
   const shouldRetainListingAccess =
-    subscriptionStatus === 'active' ||
-    subscriptionStatus === 'trialing' ||
-    ((subscriptionStatus === 'past_due' || cancelAtPeriodEnd) && hasRemainingPeriod);
+    statusAllowsSellerAccess(subscriptionStatus, cancelAtPeriodEnd, hasRemainingPeriod);
 
   if (listingId) {
     const listingRef = getDb().collection('listings').doc(listingId);
@@ -1483,6 +2039,18 @@ async function syncSubscriptionStateFromStripeObject(rawSubscription, source) {
     }
   }
 
+  if (userUid && planId && (checkoutScope === 'account' || !listingId)) {
+    await applyAccountSubscriptionToUserProfile({
+      userUid,
+      planId,
+      subscriptionStatus,
+      subscriptionId: stripeSubscriptionId,
+      currentPeriodEnd,
+      cancelAtPeriodEnd,
+      source,
+    });
+  }
+
   if (userUid) {
     await getDb().collection('billingAuditLogs').add({
       action: 'STRIPE_SUBSCRIPTION_SYNC',
@@ -1498,8 +2066,126 @@ function canAdministrateAccount(role) {
   return ['super_admin', 'admin', 'developer'].includes(role);
 }
 
+function isSupportedUserRole(role) {
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'individual_seller', 'member', 'buyer'].includes(role);
+}
+
+function isAuthUserNotFound(error) {
+  return error?.code === 'auth/user-not-found';
+}
+
+function timestampValueToIso(value) {
+  if (!value) return '';
+  if (typeof value?.toDate === 'function') {
+    return value.toDate().toISOString();
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function toAccountStatusLabel(accountStatus, authDisabled) {
+  if (authDisabled || accountStatus === 'suspended') return 'Suspended';
+  if (accountStatus === 'pending') return 'Pending';
+  return 'Active';
+}
+
+async function getAdminActorContext(req) {
+  const decodedToken = await getDecodedUserFromBearer(req);
+  if (!decodedToken) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  const actorUid = decodedToken.uid;
+  const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+  const actorDoc = await getDb().collection('users').doc(actorUid).get();
+  const actorRole = normalize(String(actorDoc.data()?.role || ''));
+  const canManageUsers = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
+
+  if (!canManageUsers) {
+    return { error: 'Forbidden', status: 403 };
+  }
+
+  return {
+    decodedToken,
+    actorUid,
+    actorEmail,
+    actorDoc,
+    actorRole,
+  };
+}
+
+async function getAuthUserRecordSafe(uid) {
+  try {
+    return await admin.auth().getUser(uid);
+  } catch (error) {
+    if (isAuthUserNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function serializeAdminUser(userDoc) {
+  const data = userDoc.data() || {};
+  const authRecord = await getAuthUserRecordSafe(userDoc.id);
+  const authDisabled = Boolean(authRecord?.disabled);
+  const rawAccountStatus = normalize(String(data.accountStatus || 'active'));
+  const accountStatus = ['active', 'pending', 'suspended'].includes(rawAccountStatus)
+    ? rawAccountStatus
+    : (authDisabled ? 'suspended' : 'active');
+  const displayName = String(data.displayName || data.name || authRecord?.displayName || '').trim();
+  const email = String(data.email || authRecord?.email || '').trim().toLowerCase();
+  const phone = String(data.phoneNumber || '').trim();
+  const createdAt = timestampValueToIso(data.createdAt) || timestampValueToIso(authRecord?.metadata?.creationTime);
+  const updatedAt = timestampValueToIso(data.updatedAt);
+  const lastLogin =
+    timestampValueToIso(authRecord?.metadata?.lastSignInTime) ||
+    timestampValueToIso(data.lastLogin) ||
+    updatedAt ||
+    createdAt;
+
+  return {
+    id: userDoc.id,
+    uid: userDoc.id,
+    name: displayName || email || 'Unknown User',
+    displayName: displayName || email || 'Unknown User',
+    email,
+    phone,
+    phoneNumber: phone,
+    company: String(data.company || '').trim(),
+    role: isSupportedUserRole(String(data.role || '')) ? String(data.role) : 'buyer',
+    status: toAccountStatusLabel(accountStatus, authDisabled),
+    accountStatus,
+    authDisabled,
+    emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(data.emailVerified),
+    lastLogin,
+    lastActive: lastLogin,
+    memberSince: createdAt,
+    createdAt,
+    updatedAt,
+    totalListings: Number(data.totalListings || 0),
+    totalLeads: Number(data.totalLeads || 0),
+    parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+  };
+}
+
+function canCreateManagedRole(parentRole, childRole) {
+  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'member', 'buyer'];
+  const dealerManagedRoles = ['dealer_manager', 'dealer_staff', 'member', 'buyer'];
+
+  if (parentRole === 'super_admin') return true;
+  if (parentRole === 'admin') return adminManagedRoles.includes(childRole);
+  if (parentRole === 'dealer' || parentRole === 'dealer_manager') return dealerManagedRoles.includes(childRole);
+  return false;
+}
+
 function isDealerManagedRole(role) {
   return ['dealer', 'dealer_manager'].includes(role);
+}
+
+function generateTemporaryPassword() {
+  return `TE-${randomBytes(9).toString('base64url')}!7a`;
 }
 
 exports.apiProxy = onRequest(
@@ -1507,6 +2193,8 @@ exports.apiProxy = onRequest(
     region: 'us-central1',
     cors: true,
     secrets: [
+      SENDGRID_API_KEY,
+      EMAIL_FROM,
       FRED_API_KEY,
       GOOGLE_TRANSLATE_API_KEY,
       EXCHANGERATE_API_KEY,
@@ -1524,8 +2212,10 @@ exports.apiProxy = onRequest(
           return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
         }
 
-        const webhookSecret = STRIPE_WEBHOOK_SECRET.value();
-        const signature = req.headers['stripe-signature'];
+        const webhookSecret = String(STRIPE_WEBHOOK_SECRET.value() || '').trim();
+        const signature = Array.isArray(req.headers['stripe-signature'])
+          ? req.headers['stripe-signature'][0]
+          : req.headers['stripe-signature'];
         if (!webhookSecret || !signature) {
           return res.status(400).json({ error: 'Missing Stripe webhook signature or secret.' });
         }
@@ -1563,7 +2253,7 @@ exports.apiProxy = onRequest(
 
         try {
           if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-            await finalizeListingPaymentFromCheckoutSession(event.data.object, 'webhook');
+            await finalizeCheckoutSession(event.data.object, 'webhook');
           }
 
           if (
@@ -1576,6 +2266,52 @@ exports.apiProxy = onRequest(
 
           if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed') {
             const invoiceObject = event.data.object || {};
+            const metadata = invoiceObject.metadata || invoiceObject.parent?.subscription_details?.metadata || invoiceObject.subscription_details?.metadata || {};
+            const userUid = String(metadata.userUid || '').trim() || await resolveUserUidFromStripeCustomerId(invoiceObject.customer);
+            const invoiceDocId = String(invoiceObject.id || '').trim();
+            const planName = getPlanDisplayName(metadata.planId);
+
+            if (invoiceDocId && userUid) {
+              await getDb().collection('invoices').doc(invoiceDocId).set(
+                {
+                  userUid,
+                  listingId: metadata.listingId || null,
+                  stripeInvoiceId: invoiceObject.id,
+                  amount: typeof invoiceObject.amount_paid === 'number'
+                    ? invoiceObject.amount_paid / 100
+                    : typeof invoiceObject.amount_due === 'number'
+                      ? invoiceObject.amount_due / 100
+                      : 0,
+                  currency: invoiceObject.currency || 'usd',
+                  status: event.type === 'invoice.payment_succeeded' ? 'paid' : 'failed',
+                  items: Array.isArray(invoiceObject.lines?.data)
+                    ? invoiceObject.lines.data.map((line) => line.description).filter(Boolean)
+                    : [planName],
+                  paidAt: event.type === 'invoice.payment_succeeded' ? admin.firestore.FieldValue.serverTimestamp() : null,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  source: `webhook:${event.type}`,
+                },
+                { merge: true }
+              );
+
+              if (event.type === 'invoice.payment_succeeded') {
+                const userSnap = await getDb().collection('users').doc(userUid).get();
+                const user = userSnap.data() || {};
+                if (user.email) {
+                  const payload = templates.invoicePaidReceipt({
+                    displayName: user.displayName || 'there',
+                    invoiceNumber: invoiceObject.number || invoiceObject.id,
+                    amountPaid: typeof invoiceObject.amount_paid === 'number' ? invoiceObject.amount_paid / 100 : 0,
+                    currency: invoiceObject.currency || 'usd',
+                    planName,
+                    hostedInvoiceUrl: invoiceObject.hosted_invoice_url || '',
+                    invoicePdfUrl: invoiceObject.invoice_pdf || '',
+                  });
+                  await sendEmail({ to: user.email, ...payload });
+                }
+              }
+            }
+
             const rawSubscriptionId = typeof invoiceObject.subscription === 'string'
               ? invoiceObject.subscription
               : invoiceObject.subscription?.id;
@@ -1659,7 +2395,6 @@ exports.apiProxy = onRequest(
           });
         }
 
-        const priceId = await resolveStripePriceIdForPlan(stripe, plan);
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
         const baseUrl = getRequestBaseUrl(req);
 
@@ -1668,7 +2403,15 @@ exports.apiProxy = onRequest(
           customer: customerId,
           success_url: `${baseUrl}/sell?checkout=success&session_id={CHECKOUT_SESSION_ID}&listingId=${encodeURIComponent(listingId)}`,
           cancel_url: `${baseUrl}/sell?checkout=canceled&listingId=${encodeURIComponent(listingId)}`,
-          line_items: [{ price: priceId, quantity: 1 }],
+          line_items: [{
+            price_data: {
+              currency: 'usd',
+              product: plan.productId,
+              recurring: { interval: 'month' },
+              unit_amount: Math.round(plan.amountUsd * 100),
+            },
+            quantity: 1,
+          }],
           client_reference_id: listingId,
           allow_promotion_codes: true,
           metadata: {
@@ -1683,6 +2426,146 @@ exports.apiProxy = onRequest(
               listingId,
               planId: plan.id,
               listingCap: String(plan.listingCap),
+            },
+          },
+        });
+
+        if (!session.url) {
+          return res.status(500).json({ error: 'Stripe checkout URL was not returned.' });
+        }
+
+        return res.status(200).json({
+          sessionId: session.id,
+          url: session.url,
+        });
+      }
+
+      if (req.method === 'POST' && path === '/auth/send-verification-email') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userRecord = await admin.auth().getUser(decodedToken.uid);
+        if (userRecord.emailVerified) {
+          return res.status(200).json({ sent: false, alreadyVerified: true });
+        }
+
+        const profileSnap = await getDb().collection('users').doc(decodedToken.uid).get();
+        const profile = profileSnap.data() || {};
+        const email = String(userRecord.email || decodedToken.email || '').trim();
+
+        if (!email) {
+          return res.status(400).json({ error: 'No email address is available for this account.' });
+        }
+
+        await sendVerificationEmailMessage({
+          email,
+          displayName: String(profile.displayName || userRecord.displayName || 'there').trim(),
+        });
+
+        return res.status(200).json({ sent: true });
+      }
+
+      if (req.method === 'POST' && path === '/billing/create-account-checkout-session') {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const uid = decodedToken.uid;
+        const plan = getListingCheckoutPlan(req.body?.planId);
+        const returnPathRaw = String(req.body?.returnPath || '/sell').trim();
+        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/sell';
+        const requestedQuantityRaw = Number(req.body?.quantity || 1);
+        const requestedQuantity = Number.isFinite(requestedQuantityRaw)
+          ? Math.floor(requestedQuantityRaw)
+          : 1;
+
+        if (!plan) {
+          return res.status(400).json({ error: 'Invalid seller plan.' });
+        }
+
+        if (plan.id === 'individual_seller') {
+          if (requestedQuantity < 1 || requestedQuantity > MAX_OWNER_OPERATOR_LISTINGS) {
+            return res.status(400).json({ error: `Owner Operator quantity must be between 1 and ${MAX_OWNER_OPERATOR_LISTINGS}.` });
+          }
+        } else if (requestedQuantity !== 1) {
+          return res.status(400).json({ error: 'Only Owner Operator supports adjustable quantity.' });
+        }
+
+        const userRef = getDb().collection('users').doc(uid);
+        const userSnap = await userRef.get();
+        const existingUser = userSnap.data() || {};
+        const activePlanId = String(existingUser.activeSubscriptionPlanId || '').trim();
+        if (String(existingUser.accountStatus || '') === 'active' && activePlanId) {
+          if (plan.id !== 'individual_seller' || activePlanId !== 'individual_seller') {
+            return res.status(409).json({ error: 'This account already has an active seller subscription.' });
+          }
+
+          const summary = await resolveAccountSubscriptionAccessSummary(uid);
+          const currentOwnerQuantity = summary.ownerOperatorQuantity || 0;
+          if (currentOwnerQuantity >= MAX_OWNER_OPERATOR_LISTINGS) {
+            return res.status(409).json({
+              error: `Owner Operator subscriptions are capped at ${MAX_OWNER_OPERATOR_LISTINGS} active listings per account.`,
+            });
+          }
+
+          if (currentOwnerQuantity + requestedQuantity > MAX_OWNER_OPERATOR_LISTINGS) {
+            return res.status(409).json({
+              error: `You currently have ${currentOwnerQuantity} active Owner Operator listing ${currentOwnerQuantity === 1 ? 'slot' : 'slots'}. You can add up to ${MAX_OWNER_OPERATOR_LISTINGS - currentOwnerQuantity} more.`,
+            });
+          }
+        }
+
+        const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
+        const baseUrl = getRequestBaseUrl(req);
+        const successSeparator = returnPath.includes('?') ? '&' : '?';
+
+        await userRef.set(
+          {
+            onboardingIntent: plan.id,
+            accountStatus: 'pending',
+            subscriptionStatus: 'pending',
+            requestedSubscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        const session = await stripe.checkout.sessions.create({
+          mode: 'subscription',
+          customer: customerId,
+          success_url: `${baseUrl}${returnPath}${successSeparator}accountCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${baseUrl}${returnPath}${successSeparator}accountCheckout=canceled`,
+          line_items: [{
+            price_data: {
+              currency: 'usd',
+              product: plan.productId,
+              recurring: { interval: 'month' },
+              unit_amount: Math.round(plan.amountUsd * 100),
+            },
+            quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
+          }],
+          allow_promotion_codes: true,
+          metadata: {
+            userUid: uid,
+            planId: plan.id,
+            checkoutScope: 'account',
+            subscriptionQuantity: String(plan.id === 'individual_seller' ? requestedQuantity : 1),
+            listingCap: String(plan.id === 'individual_seller' ? requestedQuantity : plan.listingCap),
+          },
+          subscription_data: {
+            metadata: {
+              userUid: uid,
+              planId: plan.id,
+              checkoutScope: 'account',
+              subscriptionQuantity: String(plan.id === 'individual_seller' ? requestedQuantity : 1),
+              listingCap: String(plan.id === 'individual_seller' ? requestedQuantity : plan.listingCap),
             },
           },
         });
@@ -1720,7 +2603,7 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const finalized = await finalizeListingPaymentFromCheckoutSession(session, 'confirm');
+        const finalized = await finalizeCheckoutSession(session, 'confirm');
 
         return res.status(200).json({
           sessionId: session.id,
@@ -1728,6 +2611,7 @@ exports.apiProxy = onRequest(
           paid: finalized.paid,
           listingId: finalized.listingId,
           planId: finalized.planId,
+          scope: finalized.scope,
         });
       }
 
@@ -1772,7 +2656,9 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'Display name and email are required.' });
         }
 
-        if (!canCreateManagedRole(parentRole, role)) {
+        const normalizedRole = role || 'buyer';
+
+        if (!canCreateManagedRole(parentRole, normalizedRole)) {
           return res.status(403).json({ error: 'You do not have permission to create this account role.' });
         }
 
@@ -1800,26 +2686,387 @@ exports.apiProxy = onRequest(
           return res.status(409).json({ error: 'An account with that email already exists.' });
         }
 
-        const newUserRef = getDb().collection('users').doc();
-        await newUserRef.set({
-          uid: newUserRef.id,
-          email,
-          displayName,
-          role,
-          phoneNumber,
-          company: company || String(actorDoc.data()?.company || '').trim(),
-          parentAccountUid: ownerUid,
-          accountStatus: 'pending',
-          favorites: [],
-          emailVerified: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          createdByUid: actorUid,
-          managedByRole: parentRole,
+        try {
+          await admin.auth().getUserByEmail(email);
+          return res.status(409).json({ error: 'An authentication account with that email already exists.' });
+        } catch (error) {
+          if (error?.code !== 'auth/user-not-found') {
+            logger.error('Failed to check Auth user by email', error);
+            return res.status(500).json({ error: 'Unable to validate the requested email address.' });
+          }
+        }
+
+        const temporaryPassword = generateTemporaryPassword();
+        const loginUrl = `${APP_URL}/login?email=${encodeURIComponent(email)}&invited=1`;
+
+        let authUserRecord;
+
+        try {
+          authUserRecord = await admin.auth().createUser({
+            email,
+            password: temporaryPassword,
+            displayName,
+            emailVerified: false,
+            disabled: false,
+          });
+
+          let resetLink = `${APP_URL}/login`;
+          try {
+            resetLink = await admin.auth().generatePasswordResetLink(email, {
+              url: `${APP_URL}/login`,
+            });
+          } catch (error) {
+            logger.warn(`Could not generate password reset link for ${email}: ${error.message}`);
+          }
+
+          const newUserRef = getDb().collection('users').doc(authUserRecord.uid);
+          await newUserRef.set({
+            uid: authUserRecord.uid,
+            email,
+            displayName,
+            role: normalizedRole,
+            phoneNumber,
+            company: company || String(actorDoc.data()?.company || '').trim(),
+            parentAccountUid: ownerUid,
+            accountStatus: 'pending',
+            favorites: [],
+            emailVerified: false,
+            onboardingSource: 'managed_invite',
+            invitationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdByUid: actorUid,
+            managedByRole: parentRole,
+          });
+
+          const emailPayload = templates.managedAccountInvite({
+            displayName,
+            inviterName: String(actorDoc.data()?.displayName || actorDoc.data()?.company || 'TimberEquip Admin').trim(),
+            email,
+            role: normalizedRole,
+            company: company || String(actorDoc.data()?.company || '').trim(),
+            temporaryPassword,
+            loginUrl,
+            resetLink,
+          });
+
+          await sendEmail({ to: email, ...emailPayload });
+
+          return res.status(201).json({
+            id: authUserRecord.uid,
+            seatLimit: actorIsDealer ? DEALER_MANAGED_ACCOUNT_LIMIT : null,
+            message: 'Managed account created and invitation email sent.',
+          });
+        } catch (error) {
+          logger.error('Failed to create managed account invitation', error);
+
+          if (authUserRecord?.uid) {
+            try {
+              await getDb().collection('users').doc(authUserRecord.uid).delete();
+            } catch (cleanupError) {
+              logger.error('Failed to clean up managed user profile after invite error', cleanupError);
+            }
+
+            try {
+              await admin.auth().deleteUser(authUserRecord.uid);
+            } catch (cleanupError) {
+              logger.error('Failed to clean up managed auth user after invite error', cleanupError);
+            }
+          }
+
+          return res.status(500).json({ error: 'Unable to create managed account invitation.' });
+        }
+      }
+
+      if (req.method === 'GET' && path === '/admin/users') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        // 1. List ALL Firebase Auth users (source of truth - catches users with no Firestore doc)
+        const authUsers = [];
+        let nextPageToken;
+        do {
+          const listResult = await admin.auth().listUsers(1000, nextPageToken);
+          authUsers.push(...listResult.users);
+          nextPageToken = listResult.pageToken;
+        } while (nextPageToken);
+
+        if (authUsers.length === 0) {
+          return res.status(200).json([]);
+        }
+
+        // 2. Batch-fetch all Firestore profile docs at once
+        const db = getDb();
+        const uidChunks = [];
+        for (let i = 0; i < authUsers.length; i += 500) {
+          uidChunks.push(authUsers.slice(i, i + 500));
+        }
+        const profileDocMap = {};
+        await Promise.all(
+          uidChunks.map(async (chunk) => {
+            const refs = chunk.map((u) => db.collection('users').doc(u.uid));
+            const snaps = await db.getAll(...refs);
+            snaps.forEach((snap) => {
+              profileDocMap[snap.id] = snap;
+            });
+          })
+        );
+
+        // 3. Merge auth record + Firestore profile for each user
+        const users = authUsers.map((authRecord) => {
+          const snap = profileDocMap[authRecord.uid];
+          const data = (snap && snap.exists) ? (snap.data() || {}) : {};
+
+          const authDisabled = Boolean(authRecord.disabled);
+          const rawAccountStatus = normalize(String(data.accountStatus || 'active'));
+          const accountStatus = ['active', 'pending', 'suspended'].includes(rawAccountStatus)
+            ? rawAccountStatus
+            : (authDisabled ? 'suspended' : 'active');
+          const displayName = String(data.displayName || data.name || authRecord.displayName || '').trim();
+          const email = String(data.email || authRecord.email || '').trim().toLowerCase();
+          const phone = String(data.phoneNumber || '').trim();
+          const createdAt = timestampValueToIso(data.createdAt) || timestampValueToIso(authRecord.metadata?.creationTime);
+          const updatedAt = timestampValueToIso(data.updatedAt);
+          const lastLogin =
+            timestampValueToIso(authRecord.metadata?.lastSignInTime) ||
+            timestampValueToIso(data.lastLogin) ||
+            updatedAt ||
+            createdAt;
+
+          return {
+            id: authRecord.uid,
+            uid: authRecord.uid,
+            name: displayName || email || 'Unknown User',
+            displayName: displayName || email || 'Unknown User',
+            email,
+            phone,
+            phoneNumber: phone,
+            company: String(data.company || '').trim(),
+            role: isSupportedUserRole(String(data.role || '')) ? String(data.role) : 'buyer',
+            status: toAccountStatusLabel(accountStatus, authDisabled),
+            accountStatus,
+            authDisabled,
+            emailVerified: Boolean(authRecord.emailVerified),
+            lastLogin,
+            lastActive: lastLogin,
+            memberSince: createdAt,
+            createdAt,
+            updatedAt,
+            totalListings: Number(data.totalListings || 0),
+            totalLeads: Number(data.totalLeads || 0),
+            parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+          };
         });
 
-        return res.status(201).json({
-          id: newUserRef.id,
-          seatLimit: actorIsDealer ? DEALER_MANAGED_ACCOUNT_LIMIT : null,
+        users.sort((left, right) => {
+          const leftTime = Date.parse(left.lastLogin || left.memberSince || '') || 0;
+          const rightTime = Date.parse(right.lastLogin || right.memberSince || '') || 0;
+          return rightTime - leftTime;
+        });
+
+        return res.status(200).json(users);
+      }
+
+      const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock)$/);
+      if (adminUserActionMatch && req.method === 'POST') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const targetUid = decodeURIComponent(adminUserActionMatch[1] || '').trim();
+        const action = adminUserActionMatch[2];
+        if (!targetUid) {
+          return res.status(400).json({ error: 'User id is required.' });
+        }
+
+        const targetRef = getDb().collection('users').doc(targetUid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists) {
+          return res.status(404).json({ error: 'User not found.' });
+        }
+
+        if ((action === 'lock' || action === 'unlock') && targetUid === actor.actorUid) {
+          return res.status(400).json({ error: `You cannot ${action} your own account.` });
+        }
+
+        const targetData = targetSnap.data() || {};
+
+        if (action === 'reset-password') {
+          const email = String(targetData.email || '').trim().toLowerCase();
+          const displayName = String(targetData.displayName || targetData.name || email || 'there').trim();
+          if (!email) {
+            return res.status(400).json({ error: 'The selected user does not have an email address.' });
+          }
+
+          try {
+            const resetLink = await admin.auth().generatePasswordResetLink(email, {
+              url: `${APP_URL}/login`,
+            });
+
+            const actorName = String(actor.actorDoc.data()?.displayName || actor.actorEmail || 'TimberEquip Admin').trim();
+            await sendEmail({
+              to: email,
+              subject: 'Reset your TimberEquip password',
+              html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+                  <h2 style="margin-bottom: 16px;">Password reset requested</h2>
+                  <p>Hello ${displayName},</p>
+                  <p>${actorName} requested a password reset for your TimberEquip account.</p>
+                  <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
+                  <p>If you did not expect this email, you can ignore it.</p>
+                </div>
+              `,
+            });
+
+            return res.status(200).json({ message: 'Password reset email sent.' });
+          } catch (error) {
+            logger.error('Failed to send admin-triggered password reset email', error);
+            return res.status(isAuthUserNotFound(error) ? 404 : 500).json({
+              error: isAuthUserNotFound(error)
+                ? 'Authentication record not found for that user.'
+                : 'Unable to send password reset email.',
+            });
+          }
+        }
+
+        const nextDisabledState = action === 'lock';
+        try {
+          await admin.auth().updateUser(targetUid, { disabled: nextDisabledState });
+        } catch (error) {
+          if (!isAuthUserNotFound(error)) {
+            logger.error(`Failed to ${action} auth user ${targetUid}`, error);
+            return res.status(500).json({ error: `Unable to ${action} this user.` });
+          }
+        }
+
+        await targetRef.set(
+          {
+            accountStatus: nextDisabledState ? 'suspended' : 'active',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        const updatedSnap = await targetRef.get();
+        return res.status(200).json({
+          message: nextDisabledState ? 'User locked.' : 'User unlocked.',
+          user: await serializeAdminUser(updatedSnap),
+        });
+      }
+
+      const adminUserTargetMatch = path.match(/^\/admin\/users\/([^/]+)$/);
+      if (adminUserTargetMatch && (req.method === 'PATCH' || req.method === 'DELETE')) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const targetUid = decodeURIComponent(adminUserTargetMatch[1] || '').trim();
+        if (!targetUid) {
+          return res.status(400).json({ error: 'User id is required.' });
+        }
+
+        const targetRef = getDb().collection('users').doc(targetUid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists) {
+          return res.status(404).json({ error: 'User not found.' });
+        }
+
+        if (req.method === 'DELETE') {
+          if (targetUid === actor.actorUid) {
+            return res.status(400).json({ error: 'You cannot delete your own account.' });
+          }
+
+          try {
+            await admin.auth().deleteUser(targetUid);
+          } catch (error) {
+            if (!isAuthUserNotFound(error)) {
+              logger.error(`Failed to delete auth user ${targetUid}`, error);
+              return res.status(500).json({ error: 'Unable to delete auth user.' });
+            }
+          }
+
+          await targetRef.delete();
+
+          return res.status(200).json({ message: 'User deleted.' });
+        }
+
+        const currentData = targetSnap.data() || {};
+        const displayName = String(req.body?.displayName ?? currentData.displayName ?? currentData.name ?? '').trim();
+        const email = String(req.body?.email ?? currentData.email ?? '').trim().toLowerCase();
+        const phoneNumber = String(req.body?.phoneNumber ?? currentData.phoneNumber ?? '').trim();
+        const company = String(req.body?.company ?? currentData.company ?? '').trim();
+        const requestedRole = normalize(String(req.body?.role ?? currentData.role ?? 'buyer'));
+
+        if (!displayName || !email) {
+          return res.status(400).json({ error: 'Display name and email are required.' });
+        }
+
+        if (!isSupportedUserRole(requestedRole)) {
+          return res.status(400).json({ error: 'A valid role is required.' });
+        }
+
+        if (!canCreateManagedRole(actor.actorRole === 'buyer' && isPrivilegedAdminEmail(actor.actorEmail) ? 'super_admin' : actor.actorRole, requestedRole)) {
+          return res.status(403).json({ error: 'You do not have permission to assign that role.' });
+        }
+
+        if (requestedRole === 'super_admin' && !isPrivilegedAdminEmail(actor.actorEmail) && actor.actorRole !== 'super_admin') {
+          return res.status(403).json({ error: 'Only a super admin can assign the super admin role.' });
+        }
+
+        const existingUserByEmail = await getDb()
+          .collection('users')
+          .where('email', '==', email)
+          .limit(2)
+          .get();
+        const emailConflict = existingUserByEmail.docs.find((doc) => doc.id !== targetUid);
+        if (emailConflict) {
+          return res.status(409).json({ error: 'Another user already has that email address.' });
+        }
+
+        try {
+          const authUserByEmail = await admin.auth().getUserByEmail(email);
+          if (authUserByEmail.uid !== targetUid) {
+            return res.status(409).json({ error: 'Another authentication account already has that email address.' });
+          }
+        } catch (error) {
+          if (!isAuthUserNotFound(error)) {
+            logger.error('Failed to verify auth email uniqueness', error);
+            return res.status(500).json({ error: 'Unable to validate email uniqueness.' });
+          }
+        }
+
+        try {
+          await admin.auth().updateUser(targetUid, {
+            displayName,
+            email,
+          });
+        } catch (error) {
+          if (!isAuthUserNotFound(error)) {
+            logger.error(`Failed to update auth user ${targetUid}`, error);
+            return res.status(500).json({ error: 'Unable to update auth profile.' });
+          }
+        }
+
+        await targetRef.set(
+          {
+            uid: targetUid,
+            displayName,
+            email,
+            phoneNumber,
+            company,
+            role: requestedRole,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        const updatedSnap = await targetRef.get();
+        return res.status(200).json({
+          message: 'User updated.',
+          user: await serializeAdminUser(updatedSnap),
         });
       }
 
@@ -1917,6 +3164,7 @@ exports.apiProxy = onRequest(
           skipped,
           errorCount: errors.length,
           errors: errors.slice(0, 100),
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 

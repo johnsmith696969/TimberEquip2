@@ -1,0 +1,5261 @@
+{
+  "source": {
+    "uploadedFile": "final_taxonomy_with_manufacturer_buying_guides (3).json",
+    "selectorPath": [
+      "category",
+      "subcategory",
+      "make",
+      "model"
+    ],
+    "topLevelKeysInSource": [
+      "metadata",
+      "taxonomy",
+      "taxonomySeo"
+    ],
+    "explicitAliasMapFromSource": {
+      "CAT": "CATERPILLAR"
+    },
+    "normalizationApplied": [
+      "Removed exact duplicate model entries within the same category > subcategory > manufacturer branch.",
+      "Preserved exact display labels from the source taxonomy for category, subcategory, manufacturer, and model.",
+      "Did not rename labels or merge branches beyond the explicit source taxonomy."
+    ],
+    "sourceOfTruth": "Use the `taxonomy` object in this manifest and not the SEO sections for form selectors."
+  },
+  "implementationSummary": {
+    "categoryCount": 8,
+    "categorySubcategoryBranchCount": 54,
+    "manufacturerBranchCount": 431,
+    "modelCountAfterBranchLevelDeduping": 3945,
+    "categorySummaries": [
+      {
+        "category": "Firewood Equipment",
+        "categoryId": "firewood-equipment",
+        "subcategoryCount": 5,
+        "manufacturerCount": 49,
+        "modelCount": 203
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "categoryId": "land-clearing-equipment",
+        "subcategoryCount": 14,
+        "manufacturerCount": 101,
+        "modelCount": 948
+      },
+      {
+        "category": "Logging Equipment",
+        "categoryId": "logging-equipment",
+        "subcategoryCount": 14,
+        "manufacturerCount": 180,
+        "modelCount": 2414
+      },
+      {
+        "category": "Parts And Attachments",
+        "categoryId": "parts-and-attachments",
+        "subcategoryCount": 5,
+        "manufacturerCount": 26,
+        "modelCount": 75
+      },
+      {
+        "category": "Sawmill Equipment",
+        "categoryId": "sawmill-equipment",
+        "subcategoryCount": 2,
+        "manufacturerCount": 10,
+        "modelCount": 30
+      },
+      {
+        "category": "Trailers",
+        "categoryId": "trailers",
+        "subcategoryCount": 3,
+        "manufacturerCount": 37,
+        "modelCount": 102
+      },
+      {
+        "category": "Tree Service Equipment",
+        "categoryId": "tree-service-equipment",
+        "subcategoryCount": 4,
+        "manufacturerCount": 7,
+        "modelCount": 15
+      },
+      {
+        "category": "Trucks",
+        "categoryId": "trucks",
+        "subcategoryCount": 7,
+        "manufacturerCount": 21,
+        "modelCount": 158
+      }
+    ],
+    "reusedSubcategoryLabelsAcrossDifferentCategories": {
+      "Feller Bunchers": [
+        "Land Clearing Equipment",
+        "Logging Equipment"
+      ],
+      "Graders": [
+        "Land Clearing Equipment",
+        "Logging Equipment"
+      ],
+      "Chippers": [
+        "Logging Equipment",
+        "Tree Service Equipment"
+      ],
+      "Bucket Trucks": [
+        "Tree Service Equipment",
+        "Trucks"
+      ],
+      "Lifts": [
+        "Tree Service Equipment",
+        "Trucks"
+      ]
+    },
+    "duplicateModelBranchesCleaned": [
+      {
+        "category": "Firewood Equipment",
+        "subcategory": "Firewood Processors",
+        "manufacturer": "MULTITEK",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Firewood Equipment",
+        "subcategory": "Firewood Processors",
+        "manufacturer": "HAHN",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Firewood Equipment",
+        "subcategory": "Splitters",
+        "manufacturer": "BRUTE FORCE",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Firewood Equipment",
+        "subcategory": "Bundlers",
+        "manufacturer": "WOOD-PAKER",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Firewood Equipment",
+        "subcategory": "Bundlers",
+        "manufacturer": "WOODPAKER",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Dozers",
+        "manufacturer": "JOHN DEERE",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Dozers",
+        "manufacturer": "KOMATSU",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Graders",
+        "manufacturer": "JOHN DEERE",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Horizontal Grinders",
+        "manufacturer": "BANDIT",
+        "removedDuplicates": 7
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Horizontal Grinders",
+        "manufacturer": "PETERSON PACIFIC",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Horizontal Grinders",
+        "manufacturer": "VERMEER",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Skid Steers",
+        "manufacturer": "NEW HOLLAND",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Stump Grinders",
+        "manufacturer": "RAYCO",
+        "removedDuplicates": 3
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Wheel Loaders",
+        "manufacturer": "CATERPILLAR",
+        "removedDuplicates": 2
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Wheel Loaders",
+        "manufacturer": "JOHN DEERE",
+        "removedDuplicates": 3
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Wheel Loaders",
+        "manufacturer": "LIEBHERR",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Land Clearing Equipment",
+        "subcategory": "Wheel Loaders",
+        "manufacturer": "VOLVO",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Delimbers",
+        "manufacturer": "CATERPILLAR",
+        "removedDuplicates": 3
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Delimbers",
+        "manufacturer": "JOHN DEERE",
+        "removedDuplicates": 6
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Delimbers",
+        "manufacturer": "KOMATSU",
+        "removedDuplicates": 3
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Delimbers",
+        "manufacturer": "LINK-BELT",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Feller Bunchers",
+        "manufacturer": "HYDRO-AX",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Feller Bunchers",
+        "manufacturer": "TIMBCO",
+        "removedDuplicates": 5
+      },
+      {
+        "category": "Logging Equipment",
+        "subcategory": "Feller Bunchers",
+        "manufacturer": "WEILER",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Trucks",
+        "subcategory": "Log Trucks",
+        "manufacturer": "FORD",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Trucks",
+        "subcategory": "Log Trucks",
+        "manufacturer": "INTERNATIONAL",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Trucks",
+        "subcategory": "Log Trucks",
+        "manufacturer": "PETERBILT",
+        "removedDuplicates": 1
+      },
+      {
+        "category": "Trucks",
+        "subcategory": "Log Trucks",
+        "manufacturer": "STERLING",
+        "removedDuplicates": 2
+      },
+      {
+        "category": "Trucks",
+        "subcategory": "Log Trucks",
+        "manufacturer": "WESTERN STAR",
+        "removedDuplicates": 1
+      }
+    ]
+  },
+  "formContract": {
+    "fieldOrder": [
+      "category",
+      "subcategory",
+      "manufacturer",
+      "model"
+    ],
+    "exactStoredValues": {
+      "category": "store exact category label from taxonomy",
+      "subcategory": "store exact subcategory label from taxonomy",
+      "manufacturer": "store exact manufacturer label from taxonomy",
+      "model": "store exact model label from taxonomy"
+    },
+    "cascadingRules": {
+      "subcategoryOptions": "Only show subcategories inside the selected category.",
+      "manufacturerOptions": "Only show manufacturers inside the selected category + subcategory branch.",
+      "modelOptions": "Only show models inside the selected category + subcategory + manufacturer branch."
+    },
+    "resetRules": {
+      "onCategoryChange": [
+        "subcategory",
+        "manufacturer",
+        "model"
+      ],
+      "onSubcategoryChange": [
+        "manufacturer",
+        "model"
+      ],
+      "onManufacturerChange": [
+        "model"
+      ]
+    },
+    "validationRules": [
+      "subcategory must belong to selected category",
+      "manufacturer must belong to selected category + subcategory",
+      "model must belong to selected category + subcategory + manufacturer"
+    ],
+    "importantNotes": [
+      "Do not treat subcategory labels as globally unique. The same label can exist under different parent categories.",
+      "Do not treat manufacturer labels as globally unique for selector logic. Scope them to category + subcategory.",
+      "Use display labels for form values to stay compatible with the source taxonomy.",
+      "Use generated ids/slugs only for React keys, URLs, or internal indexing if needed."
+    ]
+  },
+  "taxonomy": {
+    "Firewood Equipment": {
+      "Conveyors": {
+        "MULTITEK": [
+          "10'",
+          "FWC-20",
+          "FWC-30"
+        ],
+        "TIMBERWOLF": [
+          "TW-24"
+        ]
+      },
+      "Firewood Processors": {
+        "MULTITEK": [
+          "1610",
+          "1610EZ",
+          "1620SS",
+          "2020",
+          "2020LDCS",
+          "2020CSC",
+          "2020SS",
+          "2025",
+          "2025LDCS",
+          "2025XP",
+          "2040",
+          "2040XP",
+          "2040XP2",
+          "2040XP90",
+          "3040XP2",
+          "FP1610EZ",
+          "FP1620SS",
+          "SFP18D"
+        ],
+        "TIMBERWOLF": [
+          "PRO MP"
+        ],
+        "WALLENSTEIN": [
+          "830",
+          "WP845"
+        ],
+        "BELL": [
+          "4000",
+          "4000C",
+          "6000",
+          "6000C",
+          "8000",
+          "8000C"
+        ],
+        "BLOCKBUSTER": [
+          "14-12",
+          "14-12+",
+          "15-20",
+          "18-20",
+          "18-20+",
+          "22-20",
+          "22-22"
+        ],
+        "BRUTE FORCE": [
+          "14-24",
+          "16-24",
+          "16-30",
+          "18-24",
+          "18-24 HD",
+          "18-24HD",
+          "18-30",
+          "20-30CS",
+          "24-30",
+          "CS20-24"
+        ],
+        "BUILT-RITE": [
+          "18SCP",
+          "18SCP-HP",
+          "24SCP",
+          "30SCP",
+          "40SCP",
+          "40C",
+          "BRUTE",
+          "SCP50"
+        ],
+        "CHOMPER": [
+          "14S",
+          "16",
+          "16 PDA",
+          "MDL SUPER-14",
+          "SIMPLEX-14S",
+          "SUPER 14"
+        ],
+        "CORD KING": [
+          "CS16-30 MODEL 36",
+          "CS18-30 MODEL 40",
+          "CS18-30R MODEL 40",
+          "CS20-30 MODEL 44",
+          "CS20-30 MODEL 44 HO",
+          "CS20-40 MODEL 48",
+          "CS20-40 MKII",
+          "CS23-40 MODEL 54",
+          "CS27-40 MODEL 60",
+          "M18-20",
+          "M20-30",
+          "M24-30"
+        ],
+        "CRD": [
+          "20",
+          "60",
+          "60 PREMIUM",
+          "JUNIOR PRO",
+          "RAPIDO",
+          "RAPIDO LOCO",
+          "RAPIDO LOCO 20",
+          "RAPIDO LOCO 20 JUNIOR",
+          "RAPIDO LOCO 60",
+          "WOODBINE 20"
+        ],
+        "DYNA": [
+          "SC-12",
+          "SC-12XP",
+          "SC-14",
+          "SC-15",
+          "SC-16"
+        ],
+        "EASTONMADE": [
+          "22MB",
+          "48C",
+          "48C ELECTRIC",
+          "60C",
+          "EVO"
+        ],
+        "HAHN": [
+          "HFP150",
+          "HFP160"
+        ],
+        "HAKKI PILKE": [
+          "1x42",
+          "1X37",
+          "50 PRO"
+        ],
+        "HALVERSON": [
+          "HWP-120",
+          "HWP-140"
+        ],
+        "JAPA": [
+          "365 PRO"
+        ],
+        "PALAX": [
+          "600",
+          "750",
+          "C1000",
+          "C1000 PRO+",
+          "C1000.2 PRO+",
+          "C750 PRO+",
+          "C750.2"
+        ],
+        "RABUAD": [
+          "XYLOG 330",
+          "XYLOG 450",
+          "XYLOG 410",
+          "XYLOG 420",
+          "XYLOG 520",
+          "XYLOG 800"
+        ],
+        "WOOD BEAVER": [
+          "1 X 42",
+          "14",
+          "18 BAB",
+          "18",
+          "1X37",
+          "1X42 GREEN SPEED",
+          "61001",
+          "BAB 20",
+          "HAKKI PILKE 1X 37",
+          "LIL 13",
+          "LIL 14",
+          "LIL BEAVER 16",
+          "MODEL 16"
+        ],
+        "WOODBINE": [
+          "PRO"
+        ]
+      },
+      "Splitters": {
+        "BOXER AGRI": [
+          "HVS22"
+        ],
+        "CRYTEC POWER": [
+          "CRLS26",
+          "CRLS26T",
+          "CRLS7",
+          "CRLS7-E"
+        ],
+        "NEW HOLLAND": [
+          "BNLS37TDH"
+        ],
+        "TIMBERWOLF": [
+          "5",
+          "6",
+          "7",
+          "ALPHA",
+          "ALPHA 5",
+          "ALPHA 6",
+          "ALPHA 7",
+          "AUTOSPLIT",
+          "ELEVATOR",
+          "TW-10",
+          "TW-2",
+          "TW-HD",
+          "TW-LS",
+          "TW1",
+          "TW2",
+          "TW2HD"
+        ],
+        "TORO": [
+          "LS-922"
+        ],
+        "WALLENSTEIN": [
+          "WE235",
+          "WP1624",
+          "WP525",
+          "WP845",
+          "WX515",
+          "WX515T",
+          "WX520",
+          "WX520T",
+          "WX530",
+          "WX540",
+          "WX540L",
+          "WX960",
+          "WX980",
+          "WXR720",
+          "WXR740",
+          "WXT15H",
+          "WXT15V",
+          "WXT20V"
+        ],
+        "AUTOMATED FIREWOOD SYSTEMS": [
+          "AUTOSPLIT"
+        ],
+        "BRUTE FORCE": [
+          "20-24"
+        ],
+        "BUILT-RITE": [
+          "13",
+          "13 SUPER",
+          "24HPWS",
+          "37",
+          "37HPWS",
+          "8",
+          "8HPWS"
+        ],
+        "CORD KING": [
+          "59T"
+        ],
+        "EASTONMADE": [
+          "22-28"
+        ],
+        "PALAX": [
+          "KS 45S"
+        ],
+        "RABAUD": [
+          "XYLOFLAM",
+          "XYLOFLAM 200/250",
+          "XYLOFLAM 330/450 M"
+        ],
+        "WOLF RIDGE": [
+          "PRO 35C"
+        ],
+        "WOOD-MIZER": [
+          "FS350",
+          "FS500"
+        ]
+      },
+      "Tumblers": {
+        "MULTITEK": [
+          "WT1048"
+        ]
+      },
+      "Bundlers": {
+        "APM": [
+          "BUNDLER"
+        ],
+        "BELL": [
+          "CONVEYOR",
+          "TUMBLER"
+        ],
+        "BLOCKBUSTER": [
+          "TUMBLER"
+        ],
+        "BRUTE FORCE": [
+          "BUNDLER"
+        ],
+        "CORD KING": [
+          "TUMBLER"
+        ],
+        "CUSTOM": [],
+        "DYNA": [],
+        "JAPA": [],
+        "WOOD-PAKER": [
+          "G100",
+          "G200",
+          "G300",
+          "G400",
+          "G600"
+        ],
+        "WOODPAKER": [
+          "G300",
+          "G400"
+        ],
+        "XPAK": [
+          "XP-W9800"
+        ]
+      }
+    },
+    "Land Clearing Equipment": {
+      "Backhoes": {
+        "CASE": [
+          "580"
+        ],
+        "JOHN DEERE": [
+          "310SJ",
+          "375A"
+        ]
+      },
+      "Dozers": {
+        "CASE": [
+          "1150",
+          "1150E",
+          "1150K",
+          "1450",
+          "1450B",
+          "1650",
+          "1650L",
+          "1650M",
+          "1850",
+          "1850K",
+          "1850K LT",
+          "2050M",
+          "450",
+          "450C",
+          "550G- LT",
+          "650",
+          "650H",
+          "650L LGP",
+          "650M",
+          "750",
+          "750M",
+          "850",
+          "850D",
+          "850K",
+          "850K XLT",
+          "850M",
+          "D450"
+        ],
+        "CATERPILLAR": [
+          "527",
+          "611",
+          "931B",
+          "943 LGP",
+          "955",
+          "963",
+          "963LGP",
+          "CAT",
+          "D1",
+          "D10",
+          "D10T",
+          "D10T2",
+          "D11",
+          "D11R",
+          "D2",
+          "D3",
+          "D3 XL",
+          "D3B",
+          "D3C",
+          "D3G",
+          "D3K2",
+          "D4",
+          "D4C",
+          "D4D",
+          "D4E",
+          "D4G",
+          "D4H",
+          "D4K",
+          "D4XL",
+          "D5",
+          "D5 HTSK",
+          "D5B",
+          "D5C",
+          "D5C LPG",
+          "D5G",
+          "D5G LGP",
+          "D5H",
+          "D5H TSK",
+          "D5K",
+          "D5K2",
+          "D5M",
+          "D5N",
+          "D5N LGP",
+          "D6",
+          "D6B",
+          "D6C",
+          "D6D",
+          "D6E",
+          "D6G",
+          "D6G2",
+          "D6H",
+          "D6H LGP",
+          "D6K",
+          "D6K XL",
+          "D6K2",
+          "D6M",
+          "D6M XL",
+          "D6M LGP",
+          "D6N",
+          "D6R",
+          "D6R XL",
+          "D6R3",
+          "D6T",
+          "D7",
+          "D7C",
+          "D7E",
+          "D7F",
+          "D7G",
+          "D7H",
+          "D7R",
+          "D8",
+          "D8D",
+          "D8H",
+          "D8K",
+          "D8L",
+          "D8R",
+          "D8T",
+          "D9",
+          "D9D",
+          "D9L",
+          "D9N",
+          "D9R",
+          "D9T",
+          "D10N",
+          "M105"
+        ],
+        "DRESSER": [
+          "100G",
+          "15",
+          "15C",
+          "515",
+          "520",
+          "530",
+          "550",
+          "TD-15C",
+          "TD-20E",
+          "TD15",
+          "TD15C",
+          "TD15E",
+          "TD20B",
+          "TD6",
+          "TD7E",
+          "TD7G",
+          "TD8",
+          "TD8E",
+          "TD8G",
+          "TD8H"
+        ],
+        "INTERNATIONAL": [
+          "TD15",
+          "TD15CPS",
+          "TD15E",
+          "TD20",
+          "TD20C",
+          "TD25",
+          "TD8"
+        ],
+        "JOHN DEERE": [
+          "1050",
+          "1050K",
+          "350",
+          "350B",
+          "350D",
+          "450",
+          "450B",
+          "450C",
+          "450E",
+          "450G",
+          "450H",
+          "450H LGP",
+          "450J",
+          "450J LT",
+          "450K",
+          "450LGP",
+          "450P",
+          "550",
+          "550A",
+          "550B",
+          "550C",
+          "550G",
+          "550G TC",
+          "550H",
+          "550J LT",
+          "550K",
+          "650",
+          "650G",
+          "650H",
+          "650H LGP",
+          "650J",
+          "650J LGP",
+          "650J XLT",
+          "650K",
+          "650LGP",
+          "700",
+          "700H",
+          "700H LGP",
+          "700J",
+          "700K",
+          "700K LGP",
+          "700L",
+          "750",
+          "750B",
+          "750C",
+          "750J",
+          "750K",
+          "750K LGP",
+          "750L",
+          "850",
+          "850B",
+          "850BLT",
+          "850C",
+          "850C LT SERES II",
+          "850G",
+          "850J",
+          "850K",
+          "850K LGP",
+          "850L",
+          "950",
+          "950K"
+        ],
+        "KOMATSU": [
+          "138-LC",
+          "200",
+          "200-7",
+          "200LC",
+          "200LC-6",
+          "200LC2",
+          "200LL",
+          "220-5",
+          "220LC",
+          "228LC",
+          "25TON",
+          "300",
+          "300PC",
+          "39EX",
+          "430-2",
+          "430-5",
+          "430FXL",
+          "450-6",
+          "840.4",
+          "855.1",
+          "860.1",
+          "890.3",
+          "911",
+          "911.5",
+          "931.1",
+          "931.2",
+          "931XC",
+          "C144",
+          "D155",
+          "D155A-5",
+          "D155A-6",
+          "D155AX",
+          "D155AX-5",
+          "D155AX-7",
+          "D155AX-8",
+          "D21A",
+          "D21S-6",
+          "D275",
+          "D275AX-5E0",
+          "D31 P-20",
+          "D31A-17",
+          "D31E",
+          "D31PX",
+          "D37",
+          "D375",
+          "D375A-5",
+          "D375A-6",
+          "D375A-6R",
+          "D37PX-24",
+          "D39",
+          "D39PX",
+          "D41A3",
+          "D41E",
+          "D41P",
+          "D475",
+          "D475A-5",
+          "D475A-8",
+          "D51",
+          "D51PX-22",
+          "D51PX-24",
+          "D51PXI-24",
+          "D61",
+          "D61EX-12",
+          "D61EX-15",
+          "D61EX-24",
+          "D61EXI-24",
+          "D61PX-15E0",
+          "D61PX-23",
+          "D61PX-24",
+          "D61PXI-23",
+          "D61PXI-24",
+          "D65",
+          "D65E-6",
+          "D65EX",
+          "D65EX-12",
+          "D65EX-15",
+          "D65EX-15E0",
+          "D65EX-17",
+          "D65P-6",
+          "D65PX-12E",
+          "D65PX-15E0",
+          "D65PX-17",
+          "D65PX-18",
+          "D65PXI-18",
+          "D65WX-18",
+          "D66S",
+          "D66S-1",
+          "D68E",
+          "D71",
+          "D71EXI-24",
+          "D71PX-24",
+          "D71PXI-24",
+          "D85",
+          "D85-12",
+          "D85A-21",
+          "D85E-21",
+          "D85ESS-1",
+          "D85EX-18",
+          "D85PX-15E0",
+          "D85PX-18",
+          "DOZER",
+          "LC-3",
+          "LC-6",
+          "LC-7",
+          "P-20",
+          "PC-200LC-6",
+          "PC200",
+          "PC200-LC",
+          "PC200LC",
+          "PC200LC-6",
+          "PC210",
+          "PC210LC7",
+          "PC210LL",
+          "PC220",
+          "PC220LC-8",
+          "PC228",
+          "PC238LC-11",
+          "PC250",
+          "PC60-7",
+          "PC75UU-3C",
+          "PX-22",
+          "SK820-5N",
+          "W180",
+          "WA250-1",
+          "WA320",
+          "WA380",
+          "WA450",
+          "WB140",
+          "XT430",
+          "XT430-2",
+          "XT430-L",
+          "XT430L",
+          "XT445L",
+          "XT445L-2",
+          "XT445L-5"
+        ],
+        "LIEBHERR": [
+          "632",
+          "PR724"
+        ],
+        "DAEWOO": [
+          "DD80L"
+        ],
+        "FIAT": [
+          "ALLIS FD-7"
+        ],
+        "HITACHI": [
+          "150"
+        ],
+        "INTERNATIONAL HARVESTER": [
+          "500C"
+        ]
+      },
+      "Excavators": {
+        "CASE": [
+          "580 SUPER L",
+          "580L",
+          "580L SERIES II",
+          "580SL SERIES II",
+          "885B",
+          "CX 160",
+          "CX160",
+          "CX210B",
+          "CX210C",
+          "CX245D SR",
+          "CX75SR"
+        ],
+        "CATERPILLAR": [
+          "215B",
+          "224B",
+          "225",
+          "225D-LC",
+          "235",
+          "235B",
+          "305.5E",
+          "307E",
+          "312",
+          "313FL",
+          "315",
+          "320",
+          "320C",
+          "320CL",
+          "320D",
+          "320DL",
+          "320L",
+          "322",
+          "324DL",
+          "325BL",
+          "325CL",
+          "329DL",
+          "329E",
+          "329EL",
+          "330BL",
+          "330C",
+          "330DL",
+          "330L",
+          "345C",
+          "725",
+          "E110B"
+        ],
+        "HYUNDAI": [
+          "140",
+          "290LC-7",
+          "320LC",
+          "320LC-9",
+          "EX290LC-7",
+          "ROBEX 200LC-2"
+        ],
+        "JOHN DEERE": [
+          "120C",
+          "135C",
+          "160",
+          "160LC",
+          "200",
+          "200C LC",
+          "200LC",
+          "240LC",
+          "250G",
+          "290G",
+          "310 SG",
+          "310D",
+          "310SJ",
+          "330CLC",
+          "330LC",
+          "410L",
+          "470G",
+          "710B",
+          "892E",
+          "892E LC"
+        ],
+        "KOMATSU": [
+          "220 LC-6",
+          "220-5 EXC",
+          "PC 200 LC-6",
+          "PC 200 LC-7",
+          "PC 200-7",
+          "PC 200LC2",
+          "PC 300 LC",
+          "PC 300 LC-6",
+          "PC-200LC-6",
+          "PC138",
+          "PC200-LC",
+          "PC200LC-6",
+          "PC220",
+          "PC220 LC-8",
+          "PC220LC",
+          "PC238LC-11",
+          "PC60",
+          "PC60-7",
+          "PC75UU-3C"
+        ],
+        "LIEBHERR": [
+          "912"
+        ],
+        "HITACHI": [
+          "EX230LC",
+          "EX270LC",
+          "EX300",
+          "ZX135",
+          "ZX225"
+        ],
+        "JCB": [
+          "JS300LC"
+        ],
+        "KOBELCO": [
+          "220LC",
+          "ED 150",
+          "SK 350LC",
+          "SK160"
+        ],
+        "LINK-BELT": [
+          "225",
+          "240 LXRB",
+          "3400C-2",
+          "350X",
+          "EXCAVATOR"
+        ],
+        "LIUGONG": [
+          "915E EXCAVATOR"
+        ],
+        "MOROOKA": [
+          "MST 1500"
+        ],
+        "VOLVO": [
+          "BL70B",
+          "EC160CL",
+          "EC360"
+        ]
+      },
+      "Feller Bunchers": {
+        "TIMBERPRO": [
+          "TL725"
+        ]
+      },
+      "Generators": {
+        "CUMMINS": [
+          "175KW"
+        ],
+        "DOOSAN": [
+          "G150"
+        ]
+      },
+      "Graders": {
+        "CATERPILLAR": [
+          "120G",
+          "12E",
+          "140H",
+          "140H VHP",
+          "143H",
+          "14D",
+          "M14"
+        ],
+        "JOHN DEERE": [
+          "12H",
+          "570A",
+          "670A",
+          "672A",
+          "770BH",
+          "772BH",
+          "772G"
+        ],
+        "CASE": [
+          "885B"
+        ],
+        "CHAMPION": [
+          "740A"
+        ],
+        "VOLVO": [
+          "G726B",
+          "G740B"
+        ]
+      },
+      "Horizontal Grinders": {
+        "BANDIT": [
+          "1425",
+          "1425TK",
+          "1680",
+          "1680XP",
+          "2460",
+          "2460T",
+          "2460XP",
+          "2680",
+          "2680T",
+          "3590T",
+          "3680",
+          "3680T",
+          "4680",
+          "4680T",
+          "4680XP",
+          "5680"
+        ],
+        "DIAMOND Z": [
+          "1036",
+          "1136",
+          "1248BK",
+          "1352BL",
+          "7000",
+          "DZH3000",
+          "DZH4000",
+          "DZH4000TK",
+          "DZH5000",
+          "DZH5500",
+          "DZH5500TKT",
+          "DZH6000",
+          "DZH6000TKT",
+          "DZH7000"
+        ],
+        "MORBARK": [
+          "2400",
+          "2400X",
+          "2600",
+          "3000",
+          "3000X",
+          "3000XP",
+          "3000XT",
+          "3400",
+          "3400X",
+          "3400XT",
+          "3600",
+          "3800",
+          "3800XL",
+          "4600",
+          "4600XL",
+          "4600XLT",
+          "5600",
+          "6400",
+          "6400XT",
+          "6600",
+          "7600"
+        ],
+        "PETERSON PACIFIC": [
+          "2400",
+          "2400B",
+          "2710",
+          "2710D",
+          "4400",
+          "4400B",
+          "4700",
+          "4700B",
+          "4710",
+          "4710B",
+          "4800",
+          "4800E",
+          "5000G",
+          "5400",
+          "5410",
+          "5710",
+          "5710C",
+          "5710D",
+          "5710E",
+          "5900",
+          "6700",
+          "6700D",
+          "6710B",
+          "7400",
+          "HC5400",
+          "HC4400",
+          "HC4700"
+        ],
+        "RAYCO": [
+          "RH1754"
+        ],
+        "TIGERCAT": [
+          "6500",
+          "6900"
+        ],
+        "VERMEER": [
+          "HG",
+          "HG6000",
+          "HG200",
+          "HG4000",
+          "HG4000E",
+          "HG4000TX",
+          "HG6000TX",
+          "HG6800",
+          "HG6800TX",
+          "HG8000",
+          "HG8000TX"
+        ],
+        "BANDIT BEAST": [
+          "HORIZONTAL GRINDER"
+        ],
+        "CBI": [
+          "5900T",
+          "GRINDING LINE",
+          "MAGNUM FORCE",
+          "MAGNUM FORCE 4800B",
+          "MAGNUM FORCE 5400BT",
+          "MAGNUM FORCE 5800BT",
+          "MAGNUM FORCE 6000",
+          "MAGNUM FORCE 6400",
+          "MAGNUM FORCE 6400CT",
+          "MAGNUM FORCE 6400T",
+          "MAGNUM FORCE 6800BT",
+          "MAGNUM FORCE 6800CT",
+          "MAGNUM FORCE 6800T",
+          "MAGNUM FORCE 8400T",
+          "ROADMILL"
+        ],
+        "CUMMINS": [
+          "BIO GRIND BY REXWORKS"
+        ],
+        "PRECISION HUSKY": [
+          "2366",
+          "PROGRIND",
+          "PROGRIND H3060"
+        ],
+        "ROTOCHOPPER": [
+          "B66",
+          "B66L",
+          "B66T",
+          "EC256",
+          "MC266",
+          "MP2",
+          "SB-24E"
+        ]
+      },
+      "Material Handlers": {
+        "LIEBHERR": [
+          "934",
+          "944"
+        ],
+        "FUCHS": [
+          "MHL 360",
+          "MHL 390"
+        ],
+        "SENNEBOGEN": [
+          "718",
+          "728",
+          "825",
+          "825E",
+          "830",
+          "835E",
+          "835G"
+        ]
+      },
+      "Mulchers": {
+        "ASV": [
+          "MULCHER"
+        ],
+        "FAE": [
+          "PT175",
+          "PT300",
+          "PT475",
+          "PT550"
+        ],
+        "FECON": [
+          "135VRT",
+          "155VST",
+          "225VST",
+          "325VST",
+          "FTX 128L",
+          "FTX128L",
+          "FTX128L TRACKED MULCHER",
+          "FTX128R",
+          "FTX135",
+          "FTX135R",
+          "FTX148L",
+          "FTX150",
+          "FTX150-2",
+          "FTX200",
+          "FTX290",
+          "FTX300",
+          "FTX440",
+          "FTX600",
+          "FTX90-L",
+          "FX26 MULCHER",
+          "RT400"
+        ],
+        "RAYCO": [
+          "C100",
+          "C100LFMK",
+          "C100LGP",
+          "C100R",
+          "C120",
+          "C120R",
+          "C120RA",
+          "C120S",
+          "C120SA",
+          "C160",
+          "C200R",
+          "C200T",
+          "C275"
+        ],
+        "GYRO-TRAC": [
+          "GT-16 XP MULCHER"
+        ]
+      },
+      "Skid Steers": {
+        "ASV": [
+          "4810",
+          "RC85",
+          "RT-75",
+          "RT120F"
+        ],
+        "BOBCAT": [
+          "1075",
+          "873",
+          "S175",
+          "S650",
+          "S770",
+          "T300",
+          "T450",
+          "T650",
+          "T740",
+          "T750",
+          "T770",
+          "T860",
+          "T870"
+        ],
+        "CASE": [
+          "1840",
+          "TV380",
+          "TV450B"
+        ],
+        "CATERPILLAR": [
+          "259",
+          "259D",
+          "259D3",
+          "279D3",
+          "289D",
+          "299D2",
+          "299D3",
+          "299D3XP",
+          "CATC2"
+        ],
+        "JOHN DEERE": [
+          "325",
+          "330G",
+          "331G",
+          "333D",
+          "333G"
+        ],
+        "KUBOTA": [
+          "SVL75-2"
+        ],
+        "NEW HOLLAND": [
+          "C185",
+          "C238",
+          "L318",
+          "LS150",
+          "LS180"
+        ],
+        "TEREX": [
+          "PT-110F"
+        ],
+        "JCB": [
+          "150T",
+          "260",
+          "270"
+        ],
+        "KOBELCO": [
+          "SK140CTL-C"
+        ],
+        "KOMATSU": [
+          "SK820-5N"
+        ],
+        "SUPERTRAK": [
+          "SK140 STR"
+        ],
+        "TAKEUCHI": [
+          "TL150"
+        ]
+      },
+      "Stump Grinders": {
+        "BANDIT": [
+          "2250",
+          "2250R",
+          "2550",
+          "2550T",
+          "2550XP",
+          "2650",
+          "2650SP",
+          "2890",
+          "2890SP",
+          "2900",
+          "2900T",
+          "3100",
+          "3200",
+          "3400T",
+          "3500",
+          "4000T",
+          "BTC300",
+          "SG40",
+          "SG40W",
+          "SG75",
+          "ZT1844"
+        ],
+        "CARLTON": [
+          "2500",
+          "2500-4",
+          "7500",
+          "900",
+          "900H",
+          "HURRICANE",
+          "HURRICANE RS",
+          "HURRICANE TRX",
+          "SP4012",
+          "SP5014",
+          "SP5014NTX",
+          "SP5014TRX",
+          "SP6016",
+          "SP6016TRX",
+          "SP7015",
+          "SP7015HD",
+          "SP7015HD TRX",
+          "SP7015TRX",
+          "SP8018TRX"
+        ],
+        "RAYCO": [
+          "1670",
+          "50",
+          "C200",
+          "RG100",
+          "RG100X",
+          "RG106",
+          "RG106 STUMP GRINDER",
+          "RG120",
+          "RG120DXH",
+          "RG1220",
+          "RG13",
+          "RG13 II",
+          "RG1625",
+          "RG1625A",
+          "RG1625A SUPER JR",
+          "RG1635",
+          "RG1635 SUPER JR S",
+          "RG1645",
+          "RG165",
+          "RG165T-R",
+          "RG25",
+          "RG25HD",
+          "RG27",
+          "RG27 SUPER JR",
+          "RG37",
+          "RG37 SUPER JR",
+          "RG37 TRAC JR",
+          "RG45",
+          "RG45X",
+          "RG50",
+          "RG50 SUPER",
+          "RG55",
+          "RG55R",
+          "RG55T",
+          "RG55TR",
+          "RG66",
+          "RG70",
+          "RG74",
+          "RG74DXH",
+          "RG74TR",
+          "RG80",
+          "RG80R",
+          "T175",
+          "T260",
+          "T275",
+          "T360"
+        ],
+        "TORO": [
+          "22601",
+          "22615",
+          "SGR13",
+          "SGR6",
+          "STX26",
+          "STX38"
+        ],
+        "VERMEER": [
+          "630",
+          "630B",
+          "FT300",
+          "SC1052",
+          "SC1102",
+          "SC1102A",
+          "SC222",
+          "SC2460A",
+          "SC252",
+          "SC292",
+          "SC30",
+          "SC30TX",
+          "SC352",
+          "SC362",
+          "SC372",
+          "SC382",
+          "SC40",
+          "SC40TX",
+          "SC48",
+          "SC48TX",
+          "SC502",
+          "SC505",
+          "SC552",
+          "SC60TX",
+          "SC652",
+          "SC672A",
+          "SC70TX",
+          "SC752",
+          "SC802",
+          "SC852"
+        ],
+        "RABAUD": [
+          "XYLOCROK",
+          "XYLOCROK 40C",
+          "XYLOCROK 45PE"
+        ],
+        "SEPPI": [
+          "MINI-KASTOR"
+        ]
+      },
+      "Tub Grinders": {
+        "DIAMOND Z": [
+          "1036",
+          "1136",
+          "1248BK",
+          "1352BL II",
+          "DZ1352",
+          "DZ1352BL",
+          "DZ1460",
+          "DZ1460B",
+          "DZ1463",
+          "DZ1463B",
+          "DZT1248",
+          "DZT1248B",
+          "DZT1352",
+          "DZT1352BL",
+          "E4800B"
+        ],
+        "MORBARK": [
+          "1000",
+          "1050",
+          "1200",
+          "1200XL",
+          "1300",
+          "1300A",
+          "1300B",
+          "1400",
+          "1500",
+          "950",
+          "975",
+          "K1000"
+        ],
+        "MOROOKA": [
+          "MC2000",
+          "MC4000",
+          "MC6000"
+        ],
+        "TORO": [
+          "PROGRIND 5000"
+        ],
+        "VERMEER": [
+          "TG400",
+          "TG5000",
+          "TG525L",
+          "TG7000",
+          "TG800",
+          "TG9000"
+        ],
+        "DURATECH": [
+          "3010",
+          "4012",
+          "HD12",
+          "HD12 TUB GRINDER",
+          "HD9"
+        ],
+        "HOGZILLA": [
+          "HC1362P",
+          "HTC1464",
+          "HTC1464T",
+          "TC1464P",
+          "TC1564P",
+          "TCII 1564P"
+        ],
+        "PRECISION HUSKY": [
+          "4000",
+          "PROGRIND",
+          "PROGRIND 2000",
+          "PROGRIND 5100",
+          "PROGRIND 5200"
+        ]
+      },
+      "Wheel Loaders": {
+        "CASE": [
+          "480",
+          "521G",
+          "521G XR",
+          "586D",
+          "821B",
+          "SV250",
+          "W20C",
+          "W36",
+          "W5"
+        ],
+        "CATERPILLAR": [
+          "426C IT",
+          "446B",
+          "910",
+          "924K",
+          "928G",
+          "930",
+          "936",
+          "938G",
+          "938H",
+          "938K",
+          "950",
+          "966C",
+          "966H",
+          "980C",
+          "980G",
+          "988B",
+          "D8H",
+          "IT-28B",
+          "T247 966E"
+        ],
+        "CLARK": [
+          "75-3A"
+        ],
+        "HITACHI": [
+          "ZW80-5B"
+        ],
+        "JOHN DEERE": [
+          "304L",
+          "310D",
+          "310G",
+          "524L",
+          "544",
+          "544-A",
+          "544-B",
+          "544B",
+          "544GTC",
+          "624K ",
+          "644E",
+          "644K H",
+          "724J",
+          "724K",
+          "824K-II",
+          "844KIII",
+          "TC54"
+        ],
+        "KOMATSU": [
+          "W180",
+          "WA 450-6",
+          "WA250-1",
+          "WA320",
+          "WA380",
+          "WA500",
+          "WB140"
+        ],
+        "LIEBHERR": [
+          "L566"
+        ],
+        "VOLVO": [
+          "L110F",
+          "L11OG",
+          "L120C",
+          "L150G",
+          "L330C",
+          "L50F",
+          "L70"
+        ],
+        "DRESSER": [
+          "515",
+          "520",
+          "530",
+          "550"
+        ],
+        "FIAT": [
+          "545B"
+        ],
+        "FORD": [
+          "555B"
+        ],
+        "HYUNDAI": [
+          "HL740-7",
+          "HL760-9A"
+        ],
+        "JCB": [
+          "427",
+          "506CHL"
+        ],
+        "KOBELCO": [
+          "LK400"
+        ],
+        "MICHIGAN": [
+          "175C"
+        ],
+        "PETTIBONE": [
+          "SUPER 10"
+        ],
+        "SAMSUNG": [
+          "SL 150-2"
+        ],
+        "TEREX": [
+          "FDC500G5"
+        ]
+      },
+      "Powerscreens": {
+        "TEREX": [
+          "CHIEFTAIN 1400 POWERSCREEN"
+        ]
+      }
+    },
+    "Logging Equipment": {
+      "Bogie Skidders": {
+        "JOHN DEERE": [
+          "768L-II",
+          "768L-II BOGIE SKIDDER"
+        ],
+        "TIGERCAT": [
+          "615C",
+          "615C BOGIE SKIDDER",
+          "625E",
+          "625E BOGIE SKIDDER",
+          "630C BOGIE SKIDDER",
+          "635 BOGIE SKIDDER",
+          "635C",
+          "635D",
+          "635D BOGIE SKIDDER",
+          "635E",
+          "635E BOGIE SKIDDER",
+          "635G",
+          "635G BOGIE SKIDDER"
+        ],
+        "TIMBERPRO": [
+          "TS-650"
+        ]
+      },
+      "Chippers": {
+        "BANDIT": [
+          "1290",
+          "12X",
+          "12XC",
+          "12XP",
+          "12XPC",
+          "1390",
+          "1390XP",
+          "1400",
+          "1425",
+          "1490",
+          "1490XP",
+          "150",
+          "150XP",
+          "1590",
+          "1590XP",
+          "15XP",
+          "15XPC",
+          "1690",
+          "1850",
+          "1850XP",
+          "1890",
+          "1890XP",
+          "18XP",
+          "18XPTK",
+          "1900",
+          "19XP",
+          "19XPC",
+          "200",
+          "200UC",
+          "200XP",
+          "2090",
+          "2090T",
+          "2090XP",
+          "2090XT",
+          "20XP",
+          "20XPTK",
+          "21XP",
+          "2290",
+          "2290T",
+          "2290TK",
+          "2400",
+          "2400T",
+          "2460",
+          "250",
+          "250XP",
+          "254",
+          "254XP",
+          "2590",
+          "2590TK",
+          "280",
+          "280XP",
+          "3090",
+          "3090T",
+          "3090TK",
+          "3400",
+          "3400T",
+          "3500",
+          "3590",
+          "3590XL",
+          "3680",
+          "3680T",
+          "4000T",
+          "4090",
+          "5000",
+          "65",
+          "65XP",
+          "75XP",
+          "90",
+          "90XP",
+          "CB90",
+          "CB90XP",
+          "HM6420"
+        ],
+        "CARLTON": [
+          "1260",
+          "1290",
+          "1712",
+          "2012",
+          "2015",
+          "2518",
+          "660",
+          "770"
+        ],
+        "MORBARK": [
+          "1000",
+          "1000B",
+          "12",
+          "1215",
+          "13",
+          "1300",
+          "1415",
+          "1418",
+          "15",
+          "1500",
+          "16",
+          "1621",
+          "1621X",
+          "17",
+          "17EZ",
+          "1821",
+          "1922",
+          "20",
+          "20-36",
+          "20/36",
+          "2131",
+          "22",
+          "223",
+          "2230",
+          "22RXL",
+          "23",
+          "2348",
+          "2355",
+          "23NCL",
+          "23WCL",
+          "2400",
+          "2400XL",
+          "2455",
+          "254",
+          "2600",
+          "27",
+          "2755",
+          "290",
+          "3",
+          "30",
+          "30/36",
+          "3036",
+          "30RXL",
+          "3600",
+          "36NCL",
+          "3800",
+          "4",
+          "40",
+          "40/36",
+          "4600XL",
+          "4600XLT",
+          "48",
+          "48HD",
+          "48X",
+          "50",
+          "550",
+          "58",
+          "6036",
+          "6300",
+          "636",
+          "6400XT",
+          "72",
+          "8",
+          "812",
+          "950",
+          "975",
+          "BVR10",
+          "BVR13",
+          "BVR16",
+          "BVR19",
+          "K1000",
+          "M12",
+          "M12D",
+          "M12R",
+          "M12RX",
+          "M14",
+          "M14R",
+          "M15",
+          "M15R",
+          "M15RX",
+          "M17RX",
+          "M18R",
+          "M18RX",
+          "M20",
+          "M20R",
+          "M6R",
+          "PS8",
+          "RXL-22",
+          "TW280PHB",
+          "WCL23",
+          "X7"
+        ],
+        "PETERSON PACIFIC": [
+          "4300",
+          "4300B",
+          "4310",
+          "4310B",
+          "5000",
+          "5000G",
+          "5900",
+          "DDC5000",
+          "DDC5000G"
+        ],
+        "RAYCO": [
+          "RC12",
+          "RC1522G",
+          "RC6",
+          "RC6D"
+        ],
+        "TEREX": [
+          "TAC750",
+          "TBC430T"
+        ],
+        "TIMBERWOLF": [
+          "24",
+          "6",
+          "TW-24",
+          "TW-5",
+          "TW10RC",
+          "TW125PH",
+          "TW13",
+          "TW160PH",
+          "TW230",
+          "TW230DHB",
+          "TW230HB",
+          "TW230VTR",
+          "TW280",
+          "TW280FTR",
+          "TW280HB",
+          "TW280PHB"
+        ],
+        "VERMEER": [
+          "1250",
+          "1250BC",
+          "2300",
+          "6000",
+          "AX17",
+          "AX19",
+          "BC100",
+          "BC1000",
+          "BC1000XL",
+          "BC100XL",
+          "BC1200",
+          "BC1200XL",
+          "BC1230",
+          "BC1230A",
+          "BC1250",
+          "BC1250A",
+          "BC1400",
+          "BC1400TX",
+          "BC1500",
+          "BC1500XL",
+          "BC160",
+          "BC160XL",
+          "BC1800",
+          "BC1800A",
+          "BC1800XL",
+          "BC190",
+          "BC190XL",
+          "BC2000XL",
+          "BC230XL",
+          "BC600",
+          "BC600XL",
+          "BC625",
+          "BC625A",
+          "BC700",
+          "BC700XL",
+          "BC900",
+          "BC900XL",
+          "FT300",
+          "HG6800TX",
+          "HG8000",
+          "SC752",
+          "TG525L",
+          "WC2300",
+          "WC2300XL",
+          "WC2500",
+          "WC2500TX",
+          "WC2500XL"
+        ],
+        "WALLENSTEIN": [
+          "BX625",
+          "BXC34",
+          "BXMC32S",
+          "BXMC3409B",
+          "BXMT3213",
+          "BXMT4238",
+          "BXT36",
+          "BXT36S",
+          "BXT6238",
+          "BXT72",
+          "BXT72S",
+          "BXTR5224",
+          "BXTR6438",
+          "BXTR6438B",
+          "CR60"
+        ]
+      },
+      "Combo Harvester/Forwarder": {
+        "TIMBCO": [
+          "620",
+          "820D"
+        ],
+        "TIMBERPRO": [
+          "TF830B",
+          "TF830C",
+          "TF830D"
+        ]
+      },
+      "Debarkers": {
+        "MORBARK": [
+          "2455",
+          "636",
+          "FLAIL",
+          "FLAIL DEBARKER",
+          "PS8"
+        ],
+        "PETERSON PACIFIC": [
+          "4800",
+          "4800E",
+          "4800E FLAIL DEBARKER",
+          "4800F"
+        ],
+        "CHAMBERS": [
+          "DELIMBINATOR"
+        ],
+        "COOKS": [
+          "AC-36 SUPER HIGH PRODUCTION SAWMILL"
+        ],
+        "KOMATSU": [
+          "WA380 WHEEL LOADER"
+        ],
+        "PETERSON": [
+          "4800E",
+          "4800E FLAIL DEBARKER",
+          "4800F",
+          "4800F FLAIL DEBARKER",
+          "5000G",
+          "DEBARKER",
+          "PACIFIC 4800 DEBARKER"
+        ],
+        "WOOD-MIZER": [
+          "LT40 SAWMILL",
+          "LT40 SUPER HYDRAULIC SAWMILL",
+          "LT40 WIDE SUPER HYDRAULIC SAWMILL",
+          "LT50",
+          "LT50 HD WIDE SAWMILL",
+          "LT50 WIDE SAWMILL",
+          "LT50HD SAWMILL",
+          "LT70 SAWMILL",
+          "SUPER LT40 HD SAWMILL"
+        ]
+      },
+      "Delimbers": {
+        "CATERPILLAR": [
+          "215",
+          "225",
+          "225D",
+          "227",
+          "315C",
+          "316FL",
+          "320",
+          "320B",
+          "320C",
+          "320CFM",
+          "320D",
+          "320L",
+          "322",
+          "322B",
+          "324",
+          "324D",
+          "330",
+          "330B",
+          "330BL",
+          "538",
+          "559",
+          "559B",
+          "559C",
+          "693B",
+          "EL 200B"
+        ],
+        "DAEWOO": [
+          "220LL",
+          "DH 280",
+          "DOOSAN",
+          "LL220",
+          "SL300LC-V"
+        ],
+        "HYUNDAI": [
+          "210LC-7",
+          "290",
+          "ROBEX 210"
+        ],
+        "JOHN DEERE": [
+          "160",
+          "160LC",
+          "200",
+          "200 LC",
+          "200C",
+          "200C LC",
+          "200CLC",
+          "200LC",
+          "2054",
+          "2154",
+          "2154D",
+          "2454",
+          "2454D",
+          "2554",
+          "437C",
+          "437D",
+          "437E",
+          "473",
+          "473E",
+          "590D",
+          "690",
+          "690D",
+          "690E",
+          "690E LC",
+          "690ELC",
+          "693",
+          "693B",
+          "790D",
+          "792",
+          "792D"
+        ],
+        "KOMATSU": [
+          "200 LC-3",
+          "200LC",
+          "200LC-6",
+          "220LC",
+          "LC-7",
+          "PC 200LL",
+          "PC200",
+          "PC200 LC-5",
+          "PC200 LC-6",
+          "PC200 LC-7",
+          "PC200-LC",
+          "PC200LC",
+          "PC200LC-8",
+          "PC210",
+          "PC210 LC",
+          "PC210 LC-10",
+          "PC210 LL",
+          "PC210-LL",
+          "PC210LC7",
+          "PC220",
+          "PC250"
+        ],
+        "LINK-BELT": [
+          "2000B",
+          "210",
+          "210 LX DL",
+          "210 X2",
+          "210 LX",
+          "240",
+          "240 LX",
+          "240 X2",
+          "24LX",
+          "2800",
+          "2800Q",
+          "3400Q",
+          "3740"
+        ],
+        "CBI": [
+          "MAGNUM STRIPPER 6300T"
+        ],
+        "CHAMBERS": [
+          "DELIMBINATOR"
+        ],
+        "CSI": [
+          "264",
+          "464",
+          "DT2600",
+          "FDT6000",
+          "PTD264",
+          "PTD264 NTS",
+          "PTD264 ULTRA",
+          "PTD496"
+        ],
+        "CTR": [
+          "314",
+          "314DTS",
+          "4000",
+          "421",
+          "426",
+          "450",
+          "550"
+        ],
+        "DANSCO": [
+          "T18"
+        ],
+        "STRIPPER": [
+          "MECHANICAL"
+        ],
+        "THUNDERBIRD": [
+          "1236DL"
+        ],
+        "TIMBERLINE": [
+          "ST3510",
+          "ST3530"
+        ]
+      },
+      "Dozers With Winch": {
+        "CATERPILLAR": [
+          "D1",
+          "D1 LGP",
+          "D10",
+          "D10T",
+          "D10T2",
+          "D11",
+          "D11R",
+          "D2",
+          "D3",
+          "D3 LGP",
+          "D3B",
+          "D3C",
+          "D3C LGP II",
+          "D3G",
+          "D4",
+          "D4 LGP",
+          "D4-SK",
+          "D4C",
+          "D4D",
+          "D4E",
+          "D4G",
+          "D4G LGP",
+          "D4H",
+          "D4H LGP",
+          "D4H SERIES II",
+          "D4H TSK",
+          "D4H XL",
+          "D4K",
+          "D4K LGP",
+          "D4K TSK",
+          "D5",
+          "D5 II",
+          "D5 III",
+          "D5 LGP",
+          "D5 LGP II",
+          "D5B",
+          "D5G",
+          "D5G LGP",
+          "D5G XL",
+          "D5H",
+          "D5H LGP",
+          "D5H TSK II",
+          "D5K",
+          "D5K LGP",
+          "D5K XL",
+          "D5K2",
+          "D5K2 LGP",
+          "D5K2 XL",
+          "D5M",
+          "D5M XL",
+          "D5N",
+          "D5N LGP",
+          "D5N XL",
+          "D6",
+          "D6 LGP",
+          "D6 XE",
+          "D6 XE LGP",
+          "D6B",
+          "D6C",
+          "D6C LGP",
+          "D6D",
+          "D6D LGP",
+          "D6E",
+          "D6G",
+          "D6G LGP",
+          "D6G2 LGP",
+          "D6G2 XL",
+          "D6H",
+          "D6H LGP II",
+          "D6H XL",
+          "D6K",
+          "D6K LGP",
+          "D6K2",
+          "D6K2 LGP",
+          "D6M",
+          "D6N",
+          "D6N LGP",
+          "D6N XL",
+          "D6R",
+          "D6R II",
+          "D6R III",
+          "D6R LGP",
+          "D6R LGP III",
+          "D6R XL",
+          "D6R XL II",
+          "D6R XL III",
+          "D6R XW II",
+          "D6R XW III",
+          "D6R3 LGP",
+          "D6T",
+          "D6T LGP",
+          "D6T XL",
+          "D6T XW",
+          "D7",
+          "D7 LGP",
+          "D7C",
+          "D7E",
+          "D7E LGP",
+          "D7F",
+          "D7G",
+          "D7G II",
+          "D7G LGP",
+          "D7H",
+          "D7R",
+          "D7R II",
+          "D7R LGP",
+          "D7R LGP II",
+          "D7R XR",
+          "D7R XR II",
+          "D8D",
+          "D8H",
+          "D8K",
+          "D8L",
+          "D8R",
+          "D8R LGP",
+          "D8T",
+          "D8T LGP",
+          "D9",
+          "D9L",
+          "D9N",
+          "D9R",
+          "D9T",
+          "M105"
+        ],
+        "CASE": [
+          "1150",
+          "1150B",
+          "1150E LT",
+          "1150K",
+          "1450",
+          "1450B",
+          "1650",
+          "1650L",
+          "1650M LGP",
+          "1850",
+          "1850K",
+          "2050M",
+          "2050M LGP",
+          "450",
+          "450C LGP",
+          "650",
+          "650M LT",
+          "650M WT",
+          "750",
+          "750M LGP",
+          "850",
+          "850D",
+          "850E LT",
+          "850M",
+          "850M LGP"
+        ],
+        "DRESSER": [
+          "TD15",
+          "TD15C",
+          "TD6",
+          "TD8",
+          "TD8E",
+          "TD8G",
+          "TD8H"
+        ],
+        "JOHN DEERE": [
+          "350",
+          "350B",
+          "450",
+          "450 P-TIER",
+          "450 P-TIER LGP",
+          "450 P-TIER XLT",
+          "450B",
+          "450C",
+          "450E",
+          "450G",
+          "450H LGP",
+          "450J LGP",
+          "450K",
+          "450K LGP",
+          "450K LT",
+          "450P",
+          "455D",
+          "550",
+          "550 P-TIER",
+          "550 P-TIER LGP",
+          "550 P-TIER XLT",
+          "550B",
+          "550G",
+          "550G LGP",
+          "550G LT",
+          "550G LT IV",
+          "550H LGP",
+          "550K",
+          "550K LGP",
+          "550K XLT",
+          "555G",
+          "650",
+          "650 LGP",
+          "650 P-TIER LGP",
+          "650 P-TIER XLT",
+          "650G",
+          "650G LGP",
+          "650G LT",
+          "650H",
+          "650H LGP",
+          "650H LT",
+          "650J",
+          "650J LGP",
+          "650J LT",
+          "650J XLT",
+          "650K",
+          "650K LGP",
+          "650K XLT",
+          "700",
+          "700H",
+          "700H LT",
+          "700J LGP",
+          "700J XLT",
+          "700K",
+          "700K LGP",
+          "700K XLT",
+          "700L LGP",
+          "700L XLT",
+          "750",
+          "750B",
+          "750C LGP",
+          "750J",
+          "750J XLT",
+          "750K",
+          "750K LGP",
+          "750K XLT",
+          "750L",
+          "750L LGP",
+          "750L XLT",
+          "850",
+          "850B",
+          "850B LGP",
+          "850C",
+          "850J",
+          "850J WT",
+          "850K",
+          "850K LGP",
+          "850K WLT",
+          "850L LGP",
+          "850L WLT",
+          "950",
+          "950K",
+          "950K LGP"
+        ],
+        "KOMATSU": [
+          "39EX",
+          "D155",
+          "D155A-5",
+          "D155A-6",
+          "D155AX",
+          "D155AX-5",
+          "D155AX-7",
+          "D155AX-8",
+          "D275",
+          "D275AX-5E0",
+          "D37",
+          "D375",
+          "D375A-5",
+          "D375A-6",
+          "D375A-6R",
+          "D37PX-24",
+          "D41A3",
+          "D475",
+          "D475A-5",
+          "D475A-8",
+          "D51",
+          "D51PX-24",
+          "D51PXI-24",
+          "D61",
+          "D61EX-12",
+          "D61EX-15",
+          "D61EX-24",
+          "D61EXI-24",
+          "D61PX-15E0",
+          "D61PX-23",
+          "D61PX-24",
+          "D61PXI-23",
+          "D61PXI-24",
+          "D65",
+          "D65EX",
+          "D65EX-12",
+          "D65EX-15",
+          "D65EX-15E0",
+          "D65EX-17",
+          "D65PX-12E",
+          "D65PX-15E0",
+          "D65PX-17",
+          "D65PX-18",
+          "D65PXI-18",
+          "D65WX-18",
+          "D71",
+          "D71EXI-24",
+          "D71PX-24",
+          "D71PXI-24",
+          "D85",
+          "D85-12",
+          "D85A-21",
+          "D85ESS-1",
+          "D85EX-18",
+          "D85PX-15E0",
+          "D85PX-18"
+        ],
+        "LIEBHERR": [
+          "PR724"
+        ]
+      },
+      "Feller Bunchers": {
+        "BARKO": [
+          "1080",
+          "1080C",
+          "240",
+          "240B",
+          "260",
+          "260B",
+          "260BF",
+          "685",
+          "775",
+          "775A",
+          "775B",
+          "885",
+          "885B"
+        ],
+        "BAUMALIGHT": [
+          "FBS752"
+        ],
+        "BOBCAT": [
+          "1080",
+          "1080B",
+          "1080C"
+        ],
+        "CASE": [
+          "1187",
+          "1187B",
+          "1187C"
+        ],
+        "CATERPILLAR": [
+          "227",
+          "511",
+          "521",
+          "521B",
+          "522",
+          "522B",
+          "532",
+          "533",
+          "541",
+          "553",
+          "553C",
+          "563",
+          "563C",
+          "563D",
+          "573",
+          "573C",
+          "573D"
+        ],
+        "FRANKLIN": [
+          "105",
+          "170",
+          "3000",
+          "3005",
+          "3600",
+          "4000",
+          "C4500",
+          "C5000"
+        ],
+        "HYDRO-AX": [
+          "20HC",
+          "221",
+          "311",
+          "311B",
+          "311C",
+          "400",
+          "411",
+          "411B",
+          "411EX",
+          "470",
+          "511",
+          "511B",
+          "511E",
+          "511EX",
+          "570",
+          "611",
+          "611EX",
+          "611B",
+          "611E",
+          "621",
+          "621B",
+          "670",
+          "711",
+          "711E",
+          "711EX",
+          "720",
+          "720A",
+          "721",
+          "721E"
+        ],
+        "JOHN DEERE": [
+          "200C",
+          "210",
+          "225C",
+          "290",
+          "290D",
+          "335C",
+          "490E",
+          "493D",
+          "544D",
+          "643",
+          "643D",
+          "643G",
+          "643H",
+          "643J",
+          "643K",
+          "643L",
+          "643LII",
+          "653",
+          "653E",
+          "653G",
+          "693B",
+          "693D",
+          "703G",
+          "753",
+          "753G",
+          "753GL",
+          "753J",
+          "759G",
+          "759J",
+          "803",
+          "803M",
+          "843",
+          "843G",
+          "843H",
+          "843J",
+          "843K",
+          "843L",
+          "843LII",
+          "853",
+          "853G",
+          "853M",
+          "859",
+          "859M",
+          "903",
+          "903G",
+          "903J",
+          "903K",
+          "903M",
+          "909",
+          "909K",
+          "953",
+          "953G",
+          "953K",
+          "953M",
+          "959",
+          "959K",
+          "959M",
+          "959ML"
+        ],
+        "KOMATSU": [
+          "XT430",
+          "XT430-2",
+          "XT430-3",
+          "XT430-5",
+          "XT430-L",
+          "XT430L-3",
+          "XT445",
+          "XT445L",
+          "XT445L-2",
+          "XT445L-3",
+          "XT445L-5",
+          "XT460",
+          "XT460L-3",
+          "XT465",
+          "XT465L-5"
+        ],
+        "MORBARK": [
+          "6300"
+        ],
+        "PRENTICE": [
+          "1190",
+          "1190T",
+          "1290T",
+          "2470",
+          "2570",
+          "2670",
+          "2670D",
+          "2864",
+          "620",
+          "620FB",
+          "630",
+          "630A",
+          "630C",
+          "630FB",
+          "720FB",
+          "730A"
+        ],
+        "TIGERCAT": [
+          "718",
+          "718E",
+          "718G",
+          "720",
+          "720B",
+          "720C",
+          "720D",
+          "720E",
+          "720G",
+          "720H",
+          "724",
+          "724D",
+          "724E",
+          "724G",
+          "724H",
+          "726",
+          "726B",
+          "726E",
+          "726H",
+          "822",
+          "822C",
+          "822D",
+          "822E",
+          "845",
+          "845B",
+          "845C",
+          "845D",
+          "845E",
+          "845T",
+          "853E",
+          "855",
+          "855C",
+          "855D",
+          "855E",
+          "860",
+          "860C",
+          "870",
+          "870C",
+          "H250B",
+          "H250C",
+          "H822",
+          "H822C",
+          "H860C",
+          "L830",
+          "L855",
+          "L855D",
+          "L870",
+          "L870C",
+          "LS855",
+          "LS855D",
+          "LS855E",
+          "LX822",
+          "LX822C",
+          "LX830",
+          "LX830C",
+          "LX830D",
+          "LX830E",
+          "LX870",
+          "LX870C",
+          "LX870D",
+          "M726",
+          "M726E",
+          "M726G",
+          "M760",
+          "ST5701",
+          "T250B",
+          "T250D",
+          "TH570",
+          "X822",
+          "X822C",
+          "X822D",
+          "X822E",
+          "X870",
+          "X870C",
+          "X870D"
+        ],
+        "TIMBCO": [
+          "T420",
+          "T415D",
+          "T425",
+          "T425C",
+          "T425D",
+          "T425B",
+          "T435C",
+          "T445",
+          "T445C",
+          "T445D",
+          "T445EXL",
+          "T455D",
+          "T475D",
+          "TF815C"
+        ],
+        "TIMBERJACK": [
+          "2518",
+          "2520",
+          "2618",
+          "608",
+          "608B",
+          "608L",
+          "608S",
+          "618",
+          "628",
+          "740",
+          "840",
+          "850"
+        ],
+        "TIMBERPRO": [
+          "TB620E",
+          "TB630",
+          "TB630B",
+          "TB630C",
+          "TF820E",
+          "TF830B",
+          "TF830C",
+          "TF830D",
+          "TF840",
+          "TL725",
+          "TL725B",
+          "TL725C",
+          "TL735",
+          "TL735B",
+          "TL735C",
+          "TL735D",
+          "TL745",
+          "TL745B",
+          "TL745C",
+          "TL745D",
+          "TL755",
+          "TL755D",
+          "TL765C",
+          "TL775",
+          "TL775D",
+          "TN725",
+          "TN725B",
+          "TN725C",
+          "TN725D",
+          "TN735",
+          "TN735B",
+          "TN735C",
+          "TN735D",
+          "TN745",
+          "TN745B",
+          "TN745D"
+        ],
+        "VALMET": [
+          "415",
+          "415EX",
+          "415FX",
+          "425",
+          "425EXL",
+          "425FXL",
+          "430",
+          "430FXL",
+          "445",
+          "445FXL",
+          "445EXL",
+          "503",
+          "503B",
+          "603"
+        ],
+        "WEILER": [
+          "B457",
+          "B458",
+          "B570",
+          "B670",
+          "B770"
+        ],
+        "BELL": [
+          "SUPER T",
+          "ULTRA",
+          "ULTRA C"
+        ],
+        "CUMMINS": [
+          "1992"
+        ],
+        "DELFAB": [
+          "DF703"
+        ],
+        "HITACHI": [
+          "EX150"
+        ],
+        "MADILL": [
+          "1250",
+          "2200",
+          "2200B"
+        ],
+        "QUADCO": [
+          "20B",
+          "22B",
+          "22C"
+        ],
+        "TIMBERKING": [
+          "TK721",
+          "TK722",
+          "TK741"
+        ],
+        "TREE FARMER": [
+          "3005"
+        ]
+      },
+      "Forwarders": {
+        "BELL": [
+          "T12B"
+        ],
+        "CATERPILLAR": [
+          "534",
+          "564",
+          "574",
+          "584"
+        ],
+        "FABTEK": [
+          "344",
+          "344B",
+          "344LB",
+          "346",
+          "346B",
+          "544C",
+          "546",
+          "546B",
+          "546C",
+          "548B",
+          "548C"
+        ],
+        "FRANKLIN": [
+          "132",
+          "632"
+        ],
+        "JOHN DEERE": [
+          "1010",
+          "1010B",
+          "1010D",
+          "1010E",
+          "1110",
+          "1110D",
+          "1110E",
+          "1110G",
+          "1210",
+          "1210E",
+          "1210G",
+          "1270E",
+          "1410D",
+          "1458",
+          "1510",
+          "1510E",
+          "1510G",
+          "1710D",
+          "1910",
+          "1910E",
+          "1910G"
+        ],
+        "KOMATSU": [
+          "835",
+          "840",
+          "840.4",
+          "845",
+          "855",
+          "855.3",
+          "855.1",
+          "860",
+          "860.1 ",
+          "860.4",
+          "865",
+          "890.3",
+          "895",
+          "895-1"
+        ],
+        "ROTOBEC": [
+          "F2000",
+          "F2000B"
+        ],
+        "ROTTNE": [
+          "F15",
+          "F15C",
+          "F15D",
+          "F18",
+          "F18D",
+          "F20",
+          "F20E",
+          "RAPID",
+          "RAPID SMV",
+          "SMV",
+          "SMV RAPID"
+        ],
+        "TIGERCAT": [
+          "1045",
+          "1055",
+          "1055B",
+          "1055B 8 WHEELED FORWARDER",
+          "1055C",
+          "1065",
+          "1075",
+          "1075B",
+          "1075C",
+          "1085",
+          "1085C",
+          "620C",
+          "FORWARDER"
+        ],
+        "TIMBCO": [
+          "815",
+          "815C",
+          "820",
+          "820B",
+          "820C",
+          "820D",
+          "820D COMBO MACHINE",
+          "TF 820-E",
+          "TF-820",
+          "TF815C 8 WHEELED FORWARDER",
+          "TF820",
+          "TF820-D",
+          "TF820C",
+          "TF820D"
+        ],
+        "TIMBERJACK": [
+          "1010",
+          "1010B",
+          "1010B 6 WHEELED FORWARDER",
+          "1010B 6W FORWARDER",
+          "1010B 8W DOUBLE BUNK FORWARDER",
+          "1010B HE TRADED TO JD",
+          "1010B N",
+          "1010D",
+          "1010D 4X4 SINGLE BUNK FORWARDER",
+          "1010D DOUBLE BUNK FORWARDER",
+          "1010D SINGLE BUNK FORWARDER",
+          "1110",
+          "1110B",
+          "1110D",
+          "1110D ** TO ROAD MACHINERY*",
+          "1110D 8 WHEELED FORWARDER",
+          "1210",
+          "1210B",
+          "1210B DOUBLE BUNK FORWARDER",
+          "1270B HARVESTER WITH",
+          "1270D",
+          "1410",
+          "1410B",
+          "1410B 8 WHEELED FORWARDER",
+          "1410D",
+          "1710",
+          "1710B",
+          "1710D",
+          "230",
+          "230 DOUBLE BUNK FORWARDER",
+          "230A DOUBLE BUNK FORWARDER",
+          "230A SINGLE BUNK FORWARDER",
+          "230D",
+          "560",
+          "610",
+          "810",
+          "810B",
+          "820"
+        ],
+        "TIMBERPRO": [
+          "820E",
+          "TB830",
+          "TB830B",
+          "TF830",
+          "TF830B",
+          "TF830C",
+          "TF830D",
+          "TF840B",
+          "TF840D",
+          "TF860",
+          "TF860D"
+        ],
+        "TREE FARMER": [
+          "C4",
+          "C4D",
+          "C5",
+          "C5D",
+          "C5F",
+          "C6D",
+          "C6F",
+          "C7"
+        ],
+        "VALMET": [
+          "524",
+          "544",
+          "544S",
+          "544X",
+          "546",
+          "546F",
+          "546H",
+          "644",
+          "646",
+          "840 6 WHEELED FORWARDER",
+          "840 8 WHEELED FORWARDER",
+          "840.2",
+          "840.3",
+          "840.4",
+          "860",
+          "860.1",
+          "860.4",
+          "865",
+          "890",
+          "890.1",
+          "890.2",
+          "890.3"
+        ],
+        "WEILER": [
+          "564",
+          "F646"
+        ],
+        "BARKO": [
+          "612"
+        ],
+        "ECOLOG": [
+          "574",
+          "574B",
+          "574C",
+          "574D",
+          "574E",
+          "584",
+          "584F"
+        ],
+        "FARMA": [
+          "CT3.8-6",
+          "CT4.6D-7",
+          "CT5.1D-8",
+          "CT6.3D-9",
+          "CT7.0-12 G2",
+          "CT7.0-14D",
+          "CT8.5-16 G2"
+        ],
+        "HANOVER": [
+          "D"
+        ],
+        "IRON MULE": [
+          "4500",
+          "4501",
+          "4510",
+          "5000F",
+          "5001",
+          "5500",
+          "5510"
+        ],
+        "LOGSET": [
+          "12F",
+          "12F GT",
+          "5F",
+          "5F GT",
+          "5FP",
+          "5FP GT"
+        ],
+        "MACK": [
+          "ECONODYNE"
+        ],
+        "OLOFSORS ECO-TRACKS": [
+          "BALTIC"
+        ],
+        "PONSSE": [
+          "8W BUFFALO FORWARDER",
+          "BISON",
+          "BISON ACTIVE FRAME",
+          "BISON S15",
+          "BISON S15 6W FORWARDER",
+          "BUFFALO",
+          "BUFFALO & 2021 PONSSE SCORPION",
+          "BUFFALO 8 WHEELED FORWARDER",
+          "BUFFALO 8W FORWARDER",
+          "BUFFALO DUAL FORWARDER/PROCESSOR",
+          "BUFFALO KING",
+          "BUFFALO KING 6 WHEELED FORWARDER",
+          "BUFFALO KING 8W",
+          "BUFFALO S16",
+          "BUFFALO S16 ***",
+          "CARIBOU",
+          "ELEPHANT",
+          "ELEPHANT KING",
+          "ELK",
+          "ELK 6W FORWARDER",
+          "ELK 8 WHEELED FORWARDER",
+          "ELK 8W FORWARDER",
+          "ERGO",
+          "GAZELLE",
+          "GAZELLE 8 WHEELED FORWARDER",
+          "MAMMOTH",
+          "MERCEDES BENZ 6CYL NON EGR DIESEL OM906LA ENGINE",
+          "S-16 BUFFALO",
+          "WISENT",
+          "WISENT 6 WHEEL FORWARDER",
+          "WISENT 6 WHEELED FORWARDER",
+          "WISENT 6W FORWARDER",
+          "WISENT 8 WHEEL FORWARDER",
+          "WISENT 8 WHEELED FORWARDER",
+          "WISENT 8W FORWARDER"
+        ],
+        "PRENTICE": [
+          "2344",
+          "2548",
+          "6 WHEEL"
+        ],
+        "TIMBERKING": [
+          "456",
+          "458",
+          "458 FORWARDER.",
+          "TK456",
+          "TK458 8W FORWARDER"
+        ],
+        "WOODSMAN": [
+          "790 MODEL 22"
+        ]
+      },
+      "Graders": {
+        "JOHN DEERE": [
+          "770D"
+        ]
+      },
+      "Log Loaders": {
+        "BARKO": [
+          "120",
+          "160",
+          "160A",
+          "160B",
+          "160C",
+          "160D",
+          "225",
+          "240",
+          "260B",
+          "275",
+          "275A",
+          "275B",
+          "275E",
+          "295",
+          "295 MAGNUM",
+          "295B",
+          "295B RTC",
+          "295ML",
+          "295ML MAGNUM",
+          "495",
+          "495B",
+          "495B CRL",
+          "495B RTC",
+          "495ML",
+          "495ML MAGNUM",
+          "495ML MAGNUM+",
+          "595",
+          "595B",
+          "595B CRL",
+          "595B RTC",
+          "595ML",
+          "612",
+          "70",
+          "70XLE",
+          "80",
+          "80BC",
+          "80XLE"
+        ],
+        "CATERPILLAR": [
+          "225",
+          "300",
+          "320",
+          "320B LL",
+          "320C",
+          "320C LL",
+          "320CL",
+          "320D",
+          "320D FM",
+          "320L",
+          "322",
+          "322B",
+          "322B LL",
+          "322C",
+          "325",
+          "325D",
+          "325D FM",
+          "325L",
+          "330",
+          "330B",
+          "330B LL",
+          "330C",
+          "330C FM",
+          "330CL",
+          "330D",
+          "330D FM",
+          "330RB",
+          "416",
+          "416E",
+          "529",
+          "529DS",
+          "538",
+          "538LL",
+          "548",
+          "558",
+          "558B",
+          "558LL",
+          "559",
+          "559B",
+          "559C",
+          "559D",
+          "559DS",
+          "568",
+          "579"
+        ],
+        "DOOSAN": [
+          "300 LOG LOADER",
+          "DX225",
+          "DX300",
+          "DX380"
+        ],
+        "HITACHI": [
+          "EX200",
+          "ZX210",
+          "ZX210F-3",
+          "ZX210F-LL-6N",
+          "ZX240",
+          "ZX240 LC",
+          "ZX310",
+          "ZX310F",
+          "ZX310F LL-6N",
+          "ZX310F-6",
+          "ZX370",
+          "ZX370F-3",
+          "ZX370F-6"
+        ],
+        "HYUNDAI": [
+          "250",
+          "HX3030",
+          "HX3030LL"
+        ],
+        "JOHN DEERE": [
+          "200C LC",
+          "2054",
+          "2054D",
+          "210",
+          "210C LC",
+          "210G",
+          "210G LC",
+          "2154",
+          "2154D",
+          "2154G",
+          "2156",
+          "2156G",
+          "225LC",
+          "2454",
+          "2454D",
+          "2554",
+          "2654",
+          "2654G",
+          "2656",
+          "2656G",
+          "2954",
+          "2954D",
+          "2956",
+          "2956G",
+          "3154",
+          "3154G",
+          "3156",
+          "3156G",
+          "335",
+          "335C",
+          "335D",
+          "337",
+          "337E",
+          "3554",
+          "3754",
+          "3754D",
+          "3756",
+          "3756G",
+          "435C",
+          "437",
+          "437C",
+          "437D",
+          "437E",
+          "535",
+          "535 II",
+          "5625",
+          "724J",
+          "892",
+          "892D",
+          "892D LC",
+          "TC54H MILLYARD LOG LOADER"
+        ],
+        "KOBELCO": [
+          "SK200LC",
+          "SK210",
+          "SK210 LC",
+          "SK210 LC-9",
+          "SK350",
+          "SK350 LC"
+        ],
+        "KOMATSU": [
+          "PC200 LL",
+          "PC200",
+          "PC200 LL-7L",
+          "PC220",
+          "PC270",
+          "PC270 LC-6",
+          "PC290",
+          "PC290 LC-10",
+          "PC290 LL-11",
+          "WA450",
+          "WA500",
+          "WA500-8"
+        ],
+        "LIEBHERR": [
+          "564",
+          "632",
+          "A904",
+          "A924",
+          "A924B",
+          "A934",
+          "A944",
+          "LH26M",
+          "LH30",
+          "LH30M",
+          "LH35",
+          "LH35M",
+          "LH50",
+          "LH50M",
+          "R932",
+          "R944",
+          "R944BEW"
+        ],
+        "LINK-BELT": [
+          "210",
+          "210 X2",
+          "240",
+          "240 LX",
+          "2700",
+          "2800",
+          "290",
+          "290 X2",
+          "300X4",
+          "3240",
+          "3240TL",
+          "3400",
+          "350",
+          "350 LX TL",
+          "350 X2",
+          "370",
+          "370X2FHW",
+          "3740",
+          "3740B",
+          "3740B TL",
+          "3740TL",
+          "3740TLW",
+          "4040",
+          "4040B",
+          "4040B TL",
+          "4040TLW",
+          "4300",
+          "4640",
+          "4640RB",
+          "5040"
+        ],
+        "MORBARK": [
+          "16"
+        ],
+        "PRENTICE": [
+          "120",
+          "120C",
+          "120E",
+          "1290T",
+          "180",
+          "180C",
+          "180D",
+          "180E",
+          "210",
+          "210B",
+          "210C",
+          "210D",
+          "210E",
+          "2124",
+          "2180",
+          "2210",
+          "2280",
+          "2344",
+          "2384",
+          "2384B",
+          "2384C",
+          "2384D",
+          "2410",
+          "2470",
+          "2548",
+          "2670",
+          "280",
+          "280D",
+          "2834C",
+          "2864",
+          "310",
+          "310E",
+          "325",
+          "384",
+          "384D",
+          "410",
+          "410 EX",
+          "410C",
+          "410D",
+          "410DX",
+          "410E",
+          "410EX",
+          "425",
+          "490",
+          "600B",
+          "625",
+          "630A",
+          "630C",
+          "6600",
+          "720FB",
+          "9000",
+          "ATL425",
+          "ATL625",
+          "ATL640",
+          "D-210",
+          "D-300",
+          "D210",
+          "D210E",
+          "D384",
+          "D410B",
+          "F90",
+          "F90T",
+          "RT610",
+          "T325"
+        ],
+        "ROTOBEC": [
+          "220",
+          "220B",
+          "910",
+          "965",
+          "ELITE 910",
+          "EVOLUTION 965"
+        ],
+        "SERCO": [
+          "1050XR",
+          "160PH",
+          "170",
+          "170A",
+          "170B",
+          "1900S",
+          "200",
+          "200 SELF-PROPELLED",
+          "2001",
+          "200F",
+          "2050",
+          "270",
+          "300",
+          "7000",
+          "7500",
+          "75XR",
+          "8000",
+          "8500"
+        ],
+        "TIGERCAT": [
+          "220",
+          "230",
+          "230B",
+          "234",
+          "234B",
+          "234C",
+          "240",
+          "240 ***",
+          "240B",
+          "240B TRACK",
+          "244",
+          "245",
+          "245B",
+          "250",
+          "250B",
+          "250D",
+          "250E",
+          "264",
+          "855C",
+          "865",
+          "880",
+          "880D",
+          "880E",
+          "890",
+          "LS855",
+          "LS855C",
+          "LS855E",
+          "S855",
+          "S855E",
+          "T234",
+          "T234B",
+          "T250",
+          "T250B",
+          "T250E"
+        ],
+        "TIMBERJACK": [
+          "330",
+          "530",
+          "635"
+        ],
+        "VOLVO": [
+          "EC240",
+          "EC240B",
+          "EC240B LC",
+          "EC250",
+          "EC250EL"
+        ],
+        "WALLENSTEIN": [
+          "LXT115",
+          "LXT95"
+        ],
+        "WEILER": [
+          "K560"
+        ],
+        "AM MACHINERY": [
+          "190",
+          "AM714 1400"
+        ],
+        "DAEWOO": [
+          "220",
+          "220L"
+        ],
+        "DROTT": [
+          "40"
+        ],
+        "ECOLOG": [
+          "594D"
+        ],
+        "FARMA": [
+          "C6,3",
+          "C6,3D",
+          "C8,0",
+          "T12",
+          "T12 G2"
+        ],
+        "FUCHS": [
+          "MHL331",
+          "MHL334",
+          "MHL334E",
+          "MHL340",
+          "MHL360"
+        ],
+        "HOOD": [
+          "12000",
+          "24000",
+          "24000 SELF PROPELLED",
+          "28000",
+          "32000",
+          "7000",
+          "8000",
+          "S182"
+        ],
+        "KESLA": [
+          "304T"
+        ],
+        "LEMCO": [
+          "XLT60",
+          "XLT70",
+          "8000"
+        ],
+        "MADILL": [
+          "3000",
+          "3800",
+          "3800C",
+          "4000"
+        ],
+        "METAVIC": [
+          "1150M12",
+          "1150M14",
+          "1150M16"
+        ],
+        "NORWOOD": [
+          "LUMBERPRO HD 36V2"
+        ],
+        "PALFINGER": [
+          "EPSILON M12",
+          "EPSILON M12L",
+          "EPSILON M13",
+          "EPSILON M13A",
+          "EPSILON M13A98",
+          "EPSILON Q150Z LOG LOADER"
+        ],
+        "TIMBERKING": [
+          "540DS",
+          "TK520"
+        ]
+      },
+      "Skidders": {
+        "CATERPILLAR": [
+          "508",
+          "515 CABLE SKIDDER",
+          "515 GRAPPLE SKIDDER",
+          "517",
+          "518",
+          "518C",
+          "525",
+          "525A",
+          "525B",
+          "525C",
+          "525C DUAL ARCH GRAPPLE SKIDDER",
+          "525C SINGLE ARCH GRAPPLE SKIDDER WITH WINCH.",
+          "525D",
+          "525D DUAL ARCH GRAPPLE SKIDDER",
+          "535",
+          "535B",
+          "535C GRAPPLE SKIDDER",
+          "535D GRAPPLE SKIDDER",
+          "545",
+          "545B",
+          "545C",
+          "545D",
+          "574",
+          "D4H",
+          "D5",
+          "D5H",
+          "D5H II",
+          "D5H TSK",
+          "D5H TSK II",
+          "D6T",
+          "D6T XL",
+          "D7G"
+        ],
+        "CLARK": [
+          "2 CLARK 666D SKIDDERS",
+          "664",
+          "664B",
+          "664D",
+          "665D",
+          "666 CABLE SKIDDER",
+          "666 GRAPPLE SKIDDER",
+          "666D",
+          "667",
+          "667D",
+          "F65",
+          "F66",
+          "F665 CABLE SKIDDER",
+          "F666",
+          "RANGER 666D",
+          "RANGER F666",
+          "RANGER G67P"
+        ],
+        "FRANKLIN": [
+          "100",
+          "100XL",
+          "125",
+          "132",
+          "142",
+          "170",
+          "170 PGS",
+          "170TGS",
+          "185 S2",
+          "405",
+          "560",
+          "595",
+          "66",
+          "C5",
+          "C7F",
+          "Q70",
+          "Q80",
+          "Q80C",
+          "Q90"
+        ],
+        "INTERNATIONAL": [
+          "S8",
+          "S8A"
+        ],
+        "JOHN DEERE": [
+          "340D CABLE SKIDDER",
+          "440",
+          "440A",
+          "440A CABLE",
+          "440B",
+          "440C",
+          "440C SINGLE ARCH GRAPPLE SKIDDER",
+          "440D",
+          "540",
+          "540A",
+          "540B",
+          "540B SPRAYER",
+          "540B SWING BOOM GRAPPLE SKIDDER WITH WINCH",
+          "540B SWING GRAPPLE SKIDDER WITH WINCH",
+          "540BG",
+          "540D",
+          "540E",
+          "540E SINGLE ARCH GRAPPLE SKIDDER",
+          "540G",
+          "540G III",
+          "540GII",
+          "540GIII",
+          "544J",
+          "548",
+          "548D",
+          "548D DA GRAPPLE SKIDDER WITH WINCH",
+          "548D SINGLE ARCH GRAPPLE SKIDDER WITH WINCH",
+          "548D TURBO",
+          "548E",
+          "548E SINGLE ARCH GRAPPLE SKIDDER",
+          "548G",
+          "548G II",
+          "548G III",
+          "548GII",
+          "548GIII",
+          "640",
+          "640 GIII",
+          "640 SWING BOOM",
+          "640 SWING GRAPPLE SKIDDER",
+          "640B CABLE SKIDDER",
+          "640C",
+          "640D",
+          "640E",
+          "640G",
+          "640GII",
+          "640GIII",
+          "640H",
+          "640L",
+          "640LII",
+          "648D",
+          "648D DUAL ARCH GRAPPLE SKIDDER",
+          "648E",
+          "648E DUAL ARCH GRAPPLE SKIDDER",
+          "648E SINGLE ARCH GRAPPLE SKIDDER",
+          "648E SWING GRAPPLE",
+          "648G",
+          "648G DUAL ARCH GRAPPLE SKIDDER",
+          "648G II",
+          "648G III",
+          "648G SWING GRAPPLE SKIDDER",
+          "648G3",
+          "648GII",
+          "648GIII",
+          "648H",
+          "648H DUAL ARCH GRAPPLE SKIDDER",
+          "648L",
+          "648L II",
+          "648L-II GRAPPLE SKIDDER",
+          "740",
+          "740A",
+          "740D",
+          "748E",
+          "748G",
+          "748GII",
+          "748GII DUAL ARCH GRAPPLE SKIDDER",
+          "748GIII",
+          "748GIII DUAL ARCH GRAPPLE SKIDDER",
+          "748H",
+          "748L GRAPPLE SKIDDER",
+          "748L II",
+          "748L-II",
+          "748LII",
+          "768",
+          "768L",
+          "768LII",
+          "848",
+          "848G",
+          "848H",
+          "848H DA GRAPPLE SKIDDER",
+          "848L",
+          "848LII",
+          "948",
+          "948L",
+          "948LII"
+        ],
+        "KOMATSU": [
+          "D61",
+          "D61EX-15"
+        ],
+        "PRENTICE": [
+          "490"
+        ],
+        "TIGERCAT": [
+          "602",
+          "604",
+          "604C",
+          "610",
+          "610 DUAL ARCH GRAPPLE SKIDDER",
+          "610C",
+          "610E",
+          "610E GRAPPLE SKIDDER WINCH",
+          "615",
+          "615C",
+          "615E",
+          "620",
+          "620C",
+          "620C DUAL ARCH GRAPPLE SKIDDER",
+          "620D",
+          "620E",
+          "620E DUAL ARCH GRAPPLE SKIDDER",
+          "620H",
+          "625",
+          "625E",
+          "625H",
+          "630",
+          "630B",
+          "630C",
+          "630C DUAL ARCH GRAPPLE SKIDDER",
+          "630D",
+          "630E",
+          "630H",
+          "632",
+          "632E",
+          "632H",
+          "635",
+          "635C",
+          "635E",
+          "635G",
+          "635H"
+        ],
+        "TIMBERJACK": [
+          "1010",
+          "1010B",
+          "1010D",
+          "1070",
+          "1110",
+          "1110B",
+          "1110D",
+          "1210",
+          "1210B",
+          "1270",
+          "1270A",
+          "1270B",
+          "1270C",
+          "1270D",
+          "1410",
+          "1710D",
+          "200",
+          "2002",
+          "200C",
+          "205",
+          "207",
+          "207D",
+          "208",
+          "208 E",
+          "208D",
+          "217D",
+          "225",
+          "225 SUPER E",
+          "225A",
+          "225C",
+          "225D",
+          "230",
+          "230A",
+          "230C",
+          "230D",
+          "230GS",
+          "240",
+          "240 CABLE",
+          "240 SUPER E",
+          "240A",
+          "240B",
+          "240C",
+          "240D",
+          "240E",
+          "2518",
+          "2520",
+          "350A",
+          "360",
+          "360 SINGLE ARCH GRAPPLE SKIDDER",
+          "360C",
+          "360D",
+          "380",
+          "380 A GRAPPLE SKIDDER",
+          "380 DUAL ARCH GRAPPLE SKIDDER",
+          "380 SINGLE ARCH GRAPPLE SKIDDER",
+          "380A",
+          "380B",
+          "380B CABLE",
+          "380C",
+          "404",
+          "430",
+          "430B",
+          "450",
+          "450A",
+          "450B GRAPPLE SKIDDER",
+          "450C GRAPPLE SKIDDER",
+          "460",
+          "460 DUAL ARCH GRAPPLE SKIDDER",
+          "460 GRAPPLE",
+          "460C",
+          "460D",
+          "460D SINGLE ARCH GRAPPLE SKIDDER",
+          "460DG",
+          "480B",
+          "480C",
+          "480T",
+          "520",
+          "560",
+          "560D GRAPPLE SKIDDER",
+          "660",
+          "660C"
+        ],
+        "TREE FARMER": [
+          "3005",
+          "C-5",
+          "C4",
+          "C4B",
+          "C4D",
+          "C5",
+          "C5D",
+          "C5F",
+          "C6",
+          "C6B",
+          "C6D",
+          "C6E",
+          "C6F",
+          "C7",
+          "C7D",
+          "C7F",
+          "C8"
+        ],
+        "WEILER": [
+          "S250",
+          "S340",
+          "S350",
+          "S450"
+        ],
+        "BLOUNT CAT": [
+          "950 GRAPPLE SKIDDER"
+        ],
+        "CLARK RANGER": [
+          "664",
+          "664B",
+          "664C",
+          "665",
+          "665D",
+          "666",
+          "666C",
+          "666D",
+          "667",
+          "667C",
+          "667D",
+          "667F",
+          "668",
+          "668C",
+          "F66",
+          "F666",
+          "F667",
+          "F66DS",
+          "F66G",
+          "F67",
+          "F67-GR",
+          "G67",
+          "H67"
+        ],
+        "CTR": [
+          "950",
+          "950B"
+        ],
+        "FMC": [
+          "210",
+          "210CA",
+          "220"
+        ],
+        "GAFNER": [
+          "IRON MULE"
+        ],
+        "KMC": [
+          "1000AG",
+          "1500HP",
+          "1600H",
+          "2100",
+          "210CA",
+          "240",
+          "2400",
+          "2500",
+          "2500P",
+          "2600"
+        ],
+        "MORGAN": [
+          "SX706 SB 6 WHEEL",
+          "SX706B"
+        ],
+        "OLOFSFORS ECO-TRACKS": [
+          "SKIDDER WHEEL TRACKS"
+        ],
+        "PEWAG ECO-TRACKS": [
+          "SKIDDER WHEEL TRACKS"
+        ],
+        "SERCO": [
+          "270 LOADER ON 1997 JOHN DEERE 640 SKIDDER"
+        ]
+      },
+      "Wood Chippers": {
+        "TEREX": [
+          "TAC750",
+          "TBC",
+          "TBC430T"
+        ],
+        "ALTEC": [
+          "DC1217",
+          "DC1217CFD",
+          "DC1317",
+          "DC1419",
+          "DC912",
+          "DC912A",
+          "DRM12",
+          "DRM12HE",
+          "WC126",
+          "WC126A"
+        ],
+        "BANDIT": [
+          "1290",
+          "12XP CHIPPER",
+          "1390",
+          "1400 TRACK CHIPPER",
+          "1490",
+          "1490XP",
+          "150",
+          "150XP",
+          "1590XP",
+          "15XP TK",
+          "1690",
+          "1850",
+          "1850XP",
+          "1890",
+          "1890XP",
+          "1900",
+          "19XP",
+          "200",
+          "200+",
+          "200+ XP",
+          "200UC",
+          "200XP",
+          "2090",
+          "2090T",
+          "2090XP",
+          "2090XT",
+          "2290",
+          "2290T",
+          "2290TK",
+          "2400",
+          "2400T",
+          "250",
+          "250XP",
+          "254",
+          "254XP",
+          "2590",
+          "2590TK",
+          "280",
+          "280XP",
+          "3090",
+          "3090T",
+          "3090TK",
+          "3590",
+          "3590 LX",
+          "3590XL",
+          "4090",
+          "65",
+          "65XP",
+          "75XP",
+          "90",
+          "90XP",
+          "BRUSH BANDIT 1400",
+          "BRUSH BANDIT 1900",
+          "CB90",
+          "CB90XP",
+          "CHIPPER",
+          "HM6420",
+          "INTIMIDATOR",
+          "INTIMIDATOR 12X",
+          "INTIMIDATOR 12XC",
+          "INTIMIDATOR 12XP",
+          "INTIMIDATOR 12XPC",
+          "INTIMIDATOR 1590",
+          "INTIMIDATOR 1590XP",
+          "INTIMIDATOR 15XP",
+          "INTIMIDATOR 15XPC",
+          "INTIMIDATOR 1890",
+          "INTIMIDATOR 1890XP",
+          "INTIMIDATOR 18XP",
+          "INTIMIDATOR 18XPTK",
+          "INTIMIDATOR 19XPC",
+          "INTIMIDATOR 20XP",
+          "INTIMIDATOR 20XPTK",
+          "INTIMIDATOR 21XP",
+          "MODEL 2590"
+        ],
+        "CARLTON": [
+          "1260",
+          "1290",
+          "1712",
+          "2012",
+          "2015",
+          "2518",
+          "660",
+          "770"
+        ],
+        "CBI": [
+          "CHIPMAX 364T"
+        ],
+        "DYNAMIC": [
+          "350",
+          "570",
+          "CONE-HEAD",
+          "CONE-HEAD 510",
+          "CONE-HEAD 570",
+          "CONE-HEAD 580",
+          "CONE-HEAD 585B",
+          "DC50"
+        ],
+        "MORBARK": [
+          "12",
+          "13",
+          "16",
+          "16 DISC CHIPPER",
+          "16\" GRAPPLE CHIPPER",
+          "17",
+          "17EZ",
+          "20",
+          "20 CHIPARVESTOR",
+          "20/36",
+          "20/36 DRUM CHIPPER",
+          "22",
+          "22 RXL CHIPPER",
+          "223 FLAIL WITH 23 CHIPPER",
+          "22RXL",
+          "22RXL WHOLE TREE CHIPPER",
+          "23",
+          "23 NCL",
+          "23 WCL",
+          "2348",
+          "2355",
+          "2400",
+          "2400XL",
+          "2455",
+          "254",
+          "27",
+          "2755",
+          "290",
+          "30",
+          "30 DISC CHIPPER",
+          "30/36",
+          "30/36 DRUM CHIPPER",
+          "30/36 WCL CHIPPER",
+          "30/36 WHOLE TREE CHIPPER",
+          "30/36NCL",
+          "3036",
+          "30RXL",
+          "40",
+          "40/36",
+          "40/36 DRUM CHIPPER",
+          "40/36 TRACK CHIPPER",
+          "40/36 WHOLE TREE CHIPPER",
+          "40/36NCL",
+          "48",
+          "48 CHIP-PAC",
+          "50",
+          "50/36 MOUNTAIN GOAT",
+          "50/48",
+          "50/48X",
+          "550",
+          "6036",
+          "BEEVER",
+          "BEEVER M12D",
+          "BEEVER M12R",
+          "BEEVER M12RX",
+          "BEEVER M14R",
+          "BEEVER M15R",
+          "BEEVER M15RX",
+          "BEEVER M17RX",
+          "BEEVER M18R",
+          "BEEVER M18RX",
+          "BEEVER M20R",
+          "BEEVER M6R",
+          "BLIZZARD 12",
+          "BOXER",
+          "BOXER X7",
+          "BVR10",
+          "BVR13",
+          "BVR16",
+          "BVR19",
+          "CYCLONE 8",
+          "EEGER BEEVER",
+          "EEGER BEEVER 1215",
+          "EEGER BEEVER 1415",
+          "EEGER BEEVER 1418",
+          "EEGER BEEVER 1621",
+          "EEGER BEEVER 1621X",
+          "EEGER BEEVER 1821",
+          "EEGER BEEVER 1922",
+          "EEGER BEEVER 2131",
+          "EEGER BEEVER 2230",
+          "EEGER BEEVER 812",
+          "EEGER BEEVER TOW BEHIND CHIPPER",
+          "HURRICANE 2400XL",
+          "M12",
+          "M12R",
+          "M12RX",
+          "M14",
+          "M14R",
+          "M15",
+          "M15R",
+          "M15RX",
+          "M20",
+          "M20R",
+          "M20R BEEVER TRACK CHIPPER",
+          "RXL 30",
+          "TORNADO",
+          "TORNADO 13",
+          "TORNADO 15",
+          "TW280PHB",
+          "TWISTER",
+          "TWISTER 12",
+          "TYPHOON 20"
+        ],
+        "PETERSON PACIFIC": [
+          "4300",
+          "4300B",
+          "4310",
+          "4310B",
+          "5000",
+          "5000G",
+          "5900",
+          "6710B",
+          "DDC5000",
+          "DDC5000G"
+        ],
+        "PISTENBULLY": [
+          "SNOWCAT"
+        ],
+        "PRECISION": [
+          "23\" CHIPPER"
+        ],
+        "PRECISION HUSKY": [
+          "2366",
+          "2466"
+        ],
+        "RABAUD": [
+          "XYLOCHIP",
+          "XYLOCHIP 160E"
+        ],
+        "RAYCO": [
+          "RC12",
+          "RC1522G",
+          "RC6",
+          "RC6D"
+        ],
+        "SHRED-ALL": [
+          "B5600 CHIPPER"
+        ],
+        "TIMBERWOLF": [
+          "TW125PH",
+          "TW13/75",
+          "TW13/75G",
+          "TW160PH",
+          "TW230",
+          "TW230DHB",
+          "TW230HB",
+          "TW230VTR",
+          "TW280",
+          "TW280FTR",
+          "TW280HB",
+          "TW280PHB"
+        ],
+        "TRELAN": [
+          "23",
+          "23L",
+          "23RC",
+          "786-WRC",
+          "DL-18"
+        ],
+        "VERMEER": [
+          "1250",
+          "1250BC",
+          "2300",
+          "AX17",
+          "AX19",
+          "BC100",
+          "BC1000",
+          "BC1000XL",
+          "BC100XL",
+          "BC1200",
+          "BC1200XL",
+          "BC1230",
+          "BC1230A",
+          "BC1250",
+          "BC1250A",
+          "BC1400",
+          "BC1400TX",
+          "BC1500",
+          "BC1500XL",
+          "BC160",
+          "BC160XL",
+          "BC1800",
+          "BC1800A",
+          "BC1800XL",
+          "BC190",
+          "BC190XL",
+          "BC2000XL",
+          "BC230XL",
+          "BC600",
+          "BC600XL",
+          "BC625",
+          "BC625A",
+          "BC700",
+          "BC700XL",
+          "BC900",
+          "BC900XL",
+          "WC2300",
+          "WC2300 XL",
+          "WC2300XL",
+          "WC2500",
+          "WC2500TX",
+          "WC2500XL"
+        ],
+        "WALLENSTEIN": [
+          "BX625",
+          "BXC34",
+          "BXMC",
+          "BXMC32S",
+          "BXMC3409B",
+          "BXMT3213",
+          "BXMT4238",
+          "BXT",
+          "BXT36",
+          "BXT36S",
+          "BXT6238",
+          "BXT72",
+          "BXT72S",
+          "BXTR",
+          "BXTR5224",
+          "BXTR6438",
+          "BXTR6438B",
+          "CR",
+          "CR60"
+        ],
+        "WOODSMAN": [
+          "2018",
+          "334",
+          "337FC",
+          "430",
+          "430T",
+          "750"
+        ]
+      },
+      "Slasher Saws": {
+        "CSI": [
+          "DL4200",
+          "DL4400",
+          "DL4400R",
+          "R60"
+        ],
+        "CTR": [
+          "42IP",
+          "50IP"
+        ],
+        "HOOD": [
+          "60",
+          "72"
+        ]
+      },
+      "Yarders": {
+        "CATERPILLAR": [
+          "568",
+          "568LL"
+        ],
+        "CUMMINS": [
+          "TMY 45"
+        ],
+        "DIAMOND": [
+          "D210",
+          "DS2646"
+        ],
+        "FIAT": [
+          "KOLLER K300"
+        ],
+        "HYUNDAI": [
+          "ROBEX 290"
+        ],
+        "JOHN DEERE": [
+          "290",
+          "290G LC",
+          "330 LC",
+          "690DLC",
+          "959",
+          "959K"
+        ],
+        "LINK-BELT": [
+          "LS 98 T4",
+          "LS 98 TL"
+        ],
+        "MADILL": [
+          "071",
+          "120",
+          "3800",
+          "3800C"
+        ],
+        "THUNDERBIRD": [
+          "PSY200",
+          "TMY40",
+          "TMY45",
+          "TMY50",
+          "TMY70",
+          "TSY225",
+          "TSY255",
+          "TSY6140SLR",
+          "TSY6155",
+          "TSY6255",
+          "TTY45",
+          "TTY6150",
+          "TY 6140",
+          "TY90"
+        ],
+        "WASHINGTON": [
+          "118",
+          "78A"
+        ]
+      }
+    },
+    "Parts And Attachments": {
+      "Attachments": {
+        "BOBCAT": [
+          "4IN1 BUCKET",
+          "72HF BRUSHCAT",
+          "76TILLER",
+          "BRUSHCAT 60HF",
+          "BRUSHCAT 66SF",
+          "BRUSHCAT 72HF",
+          "BRUSHCAT 72RC HF",
+          "BRUSHCAT 72RC SF",
+          "BRUSHCAT 72RCH",
+          "BRUSHCAT 72S",
+          "BRUSHCAT 72X",
+          "BRUSHCAT 80RC HF",
+          "BRUSHCAT60",
+          "CT60 MOWER",
+          "LT313 TRENCHER",
+          "WS18 WHEEL SAW"
+        ],
+        "CATERPILLAR": [
+          "BR378",
+          "VPAT SWEEPS",
+          "HM112C",
+          "L90 BUCKET",
+          "THUMB COUPLER"
+        ],
+        "DOOSAN": [
+          "EEA-HD DIGGING BUCKET, U20S TEETH"
+        ],
+        "FAE": [
+          "BL1/SSL-150VT UNIV FORESTRY MULCHER"
+        ],
+        "FECON": [
+          "BH074SS2 MULCHING HEAD",
+          "BH085 SS BULL HOG MULCHING HEAD",
+          "BH74SS BULLHOG MULCHING HEAD",
+          "FDM86 DECK MULCHING HEAD"
+        ],
+        "JOHN DEERE": [
+          "35G COMP EXC BUCKET",
+          "844K LOG FORKS GRAPPLE",
+          "C78 CONSTRUCTION BUCKET",
+          "GR72 GRAPPLE",
+          "GR78B ROCK GRAPPLE",
+          "GR84 GRAPPLE",
+          "GS84B SCRAP GRAPPLE",
+          "MP78B MULTI-PURPOSE BUCKET",
+          "P48 PALLET FORKS",
+          "RC72B ROTARY CUTTER"
+        ],
+        "KUBOTA": [
+          "SC2572 ROTARTY CUTTER"
+        ],
+        "LIEBHERR": [
+          "GM20C REFURBISCH LOG GRAPPLE WOOD GRAB LIEBHERR LH"
+        ],
+        "QUADCO": [
+          "QS600B PROCESSOR HEAD"
+        ],
+        "ROTOBEC": [
+          "RGS750 SAW BUNDLE"
+        ],
+        "SEPPI": [
+          "SKID STEER MULCHER (CL175)"
+        ],
+        "VERMEER": [
+          "MSSA305 - TILLER",
+          "ULG46 LOG GRAPPLE"
+        ],
+        "VIRNIG": [
+          "V30 GRAPPLE",
+          "V40 BRUSH CUTTER",
+          "V40 SKELETON GRAPPLE",
+          "V50 SKELETON GRAPPLE"
+        ],
+        "CWS": [
+          "924G WHEEL LOADER GRAPPLE"
+        ],
+        "DYMAX": [
+          "BALLAST BROOM STANDARD GUAGE 20T",
+          "BALLAST BROOM WIDE GAUGE 20T"
+        ],
+        "FUCHS": [
+          "GRAPPLE 800LTR"
+        ],
+        "LOG MAX": [
+          "5000D PROCESSING HEAD",
+          "6000B PROCESSING HEAD",
+          "7000 PROCESSING HEAD",
+          "7000C PROCESSING HEAD",
+          "7000XT DANGLE PROCESSING HEAD",
+          "7000XT FIXED PROCESSING HEAD"
+        ],
+        "PONSSE": [
+          "H60 HARVESTER HEAD",
+          "H73 HARVESTER HEAD",
+          "H6 HEAD",
+          "H7 HEAD",
+          "H8 HEAD"
+        ],
+        "RISLEY": [
+          "ROTOSAW 2600T"
+        ],
+        "WARATAH": [
+          "622B PROCESSING HEAD",
+          "H270 PROCESSING HEAD",
+          "H480C PROCESSING HEAD",
+          "HTH 616C PROCESSING HEAD",
+          "HTH 618C PROCESSING HEAD"
+        ]
+      },
+      "Grapple Saws": {
+        "ROTOBEC": [
+          "4552HD"
+        ]
+      },
+      "Grapples": {
+        "ROTOBEC": [
+          "070CHD"
+        ]
+      },
+      "Masticating Heads": {
+        "CATERPILLAR": [
+          "HM316"
+        ],
+        "FECON": [
+          "BH40"
+        ],
+        "SEPPI": [
+          "CL150"
+        ]
+      },
+      "Winches": {
+        "CLARK": [
+          "667F"
+        ]
+      }
+    },
+    "Sawmill Equipment": {
+      "Sawmills": {
+        "CRYTEC POWER": [
+          "RS18",
+          "RS18G",
+          "SM4200",
+          "SM6000"
+        ],
+        "MORBARK": [
+          "1000",
+          "STAC TRAC"
+        ],
+        "TIMBERWOLF": [
+          "TWC-12",
+          "TWC-16",
+          "TWC-24",
+          "TWC-32"
+        ],
+        "TIMBER": [
+          "HARVESTER 36HTD25 PORTABLE SAWMILL"
+        ],
+        "TIMBERKING": [
+          "B-16",
+          "TK1600"
+        ],
+        "WOOD-MIZER": [
+          "LT15",
+          "LT35",
+          "LT35HD",
+          "LT40",
+          "LT40HD",
+          "WOODMIZER LT40 ELECTRIC",
+          "LT70",
+          "LT70 PORTABLE SAWMILL",
+          "LT70HD 62HP W/ REMOTE",
+          "LX450",
+          "WM4500"
+        ]
+      },
+      "Sawmill Machinery": {
+        "BUHLER": [
+          "500HP PELLET MILL"
+        ],
+        "MORBARK": [
+          "PSP",
+          "PS8"
+        ],
+        "SAWMILL": [
+          "CARDINAL",
+          "JACKSON SAWMILL"
+        ],
+        "TIMBERKING": [
+          "2000 SAWMILL"
+        ]
+      }
+    },
+    "Trailers": {
+      "Log Trailers": {
+        "BWS": [
+          "QUAD AXLE LOG TRAILER"
+        ],
+        "CLARK": [
+          "40' 4 BUNK TRAILER"
+        ],
+        "DIAMOND": [
+          "PLATE TRI AXLE LOG TRAILER"
+        ],
+        "DORSEY": [
+          "42' 4 BUNK LOG TRAILER",
+          "45' 5 BUNK TRI AXLE LOG TRAILER",
+          "50' 8 AXLE 4 BUNK LOG TRAILER",
+          "DEMOLITION TRAILER",
+          "LG40",
+          "LG42"
+        ],
+        "EAST": [
+          "45' TRI AXLE BUNK TRAILER",
+          "45' WALKING FLOOR CHIP TRAILER"
+        ],
+        "FRUEHAUF": [
+          "45' 4 BUNK LOG TRAILER",
+          "45' LOG TRAILER",
+          "48' LOG TRAILER",
+          "5 AXLE LOG TRAILER",
+          "50' 8 AXLE 4 BUNK LOG TRAILER",
+          "TRAILERS"
+        ],
+        "GREAT LAKES": [
+          "42' LOG TRAILER",
+          "42' RAIL TRAILER",
+          "42' SPREAD AXLE TRAILER",
+          "42' SPREAD TRI AXLE RAIL TRAILER",
+          "42' TRAILER",
+          "42' TRI AXLE CENTER MOUNT RAIL TRAILER",
+          "42' TRI AXLE LOG TRAILER",
+          "42' TRI AXLE RAIL TRAILER",
+          "42' TRI-AXLE TRAILER",
+          "42' TRIPLE AXLE RAIL TRAILER",
+          "45' SPREAD AXLE LOG TRAILER",
+          "45' SPREED AXLE DROP DECK RAIL TRAILER",
+          "45' TRI-AXLE BUNK TRAILER",
+          "46' CENTER MOUNT TRAILER",
+          "46' TRI AXLE RAIL TRAILER",
+          "48' TRI AXLE TRAILER",
+          "5 BUNK 45' RAIL TRAILER",
+          "TRI AXLE TRAILER",
+          "TRI-AXLE RAIL TRAILER",
+          "TRI-AXLE TRAILER"
+        ],
+        "KESLA": [
+          "203T LOG TRAILER"
+        ],
+        "MANAC": [
+          "DARKWING FLATBED LOG TRAILER"
+        ],
+        "MCLENDON": [
+          "FT40-8L LOG TRAILER",
+          "FT42-8L LOG TRAILER"
+        ],
+        "METAVIC": [
+          "1800XP LOG TRAILER"
+        ],
+        "PITTS": [
+          "3 BUNK LOG TRAILER",
+          "4 BOLSTER (DOUBLE BUNK), LOG TRAILER",
+          "42' 4 BOLSTER TREE LENGTH LOG TRAILER",
+          "42' 4 BUNK LOG TRAILER",
+          "42' 6 BUNK LOG TRAILER",
+          "DOUBLE BUNK TRAILER",
+          "FOUR BOLSTER LOG TRAILERS",
+          "LOAD PAYING LOG TRAILER",
+          "LT40",
+          "PT22",
+          "TRI AXLE LOG TRAILER"
+        ],
+        "PRATT": [
+          "48' 5 BUNK TRI AXLE LOG TRAILERS",
+          "48' TRI AXLE CENTER MOUNT LOG TRAILER"
+        ],
+        "SAVAGE": [
+          "42' RAIL TRAILER",
+          "42' TRI AXLE 4 BUNK TRAILER",
+          "47' 5 BUNK TRI AXLE LOG TRAILER",
+          "48' 5 BUNK TRI AXLE LOG TRAILER"
+        ],
+        "STALITE": [
+          "3 AXLE TRAILER",
+          "5 BUNK LOG TRAILER"
+        ],
+        "SUPERIOR": [
+          "45' TRI AXLE TRAILER",
+          "TRI AXLE LOG TRAILER",
+          "TRI-AXLE 45' TRAILER"
+        ],
+        "TRAIL KING": [
+          "45' TANDEM AXLE BUNK TRAILER"
+        ],
+        "TRANSCRAFT": [
+          "4 BUNK 42' LOG TRAILER",
+          "40' LOG TRAILER",
+          "42' LOG TRAILER",
+          "42' TRI AXLE FLATBED TRAILER",
+          "45' TRI-AXLE 5 BUNK FULLY ENCLOSED LOG TRAILER",
+          "48' BUNK SPREAD AXLE RAIL TRAILER",
+          "48' BUNK TRAILER",
+          "48' FIVE BUNK TRI-AXLE LOG TRAILER",
+          "48' SPREAD AXLE FLATBED 5 BUNK LOG TRAILER",
+          "48' TL-2000 SPREAD AXLE BUNK TRAILER",
+          "48' TRI-AXLE BUNK TRAILER",
+          "TRIPLE AXLE 5 BUNK LOG TRAILER"
+        ]
+      },
+      "Flatbed / Dropdeck Trailers": {
+        "BIG JOHN": [
+          "42'"
+        ],
+        "CHAMBERS": [
+          "TOWMASTER MODEL OT-50"
+        ],
+        "FRUEHAUF": [
+          "1997"
+        ],
+        "LOAD KING": [
+          "PCS 50/70-2"
+        ],
+        "PEERLESS": [
+          "45'",
+          "48'"
+        ],
+        "PITTS": [
+          "42'"
+        ],
+        "WILKENS": [
+          "50'"
+        ]
+      },
+      "Lowboy Trailers": {
+        "BIG JOHN": [
+          "15TON"
+        ],
+        "FONTAINE SPECIALIZED": [
+          "TH55FLD 55TON NGB RGN"
+        ],
+        "HUDSON": [
+          "20TON"
+        ],
+        "HYSTER": [
+          "50 TON"
+        ],
+        "LOAD KING": [
+          "553-SS"
+        ],
+        "PITTS": [
+          "55 TON"
+        ],
+        "TALBERT": [
+          "35 TON",
+          "50 TON",
+          "TRI AXLE LOWBOY"
+        ],
+        "TOWERMASTER": [
+          "T-50"
+        ],
+        "TOWMASTERS": [
+          "T-110DTG 55 TON LOWBOY"
+        ],
+        "TRAIL KING": [
+          "1990S TRAIL KING 30 TON LOWBOY",
+          "3-3-2 HEAVY HAUL LOWBOY",
+          "RGN 50",
+          "TK 20'"
+        ],
+        "WALLACE": [
+          "LOWBOY"
+        ],
+        "XL": [
+          "110 LOWBOY TRAILER"
+        ]
+      }
+    },
+    "Tree Service Equipment": {
+      "Bucket Trucks": {
+        "FORD": [
+          "F800"
+        ]
+      },
+      "Chippers": {
+        "BANDIT": [
+          "12XP",
+          "1400",
+          "15XP",
+          "200XP",
+          "INTIMIDATOR 1590XP CHIPPER"
+        ],
+        "RAYCO": [
+          "RG 1220 CHIPPER",
+          "RG1220"
+        ],
+        "VERMEER": [
+          "BC1000XL",
+          "BC1500",
+          "BC1500 BRUSH CHIPPER",
+          "BC1800 CHIPPER"
+        ]
+      },
+      "Lifts": {
+        "INTERNATIONAL": [
+          "4400"
+        ],
+        "MOROOKA": [
+          "MST800VD"
+        ]
+      },
+      "Trimmers": {
+        "TIMBERJACK": [
+          "XT-52"
+        ]
+      }
+    },
+    "Trucks": {
+      "Bucket Trucks": {
+        "INTERNATIONAL": [
+          "4300",
+          "4900",
+          "7400"
+        ]
+      },
+      "Chip Trucks": {
+        "FORD": [
+          "F800"
+        ],
+        "INTERNATIONAL": [
+          "4700"
+        ]
+      },
+      "Day Cab Trucks": {
+        "INTERNATIONAL": [
+          "4900",
+          "9200I",
+          "9670"
+        ]
+      },
+      "Dump Trucks": {
+        "FORD": [
+          "F-750",
+          "L9000"
+        ],
+        "INTERNATIONAL": [
+          "4700"
+        ]
+      },
+      "Grapple Trucks": {
+        "INTERNATIONAL": [
+          "2674"
+        ]
+      },
+      "Lifts": {
+        "INTERNATIONAL": [
+          "4400"
+        ]
+      },
+      "Log Trucks": {
+        "FORD": [
+          "F 800",
+          "F-350",
+          "F-450",
+          "F-550",
+          "F-700",
+          "F-250",
+          "F350",
+          "F-600",
+          "F-750",
+          "F-800",
+          "F9000",
+          "L8000",
+          "L8501",
+          "L9000",
+          "LTL9000"
+        ],
+        "INTERNATIONAL": [
+          "150",
+          "2574",
+          "2600",
+          "2674",
+          "4000",
+          "4700",
+          "4900",
+          "5000",
+          "5900",
+          "5900I",
+          "8100",
+          "8600",
+          "9000I",
+          "9100",
+          "9200",
+          "9370",
+          "9400",
+          "9400I",
+          "9900",
+          "DT466",
+          "EAGLE",
+          "HX",
+          "LONESTAR",
+          "PROSTAR",
+          "S1900",
+          "7500"
+        ],
+        "VOLVO": [
+          "A25C",
+          "A35D",
+          "VHD",
+          "VHD64B200",
+          "VNL64T300",
+          "VNM",
+          "VNM64T"
+        ],
+        "CATERPILLAR": [
+          "730"
+        ],
+        "CHEVY": [
+          "3500",
+          "3500 HD",
+          "3500HD",
+          "6500",
+          "C4500",
+          "C5500",
+          "C7500"
+        ],
+        "FREIGHTLINER": [
+          "114SD",
+          "3406",
+          "BUSINESS CLASS M2",
+          "BUSINESS CLASS M2 106",
+          "CASCADA",
+          "CASCADIA",
+          "CLASSIC",
+          "COLUMBIA",
+          "COLUMBIA 120",
+          "COLUMBIA CL120",
+          "CORONADO",
+          "FL106",
+          "FL120",
+          "FL70",
+          "FL80",
+          "FLD 120",
+          "FLD 60",
+          "FLD120",
+          "LS204ST"
+        ],
+        "GENERAL": [
+          "AM GENERAL"
+        ],
+        "GMC": [
+          "3500HD",
+          "5500",
+          "6000",
+          "C7500"
+        ],
+        "KENWORTH": [
+          "850",
+          "900",
+          "C500",
+          "L900",
+          "T600",
+          "T800",
+          "T800B",
+          "T880",
+          "W900",
+          "W900B",
+          "W900L"
+        ],
+        "MACK": [
+          "CH600",
+          "CH613",
+          "CL713",
+          "CL733",
+          "CX613",
+          "DM686S",
+          "GRANITE",
+          "GRANITE CV 713",
+          "GRANITE GU713",
+          "PINNACLE",
+          "PINNACLE 64T",
+          "R 688",
+          "RD 688",
+          "RD 888SX",
+          "RD686",
+          "RD686ST",
+          "RD800",
+          "SUPERLINER",
+          "VISION"
+        ],
+        "PETERBILT": [
+          "357",
+          "359",
+          "362",
+          "367",
+          "377",
+          "378",
+          "379",
+          "385",
+          "386",
+          "387",
+          "388",
+          "389",
+          "567",
+          "589"
+        ],
+        "STERLING": [
+          "9500",
+          "A9500",
+          "L7500",
+          "L9522",
+          "9522"
+        ],
+        "WESTERN STAR": [
+          "4900",
+          "4900EX",
+          "4900FA",
+          "4900SA",
+          "4900SB",
+          "4900SF",
+          "4908",
+          "4964",
+          "4964EX",
+          "4964F",
+          "4964SX",
+          "49X",
+          "5900",
+          "6900",
+          "6900XD",
+          "SB"
+        ]
+      }
+    }
+  }
+}

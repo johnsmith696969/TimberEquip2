@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Public listing images (readable by everyone, writable by owners/admins)
+    match /listings/{listingId}/images/{filePath=**} {
+      allow read: if true;
+      allow write: if request.auth != null 
+        && (isDraftUploader() || isOwner(request.auth.uid, listingId) || isAdmin(request.auth.uid))
+        && validateImage(request.resource);
+      allow delete: if request.auth != null 
+        && (isUploader(resource) || isOwner(request.auth.uid, listingId) || isAdmin(request.auth.uid));
+    }
+
+    // Listing videos (readable by everyone, writable by owners/admins)
+    match /listings/{listingId}/videos/{filePath=**} {
+      allow read: if true;
+      allow write: if request.auth != null 
+        && (isDraftUploader() || isOwner(request.auth.uid, listingId) || isAdmin(request.auth.uid))
+        && validateVideo(request.resource);
+      allow delete: if request.auth != null 
+        && (isUploader(resource) || isOwner(request.auth.uid, listingId) || isAdmin(request.auth.uid));
+    }
+
+    // Brand assets (logos, favicons) - readable by all, writable by admins only
+    match /brand-assets/{assetType}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && isAdmin(request.auth.uid);
+      allow delete: if request.auth != null && isAdmin(request.auth.uid);
+    }
+
+    // User avatars (readable by all, writable by owner/admins)
+    match /users/{userId}/avatar/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null 
+        && (request.auth.uid == userId || isAdmin(request.auth.uid))
+        && validateImage(request.resource);
+      allow delete: if request.auth != null 
+        && (request.auth.uid == userId || isAdmin(request.auth.uid));
+    }
+
+    // User profile photos
+    match /users/{userId}/photos/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null 
+        && (request.auth.uid == userId || isAdmin(request.auth.uid))
+        && validateImage(request.resource);
+      allow delete: if request.auth != null 
+        && (request.auth.uid == userId || isAdmin(request.auth.uid));
+    }
+
+    // Private files (invoices, documents) - accessible only by owner/admins
+    match /private/{userId}/documents/{fileName} {
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
+    }
+
+    // Temporary uploads (auto-delete files)
+    match /temp/{userId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Default deny all
+    match /{allPaths=**} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // Helper functions
+    function isAdmin(uid) {
+      // First check token email (works without Firestore lookup)
+      return (request.auth.token.email in ['calebhappy@gmail.com'] && request.auth.token.email_verified == true) ||
+        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+    }
+
+    function isOwner(uid, listingId) {
+      return get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/listings/$(listingId)).data.sellerUid == uid ||
+        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/listings/$(listingId)).data.sellerId == uid ||
+        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/listings/$(listingId)).data.userId == uid;
+    }
+
+    function isDraftUploader() {
+      return request.resource.metadata.uploadedBy == request.auth.uid;
+    }
+
+    function isUploader(resource) {
+      return resource.metadata.uploadedBy == request.auth.uid;
+    }
+
+    function validateImage(resource) {
+      // Max 10MB for images
+      return resource.size < 10 * 1024 * 1024 
+        && resource.contentType.matches('image/.*');
+    }
+
+    function validateVideo(resource) {
+      // Max 500MB for videos
+      return resource.size < 500 * 1024 * 1024 
+        && resource.contentType.matches('video/.*');
+    }
+  }
+}

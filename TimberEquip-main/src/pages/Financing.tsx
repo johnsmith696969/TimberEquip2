@@ -1,0 +1,338 @@
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { 
+  Calculator, ShieldCheck, Clock, 
+  ArrowRight, CheckCircle2, AlertCircle,
+  TrendingUp, Activity, LayoutDashboard,
+  ChevronRight, DollarSign, FileText,
+  Building, Briefcase, User
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { equipmentService } from '../services/equipmentService';
+import { useAuth } from '../components/AuthContext';
+import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+
+export function Financing() {
+  const { user } = useAuth();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [formData, setFormData] = useState({
+    businessStructure: 'Corporation',
+    legalEntityName: '',
+    yearsInOperation: '',
+    annualRevenue: '',
+    assetValue: '',
+    requestedAmount: '',
+    termLength: '60',
+    downPayment: '',
+    contactName: '',
+    contactEmail: user?.email || '',
+    contactPhone: ''
+  });
+
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      legalEntityName: prev.legalEntityName || user?.company || '',
+      contactName: prev.contactName || user?.displayName || '',
+      contactEmail: prev.contactEmail || user?.email || '',
+      contactPhone: prev.contactPhone || user?.phoneNumber || '',
+    }));
+  }, [user?.company, user?.displayName, user?.email, user?.phoneNumber]);
+
+  const handleNext = () => setStep(prev => prev + 1);
+  const handlePrev = () => setStep(prev => prev - 1);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setSubmitError('');
+
+    try {
+      const rcToken = await getRecaptchaToken('FINANCING_CENTER');
+      if (rcToken) {
+        const pass = await assessRecaptcha(rcToken, 'FINANCING_CENTER');
+        if (!pass) {
+          setSubmitError('Security check failed. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      await equipmentService.submitFinancingRequest({
+        applicantName: formData.contactName || user?.displayName || 'Unknown Applicant',
+        applicantEmail: formData.contactEmail || user?.email || '',
+        applicantPhone: formData.contactPhone,
+        company: formData.legalEntityName,
+        requestedAmount: formData.requestedAmount ? Number(formData.requestedAmount) : undefined,
+        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Annual revenue: ${formData.annualRevenue}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`
+      });
+
+      setLoading(false);
+      setStep(4); // Success step
+    } catch (error) {
+      console.error('Failed to submit financing request:', error);
+      setSubmitError('Unable to submit your financing application right now. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-bg">
+      {/* Header */}
+      <div className="bg-ink text-white py-24 px-4 md:px-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
+        <div className="max-w-[1600px] mx-auto relative z-10">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-accent flex items-center justify-center rounded-sm">
+              <Calculator className="text-white" size={20} />
+            </div>
+            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Financing Center</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+            Institutional <br />
+            <span className="text-accent">Financing</span>
+          </h1>
+          <p className="text-white/60 font-medium max-w-2xl leading-relaxed">
+            Customized credit facilities for forestry operations. 
+            Fast approvals, flexible terms, and competitive rates tailored to your business cycle.
+          </p>
+        </div>
+      </div>
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+          {/* Form Section */}
+          <div className="lg:col-span-8">
+            <div className="bg-bg border border-line shadow-2xl overflow-hidden">
+              {/* Progress Bar */}
+              <div className="h-1.5 bg-line flex">
+                {[1, 2, 3].map(i => (
+                  <div 
+                    key={i} 
+                    className={`flex-1 transition-all duration-500 ${step >= i ? 'bg-accent' : 'bg-transparent'}`}
+                  ></div>
+                ))}
+              </div>
+
+              <div className="p-12">
+                <AnimatePresence mode="wait">
+                  {step === 1 && (
+                    <motion.div 
+                      key="step1"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-10"
+                    >
+                      <div className="flex flex-col">
+                        <span className="label-micro text-accent mb-2 block">Step 01</span>
+                        <h3 className="text-3xl font-black uppercase tracking-tighter">Entity Information</h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Business Structure</label>
+                          <select value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                            <option>Corporation</option>
+                            <option>LLC</option>
+                            <option>Partnership</option>
+                            <option>Sole Proprietorship</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Legal Entity Name</label>
+                          <input type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="E.G. NORTHWEST LOGGING LLC" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Years in Operation</label>
+                          <input type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Annual Revenue (USD)</label>
+                          <input type="number" value={formData.annualRevenue} onChange={(e) => setFormData({ ...formData, annualRevenue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                      </div>
+
+                      <button onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit">
+                        Continue to Equipment Details
+                        <ArrowRight className="ml-3" size={18} />
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {step === 2 && (
+                    <motion.div 
+                      key="step2"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-10"
+                    >
+                      <div className="flex flex-col">
+                        <span className="label-micro text-accent mb-2 block">Step 02</span>
+                        <h3 className="text-3xl font-black uppercase tracking-tighter">Equipment & Credit Requirements</h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Estimated Equipment Value (USD)</label>
+                          <input type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Requested Loan Amount (USD)</label>
+                          <input type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Preferred Term Length</label>
+                          <select value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                            <option>24 Months</option>
+                            <option>36 Months</option>
+                            <option>48 Months</option>
+                            <option>60 Months</option>
+                            <option>72 Months</option>
+                            <option>84 Months</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Down Payment Available (USD)</label>
+                          <input type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                      </div>
+
+                      <div className="flex space-x-4">
+                        <button onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
+                        <button onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 flex-1">
+                          Continue to Verification
+                          <ArrowRight className="ml-3" size={18} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {step === 3 && (
+                    <motion.div 
+                      key="step3"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-10"
+                    >
+                      <div className="flex flex-col">
+                        <span className="label-micro text-accent mb-2 block">Step 03</span>
+                        <h3 className="text-3xl font-black uppercase tracking-tighter">Identity Verification</h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Primary Contact Name</label>
+                          <input type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <label className="label-micro">Primary Contact Email</label>
+                          <input type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                        <div className="flex flex-col space-y-3 md:col-span-2">
+                          <label className="label-micro">Primary Contact Phone</label>
+                          <input type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                        </div>
+                      </div>
+
+                      <div className="bg-surface/30 border border-line p-6 flex items-start space-x-4">
+                        <input type="checkbox" className="w-5 h-5 border-line rounded-sm accent-accent mt-1" id="consent" />
+                        <label htmlFor="consent" className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest cursor-pointer">
+                          I authorize TimberEquip Financing and its partners to perform a credit inquiry and verify all provided entity information. 
+                          I understand that this is an initial application and subject to final approval.
+                        </label>
+                      </div>
+
+                      {submitError && (
+                        <div className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm">
+                          {submitError}
+                        </div>
+                      )}
+
+                      <p className="text-[10px] font-medium text-muted uppercase tracking-widest">
+                        Protected by reCAPTCHA Enterprise before submission.
+                      </p>
+
+                      <div className="flex space-x-4">
+                        <button onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
+                        <button 
+                          onClick={handleSubmit} 
+                          disabled={loading}
+                          className="btn-industrial btn-accent py-5 px-12 flex-1 flex items-center justify-center"
+                        >
+                          {loading ? (
+                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <>
+                              Submit Application
+                              <ArrowRight className="ml-3" size={18} />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {step === 4 && (
+                    <motion.div 
+                      key="step4"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="py-20 flex flex-col items-center text-center"
+                    >
+                      <div className="w-24 h-24 bg-data/10 text-data flex items-center justify-center rounded-full mb-10">
+                        <CheckCircle2 size={48} />
+                      </div>
+                      <h3 className="text-4xl font-black uppercase tracking-tighter mb-4">Application Submitted</h3>
+                      <p className="text-muted font-medium max-w-md mb-12 leading-relaxed">
+                        Your credit application has been successfully submitted to the TimberEquip Financing center. 
+                        A credit officer will review your entity profile and contact you within 24 hours.
+                      </p>
+                      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+                        <Link to="/profile?tab=Financing" className="btn-industrial btn-accent py-5 px-12">
+                          View Application Status
+                        </Link>
+                        <Link to="/" className="btn-industrial py-5 px-12 bg-surface">
+                          Return Home
+                        </Link>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar Info */}
+          <div className="lg:col-span-4 space-y-8">
+            <div className="bg-surface border border-line p-8">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Financing Policy</h4>
+              <div className="space-y-8">
+                {[
+                  { title: 'Fast Approvals', desc: 'Initial credit decisions typically rendered within 24 hours.', icon: Clock },
+                  { title: 'Flexible Terms', desc: 'Customized repayment schedules up to 84 months.', icon: Activity },
+                  { title: 'Competitive Rates', desc: 'Starting from 6.25% APR for qualified entities.', icon: TrendingUp },
+                  { title: 'Secure Handling', desc: 'All financial data is encrypted via AES-256 encryption.', icon: ShieldCheck }
+                ].map((item, i) => (
+                  <div key={i} className="flex space-x-4">
+                    <div className="p-2 bg-bg border border-line rounded-sm h-fit">
+                      <item.icon className="text-accent" size={18} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black uppercase tracking-tight mb-1">{item.title}</span>
+                      <p className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

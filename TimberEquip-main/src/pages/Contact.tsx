@@ -1,0 +1,250 @@
+import React, { useState } from 'react';
+import { 
+  Mail, Phone, MapPin, 
+  Globe, ShieldCheck, Clock, 
+  ArrowRight, CheckCircle2, AlertCircle,
+  TrendingUp, Activity, LayoutDashboard,
+  ChevronRight, MessageSquare, Send,
+  Headphones, HelpCircle
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
+
+export function Contact() {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [contactError, setContactError] = useState('');
+  const [contactForm, setContactForm] = useState({
+    name: '',
+    email: '',
+    category: 'General Support',
+    message: '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setContactError('');
+    getRecaptchaToken('CONTACT').then(async (rcToken) => {
+      if (rcToken) {
+        const pass = await assessRecaptcha(rcToken, 'CONTACT');
+        if (!pass) {
+          setContactError('Security check failed. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+      try {
+        await addDoc(collection(db, 'contactRequests'), {
+          name: contactForm.name.trim(),
+          email: contactForm.email.trim().toLowerCase(),
+          category: contactForm.category,
+          message: contactForm.message.trim(),
+          source: 'contact-page',
+          createdAt: serverTimestamp(),
+          status: 'New',
+        });
+
+        setContactForm({
+          name: '',
+          email: '',
+          category: 'General Support',
+          message: '',
+        });
+        setLoading(false);
+        setStep(2);
+      } catch (error) {
+        console.error('Failed to submit contact request:', error);
+        setContactError('Unable to send your message right now. Please try again.');
+        setLoading(false);
+      }
+    });
+  };
+
+  return (
+    <div className="min-h-screen bg-bg">
+      {/* Editorial Header */}
+      <section className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
+        <div className="max-w-[1600px] mx-auto relative z-10">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-ink flex items-center justify-center rounded-sm">
+              <MessageSquare className="text-accent" size={20} />
+            </div>
+            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Contact Center</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+            Contact <br />
+            <span className="text-muted">Us</span>
+          </h1>
+          <p className="text-muted font-medium max-w-2xl leading-relaxed">
+            Direct access to our global support and market intelligence teams. 
+            Our team is available 24/7 for technical assistance and transaction support.
+          </p>
+        </div>
+      </section>
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+          {/* Form Section */}
+          <div className="lg:col-span-8">
+            <div className="bg-bg border border-line shadow-2xl overflow-hidden">
+              <div className="p-12">
+                <AnimatePresence mode="wait">
+                  {step === 1 ? (
+                    <motion.div 
+                      key="form"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-10"
+                    >
+                      <div className="flex flex-col">
+                        <span className="label-micro text-accent mb-2 block">Submission Process</span>
+                        <h3 className="text-3xl font-black uppercase tracking-tighter">Submit Inquiry</h3>
+                      </div>
+
+                      <form onSubmit={handleSubmit} className="space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div className="flex flex-col space-y-3">
+                            <label className="label-micro">Your Name</label>
+                            <input
+                              required
+                              type="text"
+                              value={contactForm.name}
+                              onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
+                              placeholder="E.G. JOHN DOE"
+                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                            />
+                          </div>
+                          <div className="flex flex-col space-y-3">
+                            <label className="label-micro">Email Address</label>
+                            <input
+                              required
+                              type="email"
+                              value={contactForm.email}
+                              onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
+                              placeholder="YOUR@EMAIL.COM"
+                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                            />
+                          </div>
+                          <div className="flex flex-col space-y-3 md:col-span-2">
+                            <label className="label-micro">Inquiry Category</label>
+                            <select
+                              value={contactForm.category}
+                              onChange={(e) => setContactForm((prev) => ({ ...prev, category: e.target.value }))}
+                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                            >
+                              <option>General Support</option>
+                              <option>Market Intelligence</option>
+                              <option>Technical Verification</option>
+                              <option>Financing Department</option>
+                              <option>Equipment Listing</option>
+                            </select>
+                          </div>
+                          <div className="flex flex-col space-y-3 md:col-span-2">
+                            <label className="label-micro">Message Content</label>
+                            <textarea
+                              required
+                              rows={6}
+                              value={contactForm.message}
+                              onChange={(e) => setContactForm((prev) => ({ ...prev, message: e.target.value }))}
+                              placeholder="Provide detailed information regarding your inquiry..."
+                              className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
+                            ></textarea>
+                          </div>
+                        </div>
+
+                        {contactError && (
+                          <p className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm mb-4">{contactError}</p>
+                        )}
+                        <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
+                          Protected by reCAPTCHA Enterprise before submission.
+                        </p>
+                        <button 
+                          type="submit" 
+                          disabled={loading}
+                          className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit flex items-center justify-center"
+                        >
+                          {loading ? (
+                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <>
+                              Send Inquiry
+                              <Send className="ml-3" size={18} />
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </motion.div>
+                  ) : (
+                    <motion.div 
+                      key="success"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="py-20 flex flex-col items-center text-center"
+                    >
+                      <div className="w-24 h-24 bg-data/10 text-data flex items-center justify-center rounded-full mb-10">
+                        <CheckCircle2 size={48} />
+                      </div>
+                      <h3 className="text-4xl font-black uppercase tracking-tighter mb-4">Message Sent</h3>
+                      <p className="text-muted font-medium max-w-md mb-12 leading-relaxed">
+                        Your inquiry has been successfully sent to the TimberEquip team. 
+                        A representative will review your message and respond within 24 hours.
+                      </p>
+                      <button onClick={() => setStep(1)} className="btn-industrial btn-accent py-5 px-12">
+                        Submit New Inquiry
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar Info */}
+          <div className="lg:col-span-4 space-y-8">
+            <div className="bg-surface border border-line p-8">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Contact Information</h4>
+              <div className="space-y-10">
+                {[
+                  { title: 'Global Support', desc: '+1 (800) TIMBER-EQUIP', icon: Headphones, link: 'tel:+18008462373' },
+                  { title: 'Email Support', desc: 'SUPPORT@TIMBEREQUIP.COM', icon: Mail, link: 'mailto:support@timberequip.com' },
+                  { title: 'Global HQ', desc: '4335 KINGSTON RD, DULUTH, MN 55803', icon: MapPin, link: '#' },
+                  { title: 'Market Hours', desc: '24/7 GLOBAL ACCESS', icon: Clock, link: '#' }
+                ].map((item, i) => (
+                  <a 
+                    key={i} 
+                    href={item.link}
+                    className="flex space-x-4 group"
+                  >
+                    <div className="p-3 bg-bg border border-line rounded-sm h-fit group-hover:border-accent transition-colors">
+                      <item.icon className="text-accent" size={20} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black uppercase tracking-tight mb-1 group-hover:text-accent transition-colors">{item.title}</span>
+                      <p className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest">{item.desc}</p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-ink p-8 text-white rounded-sm">
+              <div className="flex items-center space-x-3 mb-6">
+                <HelpCircle className="text-accent" size={24} />
+                <h4 className="text-sm font-black uppercase tracking-tighter">Knowledge Base</h4>
+              </div>
+              <p className="text-[11px] font-medium text-white/60 leading-relaxed mb-8">
+                Access our comprehensive documentation and FAQ center for immediate assistance.
+              </p>
+              <button className="btn-industrial btn-accent w-full py-4">Access FAQ Center</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

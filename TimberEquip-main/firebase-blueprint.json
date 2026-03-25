@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user account information and profile details.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "company": { "type": "string", "description": "Company name" },
+        "about": { "type": "string", "description": "About us / Biography section" },
+        "profileImage": { "type": "string", "description": "URL to profile image" },
+        "role": { "type": "string", "enum": ["user", "admin", "seller"], "description": "User role" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
+      },
+      "required": ["uid", "email", "name"]
+    },
+    "Listing": {
+      "title": "Equipment Listing",
+      "description": "Stores details about equipment for sale.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "manufacturer": { "type": "string" },
+        "model": { "type": "string" },
+        "year": { "type": "number" },
+        "price": { "type": "number" },
+        "hours": { "type": "number" },
+        "condition": { "type": "string" },
+        "location": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "specs": { "type": "object" },
+        "sellerId": { "type": "string", "description": "UID of the seller" },
+        "status": { "type": "string", "enum": ["active", "sold", "pending"], "description": "Listing status" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "marketValueEstimate": { "type": "number" }
+      },
+      "required": ["title", "manufacturer", "price", "sellerId", "status"]
+    },
+    "Inquiry": {
+      "title": "Lead Inquiry",
+      "description": "Stores inquiries made by buyers on listings.",
+      "type": "object",
+      "properties": {
+        "listingId": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "read", "replied"], "description": "Inquiry status" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["listingId", "buyerId", "sellerId", "message"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/listings/{listingId}": {
+      "schema": "Listing",
+      "description": "Equipment listings"
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": "Inquiry",
+      "description": "Buyer inquiries"
+    }
+  }
+}

@@ -7,7 +7,9 @@ Prerequisites: Node.js
 
 1. Install dependencies:
    `npm install`
-2. Set environment values in `.env.local` (including `GEMINI_API_KEY` if Gemini features are enabled)
+2. Set environment values in `.env.local`:
+   `VITE_FIREBASE_API_KEY=your_firebase_web_api_key`
+   `GEMINI_API_KEY=your_gemini_api_key` (only if Gemini features are enabled)
 3. Run the app:
    `npm run dev`
 
@@ -19,4 +21,9 @@ Prerequisites: Node.js
 
 Deploy with Firebase:
 
-`firebase deploy`
+`npx firebase-tools deploy --only firestore,functions,hosting`
+
+Notes:
+
+- Firestore deploys must target the named database configured in `firebase.json`.
+- Stripe and SendGrid production credentials are supplied through Firebase Functions secrets, not `.env.local`.

@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
+import { adminUserService } from '../services/adminUserService';
 import { cmsService } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
 import { billingService, Invoice, Subscription, BillingAuditLog } from '../services/billingService';
@@ -45,7 +46,7 @@ export function AdminDashboard() {
                 : authUser?.role === 'dealer'
                   ? 'Dealer'
                   : authUser?.role === 'individual_seller'
-                    ? 'Individual Seller'
+                    ? 'Owner Operator'
                     : authUser?.role === 'member'
                       ? 'Member'
                       : 'Buyer';
@@ -63,6 +64,25 @@ export function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [usersLoadError, setUsersLoadError] = useState('');
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [savingUserEdit, setSavingUserEdit] = useState(false);
+  const [pendingUserActionKey, setPendingUserActionKey] = useState('');
+  const [userEditForm, setUserEditForm] = useState<{
+    displayName: string;
+    email: string;
+    phoneNumber: string;
+    company: string;
+    role: UserRole;
+  }>({
+    displayName: '',
+    email: '',
+    phoneNumber: '',
+    company: '',
+    role: 'buyer'
+  });
   const [newManagedAccount, setNewManagedAccount] = useState<{
     displayName: string;
     email: string;
@@ -101,6 +121,70 @@ export function AdminDashboard() {
   });
   const [savingBlock, setSavingBlock] = useState(false);
 
+  const toMillis = (value: unknown): number => {
+    if (!value) return 0;
+    if (typeof value === 'string') return new Date(value).getTime() || 0;
+    if (typeof value === 'number') return value;
+    if (value instanceof Date) return value.getTime();
+    const ts = value as { seconds?: number; toDate?: () => Date };
+    if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+    if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+    return 0;
+  };
+
+  const formatTimestamp = (value: unknown) => {
+    const ms = toMillis(value);
+    if (!ms) return 'Unknown';
+    return new Date(ms).toLocaleString();
+  };
+
+  const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const downloadCsv = (filenamePrefix: string, headers: string[], rows: string[][]) => {
+    const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getAdminRoleDisplayLabel = (role: UserRole) => {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'admin':
+        return 'Admin';
+      case 'developer':
+        return 'Developer';
+      case 'content_manager':
+        return 'Content Manager';
+      case 'editor':
+        return 'Editor';
+      case 'dealer':
+        return 'Dealer';
+      case 'dealer_manager':
+        return 'Dealer Manager';
+      case 'dealer_staff':
+        return 'Dealer Staff';
+      case 'individual_seller':
+        return 'Owner Operator';
+      case 'member':
+      case 'buyer':
+        return 'Buyer';
+      default:
+        return 'Buyer';
+    }
+  };
+
+  const isPublishedPost = (post: BlogPost) => {
+    const status = String(post.status || '').trim().toLowerCase();
+    const reviewStatus = String(post.reviewStatus || '').trim().toLowerCase();
+    return status === 'published' || reviewStatus === 'published';
+  };
+
   // ── Real-time inquiry subscription ─────────────────────────────
   useEffect(() => {
     const unsubscribe = equipmentService.subscribeToInquiries((live) => {
@@ -111,38 +195,85 @@ export function AdminDashboard() {
 
   const exportInquiriesCSV = () => {
     const headers = ['ID', 'Buyer Name', 'Email', 'Phone', 'Status', 'Assigned To', 'Listing', 'Type', 'Spam Score', 'Response Time (min)', 'Message', 'Created At'];
-    const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const rows = inquiries.map((inq) => [
-      escape(inq.id),
-      escape(inq.buyerName),
-      escape(inq.buyerEmail),
-      escape(inq.buyerPhone),
-      escape(inq.status),
-      escape(inq.assignedToName || ''),
-      escape(inq.listingId || ''),
-      escape(inq.type),
-      escape(inq.spamScore ?? 0),
-      escape(inq.responseTimeMinutes ?? ''),
-      escape(inq.message),
-      escape(inq.createdAt),
-    ].join(','));
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `inquiries-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+      inq.id,
+      inq.buyerName,
+      inq.buyerEmail,
+      inq.buyerPhone,
+      inq.status,
+      inq.assignedToName || '',
+      inq.listingId || '',
+      inq.type,
+      String(inq.spamScore ?? 0),
+      String(inq.responseTimeMinutes ?? ''),
+      inq.message,
+      inq.createdAt,
+    ]);
+    downloadCsv('leads', headers, rows);
+  };
+
+  const exportCallsCSV = () => {
+    const headers = [
+      'Call ID',
+      'Timestamp',
+      'Status',
+      'Source',
+      'Is Authenticated',
+      'Caller UID',
+      'Caller Name',
+      'Caller Email',
+      'Caller Phone',
+      'Listing ID',
+      'Listing Title',
+      'Seller UID',
+      'Seller Name',
+      'Seller Phone',
+      'Duration Seconds'
+    ];
+
+    const rows = calls.map((call) => [
+      call.id,
+      formatTimestamp(call.createdAt),
+      call.status,
+      call.source || '',
+      call.isAuthenticated ? 'yes' : 'no',
+      call.callerUid || '',
+      call.callerName,
+      call.callerEmail || '',
+      call.callerPhone || '',
+      call.listingId,
+      call.listingTitle || '',
+      call.sellerUid || call.sellerId || '',
+      call.sellerName || '',
+      call.sellerPhone || '',
+      String(call.duration),
+    ]);
+
+    downloadCsv('calls', headers, rows);
+  };
+
+  const fetchUsers = async () => {
+    setUsersLoading(true);
+    setUsersLoadError('');
+    try {
+      const accountsData = await adminUserService.getUsers();
+      setAccounts(accountsData);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+      setUsersLoadError(err instanceof Error ? err.message : 'Failed to load users.');
+    } finally {
+      setUsersLoading(false);
+    }
   };
 
   const fetchData = async () => {
     setLoading(true);
+    // Fetch users independently so a failure doesn't block the rest of the dashboard
+    void fetchUsers();
     try {
-      const [listingsData, inquiriesData, accountsData, callsData] = await Promise.all([
+      const [listingsData, inquiriesData, callsData] = await Promise.all([
         equipmentService.getListings({ includeUnapproved: true, inStockOnly: false, sortBy: 'newest' }),
         equipmentService.getInquiries(),
-        equipmentService.getAccounts(),
         equipmentService.getCalls(),
       ]);
 
@@ -158,7 +289,6 @@ export function AdminDashboard() {
       }
 
       setInquiries(inquiriesData);
-      setAccounts(accountsData);
       setCalls(callsData);
 
       // Fetch billing data separately to avoid blocking if backend isn't ready
@@ -304,28 +434,268 @@ export function AdminDashboard() {
 
   const handleChangeUserRole = async (uid: string, role: UserRole) => {
     try {
-      await cmsService.updateUserRole(uid, role);
-      setAccounts(prev => prev.map(a => a.id === uid ? { ...a, role } : a));
+      const account = accounts.find((entry) => entry.id === uid);
+      if (!account) return;
+
+      const updatedAccount = await adminUserService.updateUser(uid, {
+        displayName: account.displayName || account.name,
+        email: account.email,
+        phoneNumber: account.phoneNumber || account.phone,
+        company: account.company,
+        role,
+      });
+
+      setAccounts(prev => prev.map(a => a.id === uid ? updatedAccount : a));
     } catch (err) {
       console.error('Error changing user role:', err);
+      alert(err instanceof Error ? err.message : 'Unable to update the user role.');
     }
   };
 
   const handleSuspendUser = async (uid: string) => {
-    if (!window.confirm('Suspend this user and change their role to Member?')) return;
+    if (!window.confirm('Lock this account and prevent sign-in?')) return;
     try {
-      await cmsService.suspendUser(uid);
-      setAccounts(prev => prev.map(a => a.id === uid ? { ...a, role: 'member', status: 'Suspended' } : a));
+      const updatedAccount = await adminUserService.lockUser(uid);
+      setAccounts(prev => prev.map(a => a.id === uid ? updatedAccount : a));
     } catch (err) {
       console.error('Error suspending user:', err);
+      alert(err instanceof Error ? err.message : 'Unable to lock this account.');
     }
   };
+
+  const openUserEditor = (account: Account) => {
+    setEditingAccount(account);
+    setUserEditForm({
+      displayName: account.displayName || account.name,
+      email: account.email,
+      phoneNumber: account.phoneNumber || account.phone || '',
+      company: account.company || '',
+      role: account.role,
+    });
+  };
+
+  const closeUserEditor = () => {
+    setEditingAccount(null);
+    setSavingUserEdit(false);
+    setUserEditForm({
+      displayName: '',
+      email: '',
+      phoneNumber: '',
+      company: '',
+      role: 'buyer',
+    });
+  };
+
+  const handleSaveUserEdits = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccount) return;
+
+    try {
+      setSavingUserEdit(true);
+      const updatedAccount = await adminUserService.updateUser(editingAccount.id, userEditForm);
+      setAccounts(prev => prev.map(account => account.id === editingAccount.id ? updatedAccount : account));
+      closeUserEditor();
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert(error instanceof Error ? error.message : 'Unable to update this user.');
+      setSavingUserEdit(false);
+    }
+  };
+
+  const runUserAction = async (uid: string, action: string, task: () => Promise<void>) => {
+    try {
+      setPendingUserActionKey(`${uid}:${action}`);
+      await task();
+    } catch (error) {
+      console.error(`Error running ${action} for user ${uid}:`, error);
+      alert(error instanceof Error ? error.message : 'Unable to complete that action.');
+    } finally {
+      setPendingUserActionKey('');
+    }
+  };
+
+  const handleSendPasswordReset = async (account: Account) => {
+    await runUserAction(account.id, 'reset', async () => {
+      await adminUserService.sendPasswordReset(account.id);
+      alert(`Password reset email sent to ${account.email}.`);
+    });
+  };
+
+  const handleLockUser = async (account: Account) => {
+    if (!window.confirm(`Lock ${account.name}'s account?`)) return;
+
+    await runUserAction(account.id, 'lock', async () => {
+      const updatedAccount = await adminUserService.lockUser(account.id);
+      setAccounts(prev => prev.map(entry => entry.id === account.id ? updatedAccount : entry));
+    });
+  };
+
+  const handleUnlockUser = async (account: Account) => {
+    await runUserAction(account.id, 'unlock', async () => {
+      const updatedAccount = await adminUserService.unlockUser(account.id);
+      setAccounts(prev => prev.map(entry => entry.id === account.id ? updatedAccount : entry));
+    });
+  };
+
+  const handleDeleteUser = async (account: Account) => {
+    if (!window.confirm(`Delete ${account.name} permanently? This removes both the profile and auth account.`)) return;
+
+    await runUserAction(account.id, 'delete', async () => {
+      await adminUserService.deleteUser(account.id);
+      setAccounts(prev => prev.filter(entry => entry.id !== account.id));
+    });
+  };
+
+  const isUserActionPending = (uid: string, action: string) => pendingUserActionKey === `${uid}:${action}`;
 
   const filteredListings = listings.filter(l => 
     l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (l.manufacturer || l.make || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     l.model.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredAccounts = accounts.filter(account => {
+    const haystack = [
+      account.name,
+      account.displayName,
+      account.email,
+      account.company,
+      account.role,
+      account.status,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(userSearchQuery.trim().toLowerCase());
+  });
+
+  const exportUsersCSV = () => {
+    const headers = [
+      'User ID',
+      'Display Name',
+      'Email',
+      'Phone',
+      'Company',
+      'Role',
+      'Status',
+      'Email Verified',
+      'Total Listings',
+      'Total Leads',
+      'Last Login',
+      'Joined',
+      'Parent Account UID'
+    ];
+
+    const rows = filteredAccounts.map((account) => [
+      account.id,
+      account.displayName || account.name,
+      account.email,
+      account.phoneNumber || account.phone || '',
+      account.company || '',
+      getAdminRoleDisplayLabel(account.role),
+      account.status,
+      account.emailVerified ? 'yes' : 'no',
+      String(account.totalListings),
+      String(account.totalLeads),
+      account.lastLogin ? new Date(account.lastLogin).toLocaleString() : '',
+      account.memberSince ? new Date(account.memberSince).toLocaleDateString() : '',
+      account.parentAccountUid || '',
+    ]);
+
+    downloadCsv('users', headers, rows);
+  };
+
+  const exportContentCSV = () => {
+    const headers = [
+      'Content Type',
+      'ID',
+      'Title',
+      'Label Or Filename',
+      'Status',
+      'Category Or Mime Type',
+      'Owner',
+      'Tags',
+      'Primary Date',
+      'Reference',
+      'Summary'
+    ];
+
+    const postRows = blogPosts.map((post) => [
+      'blog_post',
+      post.id,
+      post.title || '',
+      post.seoSlug || '',
+      post.reviewStatus || post.status || '',
+      post.category || '',
+      post.authorName || '',
+      (post.tags || []).join('|'),
+      post.updatedAt ? new Date(post.updatedAt).toLocaleString() : '',
+      post.image || '',
+      post.excerpt || '',
+    ]);
+
+    const mediaRows = mediaItems.map((item) => [
+      'media',
+      item.id,
+      item.altText || '',
+      item.filename || '',
+      '',
+      item.mimeType || '',
+      item.uploadedByName || item.uploadedBy || '',
+      (item.tags || []).join('|'),
+      item.createdAt ? formatTimestamp(item.createdAt) : '',
+      item.url || '',
+      '',
+    ]);
+
+    const blockRows = contentBlocks.map((block) => [
+      'content_block',
+      block.id,
+      block.title || '',
+      block.label || '',
+      '',
+      block.type || '',
+      '',
+      '',
+      '',
+      '',
+      block.content || '',
+    ]);
+
+    downloadCsv('content', headers, [...postRows, ...mediaRows, ...blockRows]);
+  };
+
+  const exportPerformanceCSV = () => {
+    const totalListings = listings.length;
+    const activeListings = listings.filter((listing) => listing.status === 'active' || !listing.status).length;
+    const totalInquiries = inquiries.length;
+    const wonInquiries = inquiries.filter((inquiry) => inquiry.status === 'Won').length;
+    const conversionRate = totalInquiries === 0 ? 0 : Math.round((wonInquiries / totalInquiries) * 100);
+    const totalAccounts = accounts.length;
+    const activeAccounts = accounts.filter((account) => account.status === 'Active').length;
+    const totalInventoryValue = listings.reduce((sum, listing) => sum + (listing.price || 0), 0);
+    const totalViews = listings.reduce((sum, listing) => sum + (listing.views || 0), 0);
+    const totalRevenue = invoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + invoice.amount, 0);
+    const activeSubscriptions = subscriptions.filter((subscription) => subscription.status === 'active').length;
+
+    const headers = ['Section', 'Metric', 'Value', 'Notes'];
+    const rows = [
+      ['inventory', 'total_listings', String(totalListings), 'All listings currently loaded in admin'],
+      ['inventory', 'active_listings', String(activeListings), 'Listings with active or unset status'],
+      ['inventory', 'total_inventory_value_usd', String(totalInventoryValue), 'Sum of current listing prices'],
+      ['inventory', 'total_views', String(totalViews), 'Aggregate listing views'],
+      ['leads', 'total_leads', String(totalInquiries), 'Inquiry records loaded in admin'],
+      ['leads', 'won_leads', String(wonInquiries), 'Inquiries marked Won'],
+      ['leads', 'conversion_rate_percent', String(conversionRate), 'Won leads divided by total leads'],
+      ['users', 'total_accounts', String(totalAccounts), 'All accounts loaded in admin'],
+      ['users', 'active_accounts', String(activeAccounts), 'Accounts marked Active'],
+      ['billing', 'paid_revenue_usd', String(totalRevenue), 'Sum of paid invoices'],
+      ['billing', 'active_subscriptions', String(activeSubscriptions), 'Subscriptions with active status'],
+    ];
+
+    downloadCsv('performance', headers, rows);
+  };
 
   const stats = [
     { label: 'Active Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
@@ -474,7 +844,7 @@ export function AdminDashboard() {
       <div className="bg-surface border border-line rounded-sm p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Managed Account Seats</div>
-          <div className="text-sm font-black uppercase tracking-tight text-ink">Dealer and Fleet Dealer plans include up to 3 managed team accounts.</div>
+          <div className="text-sm font-black uppercase tracking-tight text-ink">Dealer and Pro Dealer packages include up to 3 managed team accounts.</div>
         </div>
         <div className="text-[10px] font-bold uppercase tracking-widest text-muted">
           Existing managed accounts: {accounts.filter((account) => !!account.parentAccountUid).length}
@@ -491,7 +861,7 @@ export function AdminDashboard() {
           <option value="editor">Editor</option>
           <option value="dealer_manager">Dealer Manager</option>
           <option value="dealer_staff">Dealer Staff</option>
-          <option value="member">Member</option>
+          <option value="member">Buyer (Free Member)</option>
           <option value="buyer">Buyer</option>
         </select>
         <button type="submit" disabled={creatingAccount} className="btn-industrial btn-accent md:col-span-1 py-2">
@@ -597,8 +967,8 @@ export function AdminDashboard() {
                       <option value="editor">Editor</option>
                       <option value="dealer_manager">Dealer Manager</option>
                       <option value="dealer_staff">Dealer Staff</option>
-                      <option value="individual_seller">Individual Seller</option>
-                      <option value="member">Member</option>
+                      <option value="individual_seller">Owner Operator</option>
+                      <option value="member">Buyer (Free Member)</option>
                       <option value="buyer">Buyer</option>
                     </select>
                   </td>
@@ -642,6 +1012,13 @@ export function AdminDashboard() {
         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Call Monitoring</h3>
         <div className="flex items-center space-x-4">
           <span className="text-[10px] font-black text-data uppercase">Total: {calls.length}</span>
+          <button
+            type="button"
+            onClick={exportCallsCSV}
+            className="flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest"
+          >
+            <Download size={11} /> Export CSV
+          </button>
         </div>
       </div>
       <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
@@ -650,11 +1027,12 @@ export function AdminDashboard() {
             <thead>
               <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
                 <th className="px-6 py-4">Caller</th>
-                <th className="px-6 py-4">Equipment ID</th>
+                <th className="px-6 py-4">Ad</th>
+                <th className="px-6 py-4">Seller</th>
                 <th className="px-6 py-4">Duration</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Timestamp</th>
-                <th className="px-6 py-4 text-right">Record</th>
+                <th className="px-6 py-4 text-right">Authenticated</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -663,21 +1041,35 @@ export function AdminDashboard() {
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="text-xs font-black uppercase tracking-tight text-ink">{call.callerName}</span>
+                      <span className="text-[9px] font-bold text-muted uppercase">{call.callerEmail || 'NO EMAIL'}</span>
                       <span className="text-[9px] font-bold text-muted uppercase">{call.callerPhone}</span>
+                      <span className="text-[9px] font-bold text-muted uppercase">UID: {call.callerUid || 'GUEST'}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-xs font-black text-ink">#{call.listingId}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black text-ink">#{call.listingId}</span>
+                      <span className="text-[9px] font-bold text-muted uppercase">{call.listingTitle || 'Unknown Listing'}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black uppercase tracking-tight text-ink">{call.sellerName || 'Unknown Seller'}</span>
+                      <span className="text-[9px] font-bold text-muted uppercase">{call.sellerPhone || 'NO PHONE'}</span>
+                      <span className="text-[9px] font-bold text-muted uppercase">UID: {call.sellerUid || call.sellerId || 'UNKNOWN'}</span>
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-xs font-black text-ink">{call.duration}s</td>
                   <td className="px-6 py-4">
-                    <span className={`text-[9px] font-black uppercase tracking-widest ${call.status === 'Completed' ? 'text-data' : 'text-accent'}`}>
+                    <span className={`text-[9px] font-black uppercase tracking-widest ${call.status === 'Completed' ? 'text-data' : call.status === 'Initiated' ? 'text-ink' : 'text-accent'}`}>
                       {call.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-[10px] font-bold text-muted uppercase">
-                    {new Date(call.createdAt).toLocaleString()}
+                    {formatTimestamp(call.createdAt)}
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="p-2 text-muted hover:text-ink"><Activity size={14} /></button>
+                  <td className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest">
+                    {call.isAuthenticated ? 'YES' : 'NO'}
                   </td>
                 </tr>
               ))}
@@ -824,79 +1216,224 @@ export function AdminDashboard() {
   );
 
   const renderTracking = () => (
-    <AnalyticsDashboard
-      listings={listings}
-      inquiries={inquiries}
-      accounts={accounts}
-      invoices={invoices}
-      subscriptions={subscriptions}
-    />
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-surface p-6 border border-line rounded-sm">
+        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Performance Tracking</h3>
+        <button
+          type="button"
+          onClick={exportPerformanceCSV}
+          className="flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest"
+        >
+          <Download size={11} /> Export CSV
+        </button>
+      </div>
+
+      <AnalyticsDashboard
+        listings={listings}
+        inquiries={inquiries}
+        accounts={accounts}
+        invoices={invoices}
+        subscriptions={subscriptions}
+      />
+    </div>
   );
 
   const renderUsers = () => (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      {/* Error banner */}
+      {usersLoadError && (
+        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 rounded-sm p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={16} className="text-red-500 shrink-0" />
+            <span className="text-xs font-bold text-red-700">{usersLoadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={fetchUsers}
+            className="btn-industrial py-1.5 px-4 text-[10px] shrink-0"
+          >
+            <RefreshCw size={12} className="mr-1.5" /> Retry
+          </button>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {usersLoading && (
+        <div className="flex items-center justify-center py-16 gap-3">
+          <RefreshCw size={16} className="text-muted animate-spin" />
+          <span className="text-xs font-black uppercase tracking-widest text-muted">Loading users…</span>
+        </div>
+      )}
+
+      {!usersLoading && (
+      <>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Users', value: accounts.length },
+          { label: 'Active', value: accounts.filter(account => account.status === 'Active').length },
+          { label: 'Suspended', value: accounts.filter(account => account.status === 'Suspended').length },
+          { label: 'Pending', value: accounts.filter(account => account.status === 'Pending').length },
+        ].map((metric) => (
+          <div key={metric.label} className="bg-surface border border-line rounded-sm p-5">
+            <span className="label-micro block mb-1">{metric.label}</span>
+            <span className="text-2xl font-black tracking-tighter text-ink">{metric.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
           <input 
             type="text" 
-            placeholder="Search individual operators..." 
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+            placeholder="Search all users..." 
             className="input-industrial w-full pl-10"
           />
         </div>
-        <button className="btn-industrial btn-accent py-2 px-6 text-[10px]">Add Operator</button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={exportUsersCSV}
+            className="btn-industrial py-2 px-4 text-[10px] flex items-center"
+          >
+            <Download size={12} className="mr-1.5" /> Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={fetchUsers}
+            className="btn-industrial btn-outline py-2 px-4 text-[10px] flex items-center"
+          >
+            <RefreshCw size={12} className="mr-1.5" /> Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('accounts')}
+            className="btn-industrial btn-accent py-2 px-6 text-[10px]"
+          >
+            Invite User
+          </button>
+        </div>
       </div>
 
       <div className="bg-bg border border-line rounded-sm overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-surface border-b border-line">
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Operator</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Company</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Role</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Status</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Last Active</th>
-              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {accounts.map((user, i) => (
-              <tr key={i} className="hover:bg-surface/50 transition-colors">
-                <td className="p-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-ink/10 flex items-center justify-center text-ink font-black text-[10px]">
-                      {user.name?.charAt(0) || 'U'}
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-black uppercase text-ink">{user.name}</span>
-                      <span className="text-[9px] font-bold text-muted uppercase">{user.email}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="p-4 text-[10px] font-bold text-muted uppercase tracking-widest">{user.company || 'N/A'}</td>
-                <td className="p-4">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${user.role === 'admin' ? 'bg-accent/10 text-accent' : 'bg-line text-muted'}`}>
-                    {user.role}
-                  </span>
-                </td>
-                <td className="p-4">
-                  <div className="flex items-center">
-                    <span className={`w-1.5 h-1.5 rounded-full mr-2 ${user.status === 'Active' ? 'bg-data animate-pulse' : 'bg-line'}`}></span>
-                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{user.status}</span>
-                  </div>
-                </td>
-                <td className="p-4 text-[10px] font-bold text-muted uppercase tracking-widest">{user.lastActive ? new Date(user.lastActive).toLocaleDateString() : 'N/A'}</td>
-                <td className="p-4">
-                  <div className="flex space-x-2">
-                    <button className="p-1.5 hover:text-accent transition-colors"><Edit size={14} /></button>
-                    <button className="p-1.5 hover:text-accent transition-colors"><Shield size={14} /></button>
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-surface border-b border-line">
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">User</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Company</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Role</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Status</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Last Active</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {filteredAccounts.map((user) => (
+                <tr key={user.id} className="hover:bg-surface/50 transition-colors align-top">
+                  <td className="p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-full bg-ink/10 flex items-center justify-center text-ink font-black text-[11px]">
+                        {(user.displayName || user.name || 'U').charAt(0)}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-black uppercase text-ink">{user.displayName || user.name}</span>
+                        <span className="text-[9px] font-bold text-muted uppercase break-all">{user.email}</span>
+                        <span className="text-[9px] font-bold text-muted uppercase">{user.phoneNumber || user.phone || 'No phone on file'}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-4 text-[10px] font-bold text-muted uppercase tracking-widest">{user.company || 'N/A'}</td>
+                  <td className="p-4">
+                    <div className="flex flex-col gap-2">
+                      <span className={`inline-flex w-fit text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${user.role === 'super_admin' || user.role === 'admin' ? 'bg-accent/10 text-accent' : 'bg-line text-muted'}`}>
+                        {getAdminRoleDisplayLabel(user.role)}
+                      </span>
+                      <span className={`inline-flex w-fit text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${user.emailVerified ? 'bg-data/10 text-data' : 'bg-yellow-500/10 text-yellow-600'}`}>
+                        {user.emailVerified ? 'Email Verified' : 'Email Unverified'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center">
+                        <span className={`w-1.5 h-1.5 rounded-full mr-2 ${user.status === 'Active' ? 'bg-data animate-pulse' : user.status === 'Pending' ? 'bg-yellow-500' : 'bg-accent'}`}></span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{user.status}</span>
+                      </div>
+                      <span className="text-[9px] font-bold text-muted uppercase tracking-widest">
+                        Listings {user.totalListings} • Leads {user.totalLeads}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-[10px] font-bold text-muted uppercase tracking-widest">
+                    <div className="flex flex-col gap-2">
+                      <span>{user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'No activity'}</span>
+                      <span>Joined {user.memberSince ? new Date(user.memberSince).toLocaleDateString() : 'Unknown'}</span>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="grid grid-cols-2 gap-2 min-w-[220px]">
+                      <button
+                        type="button"
+                        onClick={() => openUserEditor(user)}
+                        className="btn-industrial py-2 px-3 text-[9px] flex items-center justify-center gap-1"
+                      >
+                        <Edit size={13} /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSendPasswordReset(user)}
+                        disabled={isUserActionPending(user.id, 'reset')}
+                        className="btn-industrial py-2 px-3 text-[9px] flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        <RefreshCw size={13} className={isUserActionPending(user.id, 'reset') ? 'animate-spin' : ''} /> Reset
+                      </button>
+                      {user.status === 'Suspended' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleUnlockUser(user)}
+                          disabled={isUserActionPending(user.id, 'unlock')}
+                          className="btn-industrial py-2 px-3 text-[9px] flex items-center justify-center gap-1 disabled:opacity-50"
+                        >
+                          <Shield size={13} /> Unlock
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleLockUser(user)}
+                          disabled={isUserActionPending(user.id, 'lock')}
+                          className="btn-industrial py-2 px-3 text-[9px] flex items-center justify-center gap-1 disabled:opacity-50"
+                        >
+                          <ShieldAlert size={13} /> Lock
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(user)}
+                        disabled={isUserActionPending(user.id, 'delete')}
+                        className="btn-industrial py-2 px-3 text-[9px] flex items-center justify-center gap-1 text-accent disabled:opacity-50"
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredAccounts.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-[10px] font-black text-muted uppercase tracking-widest">
+                    No users matched that search.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+      </>
+      )}
     </div>
   );
 
@@ -1043,19 +1580,31 @@ export function AdminDashboard() {
 
   const renderContent = () => (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={exportContentCSV}
+          className="flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest"
+        >
+          <Download size={11} /> Export CSV
+        </button>
+      </div>
+
       {/* Sub-tab navigation */}
-      <div className="flex space-x-1 bg-surface border border-line p-2 rounded-sm w-fit">
-        {(['posts', 'media', 'blocks'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setContentSubTab(tab)}
-            className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-colors ${
-              contentSubTab === tab ? 'bg-ink text-bg' : 'text-muted hover:text-ink'
-            }`}
-          >
-            {tab === 'posts' ? 'Blog Posts' : tab === 'media' ? 'Media Library' : 'Content Blocks'}
-          </button>
-        ))}
+      <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+        <div className="flex space-x-1 bg-surface border border-line p-2 rounded-sm w-max min-w-full">
+          {(['posts', 'media', 'blocks'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setContentSubTab(tab)}
+              className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-colors whitespace-nowrap ${
+                contentSubTab === tab ? 'bg-ink text-bg' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {tab === 'posts' ? 'Blog Posts' : tab === 'media' ? 'Media Library' : 'Content Blocks'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Blog Posts ─────────────────────────────────────────────── */}
@@ -1065,7 +1614,7 @@ export function AdminDashboard() {
             <div className="flex items-center gap-6">
               <span className="text-[10px] font-black text-muted uppercase">{blogPosts.length} Posts</span>
               <span className="text-[10px] font-black text-data uppercase">
-                {blogPosts.filter(p => p.status === 'published').length} Published
+                {blogPosts.filter((post) => isPublishedPost(post)).length} Published
               </span>
               <span className="text-[10px] font-black text-yellow-500 uppercase">
                 {blogPosts.filter(p => p.reviewStatus === 'in_review').length} In Review
@@ -1083,7 +1632,8 @@ export function AdminDashboard() {
           </div>
 
           <div className="bg-bg border border-line rounded-sm overflow-hidden">
-            <table className="w-full text-left">
+            <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+            <table className="w-full min-w-[860px] text-left">
               <thead>
                 <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
                   <th className="px-6 py-4">Title</th>
@@ -1161,6 +1711,7 @@ export function AdminDashboard() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -1669,12 +2220,17 @@ export function AdminDashboard() {
     { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
-    { id: 'users', label: 'Users', icon: Users },
+    { id: 'users', label: 'Users', icon: Users, adminOnly: true },
     { id: 'settings', label: 'Settings', icon: Settings },
   ] as const;
 
+  const visibleTabs = dashboardTabs.filter(
+    item => !('adminOnly' in item && item.adminOnly) ||
+      authUser?.role === 'super_admin' || authUser?.role === 'admin'
+  );
+
   return (
-    <div className="min-h-screen bg-bg flex">
+    <div className="min-h-screen bg-bg flex overflow-x-hidden">
       {/* Sidebar */}
       <aside className="w-64 bg-surface border-r border-line hidden lg:flex flex-col sticky top-0 h-screen">
         <div className="p-8 border-b border-line">
@@ -1687,7 +2243,7 @@ export function AdminDashboard() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          {dashboardTabs.map(item => (
+          {visibleTabs.map(item => (
             <button 
               key={item.id}
               onClick={() => setActiveTab(item.id)}
@@ -1719,7 +2275,7 @@ export function AdminDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 sm:p-6 md:p-10 lg:p-12">
+      <main className="flex-1 min-w-0 overflow-x-hidden p-4 sm:p-6 md:p-10 lg:p-12">
         <div className="max-w-6xl mx-auto">
           <section className="lg:hidden mb-6 bg-surface border border-line rounded-sm p-4">
             <div className="flex items-center justify-between gap-4">
@@ -1737,20 +2293,20 @@ export function AdminDashboard() {
             </div>
           </section>
 
-          <section className="lg:hidden mb-6 -mx-1 px-1 overflow-x-auto">
-            <div className="flex gap-2 pb-2 min-w-max">
-              {dashboardTabs.map(item => (
+          <section className="lg:hidden mb-6">
+            <div className="grid grid-cols-2 gap-2">
+              {visibleTabs.map(item => (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-colors ${
+                  className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
                     activeTab === item.id
                       ? 'bg-ink text-bg border-ink'
                       : 'bg-surface text-muted border-line hover:text-ink hover:border-ink/20'
                   }`}
                 >
-                  <item.icon size={13} />
-                  <span>{item.label}</span>
+                  <item.icon size={13} className="shrink-0" />
+                  <span className="truncate text-center">{item.label}</span>
                 </button>
               ))}
             </div>
@@ -1826,6 +2382,106 @@ export function AdminDashboard() {
           }}
         />
       )}
+
+      <AnimatePresence>
+        {editingAccount && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-ink/60 p-4 flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              className="w-full max-w-2xl bg-bg border border-line rounded-sm shadow-xl overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-line bg-surface flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-[0.2em] text-ink">Edit User</h3>
+                  <p className="text-[10px] font-bold text-muted uppercase mt-1">Update profile details, role, and contact info.</p>
+                </div>
+                <button type="button" onClick={closeUserEditor} className="p-2 text-muted hover:text-ink">
+                  <AlertCircle size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveUserEdits} className="p-6 space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="label-micro">Display Name</label>
+                    <input
+                      type="text"
+                      value={userEditForm.displayName}
+                      onChange={(e) => setUserEditForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                      className="input-industrial w-full"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label-micro">Email</label>
+                    <input
+                      type="email"
+                      value={userEditForm.email}
+                      onChange={(e) => setUserEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                      className="input-industrial w-full"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label-micro">Phone</label>
+                    <input
+                      type="text"
+                      value={userEditForm.phoneNumber}
+                      onChange={(e) => setUserEditForm((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                      className="input-industrial w-full"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label-micro">Company</label>
+                    <input
+                      type="text"
+                      value={userEditForm.company}
+                      onChange={(e) => setUserEditForm((prev) => ({ ...prev, company: e.target.value }))}
+                      className="input-industrial w-full"
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="label-micro">Role</label>
+                    <select
+                      value={userEditForm.role}
+                      onChange={(e) => setUserEditForm((prev) => ({ ...prev, role: e.target.value as UserRole }))}
+                      className="select-industrial w-full"
+                    >
+                      <option value="super_admin">Super Admin</option>
+                      <option value="admin">Admin</option>
+                      <option value="developer">Developer</option>
+                      <option value="content_manager">Content Manager</option>
+                      <option value="editor">Editor</option>
+                      <option value="dealer">Dealer</option>
+                      <option value="dealer_manager">Dealer Manager</option>
+                      <option value="dealer_staff">Dealer Staff</option>
+                      <option value="individual_seller">Owner Operator</option>
+                      <option value="member">Buyer (Free Member)</option>
+                      <option value="buyer">Buyer</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button type="button" onClick={closeUserEditor} className="btn-industrial py-3 px-6 text-[10px]">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={savingUserEdit} className="btn-industrial btn-accent py-3 px-6 text-[10px] disabled:opacity-50">
+                    {savingUserEdit ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

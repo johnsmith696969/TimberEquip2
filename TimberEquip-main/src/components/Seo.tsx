@@ -1,0 +1,76 @@
+import { useEffect } from 'react';
+
+interface SeoProps {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  robots?: string;
+  jsonLd?: Record<string, unknown>;
+}
+
+const BASE_URL = 'https://timberequip.com';
+const DEFAULT_ROBOTS =
+  import.meta.env.VITE_ALLOW_INDEXING === 'true'
+    ? 'index, follow'
+    : 'noindex, nofollow, noarchive, nosnippet, noimageindex';
+
+function setMetaTag(selector: { name?: string; property?: string }, content: string) {
+  const attr = selector.name ? 'name' : 'property';
+  const value = selector.name ?? selector.property;
+  if (!value) return;
+
+  let tag = document.head.querySelector(`meta[${attr}="${value}"]`) as HTMLMetaElement | null;
+  if (!tag) {
+    tag = document.createElement('meta');
+    tag.setAttribute(attr, value);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute('content', content);
+}
+
+export function Seo({ title, description, canonicalPath, robots = DEFAULT_ROBOTS, jsonLd }: SeoProps) {
+  useEffect(() => {
+    document.title = title;
+
+    setMetaTag({ name: 'description' }, description);
+    setMetaTag({ name: 'robots' }, robots);
+    setMetaTag({ name: 'googlebot' }, robots);
+    setMetaTag({ property: 'og:title' }, title);
+    setMetaTag({ property: 'og:description' }, description);
+    setMetaTag({ property: 'og:type' }, 'website');
+    setMetaTag({ name: 'twitter:card' }, 'summary_large_image');
+    setMetaTag({ name: 'twitter:title' }, title);
+    setMetaTag({ name: 'twitter:description' }, description);
+
+    const canonicalHref = canonicalPath ? `${BASE_URL}${canonicalPath}` : BASE_URL;
+    let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement('link');
+      canonical.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute('href', canonicalHref);
+
+    const existingScript = document.head.querySelector('#seo-json-ld');
+    if (existingScript) {
+      existingScript.remove();
+    }
+
+    if (jsonLd) {
+      const script = document.createElement('script');
+      script.id = 'seo-json-ld';
+      script.type = 'application/ld+json';
+      script.text = JSON.stringify(jsonLd);
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      const currentScript = document.head.querySelector('#seo-json-ld');
+      if (currentScript) {
+        currentScript.remove();
+      }
+    };
+  }, [title, description, canonicalPath, robots, jsonLd]);
+
+  return null;
+}

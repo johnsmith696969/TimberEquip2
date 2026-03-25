@@ -31,7 +31,8 @@ export interface DealerFeedLog {
   id: string;
   sourceName: string;
   dealerId: string;
-  processedAt: { toDate?: () => Date } | string | number;
+  processedAt?: { toDate?: () => Date } | string | number;
+  createdAt?: { toDate?: () => Date } | string | number;
   processed: number;
   upserted: number;
   skipped: number;
@@ -71,7 +72,7 @@ export const dealerFeedService = {
     const snap = await getDocs(
       query(
         collection(db, 'dealerFeedIngestLogs'),
-        orderBy('processedAt', 'desc'),
+        orderBy('createdAt', 'desc'),
         limit(limitCount),
       )
     );

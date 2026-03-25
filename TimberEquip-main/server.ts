@@ -312,29 +312,33 @@ type ListingCheckoutPlan = {
   amountUsd: number;
   listingCap: number;
   productId: string;
+  priceId?: string;
 };
 
 const LISTING_CHECKOUT_PLANS: Record<ListingCheckoutPlanId, ListingCheckoutPlan> = {
   individual_seller: {
     id: 'individual_seller',
-    name: 'Individual Seller Plan',
-    amountUsd: 20,
+    name: 'Owner Operator Ad Program',
+    amountUsd: 39,
     listingCap: 1,
-    productId: process.env.STRIPE_PRODUCT_INDIVIDUAL || 'prod_UBpeOgS2Xbot2e',
+    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || process.env.STRIPE_PRODUCT_INDIVIDUAL || 'prod_UBpeOgS2Xbot2e',
+    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || process.env.STRIPE_PRICE_INDIVIDUAL || 'price_1TDRzJEFuycUwY0KZiFBQxTF',
   },
   dealer: {
     id: 'dealer',
-    name: 'Dealer Plan',
-    amountUsd: 250,
+    name: 'Dealer Ad Package',
+    amountUsd: 499,
     listingCap: 50,
     productId: process.env.STRIPE_PRODUCT_DEALER || 'prod_UBpeHg3FydOSdD',
+    priceId: process.env.STRIPE_PRICE_DEALER || 'price_1TDRzJEFuycUwY0KnU6HzAg2',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
-    name: 'Fleet Dealer Plan',
-    amountUsd: 500,
+    name: 'Pro Dealer Ad Package',
+    amountUsd: 999,
     listingCap: 150,
     productId: process.env.STRIPE_PRODUCT_FLEET || 'prod_UBpek9mEeZPlyC',
+    priceId: process.env.STRIPE_PRICE_FLEET || 'price_1TDRzKEFuycUwY0KPkBneTyh',
   },
 };
 
@@ -411,6 +415,11 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
 
   const cached = checkoutPriceCache[plan.id];
   if (cached) return cached;
+
+  if (plan.priceId) {
+    checkoutPriceCache[plan.id] = plan.priceId;
+    return plan.priceId;
+  }
 
   const product = await stripe.products.retrieve(plan.productId, {
     expand: ['default_price'],

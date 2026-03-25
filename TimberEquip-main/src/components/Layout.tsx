@@ -4,6 +4,7 @@ import {
   Search, Menu, X, Sun, Moon,
   User, LogOut,
   Bookmark,
+  ChevronDown,
   Facebook, Twitter, Instagram, Linkedin,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,17 +15,47 @@ import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { userService } from '../services/userService';
 import timberEquipLogo from '../../logos/TimberEquip-Logo.svg';
+import timberEquipDuskLogo from '../../logos/TimberEquip-Brand-Logo-Dusk.svg';
 import logoTransparent from '../../logos/Logo-Transparent.png';
+import { getListEquipmentPath } from '../utils/sellerAccess';
+
+const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+const ADMIN_EMAILS = ['calebhappy@gmail.com'];
+
+const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  USD: '$',
+  CAD: 'C$',
+  EUR: 'EUR',
+  GBP: 'GBP',
+  NOK: 'NOK',
+  SEK: 'SEK',
+  CHF: 'CHF',
+  PLN: 'PLN',
+  CZK: 'CZK',
+  RON: 'RON',
+  DKK: 'DKK',
+  HUF: 'HUF',
+};
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, currency, setCurrency, t } = useLocale();
   const { user, logout, isAuthenticated } = useAuth();
+  const headerLogo = theme === 'dark' ? timberEquipDuskLogo : timberEquipLogo;
+  const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
   const navigate = useNavigate();
   const location = useLocation();
+
+  const hasAdminAccess = !!(
+    user && (
+      (user.role && ADMIN_ROLES.includes(user.role)) ||
+      (user.email && ADMIN_EMAILS.includes(user.email.trim().toLowerCase()))
+    )
+  );
+  const accountRoute = hasAdminAccess ? '/admin' : '/profile';
 
   useEffect(() => {
     const pageTitles: Record<string, string> = {
@@ -96,6 +127,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
   const selectedLanguage = LANGUAGE_OPTIONS.find((option) => option.code === language) || LANGUAGE_OPTIONS[0];
   const selectedCurrency = CURRENCY_OPTIONS.find((c) => c.key === selectedCurrencyKey) || CURRENCY_OPTIONS[0];
+  const selectedCurrencySymbol = CURRENCY_SYMBOLS[selectedCurrency.code] || selectedCurrency.code;
   const hydratedProfileUidRef = useRef<string | null>(null);
   const selectorButtonClass = 'flex items-center gap-2 px-2 py-1 rounded hover:bg-line/50 transition-colors text-muted text-[9px] font-bold';
   const selectorMenuClass = 'absolute top-full left-0 mt-1 bg-surface border border-line rounded shadow-lg z-50';
@@ -128,23 +160,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [currDropdownOpen, setCurrDropdownOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
       {/* Top Bar */}
       <div className="bg-surface border-b border-line py-2.5 px-3 md:px-8 flex justify-between items-center gap-2 text-[11px] font-medium uppercase tracking-wider">
         <div className="flex items-center gap-1 sm:gap-4 min-w-0">
           <div className="relative" data-no-translate="true">
             <button
-              onClick={() => setLangDropdownOpen(!langDropdownOpen)}
+              onClick={() => {
+                setLangDropdownOpen(!langDropdownOpen);
+                setCurrDropdownOpen(false);
+              }}
               className={selectorButtonClass}
               aria-label={t('layout.languageLabel', 'Language')}
               title={selectedLanguage.label}
             >
-              <span className="text-sm">{selectedLanguage.flag}</span>
               <span className="sm:hidden">{selectedLanguage.code}</span>
+              <span className="hidden sm:inline text-sm">{selectedLanguage.flag}</span>
               <div className="hidden sm:flex flex-col items-start leading-none">
                 <span>{selectedLanguage.code}</span>
                 <span className="text-[8px] font-normal text-muted/70">{selectedLanguage.label}</span>
               </div>
+              <ChevronDown size={12} className="shrink-0" />
             </button>
             {langDropdownOpen && (
               <div className={`${selectorMenuClass} min-w-[180px]`}>
@@ -175,12 +211,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="relative" data-no-translate="true">
             <button
-              onClick={() => setCurrDropdownOpen(!currDropdownOpen)}
+              onClick={() => {
+                setCurrDropdownOpen(!currDropdownOpen);
+                setLangDropdownOpen(false);
+              }}
               className={selectorButtonClass}
               aria-label={t('layout.currencyLabel', 'Currency')}
               title={selectedCurrency.label}
             >
-              <span>{selectedCurrency.code}</span>
+              <span className="sm:hidden">{selectedCurrencySymbol}</span>
+              <div className="hidden sm:flex flex-col items-start leading-none">
+                <span>{selectedCurrency.code}</span>
+                <span className="text-[8px] font-normal text-muted/70">{selectedCurrency.label}</span>
+              </div>
+              <ChevronDown size={12} className="shrink-0" />
             </button>
             {currDropdownOpen && (
               <div className={`${selectorMenuClass} min-w-[150px] max-h-72 overflow-y-auto`}>
@@ -220,10 +264,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {theme === 'light' ? <Moon size={14} className="sm:w-3 sm:h-3" /> : <Sun size={14} className="sm:w-3 sm:h-3" />}
             <span className="hidden sm:inline">{theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}</span>
           </button>
-          <Link to="/sell" className="text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
+          <Link to={listEquipmentPath} className="text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-4">
-              <Link to="/admin" className="text-ink font-bold flex items-center">
+              <Link to={accountRoute} className="text-ink font-bold flex items-center">
                 <User size={12} className="mr-1" /> {user?.displayName}
               </Link>
               <button onClick={logout} className="text-muted hover:text-ink flex items-center">
@@ -240,7 +284,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="bg-bg border-b border-line py-4 px-4 md:px-8 flex justify-between items-center">
         <Link to="/" className="flex items-center">
           <img
-            src={timberEquipLogo}
+            src={headerLogo}
             alt="TimberEquip"
             className="h-14 md:h-16 w-auto object-contain"
           />
@@ -318,7 +362,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
-              <Link to="/sell" onClick={() => setIsMenuOpen(false)} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
+              <Link to={listEquipmentPath} onClick={() => setIsMenuOpen(false)} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>
             
              <div className="mt-8 pb-12 px-6 flex flex-col space-y-6">
@@ -436,7 +480,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/search" className="hover:text-accent transition-colors">{t('layout.browseInventory', 'Browse Inventory')}</Link></li>
                 <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
                 <li><Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.liveAuctions', 'Live Auctions')}</Link></li>
-                <li><Link to="/sell" className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
+                <li><Link to={listEquipmentPath} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>
               </ul>
             </div>

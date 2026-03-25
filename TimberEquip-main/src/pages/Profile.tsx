@@ -1,0 +1,1239 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { 
+  User, Settings, Bookmark, 
+  Search, Clock, CheckCircle2, 
+  ArrowRight, LayoutDashboard,
+  LogOut, Bell, Package,
+  CreditCard, Edit, Trash2,
+  ExternalLink, MapPin, Phone,
+  Mail, Building2, Wrench,
+  Shield, Download, ClipboardList, AlertTriangle
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
+import { useAuth } from '../components/AuthContext';
+import { ListingModal } from '../components/admin/ListingModal';
+import { equipmentService } from '../services/equipmentService';
+import { userService } from '../services/userService';
+import { storageService } from '../services/storageService';
+import { useLocale } from '../components/LocaleContext';
+import { CallLog, FinancingRequest, Listing, SavedSearch, UserProfile } from '../types';
+import { auth } from '../firebase';
+import { getDownloadURL } from 'firebase/storage';
+import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
+
+export function Profile() {
+  const profileTabs = ['Overview', 'Saved Equipment', 'Search Alerts', 'My Listings', 'Calls', 'Financing', 'Privacy & Data', 'Account Settings'] as const;
+  const profileTabItems = [
+    { label: 'Overview', icon: LayoutDashboard },
+    { label: 'Saved Equipment', icon: Bookmark },
+    { label: 'Search Alerts', icon: Bell },
+    { label: 'My Listings', icon: Package },
+    { label: 'Calls', icon: Phone },
+    { label: 'Financing', icon: CreditCard },
+    { label: 'Privacy & Data', icon: Shield },
+    { label: 'Account Settings', icon: Settings },
+  ] as const;
+  const { formatPrice } = useLocale();
+  const { user, logout, toggleFavorite } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isListingModalOpen, setIsListingModalOpen] = useState(false);
+  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [checkoutNotice, setCheckoutNotice] = useState('');
+  const [isConfirmingCheckout, setIsConfirmingCheckout] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsNotice, setSettingsNotice] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [settingsForm, setSettingsForm] = useState({
+    displayName: '',
+    email: '',
+    phoneNumber: '',
+    company: '',
+    location: '',
+    photoURL: '',
+    coverPhotoUrl: '',
+  });
+
+  const profilePhotoPreview = settingsForm.photoURL || user?.photoURL || '';
+  const coverPhotoPreview = settingsForm.coverPhotoUrl || user?.coverPhotoUrl || '';
+
+  useEffect(() => {
+    const accountCheckout = searchParams.get('accountCheckout');
+    const sessionId = searchParams.get('session_id');
+    if (!accountCheckout) return;
+
+    if (accountCheckout === 'canceled') {
+      setCheckoutNotice('Subscription checkout was canceled. Choose a seller subscription when you are ready.');
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('accountCheckout');
+      nextParams.delete('session_id');
+      setSearchParams(nextParams, { replace: true });
+      return;
+    }
+
+    if (accountCheckout === 'success' && sessionId) {
+      let active = true;
+      const confirm = async () => {
+        try {
+          setIsConfirmingCheckout(true);
+          const result = await billingService.confirmCheckoutSession(sessionId);
+          if (!active) return;
+
+          if (result.paid && result.scope === 'account') {
+            const matchedPlan = SELLER_PLAN_DEFINITIONS.find((plan) => plan.id === result.planId);
+            const listingCap = matchedPlan?.listingCap || user?.listingCap || 0;
+            setCheckoutNotice(
+              listingCap > 0
+                ? `Subscription activated. Your account can post up to ${listingCap} active ${listingCap === 1 ? 'machine' : 'machines'}.`
+                : 'Subscription activated. Your account can now post listings.'
+            );
+          } else {
+            setCheckoutNotice('Checkout returned successfully, but account activation is still processing. Refresh in a moment.');
+          }
+        } catch (error) {
+          if (!active) return;
+          setCheckoutNotice(error instanceof Error ? error.message : 'Unable to confirm subscription checkout.');
+        } finally {
+          if (!active) return;
+          setIsConfirmingCheckout(false);
+          const nextParams = new URLSearchParams(searchParams);
+          nextParams.delete('accountCheckout');
+          nextParams.delete('session_id');
+          setSearchParams(nextParams, { replace: true });
+        }
+      };
+
+      void confirm();
+      return () => {
+        active = false;
+      };
+    }
+  }, [searchParams, setSearchParams, user?.listingCap]);
+
+  useEffect(() => {
+    if (!user) return;
+    setSettingsForm({
+      displayName: user.displayName || '',
+      email: user.email || '',
+      phoneNumber: user.phoneNumber || '',
+      company: user.company || '',
+      location: user.location || '',
+      photoURL: user.photoURL || '',
+      coverPhotoUrl: (user as UserProfile & { coverPhotoUrl?: string }).coverPhotoUrl || '',
+    });
+  }, [user]);
+
+  const handleSettingsInputChange = (key: keyof typeof settingsForm, value: string) => {
+    setSettingsForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const openAssetPicker = (assetType: 'avatar' | 'cover') => {
+    if (assetType === 'avatar') {
+      avatarInputRef.current?.click();
+      return;
+    }
+
+    coverInputRef.current?.click();
+  };
+
+  const handleProfileAssetUpload = async (file: File, assetType: 'avatar' | 'cover') => {
+    if (!user?.uid) return;
+
+    if (assetType === 'avatar') setIsUploadingAvatar(true);
+    if (assetType === 'cover') setIsUploadingCover(true);
+    setSettingsError('');
+    setSettingsNotice('');
+
+    try {
+      const subPath = assetType === 'avatar' ? 'avatar' : 'photos';
+      const uploadTask = storageService.uploadFile(file, `users/${user.uid}/${subPath}`);
+      const snapshot = await uploadTask;
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+
+      if (assetType === 'avatar') {
+        handleSettingsInputChange('photoURL', downloadUrl);
+      } else {
+        handleSettingsInputChange('coverPhotoUrl', downloadUrl);
+      }
+
+      const immediateUpdates = assetType === 'avatar'
+        ? { photoURL: downloadUrl }
+        : { coverPhotoUrl: downloadUrl };
+
+      await userService.updateProfile(user.uid, immediateUpdates);
+
+      if (assetType === 'avatar' && auth.currentUser) {
+        await updateAuthProfile(auth.currentUser, { photoURL: downloadUrl });
+      }
+
+      setSettingsNotice(`${assetType === 'avatar' ? 'Profile photo' : 'Cover photo'} uploaded and saved.`);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to upload image right now.');
+    } finally {
+      if (assetType === 'avatar') setIsUploadingAvatar(false);
+      if (assetType === 'cover') setIsUploadingCover(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!user?.uid) return;
+    const nextDisplayName = settingsForm.displayName.trim();
+    const nextEmail = settingsForm.email.trim().toLowerCase();
+
+    if (!nextDisplayName) {
+      setSettingsError('Full name is required.');
+      return;
+    }
+
+    if (!nextEmail) {
+      setSettingsError('Email address is required.');
+      return;
+    }
+
+    setIsSavingSettings(true);
+    setSettingsError('');
+    setSettingsNotice('');
+
+    try {
+      const profileUpdates: Partial<UserProfile> = {
+        displayName: nextDisplayName,
+        email: nextEmail,
+        phoneNumber: settingsForm.phoneNumber.trim(),
+        company: settingsForm.company.trim(),
+        location: settingsForm.location.trim(),
+        photoURL: settingsForm.photoURL.trim(),
+        coverPhotoUrl: settingsForm.coverPhotoUrl.trim(),
+      };
+
+      await userService.updateProfile(user.uid, profileUpdates);
+
+      if (auth.currentUser) {
+        const authNeedsUpdate =
+          auth.currentUser.displayName !== nextDisplayName ||
+          (settingsForm.photoURL.trim() && auth.currentUser.photoURL !== settingsForm.photoURL.trim());
+
+        if (authNeedsUpdate) {
+          await updateAuthProfile(auth.currentUser, {
+            displayName: nextDisplayName,
+            photoURL: settingsForm.photoURL.trim() || null,
+          });
+        }
+
+        if (auth.currentUser.email !== nextEmail) {
+          try {
+            await updateEmail(auth.currentUser, nextEmail);
+          } catch (emailError) {
+            const code = (emailError as { code?: string })?.code || '';
+            if (code === 'auth/requires-recent-login') {
+              setSettingsNotice('Profile saved. To update login email, sign out and sign back in, then save again.');
+              setIsSavingSettings(false);
+              return;
+            }
+            throw emailError;
+          }
+        }
+      }
+
+      setSettingsNotice('Profile updated successfully.');
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to update profile right now.');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleExportData = () => {
+    const data = {
+      profile: user,
+      savedAssets: savedAssets,
+      timestamp: new Date().toISOString(),
+      version: '1.0.0'
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `timberequip-data-export-${user?.uid}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await billingService.deleteUserAccount();
+      // The server will delete the user and the client will be signed out automatically
+      // or we can force a reload/redirect
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert('Failed to delete account. Please contact support.');
+    }
+  };
+  
+  const [myListings, setMyListings] = useState<Listing[]>([]);
+  const [savedAssets, setSavedAssets] = useState<Listing[]>([]);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
+  const [calls, setCalls] = useState<CallLog[]>([]);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab && profileTabs.includes(requestedTab as (typeof profileTabs)[number])) {
+      setActiveTab(requestedTab);
+    }
+  }, [profileTabs, searchParams]);
+
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      if (user) {
+        const [myInventory, financingHistory, searches, saved, callHistory] = await Promise.all([
+          equipmentService.getListings({ sellerUid: user.uid }),
+          equipmentService.getFinancingRequests(user.uid),
+          userService.getSavedSearches(user.uid),
+          user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
+          equipmentService.getCalls(user.uid),
+        ]);
+
+        setMyListings(myInventory);
+        setFinancingRequests(financingHistory);
+        setSavedSearches(searches);
+        setSavedAssets(saved);
+        setCalls(callHistory);
+      } else {
+        setMyListings([]);
+        setFinancingRequests([]);
+        setSavedSearches([]);
+        setSavedAssets([]);
+        setCalls([]);
+      }
+    };
+    fetchProfileData();
+  }, [user]);
+
+  const formatDateLabel = (value?: string) => {
+    if (!value) return 'Date unavailable';
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) return 'Date unavailable';
+    return new Date(parsed).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const handleEditListing = (listing: Listing) => {
+    setSelectedListing(listing);
+    setIsListingModalOpen(true);
+  };
+
+  const handleDeleteListing = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this listing?')) {
+      return;
+    }
+
+    try {
+      await equipmentService.deleteListing(id);
+      setMyListings((prev) => prev.filter((listing) => listing.id !== id));
+    } catch (error) {
+      console.error('Failed to delete listing:', error);
+      alert('Unable to delete listing right now. Please try again.');
+    }
+  };
+
+  const handleSaveListing = async (listingData: any) => {
+    if (!user) {
+      throw new Error('You must be signed in to manage listings.');
+    }
+
+    try {
+      if (selectedListing) {
+        await equipmentService.updateListing(selectedListing.id, listingData);
+      } else {
+        await equipmentService.addListing({
+          ...listingData,
+          sellerUid: user.uid,
+          sellerId: user.uid,
+        });
+      }
+
+      const refreshedListings = await equipmentService.getListings({ sellerUid: user.uid });
+      setMyListings(refreshedListings);
+      setIsListingModalOpen(false);
+      setSelectedListing(null);
+    } catch (error) {
+      console.error('Failed to save listing:', error);
+      throw error;
+    }
+  };
+
+  const handleToggleSavedSearchStatus = async (savedSearch: SavedSearch) => {
+    try {
+      const nextStatus = savedSearch.status === 'active' ? 'paused' : 'active';
+      await userService.updateSavedSearch(savedSearch.id, { status: nextStatus });
+      setSavedSearches((prev) => prev.map((item) => (item.id === savedSearch.id ? { ...item, status: nextStatus } : item)));
+    } catch (error) {
+      console.error('Failed to update saved search status', error);
+    }
+  };
+
+  const handleDeleteSavedSearch = async (id: string) => {
+    try {
+      await userService.deleteSavedSearch(id);
+      setSavedSearches((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error('Failed to delete saved search', error);
+    }
+  };
+
+  const renderOverview = () => (
+    <div className="space-y-12">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { label: 'Saved Equipment', value: savedAssets.length.toString(), icon: Bookmark },
+          { label: 'Active Alerts', value: savedSearches.filter(a => a.status === 'active').length.toString(), icon: Bell },
+          { label: 'My Listings', value: myListings.length.toString(), icon: Package }
+        ].map((stat, i) => (
+          <div key={i} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
+            <div className="flex flex-col">
+              <span className="label-micro text-muted mb-1">{stat.label}</span>
+              <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
+            </div>
+            <stat.icon className="text-accent" size={32} />
+          </div>
+        ))}
+      </div>
+
+      {/* Recent Activity */}
+      <div className="bg-bg border border-line shadow-sm">
+        <div className="p-6 border-b border-line flex justify-between items-center bg-surface/30">
+          <h3 className="text-xs font-black uppercase tracking-widest">Recent Activity</h3>
+          <button className="text-[10px] font-bold text-accent uppercase hover:underline">View All</button>
+        </div>
+        <div className="divide-y divide-line">
+          {[
+            { action: 'Equipment Saved', target: '2022 Tigercat 855E', time: '2 hours ago' },
+            { action: 'Inquiry Sent', target: '2019 John Deere 959M', time: '1 day ago' },
+            { action: 'Alert Triggered', target: 'New Skidder Inventory', time: '3 days ago' },
+            { action: 'Profile Login', target: 'Mobile Device', time: '5 days ago' }
+          ].map((activity, i) => (
+            <div key={i} className="p-6 flex justify-between items-center hover:bg-surface/50 transition-colors">
+              <div className="flex items-center space-x-4">
+                <div className="w-2 h-2 bg-accent rounded-full"></div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold uppercase tracking-wider">{activity.action}</span>
+                  <span className="text-[10px] font-medium text-muted uppercase tracking-widest">{activity.target}</span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{activity.time}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMyListings = () => (
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+        <h3 className="text-sm font-black uppercase tracking-widest">My Active Inventory</h3>
+        <button 
+          onClick={() => { setSelectedListing(null); setIsListingModalOpen(true); }}
+          className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
+        >
+          <Plus size={14} className="mr-2" />
+          Add Machine
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-4">
+        {myListings.map((listing) => (
+           <div key={listing.id} className="bg-surface border border-line p-4 flex flex-col sm:flex-row gap-4 shadow-sm hover:border-accent/50 transition-colors">
+             <div className="w-full sm:w-40 md:w-48 aspect-video bg-bg border border-line overflow-hidden rounded-sm flex-shrink-0">
+              <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
+            </div>
+             <div className="flex-1 min-w-0 space-y-2">
+               <div className="flex justify-between items-start gap-2">
+                 <div className="min-w-0">
+                   <span className="label-micro text-accent">{listing.category}</span>
+                   <h4 className="text-base md:text-lg font-black uppercase tracking-tighter leading-tight">{listing.title}</h4>
+                 </div>
+                 <div className="flex items-center gap-2 flex-shrink-0">
+                   <span className="text-base md:text-xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
+                   <div className="flex gap-1 sm:hidden">
+                     <button onClick={() => handleEditListing(listing)} className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
+                       <Edit size={14} />
+                     </button>
+                     <button onClick={() => handleDeleteListing(listing.id)} className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
+                       <Trash2 size={14} />
+                     </button>
+                   </div>
+                 </div>
+               </div>
+               <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+                <span className="flex items-center"><Clock size={12} className="mr-1" /> {listing.hours} HRS</span>
+                <span className="flex items-center"><MapPin size={12} className="mr-1" /> {listing.location}</span>
+              </div>
+            </div>
+             <div className="hidden sm:flex sm:flex-col gap-2 flex-shrink-0">
+              <button 
+                onClick={() => handleEditListing(listing)}
+                className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm"
+              >
+                <Edit size={16} />
+              </button>
+              <button 
+                onClick={() => handleDeleteListing(listing.id)}
+                className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderAlerts = () => (
+    <div className="space-y-8">
+      <h3 className="text-sm font-black uppercase tracking-widest">Search Alerts & Notifications</h3>
+      <div className="grid grid-cols-1 gap-4">
+        {savedSearches.map((alert) => (
+           <div key={alert.id} className="bg-surface border border-line p-4 md:p-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 shadow-sm">
+            <div className="space-y-1">
+              <h4 className="text-xs font-black uppercase tracking-widest">{alert.name}</h4>
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                {Object.entries(alert.filters)
+                  .slice(0, 4)
+                  .map(([key, value]) => `${key}:${value}`)
+                  .join(' | ')}
+              </p>
+            </div>
+             <div className="flex items-center gap-3 flex-shrink-0">
+              <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${alert.status === 'active' ? 'bg-data/10 text-data' : 'bg-line text-muted'}`}>
+                {alert.status}
+              </span>
+              <button className="p-2 text-muted hover:text-ink transition-colors" onClick={() => handleToggleSavedSearchStatus(alert)}>
+                <Settings size={16} />
+              </button>
+              <button className="p-2 text-muted hover:text-accent transition-colors" onClick={() => handleDeleteSavedSearch(alert.id)}>
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+        {savedSearches.length === 0 && (
+          <div className="bg-surface border border-line p-6 text-[10px] font-bold text-muted uppercase tracking-widest">
+            No saved searches yet. Create one from the Search page to enable alerts.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderFinancing = () => (
+    <div className="space-y-8">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-black uppercase tracking-widest">Financing Applications</h3>
+        <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+          Review financing forms you submitted through TimberEquip and track their current status.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { label: 'Applications Sent', value: financingRequests.length.toString(), icon: CreditCard },
+          { label: 'Open Requests', value: financingRequests.filter((request) => ['New', 'Contacted', 'Qualified'].includes(request.status)).length.toString(), icon: Clock },
+          { label: 'Approved / Won', value: financingRequests.filter((request) => request.status === 'Won').length.toString(), icon: CheckCircle2 },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
+            <div className="flex flex-col">
+              <span className="label-micro text-muted mb-1">{stat.label}</span>
+              <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
+            </div>
+            <stat.icon className="text-accent" size={32} />
+          </div>
+        ))}
+      </div>
+
+      {financingRequests.length === 0 ? (
+        <div className="bg-surface border border-line p-8 space-y-4">
+          <p className="text-xs font-black uppercase tracking-widest">No financing applications yet.</p>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            Submit a financing form from the financing center or a listing payment calculator and it will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {financingRequests.map((request) => (
+            <div key={request.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-2 min-w-0">
+                  <p className="text-xs font-black uppercase tracking-widest">{request.company || request.applicantName || 'Financing Application'}</p>
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+                    <span>{request.applicantName || 'Unknown Applicant'}</span>
+                    <span>{request.applicantEmail || 'No email provided'}</span>
+                    <span>{request.applicantPhone || 'No phone provided'}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${request.status === 'Won' ? 'bg-data/10 text-data' : request.status === 'Lost' || request.status === 'Closed' ? 'bg-accent/10 text-accent' : 'bg-ink text-white'}`}>
+                    {request.status}
+                  </span>
+                  <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                    {formatDateLabel(request.createdAt)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[10px] font-bold uppercase tracking-widest">
+                <div className="bg-bg border border-line p-4 space-y-2">
+                  <p className="text-muted">Requested Amount</p>
+                  <p className="text-xs text-ink">{typeof request.requestedAmount === 'number' ? formatPrice(request.requestedAmount, 'USD', 0) : 'Not provided'}</p>
+                </div>
+                <div className="bg-bg border border-line p-4 space-y-2">
+                  <p className="text-muted">Linked Listing</p>
+                  <p className="text-xs text-ink break-all">{request.listingId || 'General financing request'}</p>
+                </div>
+              </div>
+
+              <div className="bg-bg border border-line p-4 space-y-2">
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Submitted Details</p>
+                <p className="text-[11px] leading-relaxed text-ink break-words">
+                  {request.message || 'No additional notes were included with this application.'}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCalls = () => (
+    <div className="space-y-8">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-black uppercase tracking-widest">Call Logs</h3>
+        <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+          Review callers, phone numbers, and the exact ad they clicked.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { label: 'Total Calls', value: calls.length.toString(), icon: Phone },
+          { label: 'Signed-In Callers', value: calls.filter((call) => call.isAuthenticated).length.toString(), icon: User },
+          { label: 'Guest Callers', value: calls.filter((call) => !call.isAuthenticated).length.toString(), icon: Building2 },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
+            <div className="flex flex-col">
+              <span className="label-micro text-muted mb-1">{stat.label}</span>
+              <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
+            </div>
+            <stat.icon className="text-accent" size={32} />
+          </div>
+        ))}
+      </div>
+
+      {calls.length === 0 ? (
+        <div className="bg-surface border border-line p-8 space-y-4">
+          <p className="text-xs font-black uppercase tracking-widest">No calls yet.</p>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            Calls will appear here when buyers press the call button on your listings.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-[10px] font-bold uppercase tracking-widest text-left">
+              <thead className="bg-surface text-muted">
+                <tr>
+                  <th className="px-6 py-4">Caller</th>
+                  <th className="px-6 py-4">Caller Phone</th>
+                  <th className="px-6 py-4">Ad</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Source</th>
+                  <th className="px-6 py-4">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calls.map((call) => (
+                  <tr key={call.id} className="border-t border-line hover:bg-surface/60 transition-colors">
+                    <td className="px-6 py-4 text-ink">
+                      <div className="flex flex-col gap-1 normal-case">
+                        <span className="text-xs font-black tracking-tight uppercase">{call.callerName || 'Unknown Caller'}</span>
+                        <span className="text-[10px] font-bold text-muted">{call.callerEmail || (call.isAuthenticated ? 'Signed-in user' : 'Guest caller')}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-ink normal-case">{call.callerPhone || 'Not provided'}</td>
+                    <td className="px-6 py-4 text-ink">
+                      <div className="flex flex-col gap-1 normal-case">
+                        <span className="text-xs font-black tracking-tight uppercase">{call.listingTitle || 'Untitled Listing'}</span>
+                        <span className="text-[10px] font-bold text-muted">ID: {call.listingId || 'Unknown'}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex px-2 py-1 rounded-sm bg-data/10 text-data text-[9px] font-black uppercase tracking-widest">
+                        {call.status || 'Initiated'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-muted">{call.source || 'unknown'}</td>
+                    <td className="px-6 py-4 text-muted normal-case">{formatDateLabel(call.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<any>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadResult(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      setUploadResult(result);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadResult({ error: 'Failed to upload file.' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const renderSettings = () => (
+    <div className="space-y-12">
+      <section className="space-y-6">
+        <h3 className="text-sm font-black uppercase tracking-widest border-b border-line pb-4">Profile Information</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-3">
+            <label className="label-micro">Profile Picture</label>
+            <button
+              type="button"
+              onClick={() => openAssetPicker('avatar')}
+              disabled={isUploadingAvatar}
+              className="w-24 h-24 bg-surface border border-line rounded-sm overflow-hidden flex items-center justify-center transition hover:border-accent disabled:opacity-60"
+            >
+              {settingsForm.photoURL ? (
+                <img src={settingsForm.photoURL} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <User size={30} className="text-muted" />
+              )}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleProfileAssetUpload(file, 'avatar');
+                e.target.value = '';
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => openAssetPicker('avatar')}
+              disabled={isUploadingAvatar}
+              className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
+            >
+              {isUploadingAvatar ? 'Uploading...' : settingsForm.photoURL ? 'Change Profile Picture' : 'Upload Profile Picture'}
+            </button>
+            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Click the image or button to upload and update your public profile photo.</p>
+            {isUploadingAvatar && <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Uploading profile photo...</p>}
+          </div>
+
+          <div className="space-y-3">
+            <label className="label-micro">Cover Photo</label>
+            <button
+              type="button"
+              onClick={() => openAssetPicker('cover')}
+              disabled={isUploadingCover}
+              className="w-full h-24 bg-surface border border-line rounded-sm overflow-hidden flex items-center justify-center transition hover:border-accent disabled:opacity-60"
+            >
+              {settingsForm.coverPhotoUrl ? (
+                <img src={settingsForm.coverPhotoUrl} alt="Cover" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[10px] font-bold text-muted uppercase tracking-widest">No Cover Photo</span>
+              )}
+            </button>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleProfileAssetUpload(file, 'cover');
+                e.target.value = '';
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => openAssetPicker('cover')}
+              disabled={isUploadingCover}
+              className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
+            >
+              {isUploadingCover ? 'Uploading...' : settingsForm.coverPhotoUrl ? 'Change Cover Photo' : 'Upload Cover Photo'}
+            </button>
+            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Click the banner or button to upload and update your account and seller header image.</p>
+            {isUploadingCover && <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Uploading cover photo...</p>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-2">
+            <label className="label-micro">Full Name</label>
+            <input
+              type="text"
+              className="input-industrial w-full"
+              value={settingsForm.displayName}
+              onChange={(e) => handleSettingsInputChange('displayName', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="label-micro">Email Address</label>
+            <input
+              type="email"
+              className="input-industrial w-full"
+              value={settingsForm.email}
+              onChange={(e) => handleSettingsInputChange('email', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="label-micro">Phone Number</label>
+            <input
+              type="tel"
+              className="input-industrial w-full"
+              placeholder="+1 (555) 000-0000"
+              value={settingsForm.phoneNumber}
+              onChange={(e) => handleSettingsInputChange('phoneNumber', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="label-micro">Company Name</label>
+            <input
+              type="text"
+              className="input-industrial w-full"
+              value={settingsForm.company}
+              onChange={(e) => handleSettingsInputChange('company', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="label-micro">Address</label>
+            <input
+              type="text"
+              className="input-industrial w-full"
+              placeholder="Street, City, State/Province, Country"
+              value={settingsForm.location}
+              onChange={(e) => handleSettingsInputChange('location', e.target.value)}
+            />
+          </div>
+        </div>
+        {settingsError && <p className="text-[10px] font-black uppercase tracking-widest text-accent">{settingsError}</p>}
+        {settingsNotice && <p className="text-[10px] font-black uppercase tracking-widest text-data">{settingsNotice}</p>}
+        <button
+          onClick={() => void handleSaveSettings()}
+          disabled={isSavingSettings || isUploadingAvatar || isUploadingCover}
+          className="btn-industrial btn-accent py-3 px-8 disabled:opacity-60"
+        >
+          {isSavingSettings ? 'Saving...' : 'Save Changes'}
+        </button>
+      </section>
+
+      <section className="space-y-6">
+        <h3 className="text-sm font-black uppercase tracking-widest border-b border-line pb-4">Account Access</h3>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center p-4 bg-surface border border-line rounded-sm">
+            <div className="flex items-center space-x-4">
+              <Wrench size={20} className="text-accent" />
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest">Account Verification</p>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Keep your account verified so listings and payments keep moving</p>
+              </div>
+            </div>
+            <button className="text-[10px] font-black text-accent uppercase hover:underline">Manage</button>
+          </div>
+          <div className="flex justify-between items-center p-4 bg-surface border border-line rounded-sm">
+            <div className="flex items-center space-x-4">
+              <Bell size={20} className="text-accent" />
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest">Account Notifications</p>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Get updates on listings, buyer messages, and payments</p>
+              </div>
+            </div>
+            <button className="text-[10px] font-black text-accent uppercase hover:underline">Configure</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-bg">
+      {/* Header */}
+      <div className="bg-surface border-b border-line py-8 md:py-16 px-4 md:px-8 relative overflow-hidden">
+        {coverPhotoPreview && (
+          <>
+            <img
+              src={coverPhotoPreview}
+              alt="Profile cover"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-ink/60"></div>
+          </>
+        )}
+
+        <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
+          <div className="flex items-center space-x-4 md:space-x-8 min-w-0">
+            <div className="w-24 h-24 bg-ink flex items-center justify-center rounded-sm border border-line overflow-hidden">
+              {profilePhotoPreview ? (
+                <img src={profilePhotoPreview} alt={user?.displayName || 'Profile'} className="w-full h-full object-cover" />
+              ) : (
+                <User className="text-accent" size={48} />
+              )}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{user?.role} Profile</span>
+              <h1 className={`text-2xl md:text-4xl font-black uppercase tracking-tighter truncate ${coverPhotoPreview ? 'text-white' : ''}`}>
+                {user?.displayName}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <span className={`text-[10px] font-bold uppercase tracking-widest truncate max-w-[200px] sm:max-w-none ${coverPhotoPreview ? 'text-white/80' : 'text-muted'}`}>{user?.email}</span>
+                <span className={`w-1 h-1 rounded-full ${coverPhotoPreview ? 'bg-white/40' : 'bg-line'}`}></span>
+                <span className="text-[10px] font-bold text-data uppercase tracking-widest flex items-center">
+                  <CheckCircle2 size={12} className="mr-1.5" />
+                  {user?.emailVerified ? 'Account Confirmed' : 'Account Pending'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3 flex-shrink-0">
+            <button 
+              onClick={() => setActiveTab('Account Settings')}
+              className="btn-industrial bg-surface py-2 px-4 text-[10px]"
+            >
+              Edit Profile
+            </button>
+            <button 
+              onClick={logout}
+              className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
+            >
+              <LogOut size={16} className="mr-2" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-16">
+        {(isConfirmingCheckout || checkoutNotice) && (
+          <div className={`mb-6 border rounded-sm p-4 ${isConfirmingCheckout ? 'bg-surface border-line text-muted' : 'bg-data/10 border-data/30 text-data'}`}>
+            <p className="text-[11px] font-black uppercase tracking-widest">
+              {isConfirmingCheckout ? 'Confirming subscription checkout...' : checkoutNotice}
+            </p>
+          </div>
+        )}
+
+        {/* Mobile tab grid */}
+        <div className="lg:hidden mb-8">
+          <div className="grid grid-cols-2 gap-2">
+            {profileTabItems.map((item) => (
+            <button
+              key={item.label}
+              onClick={() => setActiveTab(item.label)}
+              className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
+                activeTab === item.label
+                  ? 'bg-ink text-white border-ink'
+                  : 'bg-surface border-line text-muted hover:border-accent/50 hover:text-ink'
+              }`}
+            >
+              <item.icon size={14} className="shrink-0" />
+              <span className="truncate text-center">{item.label}</span>
+            </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          {/* Sidebar Navigation */}
+          <div className="hidden lg:block lg:col-span-3 space-y-2">
+            {profileTabItems.map((item, i) => (
+              <button 
+                key={i}
+                onClick={() => setActiveTab(item.label)}
+                className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-white shadow-lg' : 'hover:bg-surface text-muted'}`}
+              >
+                <item.icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Main Content */}
+          <div className="lg:col-span-9">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              {activeTab === 'Overview' && renderOverview()}
+              {activeTab === 'My Listings' && renderMyListings()}
+              {activeTab === 'Search Alerts' && renderAlerts()}
+              {activeTab === 'Calls' && renderCalls()}
+              {activeTab === 'Financing' && renderFinancing()}
+              {activeTab === 'Account Settings' && renderSettings()}
+              {activeTab === 'Privacy & Data' && (
+                <div className="space-y-12">
+                  <div className="flex flex-col space-y-4">
+                    <h3 className="text-sm font-black uppercase tracking-widest">Account Data Management</h3>
+                    <p className="text-xs text-muted uppercase tracking-widest leading-relaxed max-w-2xl">
+                      Manage your account data, exports, and removal requests in one place.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="bg-surface border border-line p-8 flex flex-col space-y-6">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-data/10 rounded-full flex items-center justify-center">
+                          <Download className="text-data" size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-widest">Export Account Data</h4>
+                          <p className="text-[10px] text-muted uppercase tracking-widest mt-1">Download a full record of your account activity.</p>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted leading-relaxed">
+                        Your export includes profile info, saved inventory, inquiries,
+                        and account activity logs in JSON format.
+                      </p>
+                      <button 
+                        onClick={handleExportData}
+                        className="btn-industrial bg-bg py-4 px-8 text-[10px] font-black uppercase tracking-widest hover:bg-ink hover:text-white transition-all"
+                      >
+                        Export My Data
+                      </button>
+                    </div>
+
+                    <div className="bg-surface border border-line p-8 flex flex-col space-y-6">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center">
+                          <Trash2 className="text-accent" size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-widest">Delete Account</h4>
+                          <p className="text-[10px] text-muted uppercase tracking-widest mt-1">Remove your account and data from the system.</p>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted leading-relaxed">
+                        This action is permanent. All listings, inquiries, and profile data will be 
+                        permanently removed from our systems.
+                      </p>
+                      <button 
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="btn-industrial btn-accent py-4 px-8 text-[10px] font-black uppercase tracking-widest"
+                      >
+                        Request Account Deletion
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-ink text-white p-12 rounded-sm space-y-8">
+                    <div className="flex items-center space-x-4">
+                      <ClipboardList className="text-accent" size={32} />
+                      <h3 className="text-xl font-black uppercase tracking-tighter">Account Status</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+                      <div className="flex flex-col space-y-2">
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Profile Setup</span>
+                        <span className="text-xs font-black uppercase tracking-widest text-data">Complete</span>
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Billing Setup</span>
+                        <span className="text-xs font-black uppercase tracking-widest text-data">Active</span>
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Last Account Update</span>
+                        <span className="text-xs font-black uppercase tracking-widest text-white">March 15, 2026</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-12 bg-surface border border-line space-y-6">
+                    <div className="flex items-center space-x-4">
+                      <Shield className="text-accent" size={24} />
+                      <h3 className="text-sm font-black uppercase tracking-widest">File Upload Test</h3>
+                    </div>
+                    <p className="text-[11px] text-muted leading-relaxed uppercase tracking-widest max-w-2xl">
+                      Test file upload for your account. Files are checked for file type (JPG, PNG, WEBP, PDF) 
+                      and size (5MB limit) before processing.
+                    </p>
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          onChange={handleFileUpload}
+                          disabled={uploading}
+                          className="block w-full text-[10px] text-muted
+                            file:mr-4 file:py-4 file:px-8
+                            file:rounded-sm file:border-0
+                            file:text-[10px] file:font-black file:uppercase
+                            file:bg-ink file:text-white
+                            hover:file:bg-accent transition-all cursor-pointer"
+                        />
+                      </div>
+                      {uploading && (
+                        <div className="flex items-center space-x-3 text-[10px] font-black text-accent animate-pulse uppercase tracking-widest">
+                          <div className="w-2 h-2 bg-accent rounded-full"></div>
+                          <span>Checking file...</span>
+                        </div>
+                      )}
+                      {uploadResult && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`p-6 text-[10px] font-mono rounded-sm border ${
+                            uploadResult.success 
+                              ? 'bg-data/5 border-data/20 text-data' 
+                              : 'bg-accent/5 border-accent/20 text-accent'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2 mb-4">
+                            <div className={`w-2 h-2 rounded-full ${uploadResult.success ? 'bg-data' : 'bg-accent'}`}></div>
+                            <span className="font-black uppercase tracking-widest">
+                              {uploadResult.success ? 'File Ready' : 'File Check Failed'}
+                            </span>
+                          </div>
+                          <pre className="whitespace-pre-wrap opacity-80">{JSON.stringify(uploadResult, null, 2)}</pre>
+                        </motion.div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {activeTab === 'Saved Equipment' && (
+                <div className="space-y-8">
+                  <h3 className="text-sm font-black uppercase tracking-widest">Saved Inventory</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {savedAssets.map(listing => (
+                      <div key={listing.id} className="bg-surface border border-line overflow-hidden rounded-sm shadow-sm group">
+                        <div className="aspect-video relative">
+                          <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
+                          <button 
+                            onClick={() => toggleFavorite(listing.id)}
+                            className="absolute top-4 right-4 p-2 bg-ink/80 text-accent rounded-sm hover:bg-ink transition-colors"
+                          >
+                            <Bookmark size={16} fill="currentColor" />
+                          </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                          <div>
+                            <span className="label-micro text-accent">{listing.category}</span>
+                            <h4 className="text-lg font-black uppercase tracking-tighter">{listing.title}</h4>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
+                            <button className="text-[10px] font-black uppercase tracking-widest text-accent flex items-center hover:underline">
+                              View Details <ArrowRight size={12} className="ml-1" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        </div>
+      </div>
+
+      <ListingModal 
+        isOpen={isListingModalOpen}
+        onClose={() => setIsListingModalOpen(false)}
+        onSave={handleSaveListing}
+        listing={selectedListing}
+      />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-ink/90 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-surface border border-line p-12 max-w-md w-full rounded-sm space-y-8"
+          >
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center">
+                <AlertTriangle className="text-accent" size={40} />
+              </div>
+              <h3 className="text-2xl font-black uppercase tracking-tighter">Confirm Deletion</h3>
+              <p className="text-xs text-muted leading-relaxed uppercase tracking-widest">
+                Are you absolutely sure you want to delete your account? This action will permanently delete all your data from our system.
+              </p>
+            </div>
+            <div className="flex flex-col space-y-3">
+              <button 
+                onClick={handleDeleteAccount}
+                className="btn-industrial btn-accent py-4 text-[10px] font-black uppercase tracking-widest"
+              >
+                Yes, Delete My Data
+              </button>
+              <button 
+                onClick={() => setShowDeleteConfirm(false)}
+                className="btn-industrial bg-bg py-4 text-[10px] font-black uppercase tracking-widest"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const Plus = ({ size, className }: { size?: number, className?: string }) => (
+  <svg 
+    width={size || 24} 
+    height={size || 24} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="3" 
+    strokeLinecap="square" 
+    strokeLinejoin="inherit" 
+    className={className}
+  >
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+);
