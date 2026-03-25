@@ -8,6 +8,7 @@ import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { buildCategoryPath } from '../utils/seoRoutes';
 
 const CATEGORIES = [
   { 
@@ -117,7 +118,7 @@ export function Categories() {
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://timberequip.com/search?category=${encodeURIComponent(cat.name)}`
+      url: `https://timberequip.com${buildCategoryPath(cat.name)}`
     }))
   };
 
@@ -163,7 +164,7 @@ export function Categories() {
               
               <div className="flex flex-col space-y-4">
                 <Link 
-                  to={`/search?category=${cat.name}`}
+                  to={buildCategoryPath(cat.name)}
                   className="btn-industrial btn-accent py-4 w-full text-center"
                 >
                   Browse Inventory

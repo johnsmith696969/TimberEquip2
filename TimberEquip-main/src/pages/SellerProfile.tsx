@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useLocation, useParams, Link } from 'react-router-dom';
 import {
   MapPin,
   Phone,
@@ -26,6 +26,7 @@ import { useAuth } from '../components/AuthContext';
 import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
+import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
 
 const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'dealer_manager', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
@@ -54,7 +55,8 @@ function roleIcon(role?: string) {
 }
 
 export function SellerProfile() {
-  const { id } = useParams<{ id: string }>();
+  const { id, categorySlug } = useParams<{ id: string; categorySlug?: string }>();
+  const location = useLocation();
   const { user: currentUser } = useAuth();
   const [seller, setSeller] = useState<Seller | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -85,6 +87,8 @@ export function SellerProfile() {
   const resolvedSellerUid = seller?.uid || id;
   const isOwner = currentUser?.uid === resolvedSellerUid;
   const canEditStorefront = Boolean(currentUser && ((isOwner && canManageOwnStorefront) || canManageAnyStorefront));
+  const isDealerRoute = location.pathname.startsWith('/dealers/');
+  const isInventoryRoute = location.pathname.endsWith('/inventory');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -137,19 +141,37 @@ export function SellerProfile() {
 
   const seoTitle = useMemo(() => {
     if (!seller) return 'Dealer Storefront | TimberEquip.com';
-    return seller.seoTitle || `${seller.storefrontName || seller.name} | ${roleLabel(seller.role)} | TimberEquip.com`;
-  }, [seller]);
+    const headline = seller.storefrontName || seller.name;
+    if (isDealerRoute && categorySlug) {
+      return `${headline} ${titleCaseSlug(categorySlug)} Inventory | TimberEquip.com`;
+    }
+    if (isDealerRoute && isInventoryRoute) {
+      return `${headline} Inventory | TimberEquip.com`;
+    }
+    return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | TimberEquip.com`;
+  }, [seller, isDealerRoute, categorySlug, isInventoryRoute]);
 
   const seoDescription = useMemo(() => {
     if (!seller) return 'Browse seller storefront inventory on TimberEquip.com.';
+    const headline = seller.storefrontName || seller.name;
+    if (isDealerRoute && categorySlug) {
+      return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on TimberEquip.`;
+    }
+    if (isDealerRoute && isInventoryRoute) {
+      return `Browse live inventory from ${headline} on TimberEquip.`;
+    }
     return (
       seller.seoDescription ||
       seller.storefrontDescription ||
-      `${seller.storefrontName || seller.name} storefront on TimberEquip.com. Browse inventory, contact details, and active listings.`
+      `${headline} storefront on TimberEquip.com. Browse inventory, contact details, and active listings.`
     );
-  }, [seller]);
+  }, [seller, isDealerRoute, categorySlug, isInventoryRoute]);
 
   const storefrontIcon = roleIcon(seller?.role);
+  const filteredListings = useMemo(() => {
+    if (!categorySlug) return listings;
+    return listings.filter((listing) => normalizeSeoSlug(getListingCategoryLabel(listing)) === categorySlug);
+  }, [listings, categorySlug]);
 
   const handleSaveProfile = async () => {
     if (!resolvedSellerUid || !canEditStorefront || !currentUser?.role) return;
@@ -266,12 +288,26 @@ export function SellerProfile() {
   const headline = seller.storefrontName || seller.name;
   const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
   const description = seller.storefrontDescription || 'This storefront is managed on TimberEquip.com with branded inventory, verified seller controls, and direct lead routing.';
+  const preferredDealerPath = buildDealerPath(seller);
+  const canonicalPath = (() => {
+    if (isDealerRoute) {
+      if (categorySlug) return `${preferredDealerPath}/${categorySlug}`;
+      if (isInventoryRoute) return `${preferredDealerPath}/inventory`;
+      return preferredDealerPath;
+    }
+
+    if (isDealerRole(seller.role)) {
+      return preferredDealerPath;
+    }
+
+    return `/seller/${seller.storefrontSlug || seller.id}`;
+  })();
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: headline,
-    url: `https://timberequip.com/seller/${seller.storefrontSlug || seller.id}`,
+    url: `https://timberequip.com${canonicalPath}`,
     logo: logoImage,
     description,
     email: seller.email || undefined,
@@ -286,7 +322,7 @@ export function SellerProfile() {
       <Seo
         title={seoTitle}
         description={seoDescription}
-        canonicalPath={`/seller/${seller.storefrontSlug || seller.id}`}
+        canonicalPath={canonicalPath}
         jsonLd={jsonLd}
       />
 
@@ -320,13 +356,19 @@ export function SellerProfile() {
               </div>
 
               <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 leading-none">
-                {headline}
+                {categorySlug ? `${headline} ${titleCaseSlug(categorySlug)}` : headline}
               </h1>
 
               {!isEditing && (
                 <>
                   <p className="text-accent/90 text-xs font-black uppercase tracking-[0.2em] mb-4">{tagline}</p>
-                  <p className="text-white/70 text-sm max-w-3xl mb-8 leading-relaxed">{description}</p>
+                  <p className="text-white/70 text-sm max-w-3xl mb-8 leading-relaxed">
+                    {categorySlug
+                      ? `${description} This view is filtered to ${titleCaseSlug(categorySlug).toLowerCase()} inventory.`
+                      : isInventoryRoute
+                        ? `${description} This view surfaces the full dealer inventory archive.`
+                        : description}
+                  </p>
                 </>
               )}
 
@@ -485,7 +527,7 @@ export function SellerProfile() {
                   <span className="label-micro text-white/40 mb-1">Active Equipment</span>
                   <div className="flex items-center text-sm font-bold">
                     <Package size={14} className="mr-2 text-accent" />
-                    {listings.length} Units
+                    {filteredListings.length} Units
                   </div>
                 </div>
                 <div className="flex flex-col">
@@ -537,16 +579,16 @@ export function SellerProfile() {
           <div>
             <span className="label-micro text-accent mb-2 block">Storefront Inventory</span>
             <h2 className="text-4xl font-black uppercase tracking-tighter">
-              Current <span className="text-muted">Equipment</span>
+              {categorySlug ? `${titleCaseSlug(categorySlug)} ` : 'Current '}<span className="text-muted">Equipment</span>
             </h2>
           </div>
           <div className="flex items-center space-x-4">
-            <span className="text-xs font-bold uppercase tracking-widest text-muted">{listings.length} Results</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-muted">{filteredListings.length} Results</span>
           </div>
         </div>
 
         <div className="industrial-grid">
-          {listings.map((listing) => (
+          {filteredListings.map((listing) => (
             <div key={listing.id}>
               <ListingCard listing={listing} />
             </div>

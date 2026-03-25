@@ -19,6 +19,14 @@ const BlogPostDetail = lazy(() => import('./pages/BlogPostDetail').then((module)
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const Compare = lazy(() => import('./pages/Compare').then((module) => ({ default: module.Compare })));
 const Categories = lazy(() => import('./pages/Categories').then((module) => ({ default: module.Categories })));
+const LoggingHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.LoggingHubPage })));
+const ForestryHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ForestryHubPage })));
+const CategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.CategoryLandingPage })));
+const ManufacturerLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerLandingPage })));
+const StateMarketLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateMarketLandingPage })));
+const StateCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateCategoryLandingPage })));
+const ManufacturerCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerCategoryLandingPage })));
+const DealerDirectoryPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.DealerDirectoryPage })));
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
 const Register = lazy(() => import('./pages/Register').then((module) => ({ default: module.Register })));
 const Sell = lazy(() => import('./pages/Sell').then((module) => ({ default: module.Sell })));
@@ -62,9 +70,20 @@ function App() {
                     <Route path="/blog" element={<Blog />} />
                     <Route path="/blog/:id" element={<BlogPostDetail />} />
                     <Route path="/blog/:id/:slug" element={<BlogPostDetail />} />
+                    <Route path="/logging-equipment-for-sale" element={<LoggingHubPage />} />
+                    <Route path="/forestry-equipment-for-sale" element={<ForestryHubPage />} />
                     <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminDashboard /></ProtectedRoute>} />
                     <Route path="/compare" element={<Compare />} />
                     <Route path="/categories" element={<Categories />} />
+                    <Route path="/categories/:categorySlug" element={<CategoryLandingPage />} />
+                    <Route path="/manufacturers/:manufacturerSlug/:categorySaleSlug" element={<ManufacturerCategoryLandingPage />} />
+                    <Route path="/manufacturers/:manufacturerSlug" element={<ManufacturerLandingPage />} />
+                    <Route path="/states/:stateSlug/:marketSlug" element={<StateMarketLandingPage />} />
+                    <Route path="/states/:stateSlug/:categorySaleSlug" element={<StateCategoryLandingPage />} />
+                    <Route path="/dealers" element={<DealerDirectoryPage />} />
+                    <Route path="/dealers/:id/inventory" element={<SellerProfile />} />
+                    <Route path="/dealers/:id/:categorySlug" element={<SellerProfile />} />
+                    <Route path="/dealers/:id" element={<SellerProfile />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/sell" element={<ProtectedRoute><Sell /></ProtectedRoute>} />
