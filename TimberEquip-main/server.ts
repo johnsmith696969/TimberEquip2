@@ -131,6 +131,10 @@ function isPrivilegedAdminEmail(email: unknown): boolean {
   return String(email || '').trim().toLowerCase() === 'calebhappy@gmail.com';
 }
 
+function canAdministrateAccountRole(role: unknown): boolean {
+  return ['super_admin', 'admin', 'developer'].includes(String(role || '').trim().toLowerCase());
+}
+
 function normalizeNonEmptyString(value: unknown, fallback = ''): string {
   const normalized = String(value || '').trim();
   return normalized || fallback;
@@ -1238,7 +1242,10 @@ async function startServer() {
     try {
       const decodedToken = await auth.verifyIdToken(idToken);
       const user = await db.collection('users').doc(decodedToken.uid).get();
-      if (user.data()?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
 
       const snapshot = await db.collection('invoices').orderBy('createdAt', 'desc').get();
       const invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -1255,7 +1262,10 @@ async function startServer() {
     try {
       const decodedToken = await auth.verifyIdToken(idToken);
       const user = await db.collection('users').doc(decodedToken.uid).get();
-      if (user.data()?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
 
       const snapshot = await db.collection('subscriptions').get();
       const subscriptions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -1272,7 +1282,10 @@ async function startServer() {
     try {
       const decodedToken = await auth.verifyIdToken(idToken);
       const user = await db.collection('users').doc(decodedToken.uid).get();
-      if (user.data()?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
 
       const snapshot = await db.collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
       const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

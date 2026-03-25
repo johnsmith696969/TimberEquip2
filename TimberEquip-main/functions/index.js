@@ -3294,6 +3294,39 @@ exports.apiProxy = onRequest(
         return res.status(200).json(users);
       }
 
+      if (req.method === 'GET' && path === '/admin/billing/invoices') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const snapshot = await getDb().collection('invoices').orderBy('createdAt', 'desc').get();
+        const invoices = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.status(200).json(invoices);
+      }
+
+      if (req.method === 'GET' && path === '/admin/billing/subscriptions') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const snapshot = await getDb().collection('subscriptions').get();
+        const subscriptions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.status(200).json(subscriptions);
+      }
+
+      if (req.method === 'GET' && path === '/admin/billing/audit-logs') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
+        const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.status(200).json(logs);
+      }
+
       const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock)$/);
       if (adminUserActionMatch && req.method === 'POST') {
         const actor = await getAdminActorContext(req);
