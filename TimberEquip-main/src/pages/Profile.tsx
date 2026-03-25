@@ -360,6 +360,7 @@ export function Profile() {
   const [inspectionActionId, setInspectionActionId] = useState<string | null>(null);
   const [inspectionError, setInspectionError] = useState('');
   const [inspectionNotice, setInspectionNotice] = useState('');
+  const [inspectionRequestsLoading, setInspectionRequestsLoading] = useState(false);
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
@@ -373,36 +374,31 @@ export function Profile() {
       if (user) {
         setProfileDataLoading(true);
         setProfileDataError('');
+        try {
+          const results = await Promise.allSettled([
+            equipmentService.getListings({ sellerUid: user.uid }),
+            equipmentService.getFinancingRequests(user.uid),
+            userService.getSavedSearches(user.uid),
+            user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
+            equipmentService.getCalls(user.uid),
+            hasStorefrontAccess ? equipmentService.getSeller(user.uid) : Promise.resolve(null),
+          ]);
 
-        const results = await Promise.allSettled([
-          equipmentService.getListings({ sellerUid: user.uid }),
-          equipmentService.getFinancingRequests(user.uid),
-          userService.getSavedSearches(user.uid),
-          user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
-          equipmentService.getCalls(user.uid),
-          canViewInspectionRequests ? equipmentService.getInspectionRequests({ userUid: user.uid, role: user.role }) : Promise.resolve([]),
-          hasStorefrontAccess ? equipmentService.getSeller(user.uid) : Promise.resolve(null),
-        ]);
+          setMyListings(results[0].status === 'fulfilled' ? results[0].value : []);
+          setFinancingRequests(results[1].status === 'fulfilled' ? results[1].value : []);
+          setSavedSearches(results[2].status === 'fulfilled' ? results[2].value : []);
+          setSavedAssets(results[3].status === 'fulfilled' ? results[3].value : []);
+          setCalls(results[4].status === 'fulfilled' ? results[4].value : []);
+          setStorefrontPreview(results[5]?.status === 'fulfilled' ? results[5].value : null);
 
-        setMyListings(results[0].status === 'fulfilled' ? results[0].value : []);
-        setFinancingRequests(results[1].status === 'fulfilled' ? results[1].value : []);
-        setSavedSearches(results[2].status === 'fulfilled' ? results[2].value : []);
-        setSavedAssets(results[3].status === 'fulfilled' ? results[3].value : []);
-        setCalls(results[4].status === 'fulfilled' ? results[4].value : []);
-        const nextInspectionRequests = results[5].status === 'fulfilled' ? results[5].value : [];
-        setInspectionRequests(nextInspectionRequests);
-        setInspectionQuoteDrafts(
-          nextInspectionRequests.reduce<Record<string, string>>((drafts, request) => {
-            drafts[request.id] = typeof request.quotedPrice === 'number' ? String(request.quotedPrice) : '';
-            return drafts;
-          }, {})
-        );
-        setStorefrontPreview(results[6]?.status === 'fulfilled' ? results[6].value : null);
-
-        if (results.some((result) => result.status === 'rejected')) {
-          setProfileDataError('Some account data could not be loaded. Refresh to retry.');
+          if (results.some((result) => result.status === 'rejected')) {
+            setProfileDataError('Some account data could not be loaded. Refresh to retry.');
+          }
+        } catch (error) {
+          setProfileDataError(error instanceof Error ? error.message : 'Unable to load profile data right now.');
+        } finally {
+          setProfileDataLoading(false);
         }
-        setProfileDataLoading(false);
       } else {
         setMyListings([]);
         setFinancingRequests([]);
@@ -416,7 +412,35 @@ export function Profile() {
       }
     };
     void fetchProfileData();
-  }, [canViewInspectionRequests, hasStorefrontAccess, user]);
+  }, [hasStorefrontAccess, user?.uid, user?.role, user?.favorites]);
+
+  useEffect(() => {
+    const fetchInspectionRequests = async () => {
+      if (!user?.uid || !canViewInspectionRequests || activeTab !== 'Inspections') {
+        return;
+      }
+
+      setInspectionRequestsLoading(true);
+      setInspectionError('');
+
+      try {
+        const nextInspectionRequests = await equipmentService.getInspectionRequests({ userUid: user.uid, role: user.role });
+        setInspectionRequests(nextInspectionRequests);
+        setInspectionQuoteDrafts(
+          nextInspectionRequests.reduce<Record<string, string>>((drafts, request) => {
+            drafts[request.id] = typeof request.quotedPrice === 'number' ? String(request.quotedPrice) : '';
+            return drafts;
+          }, {})
+        );
+      } catch (error) {
+        setInspectionError(error instanceof Error ? error.message : 'Unable to load inspection requests right now.');
+      } finally {
+        setInspectionRequestsLoading(false);
+      }
+    };
+
+    void fetchInspectionRequests();
+  }, [activeTab, canViewInspectionRequests, user?.uid, user?.role]);
 
   const formatDateLabel = (value?: string) => {
     if (!value) return 'Date unavailable';
@@ -961,7 +985,13 @@ export function Profile() {
         {inspectionError && <p className="text-[10px] font-black uppercase tracking-widest text-accent">{inspectionError}</p>}
         {inspectionNotice && <p className="text-[10px] font-black uppercase tracking-widest text-data">{inspectionNotice}</p>}
 
-        {inspectionRequests.length === 0 ? (
+        {inspectionRequestsLoading ? (
+          <div className="space-y-4 animate-pulse">
+            <div className="h-24 bg-surface border border-line" />
+            <div className="h-40 bg-surface border border-line" />
+            <div className="h-40 bg-surface border border-line" />
+          </div>
+        ) : inspectionRequests.length === 0 ? (
           <div className="bg-surface border border-line p-8 space-y-4">
             <p className="text-xs font-black uppercase tracking-widest">No inspection requests yet.</p>
             <p className="text-[10px] font-bold text-muted uppercase tracking-widest">

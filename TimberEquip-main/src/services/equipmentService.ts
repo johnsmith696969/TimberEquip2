@@ -1202,6 +1202,10 @@ export const equipmentService = {
           date: new Date(dateMs).toISOString(),
           image: String(post.image || '').trim() || 'https://picsum.photos/seed/timberequip-news/1600/900',
           category: String(post.category || 'Industry News'),
+          seoTitle: String(post.seoTitle || '').trim(),
+          seoDescription: String(post.seoDescription || '').trim(),
+          seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords.filter((keyword: unknown) => typeof keyword === 'string') : [],
+          seoSlug: String(post.seoSlug || '').trim(),
         } as NewsPost;
       };
 
@@ -1278,6 +1282,10 @@ export const equipmentService = {
           date: new Date(dateMs).toISOString(),
           image: String(post.image || '').trim() || 'https://picsum.photos/seed/timberequip-news/1600/900',
           category: String(post.category || 'Industry News'),
+          seoTitle: String(post.seoTitle || '').trim(),
+          seoDescription: String(post.seoDescription || '').trim(),
+          seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords.filter((keyword: unknown) => typeof keyword === 'string') : [],
+          seoSlug: String(post.seoSlug || '').trim(),
         };
       }
 

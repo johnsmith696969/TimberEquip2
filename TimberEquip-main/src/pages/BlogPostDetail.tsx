@@ -5,6 +5,20 @@ import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
 import { Seo } from '../components/Seo';
 
+function slugifyNewsTitle(value: string) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function getNewsPostCanonicalPath(post: NewsPost) {
+  const slug = post.seoSlug || slugifyNewsTitle(post.title);
+  return slug ? `/blog/${post.id}/${slug}` : `/blog/${post.id}`;
+}
+
 function renderInlineMarkdown(text: string) {
   const segments = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).filter(Boolean);
 
@@ -167,7 +181,11 @@ export function BlogPostDetail() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={`TimberEquip.com | ${post.title}`} description={post.summary} canonicalPath={`/blog/${post.id}`} />
+      <Seo
+        title={`TimberEquip.com | ${post.seoTitle || post.title}`}
+        description={post.seoDescription || post.summary}
+        canonicalPath={getNewsPostCanonicalPath(post)}
+      />
 
       <section className="bg-surface border-b border-line px-4 py-16 md:px-8">
         <div className="mx-auto max-w-5xl space-y-8">

@@ -269,6 +269,10 @@ export interface NewsPost {
   date: string;
   image: string;
   category: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string[];
+  seoSlug?: string;
 }
 
 export interface Inquiry {

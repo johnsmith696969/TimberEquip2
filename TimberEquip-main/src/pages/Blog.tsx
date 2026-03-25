@@ -10,6 +10,20 @@ import { motion } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
 
+function slugifyNewsTitle(value: string) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function getNewsPostPath(post: NewsPost) {
+  const slug = post.seoSlug || slugifyNewsTitle(post.title);
+  return slug ? `/blog/${post.id}/${slug}` : `/blog/${post.id}`;
+}
+
 export function Blog() {
   const [news, setNews] = useState<NewsPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +90,7 @@ export function Blog() {
                   viewport={{ once: true }}
                   className="group flex flex-col space-y-8"
                 >
-                  <Link to={`/blog/${post.id}`} className="block aspect-[21/9] overflow-hidden bg-surface border border-line relative">
+                  <Link to={getNewsPostPath(post)} className="block aspect-[21/9] overflow-hidden bg-surface border border-line relative">
                     <img 
                       src={post.image} 
                       alt={post.title} 
@@ -102,7 +116,7 @@ export function Blog() {
                       </div>
                     </div>
 
-                    <Link to={`/blog/${post.id}`} className="block">
+                    <Link to={getNewsPostPath(post)} className="block">
                       <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tighter group-hover:text-accent transition-colors leading-tight">
                         {post.title}
                       </h2>
@@ -112,7 +126,7 @@ export function Blog() {
                       {post.summary}
                     </p>
 
-                    <Link to={`/blog/${post.id}`} className="flex items-center text-xs font-black uppercase tracking-widest text-accent hover:underline pt-4">
+                    <Link to={getNewsPostPath(post)} className="flex items-center text-xs font-black uppercase tracking-widest text-accent hover:underline pt-4">
                       Read Full Report
                       <ArrowRight size={14} className="ml-2" />
                     </Link>
@@ -164,9 +178,15 @@ export function Blog() {
                     </div>
                   ))}
                 </div>
-                <button className="btn-industrial btn-accent w-full mt-10 py-4">
-                  Full Market Overview
-                </button>
+                {news[0] ? (
+                  <Link to={getNewsPostPath(news[0])} className="btn-industrial btn-accent w-full mt-10 py-4 text-center">
+                    Full Market Overview
+                  </Link>
+                ) : (
+                  <Link to="/blog" className="btn-industrial btn-accent w-full mt-10 py-4 text-center">
+                    Full Market Overview
+                  </Link>
+                )}
               </div>
 
               {/* Newsletter Signup */}

@@ -61,6 +61,7 @@ function App() {
                     <Route path="/seller/:id" element={<SellerProfile />} />
                     <Route path="/blog" element={<Blog />} />
                     <Route path="/blog/:id" element={<BlogPostDetail />} />
+                    <Route path="/blog/:id/:slug" element={<BlogPostDetail />} />
                     <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminDashboard /></ProtectedRoute>} />
                     <Route path="/compare" element={<Compare />} />
                     <Route path="/categories" element={<Categories />} />

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X, Save, Send, Globe, Calendar, RotateCcw,
   ChevronDown, ChevronUp
@@ -55,6 +55,40 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
   const [saving,        setSaving]        = useState(false);
   const [actionMsg,     setActionMsg]     = useState('');
 
+  const normalizeText = (value: string) => value.replace(/\s+/g, ' ').trim();
+
+  const stripHtml = (value: string) => value.replace(/<[^>]*>/g, ' ');
+
+  const buildFirstTwoSentences = (value: string) => {
+    const normalized = normalizeText(stripHtml(value));
+    if (!normalized) return '';
+
+    const sentences = normalized
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+
+    const firstTwo = sentences.slice(0, 2).join(' ');
+    return firstTwo || normalized.slice(0, 160);
+  };
+
+  const buildDefaultKeywords = (title: string) => {
+    const baseTitle = normalizeText(title);
+    const titleParts = baseTitle
+      .split(',')
+      .map((part) => normalizeText(part))
+      .filter(Boolean);
+
+    const defaults = [...titleParts, baseTitle, 'logging industry news', 'forestry equipment news'];
+    return Array.from(new Set(defaults.filter(Boolean)));
+  };
+
+  const derivedSeoDescription = useMemo(() => {
+    return buildFirstTwoSentences(form.excerpt || form.content);
+  }, [form.content, form.excerpt]);
+
+  const derivedSeoKeywords = useMemo(() => buildDefaultKeywords(form.title), [form.title]);
+
   const reviewStatus = form.reviewStatus ?? 'draft';
   const badge = STATUS_BADGE[reviewStatus] ?? STATUS_BADGE.draft;
 
@@ -97,6 +131,17 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
       const payload = { ...form } as any;
       payload.authorUid = user?.uid || payload.authorUid;
       payload.authorName = (user as any)?.name || user?.displayName || payload.authorName || 'Admin';
+      payload.excerpt = normalizeText(payload.excerpt || '') || derivedSeoDescription;
+      payload.seoTitle = normalizeText(payload.seoTitle || '') || normalizeText(payload.title || '');
+      payload.seoDescription = normalizeText(payload.seoDescription || '') || derivedSeoDescription;
+      payload.seoKeywords = Array.isArray(payload.seoKeywords) && payload.seoKeywords.length > 0 ? payload.seoKeywords : derivedSeoKeywords;
+      payload.tags = Array.isArray(payload.tags) && payload.tags.length > 0 ? payload.tags : derivedSeoKeywords;
+      payload.seoSlug = normalizeText(payload.seoSlug || '') || String(payload.title || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
       if (targetStatus) {
         payload.reviewStatus = targetStatus;
         if (targetStatus === 'published') payload.status = 'published';
@@ -326,7 +371,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                   type="text"
                   value={form.seoTitle}
                   onChange={e => setForm(f => ({ ...f, seoTitle: e.target.value }))}
-                  placeholder="Override title for search engines…"
+                  placeholder={form.title || 'Override title for search engines…'}
                   className="input-industrial w-full"
                 />
               </div>
@@ -336,6 +381,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                   value={form.seoDescription}
                   onChange={e => setForm(f => ({ ...f, seoDescription: e.target.value.slice(0, 160) }))}
                   rows={2}
+                  placeholder={derivedSeoDescription}
                   className="input-industrial w-full resize-none"
                 />
                 <span className="text-[9px] font-bold text-muted">{form.seoDescription.length}/160</span>
@@ -378,7 +424,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                     value={newKeyword}
                     onChange={e => setNewKeyword(e.target.value)}
                     onKeyDown={onKwKey}
-                    placeholder="Add keyword + Enter"
+                    placeholder={derivedSeoKeywords.length ? `${derivedSeoKeywords.join(', ')}` : 'Add keyword + Enter'}
                     className="bg-transparent text-[10px] font-bold uppercase outline-none border-none flex-1 min-w-[100px] text-ink placeholder:text-muted"
                   />
                 </div>
