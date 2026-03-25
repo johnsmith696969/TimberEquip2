@@ -1362,6 +1362,16 @@ async function takeInventorySnapshot(): Promise<void> {
   }
 }
 
-// Run immediately on startup, then every 24 hours
-takeInventorySnapshot();
-setInterval(takeInventorySnapshot, 24 * 60 * 60 * 1000);
+function canRunInventorySnapshotJob(): boolean {
+  if (process.env.NODE_ENV === 'production') return true;
+
+  return Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT);
+}
+
+// Run immediately on startup, then every 24 hours when credentials are available.
+if (canRunInventorySnapshotJob()) {
+  takeInventorySnapshot();
+  setInterval(takeInventorySnapshot, 24 * 60 * 60 * 1000);
+} else {
+  console.log('[InventorySnapshot] Skipping snapshot job in local development because Google Cloud credentials are not configured.');
+}

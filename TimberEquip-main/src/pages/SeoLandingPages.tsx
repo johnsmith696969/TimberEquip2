@@ -442,8 +442,8 @@ export function ManufacturerLandingPage() {
   );
 }
 
-export function StateMarketLandingPage() {
-  const { stateSlug = '', marketSlug = '' } = useParams<{ stateSlug: string; marketSlug: string }>();
+export function StateMarketLandingPage({ marketKeyOverride }: { marketKeyOverride?: 'logging' | 'forestry' }) {
+  const { stateSlug = '', marketSlug = '' } = useParams<{ stateSlug: string; marketSlug?: string }>();
   const { listings, loading } = useSeoListings();
 
   if (loading) return <LoadingState />;
@@ -451,7 +451,7 @@ export function StateMarketLandingPage() {
   const resolvedState = listings
     .map((listing) => getStateFromLocation(listing.location))
     .find((state) => normalizeSeoSlug(state) === stateSlug) || titleCaseSlug(stateSlug);
-  const marketKey = marketSlug === MARKET_ROUTE_LABELS.forestry ? 'forestry' : 'logging';
+  const marketKey = marketKeyOverride || (marketSlug === MARKET_ROUTE_LABELS.forestry ? 'forestry' : 'logging');
   const marketTitle = marketKey === 'forestry' ? 'Forestry Equipment For Sale' : 'Logging Equipment For Sale';
   const filteredListings = listings.filter((listing) => normalizeSeoSlug(getStateFromLocation(listing.location)) === stateSlug);
 

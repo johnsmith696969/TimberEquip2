@@ -78,7 +78,8 @@ function App() {
                     <Route path="/categories/:categorySlug" element={<CategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/:categorySaleSlug" element={<ManufacturerCategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug" element={<ManufacturerLandingPage />} />
-                    <Route path="/states/:stateSlug/:marketSlug" element={<StateMarketLandingPage />} />
+                    <Route path="/states/:stateSlug/logging-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="logging" />} />
+                    <Route path="/states/:stateSlug/forestry-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="forestry" />} />
                     <Route path="/states/:stateSlug/:categorySaleSlug" element={<StateCategoryLandingPage />} />
                     <Route path="/dealers" element={<DealerDirectoryPage />} />
                     <Route path="/dealers/:id/inventory" element={<SellerProfile />} />
