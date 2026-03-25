@@ -14,7 +14,7 @@ const BASE_STYLES = `
   .shell { background: linear-gradient(180deg, #111827 0%, #111827 180px, #f3f4f6 180px, #f3f4f6 100%); padding: 28px 14px; }
   .wrapper { max-width: 640px; margin: 0 auto; background: #ffffff !important; border: 1px solid #d1d5db; box-shadow: 0 18px 48px rgba(17, 24, 39, 0.12); }
   .header { background: #111827 !important; padding: 28px 40px 24px; }
-  .eyebrow { color: #fb923c; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; text-transform: uppercase; margin: 0 0 14px; }
+  .eyebrow { color: #4f8f3a; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; text-transform: uppercase; margin: 0 0 14px; }
   .header-logo-wrap { text-align: left; }
   .header-logo-img { display: block; width: 220px; max-width: 100%; height: auto; }
   .hero-title { color: #ffffff !important; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; margin: 20px 0 8px; }
@@ -22,15 +22,15 @@ const BASE_STYLES = `
   .header-divider { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 22px 0 0; }
   .body { padding: 40px; }
   .context-title { color: #111827 !important; font-size: 24px; font-weight: 900; margin: 0 0 20px; text-transform: uppercase; letter-spacing: -0.02em; }
-  .label { color: #ea580c; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 6px; }
+  .label { color: #2f6f2d; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 6px; }
   .body h2 { color: #111827 !important; font-size: 20px; font-weight: 900; margin: 0 0 16px; text-transform: uppercase; letter-spacing: -0.02em; }
   .body p { color: #4b5563 !important; font-size: 14px; line-height: 1.65; margin: 0 0 16px; }
   .body p strong { color: #111827 !important; }
   .panel { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important; border: 1px solid #e5e7eb; border-radius: 3px; padding: 20px; margin: 20px 0; }
-  .message-box { background: #fff7ed !important; border-left: 3px solid #f97316; padding: 16px 20px; margin: 20px 0; border-radius: 2px; }
-  .message-box p { color: #7c2d12 !important; font-size: 14px; margin: 0; font-style: italic; }
-  .cta { display: inline-block; background: #f97316; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; }
-  .cta-secondary { background: #ffffff !important; border: 1px solid #f97316; color: #f97316 !important; }
+  .message-box { background: #eef6ed !important; border-left: 3px solid #4f8f3a; padding: 16px 20px; margin: 20px 0; border-radius: 2px; }
+  .message-box p { color: #224b22 !important; font-size: 14px; margin: 0; font-style: italic; }
+  .cta { display: inline-block; background: #4f8f3a; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; }
+  .cta-secondary { background: #ffffff !important; border: 1px solid #4f8f3a; color: #2f6f2d !important; }
   .info-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .info-label { color: #6b7280 !important; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; min-width: 120px; }
   .info-value { color: #111827 !important; font-size: 11px; font-weight: 600; }
@@ -39,10 +39,10 @@ const BASE_STYLES = `
   .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; }
   .footer-title { color: #111827; font-size: 11px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 8px; }
   .footer p { color: #6b7280 !important; font-size: 11px; margin: 0; line-height: 1.5; }
-  .footer a { color: #f97316; text-decoration: none; }
-  .badge { display: inline-block; background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.3); color: #f97316; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; }
-  .success-badge { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); color: #22c55e; }
-  .warning-badge { background: rgba(249,115,22,0.12); border-color: rgba(249,115,22,0.3); color: #f97316; }
+  .footer a { color: #2f6f2d; text-decoration: none; }
+  .badge { display: inline-block; background: rgba(79,143,58,0.12); border: 1px solid rgba(79,143,58,0.3); color: #2f6f2d; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; }
+  .success-badge { background: rgba(79,143,58,0.12); border-color: rgba(79,143,58,0.3); color: #2f6f2d; }
+  .warning-badge { background: rgba(79,143,58,0.12); border-color: rgba(79,143,58,0.3); color: #2f6f2d; }
   @media (max-width: 640px) {
     .shell { padding: 0; background: #111827; }
     .wrapper { border-left: none; border-right: none; }
@@ -75,7 +75,7 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="header">
         <p class="eyebrow">TimberEquip Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/TimberEquip-Brand-Logo-Dusk.svg" alt="TimberEquip" />
+          <img class="header-logo-img" src="https://timberequip.com/logos/TimberEquip-Brand-Logo-Dusk-Email.png" alt="TimberEquip" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
         <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the TimberEquip network.</p>
@@ -139,7 +139,7 @@ const templates = {
         </div>
         <div class="info-row">
           <span class="info-label">Email</span>
-          <span class="info-value"><a href="mailto:${buyerEmail}" style="color:#f97316;">${buyerEmail}</a></span>
+          <span class="info-value"><a href="mailto:${buyerEmail}" style="color:#2f6f2d;">${buyerEmail}</a></span>
         </div>
         ${buyerPhone ? `<div class="info-row"><span class="info-label">Phone</span><span class="info-value">${buyerPhone}</span></div>` : ''}
         <div class="info-row">
@@ -324,7 +324,7 @@ const templates = {
         <div class="info-row"><span class="info-label">Plan</span><span class="info-value">${planName}</span></div>
       </div>
       ${hostedInvoiceUrl ? `<a href="${hostedInvoiceUrl}" class="cta">View Invoice</a>` : ''}
-      ${invoicePdfUrl ? `<a href="${invoicePdfUrl}" class="cta" style="background:#ffffff; border:1px solid #f97316; color:#f97316; margin-left:12px;">Download PDF</a>` : ''}
+      ${invoicePdfUrl ? `<a href="${invoicePdfUrl}" class="cta" style="background:#ffffff; border:1px solid #4f8f3a; color:#2f6f2d; margin-left:12px;">Download PDF</a>` : ''}
     `);
     return { subject, html };
   },
@@ -519,7 +519,7 @@ const templates = {
       </div>
       <p>Click the login link below, sign in with the temporary password, then reset your password from the reset link or the "Forgot Password" flow on the login screen.</p>
       <a href="${loginUrl}" class="cta">Open Login</a>
-      <a href="${resetLink}" class="cta" style="background:#ffffff; border:1px solid #f97316; color:#f97316; margin-left:12px;">Reset Password</a>
+      <a href="${resetLink}" class="cta" style="background:#ffffff; border:1px solid #4f8f3a; color:#2f6f2d; margin-left:12px;">Reset Password</a>
       <hr class="divider" />
       <p style="font-size:12px; color:#666;">For security, change the temporary password as soon as you sign in.</p>
     `);
