@@ -15,9 +15,20 @@ import {
   where,
   deleteDoc,
   addDoc,
-  orderBy
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
+
+function slugifyStorefrontValue(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
 
 enum OperationType {
   CREATE = 'create',
@@ -98,7 +109,117 @@ export const userService = {
 
   supportsEnterpriseStorefront(role?: string): boolean {
     const normalized = this.normalizeRole(role);
-    return ['dealer', 'dealer_manager', 'admin', 'super_admin'].includes(normalized);
+    return ['individual_seller', 'dealer', 'dealer_manager', 'admin', 'super_admin'].includes(normalized);
+  },
+
+  buildStorefrontSlug(value: string): string {
+    return slugifyStorefrontValue(value) || 'timber-equip-storefront';
+  },
+
+  async generateUniqueStorefrontSlug(value: string, excludeUid?: string): Promise<string> {
+    const baseSlug = this.buildStorefrontSlug(value);
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const candidate = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+      const snapshot = await getDocs(query(collection(db, 'storefronts'), where('storefrontSlug', '==', candidate), limit(2)));
+      const collision = snapshot.docs.find((docSnap) => docSnap.id !== excludeUid);
+      if (!collision) {
+        return candidate;
+      }
+    }
+
+    return `${baseSlug}-${Date.now().toString().slice(-6)}`;
+  },
+
+  async saveStorefrontProfile(
+    uid: string,
+    input: {
+      role?: UserRole;
+      storefrontName: string;
+      preferredSlug?: string;
+      storefrontTagline?: string;
+      storefrontDescription?: string;
+      location?: string;
+      phone?: string;
+      email?: string;
+      website?: string;
+      logo?: string;
+      coverPhotoUrl?: string;
+      seoTitle?: string;
+      seoDescription?: string;
+      seoKeywords?: string[];
+    }
+  ): Promise<{ storefrontSlug: string; canonicalPath: string }> {
+    const normalizedUid = String(uid || '').trim();
+    if (!normalizedUid) {
+      throw new Error('A valid user is required before saving storefront settings.');
+    }
+
+    const role = this.normalizeRole(input.role);
+    if (!this.supportsEnterpriseStorefront(role)) {
+      throw new Error('This account role does not support a public storefront.');
+    }
+
+    const storefrontName = String(input.storefrontName || '').trim();
+    if (!storefrontName) {
+      throw new Error('Storefront name is required.');
+    }
+
+    const storefrontRef = doc(db, 'storefronts', normalizedUid);
+    const storefrontSnapshot = await getDoc(storefrontRef);
+    const existingStorefront = storefrontSnapshot.exists() ? storefrontSnapshot.data() || {} : {};
+    const preferredSlug = String(input.preferredSlug || '').trim();
+    const requestedSlug = preferredSlug || String(existingStorefront.storefrontSlug || '').trim() || storefrontName;
+    const storefrontSlug = await this.generateUniqueStorefrontSlug(requestedSlug, normalizedUid);
+    const canonicalPath = `/seller/${storefrontSlug}`;
+    const seoKeywords = Array.isArray(input.seoKeywords)
+      ? input.seoKeywords.map((keyword) => String(keyword || '').trim()).filter(Boolean).slice(0, 30)
+      : [];
+
+    await updateDoc(doc(db, 'users', normalizedUid), {
+      website: String(input.website || '').trim(),
+      location: String(input.location || '').trim(),
+      phoneNumber: String(input.phone || '').trim(),
+      coverPhotoUrl: String(input.coverPhotoUrl || '').trim(),
+      storefrontEnabled: true,
+      storefrontSlug,
+      storefrontName,
+      storefrontTagline: String(input.storefrontTagline || '').trim(),
+      storefrontDescription: String(input.storefrontDescription || '').trim(),
+      seoTitle: String(input.seoTitle || '').trim(),
+      seoDescription: String(input.seoDescription || '').trim(),
+      seoKeywords,
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(
+      storefrontRef,
+      {
+        uid: normalizedUid,
+        role,
+        storefrontEnabled: true,
+        storefrontSlug,
+        canonicalPath,
+        displayName: storefrontName,
+        storefrontName,
+        storefrontTagline: String(input.storefrontTagline || '').trim(),
+        storefrontDescription: String(input.storefrontDescription || '').trim(),
+        location: String(input.location || '').trim(),
+        phone: String(input.phone || '').trim(),
+        email: String(input.email || '').trim(),
+        website: String(input.website || '').trim(),
+        logo: String(input.logo || '').trim(),
+        coverPhotoUrl: String(input.coverPhotoUrl || '').trim(),
+        seoTitle: String(input.seoTitle || '').trim(),
+        seoDescription: String(input.seoDescription || '').trim(),
+        seoKeywords,
+        createdAt: storefrontSnapshot.exists() ? existingStorefront.createdAt || serverTimestamp() : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return { storefrontSlug, canonicalPath };
   },
 
   async syncStorefrontDocument(uid: string, profile: Partial<UserProfile> & { role?: UserRole }): Promise<void> {
@@ -109,13 +230,20 @@ export const userService = {
     if (!this.supportsEnterpriseStorefront(role)) return;
 
     const displayName = String(profile.displayName || profile.company || 'TimberEquip Storefront').trim();
+    const storefrontRef = doc(db, 'storefronts', normalizedUid);
+    const storefrontSnapshot = await getDoc(storefrontRef);
+    const existingStorefront = storefrontSnapshot.exists() ? storefrontSnapshot.data() || {} : {};
+    const storefrontSlug = String((profile as any).storefrontSlug || existingStorefront.storefrontSlug || '').trim()
+      || await this.generateUniqueStorefrontSlug(String((profile as any).storefrontName || displayName), normalizedUid);
 
     await setDoc(
-      doc(db, 'storefronts', normalizedUid),
+      storefrontRef,
       {
         uid: normalizedUid,
         role,
         storefrontEnabled: true,
+        storefrontSlug,
+        canonicalPath: `/seller/${storefrontSlug}`,
         displayName,
         storefrontName: String((profile as any).storefrontName || displayName).trim(),
         storefrontTagline: String((profile as any).storefrontTagline || '').trim(),
@@ -131,7 +259,7 @@ export const userService = {
         seoKeywords: Array.isArray((profile as any).seoKeywords)
           ? (profile as any).seoKeywords.filter((keyword: unknown) => typeof keyword === 'string').slice(0, 30)
           : [],
-        createdAt: serverTimestamp(),
+        createdAt: storefrontSnapshot.exists() ? existingStorefront.createdAt || serverTimestamp() : serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
       { merge: true }

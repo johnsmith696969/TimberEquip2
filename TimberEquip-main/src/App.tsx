@@ -27,6 +27,7 @@ const Profile = lazy(() => import('./pages/Profile').then((module) => ({ default
 const About = lazy(() => import('./pages/About').then((module) => ({ default: module.About })));
 const Contact = lazy(() => import('./pages/Contact').then((module) => ({ default: module.Contact })));
 const AdPrograms = lazy(() => import('./pages/AdPrograms').then((module) => ({ default: module.AdPrograms })));
+const Inspections = lazy(() => import('./pages/Inspections').then((module) => ({ default: module.Inspections })));
 const Auctions = lazy(() => import('./pages/Auctions').then((module) => ({ default: module.Auctions })));
 const Privacy = lazy(() => import('./pages/Privacy').then((module) => ({ default: module.Privacy })));
 const Terms = lazy(() => import('./pages/Terms').then((module) => ({ default: module.Terms })));
@@ -71,6 +72,7 @@ function App() {
                     <Route path="/about" element={<About />} />
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/ad-programs" element={<AdPrograms />} />
+                    <Route path="/inspections" element={<Inspections />} />
                     <Route path="/auctions" element={<Auctions />} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/terms" element={<Terms />} />

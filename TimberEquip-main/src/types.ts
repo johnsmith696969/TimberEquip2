@@ -50,6 +50,7 @@ export interface Seller {
   name: string;
   type: 'Dealer' | 'Private';
   role?: UserRole;
+  storefrontSlug?: string;
   location: string;
   phone: string;
   email: string;
@@ -317,6 +318,37 @@ export interface FinancingRequest {
   updatedAt?: string;
 }
 
+export type InspectionRequestStatus = 'New' | 'Quoted' | 'Accepted' | 'Declined' | 'Completed';
+
+export interface InspectionRequest {
+  id: string;
+  listingId?: string;
+  listingTitle?: string;
+  listingUrl?: string;
+  reference?: string;
+  requesterUid?: string | null;
+  requesterName: string;
+  requesterEmail: string;
+  requesterPhone: string;
+  requesterCompany?: string;
+  equipment: string;
+  inspectionLocation: string;
+  timeline?: string;
+  notes?: string;
+  matchedDealerUid?: string | null;
+  matchedDealerName?: string;
+  matchedDealerLocation?: string;
+  matchedDealerDistanceMiles?: number | null;
+  assignedToUid?: string | null;
+  assignedToName?: string | null;
+  quotedPrice?: number | null;
+  status: InspectionRequestStatus;
+  createdAt: string;
+  updatedAt?: string;
+  reviewedAt?: string | null;
+  respondedAt?: string | null;
+}
+
 export interface CallLog {
   id: string;
   listingId: string;
@@ -383,9 +415,18 @@ export interface UserProfile {
   coverPhotoUrl?: string;
   phoneNumber?: string;
   company?: string;
+  website?: string;
   about?: string;
   bio?: string;
   location?: string;
+  storefrontEnabled?: boolean;
+  storefrontSlug?: string;
+  storefrontName?: string;
+  storefrontTagline?: string;
+  storefrontDescription?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string[];
   parentAccountUid?: string;
   accountStatus?: 'active' | 'pending' | 'suspended';
   onboardingIntent?: 'free_member' | 'individual_seller' | 'dealer' | 'fleet_dealer';

@@ -273,10 +273,9 @@ export function Home() {
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
         <div className="absolute inset-0 z-0">
           <img
-            src="https://picsum.photos/seed/forestry-hero/1920/1080?blur=4"
-            alt="Forestry Hero"
+            src="/page-photos/pine-forest.jpg"
+            alt="Pine forest at sunrise"
             className="w-full h-full object-cover opacity-40"
-            referrerPolicy="no-referrer"
           />
           <div
             className={`absolute inset-0 ${

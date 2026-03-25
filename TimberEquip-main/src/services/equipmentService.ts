@@ -16,7 +16,7 @@ import {
   onSnapshot,
   getDocFromServer
 } from 'firebase/firestore';
-import { Listing, Seller, NewsPost, Inquiry, FinancingRequest, Account, CallLog, Auction, ListingFilters } from '../types';
+import { Listing, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
@@ -227,6 +227,10 @@ function isAdminPublisherRole(role?: string | null): boolean {
 
 function isVerifiedSellerRole(role?: string | null): boolean {
   return ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
+}
+
+function isInspectionManagerRole(role?: string | null): boolean {
+  return ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager'].includes(normalize(role));
 }
 
 function isDemoListing(listing: Listing): boolean {
@@ -831,6 +835,132 @@ export const equipmentService = {
     }
   },
 
+  async createInspectionRequest(payload: {
+    listingId?: string;
+    listingTitle?: string;
+    listingUrl?: string;
+    reference?: string;
+    requesterName: string;
+    requesterEmail: string;
+    requesterPhone: string;
+    requesterCompany?: string;
+    equipment: string;
+    inspectionLocation: string;
+    timeline?: string;
+    notes?: string;
+    matchedDealerUid?: string | null;
+    matchedDealerName?: string;
+    matchedDealerLocation?: string;
+    matchedDealerDistanceMiles?: number | null;
+    assignedToUid?: string | null;
+    assignedToName?: string | null;
+  }): Promise<string> {
+    const path = 'inspectionRequests';
+    try {
+      const docRef = doc(collection(db, path));
+      await setDoc(docRef, {
+        id: docRef.id,
+        listingId: payload.listingId || '',
+        listingTitle: payload.listingTitle || payload.equipment,
+        listingUrl: payload.listingUrl || '',
+        reference: payload.reference || '',
+        requesterUid: auth.currentUser?.uid || null,
+        requesterName: payload.requesterName,
+        requesterEmail: payload.requesterEmail,
+        requesterPhone: payload.requesterPhone,
+        requesterCompany: payload.requesterCompany || '',
+        equipment: payload.equipment,
+        inspectionLocation: payload.inspectionLocation,
+        timeline: payload.timeline || '',
+        notes: payload.notes || '',
+        matchedDealerUid: payload.matchedDealerUid || null,
+        matchedDealerName: payload.matchedDealerName || '',
+        matchedDealerLocation: payload.matchedDealerLocation || '',
+        matchedDealerDistanceMiles: typeof payload.matchedDealerDistanceMiles === 'number' ? payload.matchedDealerDistanceMiles : null,
+        assignedToUid: payload.assignedToUid || payload.matchedDealerUid || null,
+        assignedToName: payload.assignedToName || payload.matchedDealerName || null,
+        quotedPrice: null,
+        status: 'New',
+        reviewedAt: null,
+        respondedAt: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return docRef.id;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      return '';
+    }
+  },
+
+  async getInspectionRequests(options?: { userUid?: string; role?: string }): Promise<InspectionRequest[]> {
+    const path = 'inspectionRequests';
+    const userUid = options?.userUid || auth.currentUser?.uid;
+    const role = options?.role || '';
+
+    try {
+      if (isInspectionManagerRole(role)) {
+        const snapshot = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
+        return snapshot.docs.map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest));
+      }
+
+      if (!userUid) return [];
+
+      const snapshot = await getDocs(query(collection(db, path), where('requesterUid', '==', userUid)));
+      return snapshot.docs
+        .map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest))
+        .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  async updateInspectionRequest(
+    id: string,
+    updates: {
+      status?: InspectionRequestStatus;
+      quotedPrice?: number | null;
+      assignedToUid?: string | null;
+      assignedToName?: string | null;
+    }
+  ): Promise<void> {
+    const path = `inspectionRequests/${id}`;
+    try {
+      const docRef = doc(db, 'inspectionRequests', id);
+      const nextStatus = updates.status;
+      const payload: Record<string, unknown> = {
+        updatedAt: serverTimestamp(),
+      };
+
+      if (nextStatus) {
+        payload.status = nextStatus;
+        payload.reviewedAt = serverTimestamp();
+        if (nextStatus === 'Accepted' || nextStatus === 'Declined' || nextStatus === 'Quoted') {
+          payload.respondedAt = serverTimestamp();
+        }
+      }
+
+      if (updates.quotedPrice === null) {
+        payload.quotedPrice = null;
+      } else if (typeof updates.quotedPrice === 'number' && Number.isFinite(updates.quotedPrice)) {
+        payload.quotedPrice = updates.quotedPrice;
+      }
+
+      if (updates.assignedToUid !== undefined) {
+        payload.assignedToUid = updates.assignedToUid || null;
+      }
+
+      if (updates.assignedToName !== undefined) {
+        payload.assignedToName = updates.assignedToName || null;
+      }
+
+      await updateDoc(docRef, payload);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  },
+
   async getCalls(sellerUid?: string): Promise<CallLog[]> {
     const path = 'calls';
     try {
@@ -962,8 +1092,14 @@ export const equipmentService = {
     const fallbackPath = `users/${id}`;
 
     try {
-      const storefrontRef = doc(db, 'storefronts', id);
-      const storefrontSnap = await getDoc(storefrontRef);
+      let storefrontSnap = await getDoc(doc(db, 'storefronts', id));
+
+      if (!storefrontSnap.exists()) {
+        const storefrontSlugSnapshot = await getDocs(query(collection(db, 'storefronts'), where('storefrontSlug', '==', id), limit(1)));
+        if (!storefrontSlugSnapshot.empty) {
+          storefrontSnap = storefrontSlugSnapshot.docs[0];
+        }
+      }
 
       if (storefrontSnap.exists()) {
         const data = storefrontSnap.data() || {};
@@ -976,6 +1112,7 @@ export const equipmentService = {
           name: String(data.storefrontName || data.displayName || 'TimberEquip Seller'),
           type: isDealerRole ? 'Dealer' : 'Private',
           role: (data.role || 'buyer') as any,
+          storefrontSlug: String(data.storefrontSlug || ''),
           location: String(data.location || 'Unknown'),
           phone: String(data.phone || ''),
           email: String(data.email || ''),
@@ -1008,6 +1145,7 @@ export const equipmentService = {
           name: data.displayName || data.name || 'TimberEquip Seller',
           type: isDealerRole ? 'Dealer' : 'Private',
           role: (data.role || 'buyer') as any,
+          storefrontSlug: data.storefrontSlug || '',
           location: data.location || 'Unknown',
           phone: data.phoneNumber || '',
           email: data.email || '',

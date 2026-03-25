@@ -26,12 +26,14 @@ import { useAuth } from '../components/AuthContext';
 import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
-import { db } from '../firebase';
 
-const ENTERPRISE_STOREFRONT_ROLES = new Set(['dealer', 'dealer_manager', 'admin', 'super_admin']);
+const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'dealer_manager', 'admin', 'super_admin']);
+const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
 
 function roleLabel(role?: string): string {
   switch (role) {
+    case 'individual_seller':
+      return 'Owner Operator';
     case 'dealer':
       return 'Dealer';
     case 'dealer_manager':
@@ -59,9 +61,11 @@ export function SellerProfile() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const [editData, setEditData] = useState({
     storefrontName: '',
+    storefrontSlug: '',
     storefrontTagline: '',
     storefrontDescription: '',
     location: '',
@@ -75,18 +79,25 @@ export function SellerProfile() {
     seoKeywordsCsv: '',
   });
 
-  const isOwner = currentUser?.uid === id;
-  const ownerCanManageStorefront = Boolean(currentUser?.role && ENTERPRISE_STOREFRONT_ROLES.has(currentUser.role));
+  const normalizedCurrentRole = currentUser?.role ? userService.normalizeRole(currentUser.role) : undefined;
+  const canManageOwnStorefront = Boolean(normalizedCurrentRole && STOREFRONT_EDIT_ROLES.has(normalizedCurrentRole));
+  const canManageAnyStorefront = Boolean(normalizedCurrentRole && STOREFRONT_ADMIN_ROLES.has(normalizedCurrentRole));
+  const resolvedSellerUid = seller?.uid || id;
+  const isOwner = currentUser?.uid === resolvedSellerUid;
+  const canEditStorefront = Boolean(currentUser && ((isOwner && canManageOwnStorefront) || canManageAnyStorefront));
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!id) return;
+      if (!id) {
+        setLoadError('Storefront ID is missing.');
+        setLoading(false);
+        return;
+      }
       setLoading(true);
+      setLoadError('');
       try {
-        const [sellerData, listingsData] = await Promise.all([
-          equipmentService.getSeller(id),
-          equipmentService.getListings({ sellerUid: id }),
-        ]);
+        const sellerData = await equipmentService.getSeller(id);
+        const listingsData = await equipmentService.getListings({ sellerUid: sellerData?.uid || id });
 
         if (sellerData) {
           setSeller({
@@ -97,6 +108,7 @@ export function SellerProfile() {
           const keywords = Array.isArray(sellerData.seoKeywords) ? sellerData.seoKeywords.join(', ') : '';
           setEditData({
             storefrontName: sellerData.storefrontName || sellerData.name || '',
+            storefrontSlug: sellerData.storefrontSlug || '',
             storefrontTagline: sellerData.storefrontTagline || '',
             storefrontDescription: sellerData.storefrontDescription || '',
             location: sellerData.location || '',
@@ -114,6 +126,7 @@ export function SellerProfile() {
         setListings(listingsData);
       } catch (error) {
         console.error('Error fetching seller profile:', error);
+        setLoadError('Unable to load this storefront right now. Please try again in a moment.');
       } finally {
         setLoading(false);
       }
@@ -139,7 +152,7 @@ export function SellerProfile() {
   const storefrontIcon = roleIcon(seller?.role);
 
   const handleSaveProfile = async () => {
-    if (!id || !isOwner || !ownerCanManageStorefront || !currentUser?.role) return;
+    if (!resolvedSellerUid || !canEditStorefront || !currentUser?.role) return;
 
     const storefrontName = editData.storefrontName.trim();
     const seoKeywords = editData.seoKeywordsCsv
@@ -156,50 +169,31 @@ export function SellerProfile() {
     setSaveError('');
 
     try {
-      await userService.updateProfile(id, {
-        displayName: storefrontName,
-        about: editData.storefrontDescription.trim(),
+      const storefrontRole = seller?.role || currentUser.role;
+      const { storefrontSlug } = await userService.saveStorefrontProfile(resolvedSellerUid, {
+        role: storefrontRole,
+        storefrontName,
+        preferredSlug: editData.storefrontSlug.trim(),
+        storefrontTagline: editData.storefrontTagline.trim(),
+        storefrontDescription: editData.storefrontDescription.trim(),
         location: editData.location.trim(),
-        photoURL: editData.logo.trim(),
-        phoneNumber: editData.phone.trim(),
+        phone: editData.phone.trim(),
+        email: editData.email.trim(),
+        website: editData.website.trim(),
+        logo: editData.logo.trim(),
+        coverPhotoUrl: editData.coverPhotoUrl.trim(),
+        seoTitle: editData.seoTitle.trim(),
+        seoDescription: editData.seoDescription.trim(),
+        seoKeywords,
       });
-
-      const storefrontRef = doc(db, 'storefronts', id);
-      const storefrontSnap = await getDoc(storefrontRef);
-      const createdAt = storefrontSnap.exists()
-        ? storefrontSnap.data()?.createdAt || serverTimestamp()
-        : serverTimestamp();
-
-      await setDoc(
-        storefrontRef,
-        {
-          uid: id,
-          role: currentUser.role,
-          storefrontEnabled: true,
-          storefrontName,
-          storefrontTagline: editData.storefrontTagline.trim(),
-          storefrontDescription: editData.storefrontDescription.trim(),
-          displayName: storefrontName,
-          location: editData.location.trim(),
-          phone: editData.phone.trim(),
-          email: editData.email.trim(),
-          website: editData.website.trim(),
-          logo: editData.logo.trim(),
-          coverPhotoUrl: editData.coverPhotoUrl.trim(),
-          seoTitle: editData.seoTitle.trim(),
-          seoDescription: editData.seoDescription.trim(),
-          seoKeywords,
-          createdAt,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
 
       setSeller((prev) =>
         prev
           ? {
               ...prev,
+              uid: resolvedSellerUid,
               name: storefrontName,
+              storefrontSlug,
               storefrontName,
               storefrontTagline: editData.storefrontTagline.trim(),
               storefrontDescription: editData.storefrontDescription.trim(),
@@ -217,6 +211,8 @@ export function SellerProfile() {
           : prev
       );
 
+      setEditData((prev) => ({ ...prev, storefrontSlug }));
+
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating storefront profile:', error);
@@ -226,8 +222,32 @@ export function SellerProfile() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg">
-        <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-bg px-4 py-16 md:px-8">
+        <div className="mx-auto max-w-[1600px] space-y-8 animate-pulse">
+          <div className="h-[320px] border border-line bg-surface" />
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+            <div className="lg:col-span-8 space-y-4">
+              <div className="h-10 w-72 bg-surface border border-line" />
+              <div className="h-5 w-full max-w-3xl bg-surface border border-line" />
+              <div className="h-5 w-full max-w-2xl bg-surface border border-line" />
+            </div>
+            <div className="lg:col-span-4 space-y-4">
+              <div className="h-16 bg-surface border border-line" />
+              <div className="h-16 bg-surface border border-line" />
+              <div className="h-16 bg-surface border border-line" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-4 text-center">
+        <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">Storefront Unavailable</h2>
+        <p className="text-xs font-bold uppercase tracking-widest text-muted max-w-2xl mb-8">{loadError}</p>
+        <Link to="/search" className="btn-industrial btn-accent">Return to Inventory</Link>
       </div>
     );
   }
@@ -244,14 +264,14 @@ export function SellerProfile() {
   const coverImage = seller.coverPhotoUrl || 'https://picsum.photos/seed/timberequip-storefront/1920/720';
   const logoImage = seller.logo || 'https://picsum.photos/seed/timberequip-logo/260/260';
   const headline = seller.storefrontName || seller.name;
-  const tagline = seller.storefrontTagline || 'Enterprise storefront built for machine-level attribution, lead capture, and catalog-grade inventory branding.';
-  const description = seller.storefrontDescription || 'This storefront is managed on TimberEquip.com with inventory analytics, verified seller controls, and lead routing.';
+  const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
+  const description = seller.storefrontDescription || 'This storefront is managed on TimberEquip.com with branded inventory, verified seller controls, and direct lead routing.';
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: headline,
-    url: `https://timberequip.com/seller/${seller.id}`,
+    url: `https://timberequip.com/seller/${seller.storefrontSlug || seller.id}`,
     logo: logoImage,
     description,
     email: seller.email || undefined,
@@ -266,7 +286,7 @@ export function SellerProfile() {
       <Seo
         title={seoTitle}
         description={seoDescription}
-        canonicalPath={`/seller/${seller.id}`}
+        canonicalPath={`/seller/${seller.storefrontSlug || seller.id}`}
         jsonLd={jsonLd}
       />
 
@@ -289,7 +309,7 @@ export function SellerProfile() {
                 </span>
                 <div className="flex items-center space-x-2 text-white/80 text-[10px] font-black uppercase tracking-widest border border-white/20 px-3 py-1 rounded-sm">
                   <StorefrontRoleIcon size={14} className="text-accent" />
-                  <span>Enterprise Storefront</span>
+                  <span>Managed Storefront</span>
                 </div>
                 {seller.verified && (
                   <div className="flex items-center space-x-2 text-data text-[10px] font-black uppercase tracking-widest">
@@ -321,6 +341,18 @@ export function SellerProfile() {
                         onChange={(e) => setEditData({ ...editData, storefrontName: e.target.value })}
                         className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
                       />
+                    </div>
+                    <div>
+                      <label className="label-micro text-white/40 block mb-2">Canonical Slug</label>
+                      <input
+                        type="text"
+                        value={editData.storefrontSlug}
+                        onChange={(e) => setEditData({ ...editData, storefrontSlug: e.target.value })}
+                        className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
+                      />
+                      <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/50 break-all">
+                        timberequip.com/seller/{editData.storefrontSlug || 'your-storefront-slug'}
+                      </p>
                     </div>
                     <div>
                       <label className="label-micro text-white/40 block mb-2">Storefront Tagline</label>
@@ -467,7 +499,7 @@ export function SellerProfile() {
             </div>
 
             <div className="flex flex-col space-y-4 w-full md:w-auto">
-              {isOwner && ownerCanManageStorefront && !isEditing && (
+              {canEditStorefront && !isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
                   className="btn-industrial bg-white text-ink py-4 px-12 hover:bg-accent hover:text-white"
@@ -476,9 +508,9 @@ export function SellerProfile() {
                   Edit Storefront
                 </button>
               )}
-              {isOwner && !ownerCanManageStorefront && (
+              {isOwner && !canManageOwnStorefront && (
                 <div className="border border-white/20 bg-white/5 p-4 rounded-sm text-[10px] font-black uppercase tracking-widest text-white/70">
-                  Storefront branding is available for Dealer, Pro Dealer, Admin, and Super Admin roles.
+                  Storefront branding is available for Owner Operator, Dealer, Pro Dealer, Admin, and Super Admin roles.
                 </div>
               )}
               <button className="btn-industrial btn-accent py-4 px-12">
@@ -531,10 +563,10 @@ export function SellerProfile() {
               </div>
               <h4 className="text-xs font-black uppercase tracking-widest mb-4">Storefront Performance</h4>
               <p className="text-xs text-muted leading-relaxed mb-8">
-                Enterprise storefront pages are indexed for machine-intent search and structured for high-intent buyer discovery.
+                Storefront pages are structured for launch-ready machine search visibility and high-intent buyer discovery.
               </p>
               <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">Enterprise</span>
+                <span className="text-3xl font-black tracking-tighter">Managed</span>
                 <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Tier</span>
               </div>
             </div>

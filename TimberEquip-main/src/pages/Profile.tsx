@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
   Search, Clock, CheckCircle2, 
   ArrowRight, LayoutDashboard,
   LogOut, Bell, Package,
-  CreditCard, Edit, Trash2,
+  CreditCard, Edit, Trash2, Plus,
   ExternalLink, MapPin, Phone,
   Mail, Building2, Wrench,
   Shield, Download, ClipboardList, AlertTriangle
@@ -18,26 +18,49 @@ import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
 import { useLocale } from '../components/LocaleContext';
-import { CallLog, FinancingRequest, Listing, SavedSearch, UserProfile } from '../types';
+import { CallLog, FinancingRequest, InspectionRequest, Listing, SavedSearch, Seller, UserProfile } from '../types';
 import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
 
+const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'dealer_manager', 'admin', 'super_admin', 'developer']);
+
 export function Profile() {
-  const profileTabs = ['Overview', 'Saved Equipment', 'Search Alerts', 'My Listings', 'Calls', 'Financing', 'Privacy & Data', 'Account Settings'] as const;
-  const profileTabItems = [
-    { label: 'Overview', icon: LayoutDashboard },
-    { label: 'Saved Equipment', icon: Bookmark },
-    { label: 'Search Alerts', icon: Bell },
-    { label: 'My Listings', icon: Package },
-    { label: 'Calls', icon: Phone },
-    { label: 'Financing', icon: CreditCard },
-    { label: 'Privacy & Data', icon: Shield },
-    { label: 'Account Settings', icon: Settings },
-  ] as const;
   const { formatPrice } = useLocale();
   const { user, logout, toggleFavorite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const hasStorefrontAccess = Boolean(user?.role && userService.supportsEnterpriseStorefront(user.role));
+  const canManageInspectionRequests = Boolean(user?.role && INSPECTION_MANAGER_ROLES.has(user.role));
+  const canViewInspectionRequests = Boolean(user);
+  const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
+  const profileTabs = useMemo(() => {
+    const tabs = ['Overview', 'Saved Equipment', 'Search Alerts', 'My Listings', 'Calls', 'Financing'];
+    if (hasStorefrontAccess) tabs.push(storefrontTabLabel);
+    if (canViewInspectionRequests) tabs.push('Inspections');
+    tabs.push('Privacy & Data', 'Account Settings');
+    return tabs;
+  }, [canViewInspectionRequests, hasStorefrontAccess, storefrontTabLabel]);
+  const profileTabItems = useMemo(() => {
+    const items = [
+      { label: 'Overview', icon: LayoutDashboard },
+      { label: 'Saved Equipment', icon: Bookmark },
+      { label: 'Search Alerts', icon: Bell },
+      { label: 'My Listings', icon: Package },
+      { label: 'Calls', icon: Phone },
+      { label: 'Financing', icon: CreditCard },
+    ];
+    if (hasStorefrontAccess) {
+      items.push({ label: storefrontTabLabel, icon: Building2 });
+    }
+    if (canViewInspectionRequests) {
+      items.push({ label: 'Inspections', icon: ClipboardList });
+    }
+    items.push(
+      { label: 'Privacy & Data', icon: Shield },
+      { label: 'Account Settings', icon: Settings }
+    );
+    return items;
+  }, [canViewInspectionRequests, hasStorefrontAccess, storefrontTabLabel]);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
@@ -50,6 +73,12 @@ export function Profile() {
   const [settingsNotice, setSettingsNotice] = useState('');
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [profileDataLoading, setProfileDataLoading] = useState(false);
+  const [profileDataError, setProfileDataError] = useState('');
+  const [storefrontPreview, setStorefrontPreview] = useState<Seller | null>(null);
+  const [isSavingStorefront, setIsSavingStorefront] = useState(false);
+  const [storefrontError, setStorefrontError] = useState('');
+  const [storefrontNotice, setStorefrontNotice] = useState('');
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const [settingsForm, setSettingsForm] = useState({
@@ -60,6 +89,21 @@ export function Profile() {
     location: '',
     photoURL: '',
     coverPhotoUrl: '',
+  });
+  const [storefrontForm, setStorefrontForm] = useState({
+    storefrontName: '',
+    storefrontSlug: '',
+    storefrontTagline: '',
+    storefrontDescription: '',
+    location: '',
+    phone: '',
+    email: '',
+    website: '',
+    logo: '',
+    coverPhotoUrl: '',
+    seoTitle: '',
+    seoDescription: '',
+    seoKeywordsCsv: '',
   });
 
   const profilePhotoPreview = settingsForm.photoURL || user?.photoURL || '';
@@ -130,6 +174,32 @@ export function Profile() {
       coverPhotoUrl: (user as UserProfile & { coverPhotoUrl?: string }).coverPhotoUrl || '',
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const keywords = Array.isArray(storefrontPreview?.seoKeywords)
+      ? storefrontPreview.seoKeywords.join(', ')
+      : Array.isArray(user.seoKeywords)
+        ? user.seoKeywords.join(', ')
+        : '';
+
+    setStorefrontForm({
+      storefrontName: storefrontPreview?.storefrontName || user.storefrontName || user.company || user.displayName || '',
+      storefrontSlug: storefrontPreview?.storefrontSlug || user.storefrontSlug || '',
+      storefrontTagline: storefrontPreview?.storefrontTagline || user.storefrontTagline || '',
+      storefrontDescription: storefrontPreview?.storefrontDescription || user.storefrontDescription || user.about || '',
+      location: storefrontPreview?.location || user.location || '',
+      phone: storefrontPreview?.phone || user.phoneNumber || '',
+      email: storefrontPreview?.email || user.email || '',
+      website: storefrontPreview?.website || user.website || '',
+      logo: storefrontPreview?.logo || user.photoURL || '',
+      coverPhotoUrl: storefrontPreview?.coverPhotoUrl || user.coverPhotoUrl || '',
+      seoTitle: storefrontPreview?.seoTitle || user.seoTitle || '',
+      seoDescription: storefrontPreview?.seoDescription || user.seoDescription || '',
+      seoKeywordsCsv: keywords,
+    });
+  }, [storefrontPreview, user]);
 
   const handleSettingsInputChange = (key: keyof typeof settingsForm, value: string) => {
     setSettingsForm((prev) => ({ ...prev, [key]: value }));
@@ -285,6 +355,11 @@ export function Profile() {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [inspectionRequests, setInspectionRequests] = useState<InspectionRequest[]>([]);
+  const [inspectionQuoteDrafts, setInspectionQuoteDrafts] = useState<Record<string, string>>({});
+  const [inspectionActionId, setInspectionActionId] = useState<string | null>(null);
+  const [inspectionError, setInspectionError] = useState('');
+  const [inspectionNotice, setInspectionNotice] = useState('');
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
@@ -296,29 +371,52 @@ export function Profile() {
   useEffect(() => {
     const fetchProfileData = async () => {
       if (user) {
-        const [myInventory, financingHistory, searches, saved, callHistory] = await Promise.all([
+        setProfileDataLoading(true);
+        setProfileDataError('');
+
+        const results = await Promise.allSettled([
           equipmentService.getListings({ sellerUid: user.uid }),
           equipmentService.getFinancingRequests(user.uid),
           userService.getSavedSearches(user.uid),
           user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
           equipmentService.getCalls(user.uid),
+          canViewInspectionRequests ? equipmentService.getInspectionRequests({ userUid: user.uid, role: user.role }) : Promise.resolve([]),
+          hasStorefrontAccess ? equipmentService.getSeller(user.uid) : Promise.resolve(null),
         ]);
 
-        setMyListings(myInventory);
-        setFinancingRequests(financingHistory);
-        setSavedSearches(searches);
-        setSavedAssets(saved);
-        setCalls(callHistory);
+        setMyListings(results[0].status === 'fulfilled' ? results[0].value : []);
+        setFinancingRequests(results[1].status === 'fulfilled' ? results[1].value : []);
+        setSavedSearches(results[2].status === 'fulfilled' ? results[2].value : []);
+        setSavedAssets(results[3].status === 'fulfilled' ? results[3].value : []);
+        setCalls(results[4].status === 'fulfilled' ? results[4].value : []);
+        const nextInspectionRequests = results[5].status === 'fulfilled' ? results[5].value : [];
+        setInspectionRequests(nextInspectionRequests);
+        setInspectionQuoteDrafts(
+          nextInspectionRequests.reduce<Record<string, string>>((drafts, request) => {
+            drafts[request.id] = typeof request.quotedPrice === 'number' ? String(request.quotedPrice) : '';
+            return drafts;
+          }, {})
+        );
+        setStorefrontPreview(results[6]?.status === 'fulfilled' ? results[6].value : null);
+
+        if (results.some((result) => result.status === 'rejected')) {
+          setProfileDataError('Some account data could not be loaded. Refresh to retry.');
+        }
+        setProfileDataLoading(false);
       } else {
         setMyListings([]);
         setFinancingRequests([]);
         setSavedSearches([]);
         setSavedAssets([]);
         setCalls([]);
+        setInspectionRequests([]);
+        setInspectionQuoteDrafts({});
+        setStorefrontPreview(null);
+        setProfileDataLoading(false);
       }
     };
-    fetchProfileData();
-  }, [user]);
+    void fetchProfileData();
+  }, [canViewInspectionRequests, hasStorefrontAccess, user]);
 
   const formatDateLabel = (value?: string) => {
     if (!value) return 'Date unavailable';
@@ -329,6 +427,84 @@ export function Profile() {
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  const getInspectionStatusClasses = (status: InspectionRequest['status']) => {
+    switch (status) {
+      case 'Accepted':
+      case 'Completed':
+        return 'bg-data/10 text-data';
+      case 'Declined':
+        return 'bg-accent/10 text-accent';
+      case 'Quoted':
+        return 'bg-amber-500/10 text-amber-700';
+      default:
+        return 'bg-ink text-white';
+    }
+  };
+
+  const handleInspectionQuoteDraftChange = (requestId: string, value: string) => {
+    setInspectionQuoteDrafts((prev) => ({ ...prev, [requestId]: value }));
+  };
+
+  const handleInspectionRequestUpdate = async (
+    request: InspectionRequest,
+    status: InspectionRequest['status'],
+    includeQuote: boolean
+  ) => {
+    if (!user?.uid) return;
+
+    setInspectionActionId(request.id);
+    setInspectionError('');
+    setInspectionNotice('');
+
+    let quotedPrice: number | null | undefined;
+    if (includeQuote) {
+      const rawQuote = (inspectionQuoteDrafts[request.id] ?? '').trim();
+      if (!rawQuote) {
+        quotedPrice = null;
+      } else {
+        const parsedQuote = Number(rawQuote);
+        if (!Number.isFinite(parsedQuote) || parsedQuote < 0) {
+          setInspectionError('Inspection quote must be a valid non-negative amount.');
+          setInspectionActionId(null);
+          return;
+        }
+        quotedPrice = parsedQuote;
+      }
+    }
+
+    try {
+      await equipmentService.updateInspectionRequest(request.id, {
+        status,
+        quotedPrice,
+        assignedToUid: user.uid,
+        assignedToName: user.displayName || user.company || user.email || 'Inspection Manager',
+      });
+
+      const updatedAt = new Date().toISOString();
+      setInspectionRequests((prev) =>
+        prev.map((item) =>
+          item.id === request.id
+            ? {
+                ...item,
+                status,
+                quotedPrice: quotedPrice === undefined ? item.quotedPrice : quotedPrice,
+                assignedToUid: user.uid,
+                assignedToName: user.displayName || user.company || user.email || 'Inspection Manager',
+                updatedAt,
+                reviewedAt: updatedAt,
+                respondedAt: ['Quoted', 'Accepted', 'Declined', 'Completed'].includes(status) ? updatedAt : item.respondedAt,
+              }
+            : item
+        )
+      );
+      setInspectionNotice(`Inspection request ${status.toLowerCase()} successfully.`);
+    } catch (error) {
+      setInspectionError(error instanceof Error ? error.message : 'Unable to update inspection request right now.');
+    } finally {
+      setInspectionActionId(null);
+    }
   };
 
   const handleEditListing = (listing: Listing) => {
@@ -392,6 +568,58 @@ export function Profile() {
       setSavedSearches((prev) => prev.filter((item) => item.id !== id));
     } catch (error) {
       console.error('Failed to delete saved search', error);
+    }
+  };
+
+  const handleStorefrontInputChange = (key: keyof typeof storefrontForm, value: string) => {
+    setStorefrontForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveStorefront = async () => {
+    if (!user?.uid || !user.role) return;
+
+    const storefrontName = storefrontForm.storefrontName.trim();
+    if (!storefrontName) {
+      setStorefrontError(`${storefrontTabLabel} name is required.`);
+      return;
+    }
+
+    setIsSavingStorefront(true);
+    setStorefrontError('');
+    setStorefrontNotice('');
+
+    try {
+      const seoKeywords = storefrontForm.seoKeywordsCsv
+        .split(',')
+        .map((keyword) => keyword.trim())
+        .filter(Boolean)
+        .slice(0, 30);
+
+      const result = await userService.saveStorefrontProfile(user.uid, {
+        role: user.role,
+        storefrontName,
+        preferredSlug: storefrontForm.storefrontSlug.trim(),
+        storefrontTagline: storefrontForm.storefrontTagline.trim(),
+        storefrontDescription: storefrontForm.storefrontDescription.trim(),
+        location: storefrontForm.location.trim(),
+        phone: storefrontForm.phone.trim(),
+        email: storefrontForm.email.trim().toLowerCase(),
+        website: storefrontForm.website.trim(),
+        logo: storefrontForm.logo.trim() || settingsForm.photoURL.trim(),
+        coverPhotoUrl: storefrontForm.coverPhotoUrl.trim() || settingsForm.coverPhotoUrl.trim(),
+        seoTitle: storefrontForm.seoTitle.trim(),
+        seoDescription: storefrontForm.seoDescription.trim(),
+        seoKeywords,
+      });
+
+      const refreshedStorefront = await equipmentService.getSeller(user.uid);
+      setStorefrontPreview(refreshedStorefront || null);
+      setStorefrontForm((prev) => ({ ...prev, storefrontSlug: result.storefrontSlug }));
+      setStorefrontNotice(`${storefrontTabLabel} saved. Canonical path: ${result.canonicalPath}`);
+    } catch (error) {
+      setStorefrontError(error instanceof Error ? error.message : `Unable to save ${storefrontTabLabel.toLowerCase()} right now.`);
+    } finally {
+      setIsSavingStorefront(false);
     }
   };
 
@@ -699,6 +927,277 @@ export function Profile() {
     </div>
   );
 
+  const renderInspections = () => {
+    const openInspectionCount = inspectionRequests.filter((request) => ['New', 'Quoted', 'Accepted'].includes(request.status)).length;
+    const completedInspectionCount = inspectionRequests.filter((request) => request.status === 'Completed').length;
+
+    return (
+      <div className="space-y-8">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-black uppercase tracking-widest">Inspection Requests</h3>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            {canManageInspectionRequests
+              ? 'Review routed inspection requests, set pricing, and respond as the assigned dealer or admin.'
+              : 'Track the inspection requests you submitted through TimberEquip.'}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { label: 'Total Requests', value: inspectionRequests.length.toString(), icon: ClipboardList },
+            { label: 'Open Requests', value: openInspectionCount.toString(), icon: Clock },
+            { label: 'Completed', value: completedInspectionCount.toString(), icon: CheckCircle2 },
+          ].map((stat) => (
+            <div key={stat.label} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
+              <div className="flex flex-col">
+                <span className="label-micro text-muted mb-1">{stat.label}</span>
+                <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
+              </div>
+              <stat.icon className="text-accent" size={32} />
+            </div>
+          ))}
+        </div>
+
+        {inspectionError && <p className="text-[10px] font-black uppercase tracking-widest text-accent">{inspectionError}</p>}
+        {inspectionNotice && <p className="text-[10px] font-black uppercase tracking-widest text-data">{inspectionNotice}</p>}
+
+        {inspectionRequests.length === 0 ? (
+          <div className="bg-surface border border-line p-8 space-y-4">
+            <p className="text-xs font-black uppercase tracking-widest">No inspection requests yet.</p>
+            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+              {canManageInspectionRequests
+                ? 'New inspection intake from the public inspections page will appear here automatically.'
+                : 'Submit a request from the inspections page and it will appear here for status tracking.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {inspectionRequests.map((request) => {
+              const quoteDraft = inspectionQuoteDrafts[request.id] ?? '';
+              const isUpdatingRequest = inspectionActionId === request.id;
+
+              return (
+                <div key={request.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2 min-w-0">
+                      <p className="text-xs font-black uppercase tracking-widest">{request.listingTitle || request.equipment || 'Inspection Request'}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+                        <span>{request.reference || request.listingId || request.id}</span>
+                        <span>{formatDateLabel(request.createdAt)}</span>
+                        {request.assignedToName ? <span>Assigned: {request.assignedToName}</span> : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInspectionStatusClasses(request.status)}`}>
+                        {request.status}
+                      </span>
+                      {typeof request.quotedPrice === 'number' ? (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                          Quote: {formatPrice(request.quotedPrice, 'USD', 0)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-[10px] font-bold uppercase tracking-widest">
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Requester</p>
+                      <p className="text-xs text-ink break-words">{request.requesterName || 'Unknown requester'}</p>
+                      <p className="text-muted normal-case break-words">{request.requesterEmail || 'No email provided'}</p>
+                      <p className="text-muted normal-case">{request.requesterPhone || 'No phone provided'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Inspection Location</p>
+                      <p className="text-xs text-ink break-words">{request.inspectionLocation || 'Not provided'}</p>
+                      <p className="text-muted">Timeline: {request.timeline || 'Flexible'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Matched Dealer</p>
+                      <p className="text-xs text-ink break-words">{request.matchedDealerName || request.assignedToName || 'Unassigned'}</p>
+                      <p className="text-muted break-words">{request.matchedDealerLocation || 'No location captured'}</p>
+                      <p className="text-muted">Distance: {typeof request.matchedDealerDistanceMiles === 'number' ? `${request.matchedDealerDistanceMiles.toFixed(1)} mi` : 'Unknown'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Machine</p>
+                      <p className="text-xs text-ink break-words">{request.equipment || request.listingTitle || 'Not provided'}</p>
+                      {request.listingUrl ? (
+                        <a href={request.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-accent hover:underline">
+                          View Linked Listing
+                          <ExternalLink size={12} />
+                        </a>
+                      ) : (
+                        <p className="text-muted">No linked listing URL</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-bg border border-line p-4 space-y-2">
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Inspection Notes</p>
+                    <p className="text-[11px] leading-relaxed text-ink break-words">
+                      {request.notes || 'No additional inspection notes were included.'}
+                    </p>
+                  </div>
+
+                  {canManageInspectionRequests ? (
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,220px)_1fr] gap-4 items-end">
+                      <div className="space-y-2">
+                        <label className="label-micro">Inspection Quote</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="input-industrial w-full"
+                          value={quoteDraft}
+                          onChange={(event) => handleInspectionQuoteDraftChange(request.id, event.target.value)}
+                          placeholder="Enter USD amount"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleInspectionRequestUpdate(request, 'Quoted', true)}
+                          disabled={isUpdatingRequest}
+                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
+                        >
+                          Save Quote
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleInspectionRequestUpdate(request, 'Accepted', true)}
+                          disabled={isUpdatingRequest}
+                          className="btn-industrial btn-accent py-2 px-4 text-[10px] disabled:opacity-60"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleInspectionRequestUpdate(request, 'Declined', false)}
+                          disabled={isUpdatingRequest}
+                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
+                        >
+                          Decline
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleInspectionRequestUpdate(request, 'Completed', false)}
+                          disabled={isUpdatingRequest}
+                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
+                        >
+                          Mark Completed
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderStorefront = () => {
+    const publicPath = `/seller/${storefrontPreview?.storefrontSlug || storefrontForm.storefrontSlug || user?.uid || ''}`;
+
+    return (
+      <div className="space-y-12">
+        <section className="space-y-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest">{storefrontTabLabel} Settings</h3>
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest mt-2 max-w-3xl">
+                {user?.role === 'individual_seller'
+                  ? 'This controls your public owner-operator profile, canonical seller URL, search metadata, and storefront presentation.'
+                  : 'This controls your storefront branding, canonical seller URL, and the metadata used by your public seller page.'}
+              </p>
+            </div>
+            <Link to={publicPath} className="btn-industrial btn-accent py-2 px-4 text-[10px]">
+              View Public Page
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-surface border border-line p-6">
+              <span className="label-micro block mb-2">Canonical URL</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">{publicPath}</p>
+            </div>
+            <div className="bg-surface border border-line p-6">
+              <span className="label-micro block mb-2">Logo Source</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">{storefrontForm.logo || 'Uses account profile image'}</p>
+            </div>
+            <div className="bg-surface border border-line p-6">
+              <span className="label-micro block mb-2">Cover Source</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">{storefrontForm.coverPhotoUrl || 'Uses account cover image'}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-2">
+              <label className="label-micro">{storefrontTabLabel} Name</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontName} onChange={(e) => handleStorefrontInputChange('storefrontName', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Canonical Slug</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontSlug} onChange={(e) => handleStorefrontInputChange('storefrontSlug', e.target.value)} placeholder="auto-generated-from-name" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">Tagline</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontTagline} onChange={(e) => handleStorefrontInputChange('storefrontTagline', e.target.value)} placeholder="Short positioning line for the public page" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">Description</label>
+              <textarea rows={5} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Tell buyers what you sell, where you operate, and why they should work with you." />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Location</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Website</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.website} onChange={(e) => handleStorefrontInputChange('website', e.target.value)} placeholder="https://example.com" />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Public Email</label>
+              <input type="email" className="input-industrial w-full" value={storefrontForm.email} onChange={(e) => handleStorefrontInputChange('email', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Public Phone</label>
+              <input type="tel" className="input-industrial w-full" value={storefrontForm.phone} onChange={(e) => handleStorefrontInputChange('phone', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Logo URL Override</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.logo} onChange={(e) => handleStorefrontInputChange('logo', e.target.value)} placeholder="Leave blank to reuse account profile image" />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Cover URL Override</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.coverPhotoUrl} onChange={(e) => handleStorefrontInputChange('coverPhotoUrl', e.target.value)} placeholder="Leave blank to reuse account cover image" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">SEO Title</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">SEO Description</label>
+              <textarea rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">SEO Keywords</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner operator" />
+            </div>
+          </div>
+
+          {storefrontError && <p className="text-[10px] font-black uppercase tracking-widest text-accent">{storefrontError}</p>}
+          {storefrontNotice && <p className="text-[10px] font-black uppercase tracking-widest text-data">{storefrontNotice}</p>}
+
+          <button onClick={() => void handleSaveStorefront()} disabled={isSavingStorefront} className="btn-industrial btn-accent py-3 px-8 disabled:opacity-60">
+            {isSavingStorefront ? 'Saving...' : `Save ${storefrontTabLabel}`}
+          </button>
+        </section>
+      </div>
+    );
+  };
+
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
 
@@ -962,6 +1461,12 @@ export function Profile() {
           </div>
         )}
 
+        {profileDataError && (
+          <div className="mb-6 border rounded-sm p-4 bg-accent/10 border-accent/30 text-accent">
+            <p className="text-[11px] font-black uppercase tracking-widest">{profileDataError}</p>
+          </div>
+        )}
+
         {/* Mobile tab grid */}
         <div className="lg:hidden mb-8">
           <div className="grid grid-cols-2 gap-2">
@@ -1005,11 +1510,21 @@ export function Profile() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
             >
+              {profileDataLoading && activeTab !== 'Account Settings' && activeTab !== 'Privacy & Data' ? (
+                <div className="space-y-4 animate-pulse">
+                  <div className="h-10 bg-surface border border-line" />
+                  <div className="h-40 bg-surface border border-line" />
+                  <div className="h-40 bg-surface border border-line" />
+                </div>
+              ) : (
+                <>
               {activeTab === 'Overview' && renderOverview()}
               {activeTab === 'My Listings' && renderMyListings()}
               {activeTab === 'Search Alerts' && renderAlerts()}
               {activeTab === 'Calls' && renderCalls()}
               {activeTab === 'Financing' && renderFinancing()}
+              {activeTab === 'Inspections' && canViewInspectionRequests && renderInspections()}
+              {activeTab === storefrontTabLabel && hasStorefrontAccess && renderStorefront()}
               {activeTab === 'Account Settings' && renderSettings()}
               {activeTab === 'Privacy & Data' && (
                 <div className="space-y-12">
@@ -1170,6 +1685,8 @@ export function Profile() {
                     ))}
                   </div>
                 </div>
+              )}
+                </>
               )}
             </motion.div>
           </div>

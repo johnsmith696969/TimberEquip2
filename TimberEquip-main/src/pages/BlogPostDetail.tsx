@@ -5,6 +5,103 @@ import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
 import { Seo } from '../components/Seo';
 
+function renderInlineMarkdown(text: string) {
+  const segments = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).filter(Boolean);
+
+  return segments.map((segment, index) => {
+    if (segment.startsWith('**') && segment.endsWith('**')) {
+      return <strong key={`segment-${index}`}>{segment.slice(2, -2)}</strong>;
+    }
+
+    if (segment.startsWith('*') && segment.endsWith('*')) {
+      return <em key={`segment-${index}`}>{segment.slice(1, -1)}</em>;
+    }
+
+    if (segment.startsWith('`') && segment.endsWith('`')) {
+      return (
+        <code key={`segment-${index}`} className="rounded-sm bg-surface px-1.5 py-0.5 text-[0.9em] font-semibold text-ink">
+          {segment.slice(1, -1)}
+        </code>
+      );
+    }
+
+    return <React.Fragment key={`segment-${index}`}>{segment}</React.Fragment>;
+  });
+}
+
+function renderMarkdownContent(content: string) {
+  const blocks = content
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks.map((block, index) => {
+    const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) return null;
+
+    const headingMatch = block.match(/^(#{1,4})\s+(.+)$/m);
+    if (headingMatch && lines.length === 1) {
+      const level = headingMatch[1].length;
+      const text = headingMatch[2].trim();
+
+      if (level === 1) {
+        return <h2 key={`block-${index}`} className="text-3xl font-black uppercase tracking-tight text-ink">{renderInlineMarkdown(text)}</h2>;
+      }
+
+      if (level === 2) {
+        return <h3 key={`block-${index}`} className="text-2xl font-black uppercase tracking-tight text-ink">{renderInlineMarkdown(text)}</h3>;
+      }
+
+      if (level === 3) {
+        return <h4 key={`block-${index}`} className="text-xl font-bold uppercase tracking-wide text-ink">{renderInlineMarkdown(text)}</h4>;
+      }
+
+      return <h5 key={`block-${index}`} className="text-lg font-bold uppercase tracking-wide text-ink">{renderInlineMarkdown(text)}</h5>;
+    }
+
+    if (lines.every((line) => /^[-*]\s+/.test(line))) {
+      return (
+        <ul key={`block-${index}`} className="list-disc space-y-2 pl-6 text-base leading-8 text-ink">
+          {lines.map((line, lineIndex) => (
+            <li key={`item-${index}-${lineIndex}`}>{renderInlineMarkdown(line.replace(/^[-*]\s+/, ''))}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (lines.every((line) => /^\d+\.\s+/.test(line))) {
+      return (
+        <ol key={`block-${index}`} className="list-decimal space-y-2 pl-6 text-base leading-8 text-ink">
+          {lines.map((line, lineIndex) => (
+            <li key={`item-${index}-${lineIndex}`}>{renderInlineMarkdown(line.replace(/^\d+\.\s+/, ''))}</li>
+          ))}
+        </ol>
+      );
+    }
+
+    if (lines.every((line) => line.startsWith('>'))) {
+      return (
+        <blockquote key={`block-${index}`} className="border-l-4 border-accent pl-5 italic text-muted">
+          {lines.map((line, lineIndex) => (
+            <p key={`quote-${index}-${lineIndex}`}>{renderInlineMarkdown(line.replace(/^>\s?/, ''))}</p>
+          ))}
+        </blockquote>
+      );
+    }
+
+    return (
+      <p key={`block-${index}`} className="text-base leading-8 text-ink">
+        {lines.map((line, lineIndex) => (
+          <React.Fragment key={`line-${index}-${lineIndex}`}>
+            {lineIndex > 0 && <br />}
+            {renderInlineMarkdown(line)}
+          </React.Fragment>
+        ))}
+      </p>
+    );
+  });
+}
+
 export function BlogPostDetail() {
   const { id } = useParams<{ id: string }>();
   const [post, setPost] = useState<NewsPost | null>(null);
@@ -105,8 +202,8 @@ export function BlogPostDetail() {
 
         <article className="space-y-6">
           <p className="text-lg font-medium leading-relaxed text-muted">{post.summary}</p>
-          <div className="prose prose-neutral max-w-none text-ink">
-            <div className="whitespace-pre-wrap text-sm leading-8">{post.content}</div>
+          <div className="max-w-none space-y-6 text-ink">
+            {renderMarkdownContent(post.content)}
           </div>
         </article>
       </div>

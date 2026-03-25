@@ -43,7 +43,6 @@ export function ListingDetail() {
   const [aiSpecs, setAiSpecs] = useState<any>(null);
   const [loadingAiData, setLoadingAiData] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
-  const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLocationMap, setLoadingLocationMap] = useState(false);
   
   const [inquiryForm, setInquiryForm] = useState({
@@ -149,20 +148,12 @@ export function ListingDetail() {
     return `https://www.google.com/maps/search/?api=1&query=${encoded}`;
   };
 
-  const buildOpenStreetMapEmbedUrl = (lat: number, lng: number) => {
-    const latDelta = 0.08;
-    const lngDelta = 0.16;
-    const bbox = [lng - lngDelta, lat - latDelta, lng + lngDelta, lat + latDelta]
-      .map((value) => value.toFixed(6))
-      .join(',');
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat.toFixed(6)}%2C${lng.toFixed(6)}`;
+  const buildGoogleMapsEmbedUrl = (query: string) => {
+    return `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=11&output=embed`;
   };
 
-  const buildOpenStreetMapLink = (lat?: number, lng?: number) => {
-    if (typeof lat === 'number' && typeof lng === 'number') {
-      return `https://www.openstreetmap.org/?mlat=${lat.toFixed(6)}&mlon=${lng.toFixed(6)}#map=11/${lat.toFixed(6)}/${lng.toFixed(6)}`;
-    }
-    return `https://www.openstreetmap.org/search?query=${encodeURIComponent(listing?.location || '')}`;
+  const buildGoogleMapsLink = (query: string) => {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   };
 
   const toFiniteNumber = (value: unknown): number | undefined => {
@@ -172,22 +163,6 @@ export function ListingDetail() {
       if (Number.isFinite(parsed)) return parsed;
     }
     return undefined;
-  };
-
-  const extractListingCoordinates = (target?: Listing | null): { lat: number; lng: number } | null => {
-    if (!target) return null;
-
-    const lat = toFiniteNumber(
-      target.latitude ?? target.specs?.latitude ?? target.specs?.lat
-    );
-    const lng = toFiniteNumber(
-      target.longitude ?? target.specs?.longitude ?? target.specs?.lng ?? target.specs?.lon
-    );
-
-    if (lat === undefined || lng === undefined) return null;
-    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-
-    return { lat, lng };
   };
 
   const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
@@ -262,60 +237,8 @@ export function ListingDetail() {
   }, []);
 
   useEffect(() => {
-    if (!listing) {
-      setLocationCoords(null);
-      setLoadingLocationMap(false);
-      return;
-    }
-
-    const preciseCoords = extractListingCoordinates(listing);
-    if (preciseCoords) {
-      setLocationCoords(preciseCoords);
-      setLoadingLocationMap(false);
-      return;
-    }
-
-    if (!listing.location) {
-      setLocationCoords(null);
-      setLoadingLocationMap(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoadingLocationMap(true);
-
-    fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q=${encodeURIComponent(listing.location)}`, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) return [];
-        return response.json();
-      })
-      .then((results) => {
-        const match = Array.isArray(results) ? results[0] : null;
-        const lat = Number(match?.lat);
-        const lng = Number(match?.lon);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
-          setLocationCoords({ lat, lng });
-        } else {
-          setLocationCoords(null);
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== 'AbortError') {
-          console.error('Failed to geocode listing location:', error);
-          setLocationCoords(null);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoadingLocationMap(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [listing]);
+    setLoadingLocationMap(Boolean(listing?.location));
+  }, [listing?.location, seller?.name, seller?.storefrontName]);
 
   const hasDirtyInquiryForm = Boolean(
     inquiryForm.name.trim() || inquiryForm.email.trim() || inquiryForm.phone.trim() || inquiryForm.message.trim()
@@ -341,13 +264,16 @@ export function ListingDetail() {
       shippingForm.notes.trim() ||
       shippingForm.loadReady !== shippingDefaults.loadReady ||
       shippingForm.email.trim() !== shippingDefaults.email.trim() ||
-      shippingForm.pickupLocation.trim() !== shippingDefaults.pickupLocation.trim() ||
-      shippingForm.reference.trim() !== shippingDefaults.reference.trim()
+      shippingForm.pickupLocation.trim() !== shippingDefaults.pickupLocation.trim()
   );
 
   const confirmDiscardChanges = () => window.confirm('Are you sure you want to discard changes?');
   const machineMapsHref = buildMapsHref(listing?.location || '');
-  const openStreetMapHref = buildOpenStreetMapLink(locationCoords?.lat, locationCoords?.lng);
+  const machineMapQuery = [seller?.storefrontName || seller?.name || '', listing?.location || '']
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const googleMapsHref = buildGoogleMapsLink(machineMapQuery || listing?.location || '');
 
   const runRecaptchaCheck = async (action: string) => {
     const token = await getRecaptchaToken(action);
@@ -651,6 +577,77 @@ export function ListingDetail() {
   const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
   const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
   const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
+  const detailJsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: 'https://timberequip.com/',
+          },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: 'Inventory',
+            item: 'https://timberequip.com/search',
+          },
+          {
+            '@type': 'ListItem',
+            position: 3,
+            name: listing.title || detailSeoTitle,
+            item: `https://timberequip.com${listingPath}`,
+          },
+        ],
+      },
+      {
+        '@type': 'Product',
+        name: listing.title || detailSeoTitle,
+        description: safeDescription,
+        category: safeCategory,
+        sku: listing.stockNumber || listing.id,
+        mpn: listing.serialNumber || undefined,
+        image: galleryImages.slice(0, 10),
+        url: `https://timberequip.com${listingPath}`,
+        brand: {
+          '@type': 'Brand',
+          name: safeMake,
+        },
+        itemCondition:
+          safeCondition.toLowerCase() === 'new'
+            ? 'https://schema.org/NewCondition'
+            : safeCondition.toLowerCase() === 'rebuilt'
+              ? 'https://schema.org/RefurbishedCondition'
+              : 'https://schema.org/UsedCondition',
+        additionalProperty: Object.entries(listingSpecs)
+          .map(([name, value]) => ({ name, value: formatSpecValue(value) }))
+          .filter((entry) => entry.value)
+          .slice(0, 15)
+          .map((entry) => ({
+            '@type': 'PropertyValue',
+            name: entry.name,
+            value: entry.value,
+          })),
+        offers: {
+          '@type': 'Offer',
+          url: `https://timberequip.com${listingPath}`,
+          priceCurrency: listing.currency || 'USD',
+          availability: String(listing.status || 'active').toLowerCase() === 'sold'
+            ? 'https://schema.org/SoldOut'
+            : 'https://schema.org/InStock',
+          ...(safePrice > 0 ? { price: safePrice } : {}),
+          seller: {
+            '@type': 'Organization',
+            name: safeSellerName,
+            url: seller?.storefrontSlug ? `https://timberequip.com/seller/${seller.storefrontSlug}` : undefined,
+          },
+        },
+      },
+    ],
+  };
 
   const showPrevImage = () => {
     setActiveImage((prev) => (prev === 0 ? galleryImages.length - 1 : prev - 1));
@@ -665,7 +662,7 @@ export function ListingDetail() {
 
   return (
     <div className="min-h-screen bg-bg pb-24">
-      <Seo title={`TimberEquip.com | ${detailSeoTitle}`} description={detailSeoDescription} canonicalPath={listingPath} />
+      <Seo title={`TimberEquip.com | ${detailSeoTitle}`} description={detailSeoDescription} canonicalPath={listingPath} jsonLd={detailJsonLd} />
       {/* Breadcrumbs & Actions */}
       <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
@@ -730,7 +727,7 @@ export function ListingDetail() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
+                    transition={{ duration: 0.15 }}
                     src={galleryImages[activeImage]} 
                     alt={listing.title}
                     className="w-full h-full object-cover cursor-zoom-in"
@@ -1033,11 +1030,11 @@ export function ListingDetail() {
               <div className="bg-surface border border-line overflow-hidden">
                 <div className="flex items-center justify-between border-b border-line px-6 py-4 gap-4">
                   <div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">OpenStreetMap</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Google Maps</span>
                     <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
-                    <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{safeCityState}</p>
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{seller?.storefrontName || seller?.name || 'Seller'} • {safeCityState}</p>
                   </div>
-                  <a href={openStreetMapHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
+                  <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
                     Open Full Map
                   </a>
                 </div>
@@ -1045,19 +1042,20 @@ export function ListingDetail() {
                   <div className="h-64 flex items-center justify-center bg-bg text-[10px] font-bold uppercase tracking-widest text-muted">
                     Loading map...
                   </div>
-                ) : locationCoords ? (
+                ) : machineMapQuery ? (
                   <iframe
-                    title={`Map for ${safeLocation}`}
-                    src={buildOpenStreetMapEmbedUrl(locationCoords.lat, locationCoords.lng)}
+                    title={`Map for ${machineMapQuery}`}
+                    src={buildGoogleMapsEmbedUrl(machineMapQuery)}
                     className="h-64 w-full border-0"
                     loading="lazy"
+                    onLoad={() => setLoadingLocationMap(false)}
                     referrerPolicy="no-referrer-when-downgrade"
                   />
                 ) : (
                   <div className="h-64 flex flex-col items-center justify-center bg-bg px-6 text-center">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-3">Map preview unavailable for this location.</p>
-                    <a href={openStreetMapHref} target="_blank" rel="noopener noreferrer" className="btn-industrial px-4 py-2 text-[10px]">
-                      Open in OpenStreetMap
+                    <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="btn-industrial px-4 py-2 text-[10px]">
+                      Open in Google Maps
                     </a>
                   </div>
                 )}
@@ -1122,7 +1120,7 @@ export function ListingDetail() {
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          transition={{ duration: 0.24 }}
+                          transition={{ duration: 0.12 }}
                         />
                       </AnimatePresence>
                     </TransformComponent>
@@ -1438,7 +1436,7 @@ export function ListingDetail() {
                         </div>
                       </div>
                       <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
-                        Stock # auto-fills when available. If not, the listing URL is attached automatically.
+                        Stock # auto-fills when available. If not, the listing URL is attached automatically and locked to this request.
                       </p>
                     </div>
 
@@ -1449,10 +1447,7 @@ export function ListingDetail() {
                       <input required type="tel" placeholder="PHONE" className="input-industrial" value={shippingForm.phone} onChange={(e) => setShippingForm({ ...shippingForm, phone: e.target.value })} />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input type="text" placeholder="STOCK # OR LISTING URL" className="input-industrial" value={shippingForm.reference} onChange={(e) => setShippingForm({ ...shippingForm, reference: e.target.value })} />
-                      <input required type="text" placeholder="PICKUP CITY / STATE" className="input-industrial" value={shippingForm.pickupLocation} onChange={(e) => setShippingForm({ ...shippingForm, pickupLocation: e.target.value })} />
-                    </div>
+                    <input required type="text" placeholder="PICKUP CITY / STATE" className="input-industrial w-full" value={shippingForm.pickupLocation} onChange={(e) => setShippingForm({ ...shippingForm, pickupLocation: e.target.value })} />
 
                     <input required type="text" placeholder="DELIVERY CITY / STATE / COUNTRY" className="input-industrial w-full" value={shippingForm.destination} onChange={(e) => setShippingForm({ ...shippingForm, destination: e.target.value })} />
 

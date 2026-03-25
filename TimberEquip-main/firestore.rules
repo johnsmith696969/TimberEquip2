@@ -111,6 +111,10 @@ service cloud.firestore {
       return isAdmin() || hasAnyRole(['dealer', 'dealer_manager']);
     }
 
+    function isInspectionManager() {
+      return isAdmin() || hasAnyRole(['dealer', 'dealer_manager']);
+    }
+
     function isListingOwner(data) {
       return isAuthenticated() && (
         (('sellerUid' in data) && data.sellerUid == request.auth.uid) ||
@@ -318,10 +322,12 @@ service cloud.firestore {
     }
 
     function isValidStorefront(data) {
-      return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
+          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
-             data.role in ['super_admin', 'admin', 'dealer', 'dealer_manager'] &&
+            data.role in ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager', 'individual_seller'] &&
              data.storefrontEnabled is bool &&
+            (!('storefrontSlug' in data) || (data.storefrontSlug is string && data.storefrontSlug.size() <= 200)) &&
+            (!('canonicalPath' in data) || (data.canonicalPath is string && data.canonicalPath.size() <= 255)) &&
              isNonEmptyString(data.displayName, 160) &&
              isNonEmptyString(data.storefrontName, 180) &&
              (!('storefrontTagline' in data) || (data.storefrontTagline is string && data.storefrontTagline.size() <= 240)) &&
@@ -337,6 +343,36 @@ service cloud.firestore {
              (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
              data.createdAt is timestamp &&
              data.updatedAt is timestamp;
+    }
+
+    function isValidInspectionRequest(data) {
+      return data.keys().hasOnly(['id', 'listingId', 'listingTitle', 'listingUrl', 'reference', 'requesterUid', 'requesterName', 'requesterEmail', 'requesterPhone', 'requesterCompany', 'equipment', 'inspectionLocation', 'timeline', 'notes', 'matchedDealerUid', 'matchedDealerName', 'matchedDealerLocation', 'matchedDealerDistanceMiles', 'assignedToUid', 'assignedToName', 'quotedPrice', 'status', 'createdAt', 'updatedAt', 'reviewedAt', 'respondedAt']) &&
+             isNonEmptyString(data.id, 128) &&
+             (!('listingId' in data) || data.listingId is string) &&
+             (!('listingTitle' in data) || data.listingTitle is string) &&
+             (!('listingUrl' in data) || data.listingUrl is string) &&
+             (!('reference' in data) || data.reference is string) &&
+             (!('requesterUid' in data) || data.requesterUid == null || data.requesterUid is string) &&
+             isNonEmptyString(data.requesterName, 160) &&
+             isValidEmail(data.requesterEmail) &&
+             isNonEmptyString(data.requesterPhone, 40) &&
+             (!('requesterCompany' in data) || (data.requesterCompany is string && data.requesterCompany.size() <= 200)) &&
+             isNonEmptyString(data.equipment, 240) &&
+             isNonEmptyString(data.inspectionLocation, 240) &&
+             (!('timeline' in data) || (data.timeline is string && data.timeline.size() <= 160)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
+             (!('matchedDealerUid' in data) || data.matchedDealerUid == null || data.matchedDealerUid is string) &&
+             (!('matchedDealerName' in data) || data.matchedDealerName is string) &&
+             (!('matchedDealerLocation' in data) || data.matchedDealerLocation is string) &&
+             (!('matchedDealerDistanceMiles' in data) || data.matchedDealerDistanceMiles == null || (data.matchedDealerDistanceMiles is number && data.matchedDealerDistanceMiles >= 0)) &&
+             (!('assignedToUid' in data) || data.assignedToUid == null || data.assignedToUid is string) &&
+             (!('assignedToName' in data) || data.assignedToName == null || data.assignedToName is string) &&
+             (!('quotedPrice' in data) || data.quotedPrice == null || (data.quotedPrice is number && data.quotedPrice >= 0)) &&
+             data.status in ['New', 'Quoted', 'Accepted', 'Declined', 'Completed'] &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             (!('reviewedAt' in data) || data.reviewedAt == null || data.reviewedAt is timestamp) &&
+             (!('respondedAt' in data) || data.respondedAt == null || data.respondedAt is timestamp);
     }
 
     function isValidDealerFeedIngestLog(data) {
@@ -467,7 +503,7 @@ service cloud.firestore {
         (
           request.auth.uid == storefrontId &&
           request.resource.data.uid == request.auth.uid &&
-          request.resource.data.role in ['super_admin', 'admin', 'dealer', 'dealer_manager']
+          request.resource.data.role in ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager', 'individual_seller']
         )
       );
       allow delete: if isAdmin();
@@ -520,6 +556,22 @@ service cloud.firestore {
       allow read: if isAdmin() || isEditor();
       allow create: if isValidFinancingRequest(request.resource.data);
       allow update, delete: if isAdmin();
+    }
+
+    match /inspectionRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isInspectionManager() ||
+        request.auth.uid == resource.data.requesterUid
+      );
+      allow create: if isValidInspectionRequest(request.resource.data) &&
+        request.resource.data.status == 'New' &&
+        (
+          !('requesterUid' in request.resource.data) ||
+          request.resource.data.requesterUid == null ||
+          (isAuthenticated() && request.resource.data.requesterUid == request.auth.uid)
+        );
+      allow update: if isAuthenticated() && isInspectionManager() && isValidInspectionRequest(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /invoices/{invoiceId} {

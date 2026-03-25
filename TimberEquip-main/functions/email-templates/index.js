@@ -75,7 +75,7 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="header">
         <p class="eyebrow">TimberEquip Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/TimberEquip-Logo-Email.png" alt="TimberEquip" />
+          <img class="header-logo-img" src="https://timberequip.com/TimberEquip-Brand-Logo-Dusk.svg" alt="TimberEquip" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
         <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the TimberEquip network.</p>
@@ -559,6 +559,67 @@ const templates = {
         { label: 'Listing ID', value: listingId || 'N/A' },
       ])}
       ${message ? `<div class="message-box"><p>${message}</p></div>` : ''}
+    `);
+    return { subject, html };
+  },
+
+  inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl }) {
+    const subject = `TimberEquip inspection request received for ${equipment}`;
+    const html = baseLayout(subject, 'Inspection Request Received', `
+      <p class="label">Inspection Desk</p>
+      <h2>Your inspection request is now in the queue</h2>
+      <p>Hi <strong>${requesterName}</strong>,</p>
+      <p>We received your TimberEquip inspection request and routed it to the inspection management desk.</p>
+      ${renderInfoPanel([
+        { label: 'Equipment', value: equipment },
+        { label: 'Location', value: inspectionLocation },
+        { label: 'Requested Timeline', value: timeline || 'Not provided' },
+        { label: 'Recommended Dealer', value: matchedDealerName || 'No dealer matched yet' },
+      ])}
+      <p>An inspection-capable dealer or TimberEquip administrator will review the request and respond with acceptance, decline, or a quoted inspection price.</p>
+      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta">Open TimberEquip</a>` : ''}
+    `);
+    return { subject, html };
+  },
+
+  inspectionRequestAdmin({ requesterName, requesterEmail, requesterPhone, requesterCompany, equipment, inspectionLocation, timeline, notes, matchedDealerName, matchedDealerLocation, listingUrl, quotedPrice, dashboardUrl }) {
+    const subject = `New Inspection Request: ${equipment}`;
+    const html = baseLayout(subject, 'Inspection Request Submitted', `
+      <p class="label">Inspection Desk</p>
+      <h2>A new inspection request needs review</h2>
+      ${renderInfoPanel([
+        { label: 'Requester', value: requesterName },
+        { label: 'Email', value: requesterEmail },
+        { label: 'Phone', value: requesterPhone },
+        { label: 'Company', value: requesterCompany || 'Not provided' },
+        { label: 'Equipment', value: equipment },
+        { label: 'Inspection Location', value: inspectionLocation },
+        { label: 'Timeline', value: timeline || 'Not provided' },
+        { label: 'Matched Dealer', value: matchedDealerName || 'No dealer matched yet' },
+        { label: 'Dealer Location', value: matchedDealerLocation || 'Not provided' },
+        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not quoted yet' },
+      ])}
+      ${notes ? `<div class="message-box"><p>${notes}</p></div>` : ''}
+      ${listingUrl ? `<a href="${listingUrl}" class="cta">Open Related Listing</a>` : ''}
+      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta cta-secondary">Open Inspection Queue</a>` : ''}
+    `);
+    return { subject, html };
+  },
+
+  inspectionRequestStatusUpdated({ requesterName, equipment, status, quotedPrice, managerName, inspectionLocation }) {
+    const normalizedStatus = String(status || 'Updated');
+    const subject = `Inspection request ${normalizedStatus.toLowerCase()}: ${equipment}`;
+    const html = baseLayout(subject, 'Inspection Request Updated', `
+      <p class="label">Inspection Desk</p>
+      <h2>Your inspection request has been updated</h2>
+      <p>Hi <strong>${requesterName}</strong>,</p>
+      <p>Your request for <strong>${equipment}</strong> has been updated by ${managerName || 'the TimberEquip team'}.</p>
+      ${renderInfoPanel([
+        { label: 'Status', value: normalizedStatus },
+        { label: 'Inspection Location', value: inspectionLocation },
+        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not provided' },
+      ])}
+      <p>If you have questions about this update, reply directly to the TimberEquip inspection desk.</p>
     `);
     return { subject, html };
   },

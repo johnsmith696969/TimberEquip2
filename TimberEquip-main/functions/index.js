@@ -36,10 +36,12 @@ const ADMIN_EMAILS = defineSecret('ADMIN_EMAILS');
 const FRED_API_KEY = defineSecret('FRED_API_KEY');
 const GOOGLE_TRANSLATE_API_KEY = defineSecret('GOOGLE_TRANSLATE_API_KEY');
 const EXCHANGERATE_API_KEY = defineSecret('EXCHANGERATE_API_KEY');
+const GOOGLE_MAPS_API_KEY = defineSecret('GOOGLE_MAPS_API_KEY');
 const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 let configuredSendGridApiKey = '';
+const geocodeCache = new Map();
 
 function ensureSendGridClientConfigured() {
   const apiKey = String(SENDGRID_API_KEY.value() || '').trim();
@@ -133,6 +135,309 @@ function normalizeNonEmptyString(value, fallback = '') {
 function normalizeFiniteNumber(value, fallback = 0) {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function toFiniteNumberOrUndefined(value) {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function toRadians(degrees) {
+  return (degrees * Math.PI) / 180;
+}
+
+function distanceMiles(aLat, aLng, bLat, bLng) {
+  const earthRadiusMiles = 3958.8;
+  const dLat = toRadians(bLat - aLat);
+  const dLng = toRadians(bLng - aLng);
+  const aa =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+  return earthRadiusMiles * c;
+}
+
+function parseLocationCoordinates(value) {
+  const parts = String(value || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length !== 2) return null;
+
+  const lat = Number(parts[0]);
+  const lng = Number(parts[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+
+  return { lat, lng };
+}
+
+function splitLocationParts(value) {
+  return String(value || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function buildLocationFallbackScore(targetLocation, candidateLocation) {
+  const targetParts = splitLocationParts(targetLocation).map((part) => normalize(part));
+  const candidateParts = splitLocationParts(candidateLocation).map((part) => normalize(part));
+
+  if (targetParts.length === 0 || candidateParts.length === 0) return 0;
+
+  let score = 0;
+  if (normalize(targetLocation) === normalize(candidateLocation)) score += 100;
+  if (targetParts[0] && candidateParts[0] && targetParts[0] === candidateParts[0]) score += 40;
+
+  const targetRegion = targetParts[targetParts.length - 1] || '';
+  const candidateRegion = candidateParts[candidateParts.length - 1] || '';
+  if (targetRegion && candidateRegion && targetRegion === candidateRegion) score += 35;
+
+  const secondaryTarget = targetParts[1] || '';
+  const secondaryCandidate = candidateParts[1] || '';
+  if (secondaryTarget && secondaryCandidate && secondaryTarget === secondaryCandidate) score += 25;
+
+  return score;
+}
+
+function extractListingCoordinates(listing) {
+  const lat = toFiniteNumberOrUndefined(listing?.latitude ?? listing?.specs?.latitude ?? listing?.specs?.lat);
+  const lng = toFiniteNumberOrUndefined(listing?.longitude ?? listing?.specs?.longitude ?? listing?.specs?.lng ?? listing?.specs?.lon);
+  if (lat === undefined || lng === undefined) return null;
+  return { lat, lng };
+}
+
+function parseListingIdFromReference(reference) {
+  const value = String(reference || '').trim();
+  if (!value) return '';
+
+  const listingUrlMatch = value.match(/\/listing\/([^/?#]+)/i);
+  if (listingUrlMatch?.[1]) return listingUrlMatch[1].trim();
+
+  if (!value.includes('/') && !value.includes(' ') && value.length >= 8) {
+    return value;
+  }
+
+  return '';
+}
+
+async function geocodeLocation(address) {
+  const normalizedAddress = String(address || '').trim();
+  if (!normalizedAddress) return null;
+
+  const directCoordinates = parseLocationCoordinates(normalizedAddress);
+  if (directCoordinates) {
+    return {
+      lat: directCoordinates.lat,
+      lng: directCoordinates.lng,
+      formattedAddress: normalizedAddress,
+      source: 'coordinates',
+    };
+  }
+
+  const cacheKey = normalize(normalizedAddress);
+  if (geocodeCache.has(cacheKey)) {
+    return geocodeCache.get(cacheKey);
+  }
+
+  const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
+  if (!apiKey) {
+    geocodeCache.set(cacheKey, null);
+    return null;
+  }
+
+  const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(normalizedAddress)}&key=${encodeURIComponent(apiKey)}`);
+  if (!response.ok) {
+    throw new Error(`Google geocoding request failed with ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload.status !== 'OK' || !Array.isArray(payload.results) || payload.results.length === 0) {
+    geocodeCache.set(cacheKey, null);
+    return null;
+  }
+
+  const result = payload.results[0];
+  const location = result?.geometry?.location;
+  const geocoded = location && Number.isFinite(location.lat) && Number.isFinite(location.lng)
+    ? {
+        lat: location.lat,
+        lng: location.lng,
+        formattedAddress: String(result.formatted_address || normalizedAddress),
+        source: 'google-geocode',
+      }
+    : null;
+
+  geocodeCache.set(cacheKey, geocoded);
+  return geocoded;
+}
+
+async function resolveInspectionTarget({ listingId, reference, inspectionLocation }) {
+  const db = getDb();
+  const directListingId = String(listingId || '').trim() || parseListingIdFromReference(reference);
+  let listingSnap = null;
+
+  if (directListingId) {
+    const possibleListingSnap = await db.collection('listings').doc(directListingId).get();
+    if (possibleListingSnap.exists) {
+      listingSnap = possibleListingSnap;
+    }
+  }
+
+  if (!listingSnap && reference) {
+    const byStockNumber = await db
+      .collection('listings')
+      .where('stockNumber', '==', String(reference || '').trim())
+      .limit(1)
+      .get();
+    if (!byStockNumber.empty) {
+      listingSnap = byStockNumber.docs[0];
+    }
+  }
+
+  if (!listingSnap) {
+    return {
+      listing: null,
+      targetLocation: String(inspectionLocation || '').trim(),
+      targetCoordinates: await geocodeLocation(inspectionLocation),
+    };
+  }
+
+  const listingData = listingSnap.data() || {};
+  const listingCoordinates = extractListingCoordinates(listingData);
+  const geocodedLocation = listingCoordinates ? null : await geocodeLocation(listingData.location || inspectionLocation);
+
+  return {
+    listing: {
+      id: listingSnap.id,
+      title: String(listingData.title || '').trim(),
+      stockNumber: String(listingData.stockNumber || '').trim(),
+      location: String(listingData.location || '').trim(),
+      latitude: listingCoordinates?.lat,
+      longitude: listingCoordinates?.lng,
+      sellerUid: String(listingData.sellerUid || listingData.sellerId || '').trim(),
+      url: `${APP_URL}/listing/${listingSnap.id}`,
+    },
+    targetLocation: String(listingData.location || inspectionLocation || '').trim(),
+    targetCoordinates: listingCoordinates || geocodedLocation,
+  };
+}
+
+async function getInspectionDealerCandidates() {
+  const roles = ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'];
+  const snapshot = await getDb().collection('users').where('role', 'in', roles).get();
+
+  return snapshot.docs
+    .map((doc) => {
+      const data = doc.data() || {};
+      const location = String(data.location || '').trim();
+      if (!location) return null;
+
+      const candidateName = String(data.storefrontName || data.displayName || data.company || data.name || '').trim();
+      return {
+        uid: doc.id,
+        name: candidateName || 'TimberEquip Dealer',
+        storefrontName: String(data.storefrontName || '').trim(),
+        company: String(data.company || '').trim(),
+        email: String(data.email || '').trim(),
+        phone: String(data.phoneNumber || data.phone || '').trim(),
+        website: String(data.website || '').trim(),
+        role: String(data.role || '').trim(),
+        location,
+        storefrontSlug: String(data.storefrontSlug || '').trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+async function findClosestInspectionDealer(input) {
+  const { listing, targetLocation, targetCoordinates } = await resolveInspectionTarget(input);
+  const candidates = await getInspectionDealerCandidates();
+
+  if (candidates.length === 0) {
+    return {
+      listing,
+      targetLocation,
+      targetCoordinates,
+      recommendedDealer: null,
+      alternatives: [],
+      geocodingConfigured: Boolean(String(GOOGLE_MAPS_API_KEY.value() || '').trim()),
+      matchType: 'none',
+    };
+  }
+
+  const geocodedCandidates = await Promise.all(
+    candidates.map(async (candidate) => {
+      const coordinates = await geocodeLocation(candidate.location);
+      const fallbackScore = buildLocationFallbackScore(targetLocation, candidate.location);
+      const distance = targetCoordinates && coordinates
+        ? distanceMiles(targetCoordinates.lat, targetCoordinates.lng, coordinates.lat, coordinates.lng)
+        : null;
+
+      return {
+        ...candidate,
+        distanceMiles: distance,
+        locationCoordinates: coordinates,
+        fallbackScore,
+      };
+    })
+  );
+
+  const ranked = geocodedCandidates
+    .filter((candidate) => candidate.distanceMiles !== null || candidate.fallbackScore > 0)
+    .sort((a, b) => {
+      if (a.distanceMiles !== null && b.distanceMiles !== null) return a.distanceMiles - b.distanceMiles;
+      if (a.distanceMiles !== null) return -1;
+      if (b.distanceMiles !== null) return 1;
+      if (b.fallbackScore !== a.fallbackScore) return b.fallbackScore - a.fallbackScore;
+      return a.name.localeCompare(b.name);
+    });
+
+  const topMatches = ranked.slice(0, 3).map((candidate) => ({
+    uid: candidate.uid,
+    name: candidate.name,
+    storefrontName: candidate.storefrontName,
+    company: candidate.company,
+    email: candidate.email,
+    phone: candidate.phone,
+    website: candidate.website,
+    role: candidate.role,
+    location: candidate.location,
+    storefrontSlug: candidate.storefrontSlug,
+    distanceMiles: candidate.distanceMiles,
+  }));
+
+  return {
+    listing,
+    targetLocation,
+    targetCoordinates,
+    recommendedDealer: topMatches[0] || null,
+    alternatives: topMatches.slice(1),
+    geocodingConfigured: Boolean(String(GOOGLE_MAPS_API_KEY.value() || '').trim()),
+    matchType: topMatches[0]?.distanceMiles !== undefined && topMatches[0]?.distanceMiles !== null ? 'distance' : 'location-fallback',
+  };
+}
+
+async function getInspectionNotificationRecipients() {
+  const roles = ['dealer', 'dealer_manager', 'admin', 'super_admin', 'developer'];
+  const snapshot = await getDb().collection('users').where('role', 'in', roles).get();
+  const recipients = new Map();
+
+  snapshot.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const email = String(data.email || '').trim().toLowerCase();
+    if (!email) return;
+
+    recipients.set(email, {
+      uid: doc.id,
+      email,
+      name: String(data.displayName || data.storefrontName || data.company || 'Inspection Manager').trim(),
+      role: String(data.role || '').trim(),
+    });
+  });
+
+  return Array.from(recipients.values());
 }
 
 async function buildEmailVerificationLink(email) {
@@ -628,6 +933,101 @@ exports.onInquiryCreated = onDocumentCreated(
 
     if (errors.length) {
       logger.warn(`onInquiryCreated partial failure: ${errors.join(', ')}`);
+    }
+  }
+);
+
+exports.onInspectionRequestCreated = onDocumentCreated(
+  {
+    document: 'inspectionRequests/{requestId}',
+    database: FIRESTORE_DB_ID,
+    region: 'us-central1',
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
+  },
+  async (event) => {
+    const request = event.data?.data();
+    if (!request) return;
+
+    const requesterEmail = String(request.requesterEmail || '').trim();
+    const inspectionManagers = await getInspectionNotificationRecipients();
+    const dashboardUrl = `${APP_URL}/profile?tab=${encodeURIComponent('Inspections')}`;
+    const listingUrl = String(request.listingUrl || '').trim();
+
+    await Promise.all(
+      inspectionManagers.map(async (recipient) => {
+        try {
+          const payload = templates.inspectionRequestAdmin({
+            requesterName: request.requesterName || 'Unknown requester',
+            requesterEmail: requesterEmail || '',
+            requesterPhone: request.requesterPhone || '',
+            requesterCompany: request.requesterCompany || '',
+            equipment: request.equipment || request.listingTitle || 'Equipment inspection',
+            inspectionLocation: request.inspectionLocation || 'Unknown',
+            timeline: request.timeline || '',
+            notes: request.notes || '',
+            matchedDealerName: request.matchedDealerName || request.assignedToName || '',
+            matchedDealerLocation: request.matchedDealerLocation || '',
+            listingUrl,
+            quotedPrice: typeof request.quotedPrice === 'number' ? request.quotedPrice : null,
+            dashboardUrl,
+          });
+          await sendEmail({ to: recipient.email, ...payload });
+        } catch (error) {
+          logger.error(`Failed to send inspection manager email to ${recipient.email}`, error);
+        }
+      })
+    );
+
+    if (requesterEmail) {
+      try {
+        const payload = templates.inspectionRequestReceived({
+          requesterName: request.requesterName || 'there',
+          equipment: request.equipment || request.listingTitle || 'Equipment inspection',
+          inspectionLocation: request.inspectionLocation || 'Unknown',
+          timeline: request.timeline || '',
+          matchedDealerName: request.matchedDealerName || request.assignedToName || '',
+          dashboardUrl: APP_URL,
+        });
+        await sendEmail({ to: requesterEmail, ...payload });
+      } catch (error) {
+        logger.error('Failed to send inspection requester confirmation', error);
+      }
+    }
+  }
+);
+
+exports.onInspectionRequestUpdated = onDocumentUpdated(
+  {
+    document: 'inspectionRequests/{requestId}',
+    database: FIRESTORE_DB_ID,
+    region: 'us-central1',
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
+  },
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!before || !after) return;
+
+    const statusChanged = String(before.status || '') !== String(after.status || '');
+    const quotedPriceChanged = Number(before.quotedPrice || 0) !== Number(after.quotedPrice || 0);
+
+    if (!statusChanged && !quotedPriceChanged) return;
+
+    const requesterEmail = String(after.requesterEmail || '').trim();
+    if (!requesterEmail) return;
+
+    try {
+      const payload = templates.inspectionRequestStatusUpdated({
+        requesterName: after.requesterName || 'there',
+        equipment: after.equipment || after.listingTitle || 'Equipment inspection',
+        status: after.status || 'Updated',
+        quotedPrice: typeof after.quotedPrice === 'number' ? after.quotedPrice : null,
+        managerName: after.assignedToName || after.matchedDealerName || 'the TimberEquip inspection team',
+        inspectionLocation: after.inspectionLocation || 'Unknown',
+      });
+      await sendEmail({ to: requesterEmail, ...payload });
+    } catch (error) {
+      logger.error('Failed to send inspection requester update', error);
     }
   }
 );
@@ -2198,6 +2598,7 @@ exports.apiProxy = onRequest(
       FRED_API_KEY,
       GOOGLE_TRANSLATE_API_KEY,
       EXCHANGERATE_API_KEY,
+      GOOGLE_MAPS_API_KEY,
       STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET,
     ],
@@ -2438,6 +2839,31 @@ exports.apiProxy = onRequest(
           sessionId: session.id,
           url: session.url,
         });
+      }
+
+      if (req.method === 'POST' && path === '/inspections/closest-dealer') {
+        const listingId = String(req.body?.listingId || '').trim();
+        const reference = String(req.body?.reference || '').trim();
+        const inspectionLocation = String(req.body?.inspectionLocation || '').trim();
+
+        if (!listingId && !reference && !inspectionLocation) {
+          return res.status(400).json({ error: 'A listing id, listing reference, or inspection location is required.' });
+        }
+
+        const result = await findClosestInspectionDealer({
+          listingId,
+          reference,
+          inspectionLocation,
+        });
+
+        if (!result.recommendedDealer) {
+          return res.status(404).json({
+            error: 'No inspection-capable dealer could be matched for that machine yet.',
+            ...result,
+          });
+        }
+
+        return res.status(200).json(result);
       }
 
       if (req.method === 'POST' && path === '/auth/send-verification-email') {

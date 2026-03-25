@@ -27,3 +27,4 @@ Notes:
 
 - Firestore deploys must target the named database configured in `firebase.json`.
 - Stripe and SendGrid production credentials are supplied through Firebase Functions secrets, not `.env.local`.
+- The inspection dealer matcher uses the Firebase Functions secret `GOOGLE_MAPS_API_KEY` for geocoding. Keep that key server-side only and make sure the Geocoding API is enabled for it.
