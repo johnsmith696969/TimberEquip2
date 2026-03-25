@@ -4,10 +4,10 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const firebaseApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+const firebaseApiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
 
 if (!firebaseApiKey) {
-  throw new Error('Missing VITE_FIREBASE_API_KEY. Add it to your .env.local before starting TimberEquip.');
+  throw new Error('Missing Firebase web API key. Provide VITE_FIREBASE_API_KEY or add apiKey to firebase-applet-config.json.');
 }
 
 const app = initializeApp({
