@@ -267,6 +267,11 @@ export function AdminDashboard() {
   };
 
   const fetchData = async () => {
+    if (!authUser?.uid) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     // Fetch users independently so a failure doesn't block the rest of the dashboard
     void fetchUsers();
@@ -326,8 +331,8 @@ export function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    void fetchData();
+  }, [authUser?.uid]);
 
   const openNativeMap = (location: string) => {
     const encodedLocation = encodeURIComponent(location);

@@ -233,6 +233,14 @@ function isInspectionManagerRole(role?: string | null): boolean {
   return ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager'].includes(normalize(role));
 }
 
+function canReadAllFinancingRequests(role?: string | null): boolean {
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(normalize(role));
+}
+
+function canReadAllCalls(role?: string | null): boolean {
+  return ['super_admin', 'admin', 'developer'].includes(normalize(role));
+}
+
 function isDemoListing(listing: Listing): boolean {
   const id = normalize(listing.id);
   const seller = normalize(listing.sellerUid || listing.sellerId);
@@ -961,10 +969,12 @@ export const equipmentService = {
     }
   },
 
-  async getCalls(sellerUid?: string): Promise<CallLog[]> {
+  async getCalls(sellerUidOrOptions?: string | { sellerUid?: string; role?: string }): Promise<CallLog[]> {
     const path = 'calls';
+    const sellerUid = typeof sellerUidOrOptions === 'string' ? sellerUidOrOptions : sellerUidOrOptions?.sellerUid;
+    const role = typeof sellerUidOrOptions === 'string' ? '' : sellerUidOrOptions?.role;
     try {
-      if (!sellerUid) {
+      if (!sellerUid || canReadAllCalls(role)) {
         const querySnapshot = await getDocs(collection(db, path));
         return querySnapshot.docs
           .map(doc => ({ id: doc.id, ...doc.data() } as CallLog))
@@ -1439,13 +1449,17 @@ export const equipmentService = {
     }
   },
 
-  async getFinancingRequests(uid?: string): Promise<FinancingRequest[]> {
-    const userUid = uid || auth.currentUser?.uid;
+  async getFinancingRequests(options?: string | { userUid?: string; role?: string }): Promise<FinancingRequest[]> {
+    const userUid = typeof options === 'string' ? options : options?.userUid || auth.currentUser?.uid;
+    const role = typeof options === 'string' ? '' : options?.role;
     if (!userUid) return [];
 
     const path = 'financingRequests';
     try {
-      const snapshot = await getDocs(query(collection(db, path), where('buyerUid', '==', userUid)));
+      const snapshot = canReadAllFinancingRequests(role)
+        ? await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')))
+        : await getDocs(query(collection(db, path), where('buyerUid', '==', userUid)));
+
       return snapshot.docs
         .map((financingRequestDoc) => {
           const data = financingRequestDoc.data() as Partial<FinancingRequest> & {

@@ -24,12 +24,14 @@ import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
 
 const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'dealer_manager', 'admin', 'super_admin', 'developer']);
+const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
 
 export function Profile() {
   const { formatPrice } = useLocale();
   const { user, logout, toggleFavorite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasStorefrontAccess = Boolean(user?.role && userService.supportsEnterpriseStorefront(user.role));
+  const hasAdminProfileScope = Boolean(user?.role && ADMIN_PROFILE_ROLES.has(user.role));
   const canManageInspectionRequests = Boolean(user?.role && INSPECTION_MANAGER_ROLES.has(user.role));
   const canViewInspectionRequests = Boolean(user);
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
@@ -377,10 +379,10 @@ export function Profile() {
         try {
           const results = await Promise.allSettled([
             equipmentService.getListings({ sellerUid: user.uid }),
-            equipmentService.getFinancingRequests(user.uid),
+            equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role }),
             userService.getSavedSearches(user.uid),
             user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
-            equipmentService.getCalls(user.uid),
+            equipmentService.getCalls({ sellerUid: user.uid, role: user.role }),
             hasStorefrontAccess ? equipmentService.getSeller(user.uid) : Promise.resolve(null),
           ]);
 
@@ -412,7 +414,7 @@ export function Profile() {
       }
     };
     void fetchProfileData();
-  }, [hasStorefrontAccess, user?.uid, user?.role, user?.favorites]);
+  }, [hasStorefrontAccess, hasAdminProfileScope, user?.uid, user?.role, user?.favorites]);
 
   useEffect(() => {
     const fetchInspectionRequests = async () => {
@@ -654,7 +656,7 @@ export function Profile() {
         {[
           { label: 'Saved Equipment', value: savedAssets.length.toString(), icon: Bookmark },
           { label: 'Active Alerts', value: savedSearches.filter(a => a.status === 'active').length.toString(), icon: Bell },
-          { label: 'My Listings', value: myListings.length.toString(), icon: Package }
+          { label: hasAdminProfileScope ? 'Visible Listings' : 'My Listings', value: myListings.length.toString(), icon: Package }
         ].map((stat, i) => (
           <div key={i} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
             <div className="flex flex-col">
