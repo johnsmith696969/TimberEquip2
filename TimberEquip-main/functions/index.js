@@ -4249,6 +4249,35 @@ function canAdministrateAccount(role) {
   return ['super_admin', 'admin', 'developer'].includes(role);
 }
 
+function getActorRoleFromDecodedToken(decodedToken) {
+  return normalizeUserRole(String(decodedToken?.role || decodedToken?.claims?.role || ''));
+}
+
+function buildSyntheticUserDoc(uid, data) {
+  const snapshotData = { ...(data || {}) };
+  return {
+    id: uid,
+    exists: true,
+    data: () => snapshotData,
+  };
+}
+
+function buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, actorRole, extraProfile = {}) {
+  return {
+    decodedToken,
+    actorUid,
+    actorEmail,
+    actorDoc: buildSyntheticUserDoc(actorUid, {
+      uid: actorUid,
+      email: actorEmail,
+      role: actorRole,
+      displayName: String(decodedToken?.name || '').trim() || 'Forestry Equipment Sales Admin',
+      ...extraProfile,
+    }),
+    actorRole,
+  };
+}
+
 function isSupportedUserRole(role) {
   return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'].includes(normalizeUserRole(role));
 }
@@ -4286,25 +4315,28 @@ async function getAdminActorContext(req) {
 
   const actorUid = decodedToken.uid;
   const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-  if (isPrivilegedAdminEmail(actorEmail)) {
-    return {
-      decodedToken,
-      actorUid,
-      actorEmail,
-      actorDoc: {
-        exists: true,
-        data: () => ({
-          uid: actorUid,
-          email: actorEmail,
-          role: 'super_admin',
-          displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
-        }),
-      },
-      actorRole: 'super_admin',
-    };
+  const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+
+  if (canAdministrateAccount(tokenRole)) {
+    return buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, tokenRole);
   }
 
-  const actorDoc = await getDb().collection('users').doc(actorUid).get();
+  if (isPrivilegedAdminEmail(actorEmail)) {
+    return buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, 'super_admin');
+  }
+
+  let actorDoc;
+  try {
+    actorDoc = await getDb().collection('users').doc(actorUid).get();
+  } catch (error) {
+    if (isFirestoreQuotaExceeded(error)) {
+      return {
+        error: 'Admin account data is temporarily unavailable because the Firestore daily read quota is exhausted.',
+        status: 503,
+      };
+    }
+    throw error;
+  }
   const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
   const canManageUsers = canAdministrateAccount(actorRole);
 
@@ -4329,20 +4361,20 @@ async function getDealerFeedActorContext(req) {
 
   const actorUid = decodedToken.uid;
   const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+  const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+
+  if (canAdministrateAccount(tokenRole)) {
+    return {
+      ...buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, tokenRole),
+      actorCanAdminister: true,
+      actorIsDealer: false,
+      ownerUid: actorUid,
+    };
+  }
+
   if (isPrivilegedAdminEmail(actorEmail)) {
     return {
-      decodedToken,
-      actorUid,
-      actorEmail,
-      actorDoc: {
-        exists: true,
-        data: () => ({
-          uid: actorUid,
-          email: actorEmail,
-          role: 'super_admin',
-          displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
-        }),
-      },
+      ...buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, 'super_admin'),
       actorRole: 'super_admin',
       actorCanAdminister: true,
       actorIsDealer: false,
@@ -4350,7 +4382,18 @@ async function getDealerFeedActorContext(req) {
     };
   }
 
-  const actorDoc = await getDb().collection('users').doc(actorUid).get();
+  let actorDoc;
+  try {
+    actorDoc = await getDb().collection('users').doc(actorUid).get();
+  } catch (error) {
+    if (isFirestoreQuotaExceeded(error)) {
+      return {
+        error: 'Dealer feed access is temporarily unavailable because the Firestore daily read quota is exhausted.',
+        status: 503,
+      };
+    }
+    throw error;
+  }
   const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
   const actorCanAdminister = canAdministrateAccount(actorRole);
   const actorIsDealer = isDealerManagedRole(actorRole);
@@ -4499,9 +4542,7 @@ async function getAuthUserRecordSafe(uid) {
   }
 }
 
-async function serializeAdminUser(userDoc) {
-  const data = userDoc.data() || {};
-  const authRecord = await getAuthUserRecordSafe(userDoc.id);
+function serializeAdminUserData(uid, data = {}, authRecord = null) {
   const authDisabled = Boolean(authRecord?.disabled);
   const rawAccountStatus = normalize(String(data.accountStatus || 'active'));
   const accountStatus = ['active', 'pending', 'suspended'].includes(rawAccountStatus)
@@ -4519,8 +4560,8 @@ async function serializeAdminUser(userDoc) {
     createdAt;
 
   return {
-    id: userDoc.id,
-    uid: userDoc.id,
+    id: uid,
+    uid,
     name: displayName || email || 'Unknown User',
     displayName: displayName || email || 'Unknown User',
     email,
@@ -4541,6 +4582,12 @@ async function serializeAdminUser(userDoc) {
     totalLeads: Number(data.totalLeads || 0),
     parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
   };
+}
+
+async function serializeAdminUser(userDoc) {
+  const data = userDoc.data() || {};
+  const authRecord = await getAuthUserRecordSafe(userDoc.id);
+  return serializeAdminUserData(userDoc.id, data, authRecord);
 }
 
 function canCreateManagedRole(parentRole, childRole) {
@@ -5220,10 +5267,34 @@ exports.apiProxy = onRequest(
 
         const actorUid = decodedToken.uid;
         const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-        const actorDoc = await getDb().collection('users').doc(actorUid).get();
-        const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
-        const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
-        const actorIsDealer = isDealerManagedRole(actorRole);
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        let actorRole = tokenRole;
+        let actorDoc = buildSyntheticUserDoc(actorUid, {
+          uid: actorUid,
+          email: actorEmail,
+          role: actorRole || 'buyer',
+          displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
+          parentAccountUid: actorUid,
+          company: '',
+        });
+        let actorCanAdminister = canAdministrateAccount(actorRole);
+        let actorIsDealer = isDealerManagedRole(actorRole);
+
+        if (!actorCanAdminister && !actorIsDealer) {
+          try {
+            actorDoc = await getDb().collection('users').doc(actorUid).get();
+          } catch (error) {
+            if (isFirestoreQuotaExceeded(error)) {
+              return res.status(503).json({
+                error: 'Managed account access is temporarily unavailable because the Firestore daily read quota is exhausted.',
+              });
+            }
+            throw error;
+          }
+          actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
+          actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
+          actorIsDealer = isDealerManagedRole(actorRole);
+        }
 
         if (!actorCanAdminister && !actorIsDealer) {
           return res.status(403).json({ error: 'Forbidden' });
@@ -5261,14 +5332,24 @@ exports.apiProxy = onRequest(
           }
         }
 
-        const existingUserByEmail = await getDb()
-          .collection('users')
-          .where('email', '==', email)
-          .limit(1)
-          .get();
+        try {
+          const existingUserByEmail = await getDb()
+            .collection('users')
+            .where('email', '==', email)
+            .limit(1)
+            .get();
 
-        if (!existingUserByEmail.empty) {
-          return res.status(409).json({ error: 'An account with that email already exists.' });
+          if (!existingUserByEmail.empty) {
+            return res.status(409).json({ error: 'An account with that email already exists.' });
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          logger.warn('Skipping managed account Firestore email uniqueness check because the daily read quota is exhausted.', {
+            actorUid,
+            email,
+          });
         }
 
         try {
@@ -5293,6 +5374,11 @@ exports.apiProxy = onRequest(
             displayName,
             emailVerified: false,
             disabled: false,
+          });
+
+          await admin.auth().setCustomUserClaims(authUserRecord.uid, {
+            ...(authUserRecord.customClaims || {}),
+            role: normalizedRole,
           });
 
           let resetLink = `${APP_URL}/login`;
@@ -5568,8 +5654,26 @@ exports.apiProxy = onRequest(
         }
 
         const targetRef = getDb().collection('users').doc(targetUid);
-        const targetSnap = await targetRef.get();
-        if (!targetSnap.exists) {
+        const authUserRecord = await getAuthUserRecordSafe(targetUid);
+        let targetSnap = null;
+        let targetData = {};
+        let targetExistsInFirestore = false;
+
+        try {
+          targetSnap = await targetRef.get();
+          targetExistsInFirestore = targetSnap.exists;
+          targetData = targetSnap.data() || {};
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          logger.warn('Admin user action is using auth-only fallback because the Firestore daily read quota is exhausted.', {
+            action,
+            targetUid,
+          });
+        }
+
+        if (!targetExistsInFirestore && !authUserRecord) {
           return res.status(404).json({ error: 'User not found.' });
         }
 
@@ -5577,11 +5681,9 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: `You cannot ${action} your own account.` });
         }
 
-        const targetData = targetSnap.data() || {};
-
         if (action === 'reset-password') {
-          const email = String(targetData.email || '').trim().toLowerCase();
-          const displayName = String(targetData.displayName || targetData.name || email || 'there').trim();
+          const email = String(targetData.email || authUserRecord?.email || '').trim().toLowerCase();
+          const displayName = String(targetData.displayName || targetData.name || authUserRecord?.displayName || email || 'there').trim();
           if (!email) {
             return res.status(400).json({ error: 'The selected user does not have an email address.' });
           }
@@ -5635,10 +5737,19 @@ exports.apiProxy = onRequest(
           { merge: true }
         );
 
-        const updatedSnap = await targetRef.get();
+        const refreshedAuthUserRecord = await getAuthUserRecordSafe(targetUid);
         return res.status(200).json({
           message: nextDisabledState ? 'User locked.' : 'User unlocked.',
-          user: await serializeAdminUser(updatedSnap),
+          user: serializeAdminUserData(
+            targetUid,
+            {
+              ...targetData,
+              uid: targetUid,
+              accountStatus: nextDisabledState ? 'suspended' : 'active',
+              updatedAt: new Date().toISOString(),
+            },
+            refreshedAuthUserRecord
+          ),
         });
       }
 
@@ -5655,11 +5766,27 @@ exports.apiProxy = onRequest(
         }
 
         const targetRef = getDb().collection('users').doc(targetUid);
-        const targetSnap = await targetRef.get();
+        let targetSnap = null;
+        let currentData = {};
+        let targetExistsInFirestore = false;
+
+        try {
+          targetSnap = await targetRef.get();
+          targetExistsInFirestore = targetSnap.exists;
+          currentData = targetSnap.data() || {};
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          logger.warn('Admin user update is using a reduced Firestore read path because the daily read quota is exhausted.', {
+            targetUid,
+            method: req.method,
+          });
+        }
 
         if (req.method === 'DELETE') {
           const authUserRecord = await getAuthUserRecordSafe(targetUid);
-          if (!targetSnap.exists && !authUserRecord) {
+          if (!targetExistsInFirestore && !authUserRecord) {
             return res.status(404).json({ error: 'User not found.' });
           }
 
@@ -5678,20 +5805,20 @@ exports.apiProxy = onRequest(
             }
           }
 
-          if (targetSnap.exists) {
+          if (targetExistsInFirestore) {
             await targetRef.delete();
           }
 
           return res.status(200).json({ message: 'User deleted.' });
         }
 
-        if (!targetSnap.exists) {
+        const authUserRecord = await getAuthUserRecordSafe(targetUid);
+        if (!targetExistsInFirestore && !authUserRecord) {
           return res.status(404).json({ error: 'User not found.' });
         }
 
-        const currentData = targetSnap.data() || {};
-        const displayName = String(req.body?.displayName ?? currentData.displayName ?? currentData.name ?? '').trim();
-        const email = String(req.body?.email ?? currentData.email ?? '').trim().toLowerCase();
+        const displayName = String(req.body?.displayName ?? currentData.displayName ?? currentData.name ?? authUserRecord?.displayName ?? '').trim();
+        const email = String(req.body?.email ?? currentData.email ?? authUserRecord?.email ?? '').trim().toLowerCase();
         const phoneNumber = String(req.body?.phoneNumber ?? currentData.phoneNumber ?? '').trim();
         const company = String(req.body?.company ?? currentData.company ?? '').trim();
         const requestedRole = normalizeUserRole(String(req.body?.role ?? currentData.role ?? 'buyer'));
@@ -5712,14 +5839,24 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Only a super admin can assign the super admin role.' });
         }
 
-        const existingUserByEmail = await getDb()
-          .collection('users')
-          .where('email', '==', email)
-          .limit(2)
-          .get();
-        const emailConflict = existingUserByEmail.docs.find((doc) => doc.id !== targetUid);
-        if (emailConflict) {
-          return res.status(409).json({ error: 'Another user already has that email address.' });
+        try {
+          const existingUserByEmail = await getDb()
+            .collection('users')
+            .where('email', '==', email)
+            .limit(2)
+            .get();
+          const emailConflict = existingUserByEmail.docs.find((doc) => doc.id !== targetUid);
+          if (emailConflict) {
+            return res.status(409).json({ error: 'Another user already has that email address.' });
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          logger.warn('Skipping Firestore email uniqueness validation because the daily read quota is exhausted.', {
+            targetUid,
+            email,
+          });
         }
 
         try {
@@ -5746,6 +5883,19 @@ exports.apiProxy = onRequest(
           }
         }
 
+        try {
+          const existingClaims = authUserRecord?.customClaims || {};
+          if (existingClaims.role !== requestedRole) {
+            await admin.auth().setCustomUserClaims(targetUid, {
+              ...existingClaims,
+              role: requestedRole,
+            });
+          }
+        } catch (error) {
+          logger.error(`Failed to update auth role claims for ${targetUid}`, error);
+          return res.status(500).json({ error: 'Unable to update authentication role claims.' });
+        }
+
         await targetRef.set(
           {
             uid: targetUid,
@@ -5759,10 +5909,23 @@ exports.apiProxy = onRequest(
           { merge: true }
         );
 
-        const updatedSnap = await targetRef.get();
+        const refreshedAuthUserRecord = await getAuthUserRecordSafe(targetUid);
         return res.status(200).json({
           message: 'User updated.',
-          user: await serializeAdminUser(updatedSnap),
+          user: serializeAdminUserData(
+            targetUid,
+            {
+              ...currentData,
+              uid: targetUid,
+              displayName,
+              email,
+              phoneNumber,
+              company,
+              role: requestedRole,
+              updatedAt: new Date().toISOString(),
+            },
+            refreshedAuthUserRecord
+          ),
         });
       }
 
@@ -6341,6 +6504,11 @@ exports.apiProxy = onRequest(
       return res.status(404).json({ error: 'Not found' });
     } catch (error) {
       logger.error('apiProxy failed', error);
+      if (isFirestoreQuotaExceeded(error)) {
+        return res.status(503).json({
+          error: 'This admin action is temporarily unavailable because the Firestore daily read quota is exhausted.',
+        });
+      }
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
