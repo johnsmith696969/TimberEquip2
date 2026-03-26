@@ -146,6 +146,14 @@ function normalizeAccountAccessSource(source) {
   return '';
 }
 
+function normalizeAccountStatus(status) {
+  const normalized = normalize(status);
+  if (['active', 'pending', 'suspended'].includes(normalized)) {
+    return normalized;
+  }
+  return '';
+}
+
 function buildAccessClaims(existingClaims = {}, overrides = {}) {
   const nextClaims = {
     ...existingClaims,
@@ -197,6 +205,24 @@ function buildAccessClaims(existingClaims = {}, overrides = {}) {
       nextClaims.accountAccessSource = accountAccessSource;
     } else {
       delete nextClaims.accountAccessSource;
+    }
+  }
+
+  if ('accountStatus' in overrides) {
+    const accountStatus = normalizeAccountStatus(overrides.accountStatus);
+    if (accountStatus) {
+      nextClaims.accountStatus = accountStatus;
+    } else {
+      delete nextClaims.accountStatus;
+    }
+  }
+
+  if ('parentAccountUid' in overrides) {
+    const parentAccountUid = String(overrides.parentAccountUid || '').trim();
+    if (parentAccountUid) {
+      nextClaims.parentAccountUid = parentAccountUid;
+    } else {
+      delete nextClaims.parentAccountUid;
     }
   }
 
@@ -3889,6 +3915,15 @@ async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
     return emptyAccountSubscriptionAccessSummary();
   }
 
+  const stripe = options?.stripe || null;
+  const customerId = String(options?.customerId || '').trim();
+  const skipFirestore = Boolean(options?.skipFirestore);
+
+  if (skipFirestore && stripe && customerId) {
+    const stripeEntries = await listStripeAccountSubscriptionEntries(stripe, customerId);
+    return buildAccountSubscriptionAccessSummary(stripeEntries);
+  }
+
   try {
     const subscriptionsSnap = await getDb().collection('subscriptions').where('userUid', '==', normalizedUserUid).get();
     const entries = subscriptionsSnap.docs.map((doc) => ({
@@ -3897,8 +3932,6 @@ async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
     }));
     return buildAccountSubscriptionAccessSummary(entries);
   } catch (error) {
-    const stripe = options?.stripe || null;
-    const customerId = String(options?.customerId || '').trim();
     if (isFirestoreQuotaExceeded(error) && stripe && customerId) {
       const stripeEntries = await listStripeAccountSubscriptionEntries(stripe, customerId);
       return buildAccountSubscriptionAccessSummary(stripeEntries);
@@ -3926,6 +3959,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
   let existingRole = 'buyer';
   let existingAccessSource = '';
   let resolvedStripeCustomerId = String(stripeCustomerId || '').trim();
+  let firestoreQuotaLimited = false;
 
   try {
     const userSnap = await userRef.get();
@@ -3937,6 +3971,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     if (!isFirestoreQuotaExceeded(error)) {
       throw error;
     }
+    firestoreQuotaLimited = true;
     const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
     existingRole = normalizeUserRole(String(authUserRecord?.customClaims?.role || ''));
     existingAccessSource = normalizeAccountAccessSource(authUserRecord?.customClaims?.accountAccessSource);
@@ -3945,6 +3980,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
   const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid, {
     stripe,
     customerId: resolvedStripeCustomerId,
+    skipFirestore: firestoreQuotaLimited,
   });
   const retainsSellerAccess = !!summary.planId;
   const nextRole = retainsSellerAccess && summary.planId ? getSellerRoleForPlan(summary.planId) : 'member';
@@ -3980,6 +4016,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
       listingCap: summary.listingCap,
       managedAccountCap: summary.managedAccountCap,
       subscriptionStatus: summary.subscriptionStatus,
+      accountStatus: updatePayload.accountStatus,
       accountAccessSource: ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)
         ? normalizeAccountAccessSource(existingClaims.accountAccessSource) || 'admin_override'
         : nextAccessSource,
@@ -4044,7 +4081,11 @@ async function getManagedAccountSeatContext(ownerUid) {
 function createStripeClient() {
   const secret = String(STRIPE_SECRET_KEY.value() || '').trim();
   if (!secret) return null;
-  return new Stripe(secret, { apiVersion: '2026-02-25.clover' });
+  return new Stripe(secret, {
+    apiVersion: '2026-02-25.clover',
+    timeout: 15000,
+    maxNetworkRetries: 1,
+  });
 }
 
 function getRequestBaseUrl(req) {
@@ -4150,6 +4191,7 @@ async function getOrCreateStripeCustomer(stripe, userUid, email, name) {
   }
 
   if (existingCustomerId) {
+    logger.info('getOrCreateStripeCustomer: reusing stored Stripe customer id', { userUid });
     try {
       const existingCustomer = await stripe.customers.retrieve(existingCustomerId);
       if (existingCustomer && !existingCustomer.deleted) {
@@ -4161,6 +4203,7 @@ async function getOrCreateStripeCustomer(stripe, userUid, email, name) {
   }
 
   if (!existingCustomerId) {
+    logger.info('getOrCreateStripeCustomer: searching Stripe customers by email', { userUid });
     existingCustomerId = await findExistingStripeCustomerId(stripe, userUid, email);
     if (existingCustomerId && !firestoreQuotaLimited) {
       await userRef.set(
@@ -4177,6 +4220,7 @@ async function getOrCreateStripeCustomer(stripe, userUid, email, name) {
     }
   }
 
+  logger.info('getOrCreateStripeCustomer: creating new Stripe customer', { userUid });
   const customer = await stripe.customers.create({
     email,
     name,
@@ -5372,6 +5416,7 @@ exports.apiProxy = onRequest(
         if (existingClaims.role !== 'super_admin') {
           await admin.auth().setCustomUserClaims(uid, buildAccessClaims(existingClaims, {
             role: 'super_admin',
+            accountStatus: 'active',
             accountAccessSource: 'admin_override',
             subscriptionPlanId: null,
             subscriptionStatus: null,
@@ -5412,6 +5457,12 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'Invalid seller plan.' });
         }
 
+        logger.info('create-account-checkout-session: received request', {
+          uid,
+          planId: plan.id,
+          returnPath,
+        });
+
         if (plan.id === 'individual_seller') {
           if (requestedQuantity < 1 || requestedQuantity > MAX_OWNER_OPERATOR_LISTINGS) {
             return res.status(400).json({ error: `Owner Operator quantity must be between 1 and ${MAX_OWNER_OPERATOR_LISTINGS}.` });
@@ -5434,9 +5485,22 @@ exports.apiProxy = onRequest(
         }
 
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
+        logger.info('create-account-checkout-session: resolved Stripe customer', {
+          uid,
+          planId: plan.id,
+          hasCustomerId: Boolean(customerId),
+          firestoreQuotaLimited,
+        });
         const summary = await resolveAccountSubscriptionAccessSummary(uid, {
           stripe,
           customerId,
+          skipFirestore: firestoreQuotaLimited,
+        });
+        logger.info('create-account-checkout-session: resolved subscription summary', {
+          uid,
+          planId: plan.id,
+          summaryPlanId: summary.planId,
+          summaryStatus: summary.subscriptionStatus,
         });
         const activePlanId = String(
           (firestoreQuotaLimited ? summary.planId : existingUser.activeSubscriptionPlanId) || ''
@@ -5467,18 +5531,40 @@ exports.apiProxy = onRequest(
         const baseUrl = getRequestBaseUrl(req);
         const successSeparator = returnPath.includes('?') ? '&' : '?';
 
-        await userRef.set(
-          {
-            onboardingIntent: plan.id,
-            accountStatus: 'pending',
-            accountAccessSource: 'pending_checkout',
-            subscriptionStatus: 'pending',
-            requestedSubscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+        if (!firestoreQuotaLimited) {
+          try {
+            await userRef.set(
+              {
+                onboardingIntent: plan.id,
+                accountStatus: 'pending',
+                accountAccessSource: 'pending_checkout',
+                subscriptionStatus: 'pending',
+                requestedSubscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          } catch (error) {
+            if (!isFirestoreQuotaExceeded(error)) {
+              throw error;
+            }
+            logger.warn('Skipping pending checkout profile write because Firestore quota is exhausted.', {
+              uid,
+              planId: plan.id,
+            });
+          }
+        } else {
+          logger.warn('Skipping pending checkout profile write because Firestore is already quota limited for this request.', {
+            uid,
+            planId: plan.id,
+          });
+        }
 
+        logger.info('create-account-checkout-session: creating Stripe checkout session', {
+          uid,
+          planId: plan.id,
+          quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
+        });
         const session = await stripe.checkout.sessions.create({
           mode: 'subscription',
           customer: customerId,
@@ -5515,6 +5601,12 @@ exports.apiProxy = onRequest(
         if (!session.url) {
           return res.status(500).json({ error: 'Stripe checkout URL was not returned.' });
         }
+
+        logger.info('create-account-checkout-session: Stripe checkout session created', {
+          uid,
+          planId: plan.id,
+          sessionId: session.id,
+        });
 
         return res.status(200).json({
           sessionId: session.id,
@@ -5689,7 +5781,9 @@ exports.apiProxy = onRequest(
 
           await admin.auth().setCustomUserClaims(authUserRecord.uid, buildAccessClaims(authUserRecord.customClaims || {}, {
             role: normalizedRole,
+            accountStatus: 'pending',
             accountAccessSource: manualAccessSource,
+            parentAccountUid: ownerUid,
             subscriptionPlanId: null,
             subscriptionStatus: null,
             listingCap: null,
@@ -6047,6 +6141,16 @@ exports.apiProxy = onRequest(
           }
         }
 
+        const refreshedAuthUserRecord = await getAuthUserRecordSafe(targetUid);
+        if (refreshedAuthUserRecord) {
+          await admin.auth().setCustomUserClaims(
+            targetUid,
+            buildAccessClaims(refreshedAuthUserRecord.customClaims || {}, {
+              accountStatus: nextDisabledState ? 'suspended' : 'active',
+            })
+          );
+        }
+
         let warning = '';
         if (!firestoreQuotaLimited) {
           await targetRef.set(
@@ -6060,7 +6164,6 @@ exports.apiProxy = onRequest(
           warning = 'Authentication status updated. Firestore profile status will sync after the Firestore quota window resets.';
         }
 
-        const refreshedAuthUserRecord = await getAuthUserRecordSafe(targetUid);
         return res.status(200).json({
           message: nextDisabledState ? 'User locked.' : 'User unlocked.',
           warning,
@@ -6194,6 +6297,12 @@ exports.apiProxy = onRequest(
         const currentAccessSource = normalizeAccountAccessSource(
           currentData.accountAccessSource || authUserRecord?.customClaims?.accountAccessSource
         );
+        const currentAccountStatus = normalizeAccountStatus(
+          currentData.accountStatus || authUserRecord?.customClaims?.accountStatus || 'active'
+        ) || 'active';
+        const currentParentAccountUid = String(
+          currentData.parentAccountUid || authUserRecord?.customClaims?.parentAccountUid || ''
+        ).trim();
         const nextAccessSource = requestedRole === currentRole && currentAccessSource
           ? currentAccessSource
           : deriveManualAccountAccessSource(actor.actorRole, requestedRole, currentAccessSource);
@@ -6230,7 +6339,9 @@ exports.apiProxy = onRequest(
           const existingClaims = authUserRecord?.customClaims || {};
           const nextClaims = buildAccessClaims(existingClaims, {
             role: requestedRole,
+            accountStatus: currentAccountStatus,
             accountAccessSource: nextAccessSource,
+            parentAccountUid: currentParentAccountUid,
             subscriptionPlanId: requestedRole === currentRole && currentAccessSource === 'subscription'
               ? existingClaims.subscriptionPlanId
               : null,
@@ -6277,7 +6388,9 @@ exports.apiProxy = onRequest(
           displayName,
           customClaims: buildAccessClaims(authUserRecord?.customClaims || {}, {
             role: requestedRole,
+            accountStatus: currentAccountStatus,
             accountAccessSource: nextAccessSource,
+            parentAccountUid: currentParentAccountUid,
             subscriptionPlanId: requestedRole === currentRole && currentAccessSource === 'subscription'
               ? authUserRecord?.customClaims?.subscriptionPlanId
               : null,

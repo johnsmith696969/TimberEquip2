@@ -63,6 +63,14 @@ function normalizeAccountAccessSource(value: unknown): AccountAccessSource | nul
   return null;
 }
 
+function normalizeAccountStatus(value: unknown): UserProfile['accountStatus'] | null {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'active' || normalized === 'pending' || normalized === 'suspended') {
+    return normalized as UserProfile['accountStatus'];
+  }
+  return null;
+}
+
 function normalizeClaimNumber(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -92,6 +100,7 @@ async function resolveAuthAccessSnapshot(
   listingCap: number | null;
   managedAccountCap: number | null;
   accountAccessSource: AccountAccessSource | null;
+  accountStatus: UserProfile['accountStatus'] | null;
 }> {
   let resolvedRole = current?.role || 'member';
   let activeSubscriptionPlanId = normalizeSubscriptionPlanId(current?.activeSubscriptionPlanId);
@@ -99,6 +108,7 @@ async function resolveAuthAccessSnapshot(
   let listingCap = typeof current?.listingCap === 'number' ? current.listingCap : null;
   let managedAccountCap = typeof current?.managedAccountCap === 'number' ? current.managedAccountCap : null;
   let accountAccessSource = normalizeAccountAccessSource(current?.accountAccessSource);
+  let accountStatus = current?.accountStatus || null;
 
   try {
     const tokenResult = await firebaseUser.getIdTokenResult();
@@ -111,6 +121,7 @@ async function resolveAuthAccessSnapshot(
     listingCap = listingCap ?? normalizeClaimNumber(tokenResult.claims.listingCap);
     managedAccountCap = managedAccountCap ?? normalizeClaimNumber(tokenResult.claims.managedAccountCap);
     accountAccessSource = accountAccessSource ?? normalizeAccountAccessSource(tokenResult.claims.accountAccessSource);
+    accountStatus = accountStatus ?? normalizeAccountStatus(tokenResult.claims.accountStatus);
   } catch (error) {
     console.error('Unable to resolve auth role claims during profile fallback:', error);
   }
@@ -138,6 +149,7 @@ async function resolveAuthAccessSnapshot(
     listingCap,
     managedAccountCap,
     accountAccessSource,
+    accountStatus,
   };
 }
 
@@ -152,6 +164,7 @@ async function buildFallbackProfile(
   const subscriptionStatus = current?.subscriptionStatus ?? accessSnapshot.subscriptionStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : null);
   const listingCap = current?.listingCap ?? accessSnapshot.listingCap ?? 0;
   const managedAccountCap = current?.managedAccountCap ?? accessSnapshot.managedAccountCap ?? 0;
+  const accountStatus = current?.accountStatus ?? accessSnapshot.accountStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : 'active');
 
   return {
     uid: firebaseUser.uid,
@@ -166,7 +179,7 @@ async function buildFallbackProfile(
     about: current?.about || '',
     bio: current?.bio || '',
     location: current?.location || '',
-    accountStatus: current?.accountStatus || (accountAccessSource === 'pending_checkout' ? 'pending' : 'active'),
+    accountStatus,
     accountAccessSource,
     onboardingIntent: deriveOnboardingIntent(role, accountAccessSource, activeSubscriptionPlanId, current?.onboardingIntent),
     activeSubscriptionPlanId,

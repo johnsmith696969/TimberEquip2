@@ -76,15 +76,79 @@ service cloud.firestore {
     }
 
     function getUserRole() {
-      return currentUserDocExists()
-        ? normalizeUserRole(get(currentUserPath()).data.role)
-        : '';
+      return isAuthenticated() && request.auth.token.role is string && request.auth.token.role.size() > 0
+        ? normalizeUserRole(request.auth.token.role)
+        : currentUserDocExists()
+          ? normalizeUserRole(get(currentUserPath()).data.role)
+          : '';
+    }
+
+    function getAccountAccessSource() {
+      return isAuthenticated() && request.auth.token.accountAccessSource is string && request.auth.token.accountAccessSource.size() > 0
+        ? request.auth.token.accountAccessSource
+        : currentUserDocExists() && ('accountAccessSource' in get(currentUserPath()).data) && get(currentUserPath()).data.accountAccessSource is string
+          ? get(currentUserPath()).data.accountAccessSource
+          : '';
+    }
+
+    function getActiveSubscriptionPlanId() {
+      return isAuthenticated() && request.auth.token.subscriptionPlanId is string && request.auth.token.subscriptionPlanId.size() > 0
+        ? request.auth.token.subscriptionPlanId
+        : currentUserDocExists() && ('activeSubscriptionPlanId' in get(currentUserPath()).data) && get(currentUserPath()).data.activeSubscriptionPlanId is string
+          ? get(currentUserPath()).data.activeSubscriptionPlanId
+          : '';
+    }
+
+    function getSubscriptionStatus() {
+      return isAuthenticated() && request.auth.token.subscriptionStatus is string && request.auth.token.subscriptionStatus.size() > 0
+        ? request.auth.token.subscriptionStatus
+        : currentUserDocExists() && ('subscriptionStatus' in get(currentUserPath()).data) && get(currentUserPath()).data.subscriptionStatus is string
+          ? get(currentUserPath()).data.subscriptionStatus
+          : '';
+    }
+
+    function getAccountStatus() {
+      return isAuthenticated() && request.auth.token.accountStatus is string && request.auth.token.accountStatus.size() > 0
+        ? request.auth.token.accountStatus
+        : isAuthenticated() && request.auth.token.accountAccessSource == 'pending_checkout'
+          ? 'pending'
+          : isAuthenticated() && request.auth.token.role is string && request.auth.token.role.size() > 0
+            ? 'active'
+            : currentUserDocExists() && ('accountStatus' in get(currentUserPath()).data) && get(currentUserPath()).data.accountStatus is string
+              ? get(currentUserPath()).data.accountStatus
+              : 'active';
+    }
+
+    function hasSellerRole() {
+      return isAuthenticated() && getUserRole() in ['individual_seller', 'dealer', 'pro_dealer'];
+    }
+
+    function hasSellerSubscriptionAccess() {
+      return hasSellerRole() &&
+        getActiveSubscriptionPlanId() in ['individual_seller', 'dealer', 'fleet_dealer'] &&
+        getAccountStatus() == 'active' &&
+        (
+          getAccountAccessSource() == 'subscription' ||
+          getSubscriptionStatus() in ['active', 'trialing', 'past_due']
+        );
+    }
+
+    function hasManualSellerAccess() {
+      return hasSellerRole() &&
+        getAccountStatus() == 'active' &&
+        getAccountAccessSource() in ['managed_account', 'admin_override'];
+    }
+
+    function hasSellerPostingAccess() {
+      return isAdmin() || hasSellerSubscriptionAccess() || hasManualSellerAccess();
     }
 
     function getParentAccountUid() {
-      return currentUserDocExists() && ('parentAccountUid' in get(currentUserPath()).data)
-        ? get(currentUserPath()).data.parentAccountUid
-        : request.auth.uid;
+      return isAuthenticated() && request.auth.token.parentAccountUid is string && request.auth.token.parentAccountUid.size() > 0
+        ? request.auth.token.parentAccountUid
+        : currentUserDocExists() && ('parentAccountUid' in get(currentUserPath()).data)
+          ? get(currentUserPath()).data.parentAccountUid
+          : request.auth.uid;
     }
 
     function isDealerAccountScope(accountUid) {
@@ -120,11 +184,14 @@ service cloud.firestore {
     }
 
     function isDealer() {
-      return isAdmin() || hasAnyRole(['dealer', 'pro_dealer']);
+      return isAdmin() || (
+        hasAnyRole(['dealer', 'pro_dealer']) &&
+        (hasSellerSubscriptionAccess() || hasManualSellerAccess())
+      );
     }
 
     function isInspectionManager() {
-      return isAdmin() || hasAnyRole(['dealer', 'pro_dealer']);
+      return isAdmin() || isDealer();
     }
 
     function isListingOwner(data) {
@@ -515,6 +582,7 @@ service cloud.firestore {
         isAdmin() ||
         (
           request.auth.uid == storefrontId &&
+          hasSellerPostingAccess() &&
           request.resource.data.uid == request.auth.uid &&
           request.resource.data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller']
         )
@@ -534,7 +602,7 @@ service cloud.firestore {
           )
         )
       ) || (isAuthenticated() && (request.auth.uid == resource.data.sellerUid || isEditor() || isAdmin()));
-      allow create: if isValidListingCreate(request.resource.data);
+      allow create: if hasSellerPostingAccess() && isValidListingCreate(request.resource.data);
       allow update: if isAuthenticated() && (
         isAdmin() || 
         (isEditor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvedBy'])) ||

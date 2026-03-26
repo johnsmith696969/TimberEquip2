@@ -11,11 +11,7 @@ import { billingService } from '../services/billingService';
 import type { ListingPlanId } from '../services/billingService';
 import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
-import { canUserPostListings } from '../utils/sellerAccess';
-
-const VERIFIED_ROLES = new Set(['admin', 'super_admin', 'dealer', 'pro_dealer']);
-const ADMIN_PUBLISHER_ROLES = new Set(['admin', 'super_admin', 'developer']);
-const MANAGED_SELLER_ROLES = new Set(['dealer', 'pro_dealer']);
+import { canUserPostListings, hasActiveSellerSubscription, hasAdminPublishingAccess } from '../utils/sellerAccess';
 const SUPPORTED_PLANS = new Set<ListingPlanId>(['individual_seller', 'dealer', 'fleet_dealer']);
 
 export function Sell() {
@@ -39,13 +35,19 @@ export function Sell() {
     ? selectedPlanFromQueryRaw
     : undefined;
 
-  const sellerIsVerified = !!(user?.role && VERIFIED_ROLES.has(user.role));
-  const adminCanPublishWithoutPayment = !!(user?.role && ADMIN_PUBLISHER_ROLES.has(user.role));
-  const hasActiveSellerPlan = !!(user?.activeSubscriptionPlanId && user?.accountStatus === 'active');
-  const hasManagedSellerAccess = !!(user?.role && MANAGED_SELLER_ROLES.has(user.role) && user.accountStatus === 'active');
+  const adminCanPublishWithoutPayment = hasAdminPublishingAccess(user);
+  const hasActiveSellerPlan = hasActiveSellerSubscription(user);
   const canPostListings = canUserPostListings(user);
+  const sellerIsVerified = canPostListings;
   const activePlanId = user?.activeSubscriptionPlanId || selectedPlanFromQuery || undefined;
   const activeListingCap = typeof user?.listingCap === 'number' && user.listingCap > 0 ? user.listingCap : null;
+  const sellerAccessMessage = isAuthenticated && canPostListings && !hasActiveSellerPlan && !adminCanPublishWithoutPayment
+    ? user?.accountAccessSource === 'managed_account'
+      ? 'Managed seller access enabled through your parent dealer account.'
+      : user?.accountAccessSource === 'admin_override'
+        ? 'Seller access has been enabled for this account by an administrator.'
+        : ''
+    : '';
 
   useEffect(() => {
     const accountCheckout = searchParams.get('accountCheckout');
@@ -291,6 +293,12 @@ export function Sell() {
             <button onClick={() => setShowLoginModal(true)} className="btn-industrial btn-accent py-3 px-6">
               Sign In to Submit Listing
             </button>
+          )}
+
+          {sellerAccessMessage && (
+            <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-data break-all">
+              {sellerAccessMessage}
+            </p>
           )}
 
           {isAuthenticated && !canPostListings && !adminCanPublishWithoutPayment && (

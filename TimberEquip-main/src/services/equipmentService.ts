@@ -270,6 +270,35 @@ function canReadAllCalls(role?: string | null): boolean {
   return ['super_admin', 'admin', 'developer'].includes(normalize(role));
 }
 
+async function resolveAuthSellerAccessSnapshot(): Promise<{ role: string; ownerUid: string; email: string }> {
+  const firebaseUser = auth.currentUser;
+  if (!firebaseUser) {
+    return { role: '', ownerUid: '', email: '' };
+  }
+
+  let role = '';
+  let ownerUid = firebaseUser.uid;
+  const email = normalize(firebaseUser.email);
+
+  try {
+    const tokenResult = await firebaseUser.getIdTokenResult();
+    role = normalize(String(tokenResult.claims.role || ''));
+    ownerUid = String(tokenResult.claims.parentAccountUid || firebaseUser.uid || '').trim() || firebaseUser.uid;
+  } catch (error) {
+    console.error('Unable to resolve auth seller access snapshot:', error);
+  }
+
+  if (!role && email === SUPERADMIN_EMAIL) {
+    role = 'super_admin';
+  }
+
+  return {
+    role,
+    ownerUid,
+    email,
+  };
+}
+
 function isDemoListing(listing: Listing): boolean {
   const id = normalize(listing.id);
   const seller = normalize(listing.sellerUid || listing.sellerId);
@@ -282,12 +311,23 @@ async function getSellerFeatureContext(sellerUid?: string | null): Promise<{ own
     return { ownerUid: '', role: '', featuredCap: 0 };
   }
 
-  const sellerSnapshot = await getDoc(doc(db, 'users', normalizedSellerUid));
-  const sellerData = sellerSnapshot.exists() ? (sellerSnapshot.data() as Record<string, unknown>) : {};
-  const ownerUid = String(sellerData.parentAccountUid || normalizedSellerUid).trim();
-  const ownerSnapshot = ownerUid && ownerUid !== normalizedSellerUid ? await getDoc(doc(db, 'users', ownerUid)) : sellerSnapshot;
-  const ownerData = ownerSnapshot.exists() ? (ownerSnapshot.data() as Record<string, unknown>) : sellerData;
-  const role = normalize(String(ownerData.role || sellerData.role || ''));
+  const authSnapshot = auth.currentUser?.uid === normalizedSellerUid
+    ? await resolveAuthSellerAccessSnapshot()
+    : { role: '', ownerUid: normalizedSellerUid, email: '' };
+
+  let ownerUid = String(authSnapshot.ownerUid || normalizedSellerUid).trim() || normalizedSellerUid;
+  let role = normalize(authSnapshot.role);
+
+  try {
+    const sellerSnapshot = await getDoc(doc(db, 'users', normalizedSellerUid));
+    const sellerData = sellerSnapshot.exists() ? (sellerSnapshot.data() as Record<string, unknown>) : {};
+    ownerUid = String(sellerData.parentAccountUid || ownerUid || normalizedSellerUid).trim() || normalizedSellerUid;
+    const ownerSnapshot = ownerUid && ownerUid !== normalizedSellerUid ? await getDoc(doc(db, 'users', ownerUid)) : sellerSnapshot;
+    const ownerData = ownerSnapshot.exists() ? (ownerSnapshot.data() as Record<string, unknown>) : sellerData;
+    role = normalize(String(ownerData.role || sellerData.role || role || ''));
+  } catch (error) {
+    console.warn('Falling back to auth claims for seller feature context:', error);
+  }
 
   return {
     ownerUid,
@@ -910,18 +950,24 @@ export const equipmentService = {
       });
       const sellerScopeUid = featureContext.ownerUid || String(listing.sellerUid || auth.currentUser?.uid || '').trim();
 
+      const authSnapshot = await resolveAuthSellerAccessSnapshot();
       let sellerVerified = false;
-      let sellerRole = '';
-      let sellerEmail = '';
+      let sellerRole = normalize(featureContext.role || authSnapshot.role);
+      let sellerEmail = normalize(auth.currentUser?.email || authSnapshot.email || '');
       if (sellerScopeUid) {
-        const sellerDoc = await getDoc(doc(db, 'users', sellerScopeUid));
-        if (sellerDoc.exists()) {
-          const sellerData = sellerDoc.data() as any;
-          sellerRole = normalize(sellerData.role);
-          sellerEmail = normalize(sellerData.email);
-          sellerVerified = isVerifiedSellerRole(sellerRole);
+        try {
+          const sellerDoc = await getDoc(doc(db, 'users', sellerScopeUid));
+          if (sellerDoc.exists()) {
+            const sellerData = sellerDoc.data() as any;
+            sellerRole = normalize(sellerData.role || sellerRole);
+            sellerEmail = normalize(sellerData.email || sellerEmail);
+          }
+        } catch (error) {
+          console.warn('Falling back to auth claims for seller listing metadata:', error);
         }
       }
+
+      sellerVerified = isVerifiedSellerRole(sellerRole);
 
       if (sellerEmail === SUPERADMIN_EMAIL) {
         sellerRole = 'super_admin';

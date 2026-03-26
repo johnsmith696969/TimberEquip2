@@ -23,6 +23,7 @@ import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
 import { getUserRoleDisplayLabel } from '../utils/userRoles';
+import { canAccessDealerOs, canUserPostListings } from '../utils/sellerAccess';
 
 const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
@@ -55,13 +56,23 @@ export function Profile() {
   const [searchParams, setSearchParams] = useSearchParams();
   const hasUser = Boolean(user);
   const normalizedRole = hasUser ? userService.normalizeRole(user?.role) : '';
-  const hasStorefrontAccess = Boolean(normalizedRole && userService.supportsEnterpriseStorefront(normalizedRole));
+  const hasSellerWorkspaceAccess = hasUser && canUserPostListings(user);
+  const hasDealerWorkspaceAccess = hasUser && canAccessDealerOs(user);
+  const hasStorefrontAccess = Boolean(
+    hasSellerWorkspaceAccess &&
+    normalizedRole &&
+    userService.supportsEnterpriseStorefront(normalizedRole)
+  );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
-  const canManageInspectionRequests = Boolean(normalizedRole && INSPECTION_MANAGER_ROLES.has(normalizedRole));
+  const canManageInspectionRequests = Boolean(
+    normalizedRole &&
+    INSPECTION_MANAGER_ROLES.has(normalizedRole) &&
+    (hasAdminProfileScope || hasDealerWorkspaceAccess)
+  );
   const canViewSavedEquipment = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
   const canViewSearchAlerts = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
-  const canViewMyListings = hasUser && ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
-  const canViewSellerInquiries = hasUser && ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
+  const canViewMyListings = hasSellerWorkspaceAccess;
+  const canViewSellerInquiries = hasSellerWorkspaceAccess;
   const canViewSellerCalls = canViewMyListings;
   const canViewBuyerFinancing = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
   const canViewInspectionRequests = hasUser;
