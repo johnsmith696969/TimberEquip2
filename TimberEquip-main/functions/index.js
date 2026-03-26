@@ -5382,6 +5382,7 @@ exports.apiProxy = onRequest(
         }
 
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
+        const priceId = await resolveStripePriceIdForPlan(stripe, plan);
         const baseUrl = getRequestBaseUrl(req);
 
         const session = await stripe.checkout.sessions.create({
@@ -5390,12 +5391,7 @@ exports.apiProxy = onRequest(
           success_url: `${baseUrl}/sell?checkout=success&session_id={CHECKOUT_SESSION_ID}&listingId=${encodeURIComponent(listingId)}`,
           cancel_url: `${baseUrl}/sell?checkout=canceled&listingId=${encodeURIComponent(listingId)}`,
           line_items: [{
-            price_data: {
-              currency: 'usd',
-              product: plan.productId,
-              recurring: { interval: 'month' },
-              unit_amount: Math.round(plan.amountUsd * 100),
-            },
+            price: priceId,
             quantity: 1,
           }],
           client_reference_id: listingId,
@@ -5662,9 +5658,12 @@ exports.apiProxy = onRequest(
           });
         }
 
+        const priceId = await resolveStripePriceIdForPlan(stripe, plan);
+
         logger.info('create-account-checkout-session: creating Stripe checkout session', {
           uid,
           planId: plan.id,
+          priceId,
           quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
         });
         const session = await stripe.checkout.sessions.create({
@@ -5673,12 +5672,7 @@ exports.apiProxy = onRequest(
           success_url: `${baseUrl}${returnPath}${successSeparator}accountCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}${returnPath}${successSeparator}accountCheckout=canceled`,
           line_items: [{
-            price_data: {
-              currency: 'usd',
-              product: plan.productId,
-              recurring: { interval: 'month' },
-              unit_amount: Math.round(plan.amountUsd * 100),
-            },
+            price: priceId,
             quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
           }],
           allow_promotion_codes: true,
