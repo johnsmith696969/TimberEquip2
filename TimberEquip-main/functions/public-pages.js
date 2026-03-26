@@ -42,6 +42,17 @@ function normalizeSeoSlug(value, fallback = '') {
   return normalized || fallback;
 }
 
+function isFirestoreQuotaError(error) {
+  const haystack = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return error?.code === 8 || (
+    haystack.includes('resource_exhausted') &&
+    haystack.includes('firestore')
+  ) || (
+    haystack.includes('quota') &&
+    haystack.includes('free daily read units')
+  );
+}
+
 function titleCaseSlug(slug) {
   return String(slug || '')
     .split('-')
@@ -650,6 +661,30 @@ function renderLinkCards(items, options = {}) {
   `;
 }
 
+function renderSimpleLinkCards(items, options = {}) {
+  if (!items.length) {
+    return `<div class="empty">${escapeHtml(options.emptyMessage || 'No routes are available right now.')}</div>`;
+  }
+
+  return `
+    <div class="link-grid">
+      ${items
+        .map(
+          (item) => `
+            <a class="link-card" href="${escapeHtml(item.path)}">
+              <div class="link-card-body">
+                <span class="pill">${escapeHtml(item.eyebrow || 'Route')}</span>
+                <strong style="margin-top:14px;">${escapeHtml(item.label)}</strong>
+                ${item.description ? `<p style="margin:10px 0 0;color:var(--muted);line-height:1.7;">${escapeHtml(item.description)}</p>` : ''}
+              </div>
+            </a>
+          `
+        )
+        .join('')}
+    </div>
+  `;
+}
+
 function renderFeatureCards(cards) {
   return `
     <div class="feature-grid">
@@ -1170,6 +1205,291 @@ ${[...entries.entries()]
   .map(([url, lastmod]) => `  <url><loc>${escapeHtml(url)}</loc>${lastmod ? `<lastmod>${escapeHtml(lastmod)}</lastmod>` : ''}</url>`)
   .join('\n')}
 </urlset>`;
+}
+
+function renderMinimalSitemap(baseUrl) {
+  const urls = [
+    '/',
+    '/forestry-equipment-for-sale',
+    '/categories',
+    '/manufacturers',
+    '/states',
+    '/dealers',
+    '/sitemap.xml',
+  ];
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls
+  .map((path) => `  <url><loc>${escapeHtml(`${baseUrl}${path}`)}</loc></url>`)
+  .join('\n')}
+</urlset>`;
+}
+
+function getQuotaFallbackRedirectPath(pathname) {
+  if (/^\/logging-equipment-for-sale$/i.test(pathname)) {
+    return '/forestry-equipment-for-sale';
+  }
+  if (/^\/categories\/[^/]+$/i.test(pathname)) {
+    return '/categories';
+  }
+  if (/^\/manufacturers\/[^/]+(?:\/.*)?$/i.test(pathname)) {
+    return '/manufacturers';
+  }
+  if (/^\/states\/[^/]+(?:\/.*)?$/i.test(pathname)) {
+    return '/states';
+  }
+  if (/^\/dealers\/[^/]+(?:\/.*)?$/i.test(pathname)) {
+    return '/dealers';
+  }
+  return '';
+}
+
+function renderQuotaFallbackPage(req, res) {
+  const pathname = decodeURIComponent(req.path || '/');
+  const baseUrl = getRequestBaseUrl(req);
+
+  if (/^\/sitemap\.xml$/i.test(pathname)) {
+    res
+      .set('x-ssr-fallback', 'firestore-quota')
+      .status(200)
+      .type('application/xml')
+      .send(renderMinimalSitemap(baseUrl));
+    return true;
+  }
+
+  const redirectPath = getQuotaFallbackRedirectPath(pathname);
+  if (redirectPath) {
+    res
+      .set('x-ssr-fallback', 'firestore-quota')
+      .redirect(302, `${baseUrl}${redirectPath}`);
+    return true;
+  }
+
+  let page = {
+    title: 'Forestry Equipment For Sale',
+    eyebrow: 'Canonical Market Hub',
+    description: 'The canonical equipment marketplace hub is still online while live inventory data retries.',
+    intro: 'This public route stays live so buyers, dealers, and crawlers keep a stable canonical destination even when the live Firestore inventory layer is temporarily rate-limited.',
+    breadcrumbs: [
+      { label: 'Home', path: '/' },
+      { label: 'Forestry Equipment For Sale', path: '/forestry-equipment-for-sale' },
+    ],
+    primaryAction: { href: '/search', label: 'Open Marketplace Search' },
+    secondaryAction: { href: '/dealers', label: 'Browse Dealers' },
+    sections: [
+      {
+        eyebrow: 'Continue Browsing',
+        title: 'Core Marketplace Routes',
+        description: 'These core public routes remain available while live route inventory refreshes.',
+        html: renderSimpleLinkCards([
+          {
+            eyebrow: 'Market',
+            label: 'Forestry Equipment For Sale',
+            description: 'The canonical public market hub for the platform.',
+            path: '/forestry-equipment-for-sale',
+          },
+          {
+            eyebrow: 'Directory',
+            label: 'Equipment Categories',
+            description: 'Browse machine-type route families and public category structure.',
+            path: '/categories',
+          },
+          {
+            eyebrow: 'Directory',
+            label: 'Manufacturers',
+            description: 'Explore brand route families across the marketplace.',
+            path: '/manufacturers',
+          },
+          {
+            eyebrow: 'Directory',
+            label: 'States',
+            description: 'Open state-level inventory and regional route coverage.',
+            path: '/states',
+          },
+          {
+            eyebrow: 'Directory',
+            label: 'Dealers',
+            description: 'Browse dealer storefronts and marketplace sellers.',
+            path: '/dealers',
+          },
+        ]),
+      },
+      {
+        eyebrow: 'Use The App',
+        title: 'Buyer And Dealer Actions',
+        description: 'The app flow is still available even while the public SSR layer is serving a fallback.',
+        html: renderSimpleLinkCards([
+          {
+            eyebrow: 'Search',
+            label: 'Marketplace Search',
+            description: 'Open the search experience for filters, browsing, and listing detail flows.',
+            path: '/search',
+          },
+          {
+            eyebrow: 'Dealer',
+            label: 'Dealer Embed Script',
+            description: 'Access the public dealer embed script used for syndication and inventory promotion.',
+            path: '/api/public/dealer-embed.js',
+          },
+        ]),
+      },
+    ],
+  };
+
+  if (/^\/categories$/i.test(pathname)) {
+    page = {
+      title: 'Equipment Categories',
+      eyebrow: 'Category Directory',
+      description: 'The marketplace category directory is online while live listing counts retry.',
+      intro: 'This route is the stable category entry point for the public marketplace. Live listing counts are temporarily unavailable, but the canonical directory path remains active.',
+      breadcrumbs: [
+        { label: 'Home', path: '/' },
+        { label: 'Categories', path: '/categories' },
+      ],
+      primaryAction: { href: '/forestry-equipment-for-sale', label: 'Open Market Hub' },
+      secondaryAction: { href: '/search', label: 'Open Search' },
+      sections: [
+        {
+          eyebrow: 'Related Hubs',
+          title: 'Continue Through Core Directories',
+          description: 'Use the main route families while live category counts repopulate.',
+          html: renderSimpleLinkCards([
+            { eyebrow: 'Market', label: 'Forestry Equipment For Sale', description: 'Return to the canonical public market hub.', path: '/forestry-equipment-for-sale' },
+            { eyebrow: 'Directory', label: 'Manufacturers', description: 'Browse equipment brands and make families.', path: '/manufacturers' },
+            { eyebrow: 'Directory', label: 'States', description: 'Open state-level route coverage and regional inventory paths.', path: '/states' },
+            { eyebrow: 'Directory', label: 'Dealers', description: 'Browse dealer storefronts and seller hubs.', path: '/dealers' },
+          ]),
+        },
+      ],
+    };
+  } else if (/^\/manufacturers$/i.test(pathname)) {
+    page = {
+      title: 'Equipment Manufacturers',
+      eyebrow: 'Manufacturer Directory',
+      description: 'The manufacturer directory remains available while live route counts retry.',
+      intro: 'This directory anchors the brand side of the marketplace route graph. Live manufacturer counts are temporarily unavailable, but the canonical brand directory stays online.',
+      breadcrumbs: [
+        { label: 'Home', path: '/' },
+        { label: 'Manufacturers', path: '/manufacturers' },
+      ],
+      primaryAction: { href: '/forestry-equipment-for-sale', label: 'Open Market Hub' },
+      secondaryAction: { href: '/search', label: 'Open Search' },
+      sections: [
+        {
+          eyebrow: 'Related Hubs',
+          title: 'Continue Through Core Directories',
+          description: 'Use the main route families while live manufacturer counts repopulate.',
+          html: renderSimpleLinkCards([
+            { eyebrow: 'Market', label: 'Forestry Equipment For Sale', description: 'Return to the canonical public market hub.', path: '/forestry-equipment-for-sale' },
+            { eyebrow: 'Directory', label: 'Equipment Categories', description: 'Browse machine-type route families.', path: '/categories' },
+            { eyebrow: 'Directory', label: 'States', description: 'Open state-level route coverage and regional inventory paths.', path: '/states' },
+            { eyebrow: 'Directory', label: 'Dealers', description: 'Browse dealer storefronts and seller hubs.', path: '/dealers' },
+          ]),
+        },
+      ],
+    };
+  } else if (/^\/states$/i.test(pathname)) {
+    page = {
+      title: 'Equipment By State',
+      eyebrow: 'Regional Directory',
+      description: 'The state directory remains available while live regional route counts retry.',
+      intro: 'This directory is the regional layer of the marketplace graph. Live state counts are temporarily unavailable, but the canonical state directory path remains active.',
+      breadcrumbs: [
+        { label: 'Home', path: '/' },
+        { label: 'States', path: '/states' },
+      ],
+      primaryAction: { href: '/forestry-equipment-for-sale', label: 'Open Market Hub' },
+      secondaryAction: { href: '/search', label: 'Open Search' },
+      sections: [
+        {
+          eyebrow: 'Related Hubs',
+          title: 'Continue Through Core Directories',
+          description: 'Use the main route families while live state counts repopulate.',
+          html: renderSimpleLinkCards([
+            { eyebrow: 'Market', label: 'Forestry Equipment For Sale', description: 'Return to the canonical public market hub.', path: '/forestry-equipment-for-sale' },
+            { eyebrow: 'Directory', label: 'Equipment Categories', description: 'Browse machine-type route families.', path: '/categories' },
+            { eyebrow: 'Directory', label: 'Manufacturers', description: 'Browse brand route families.', path: '/manufacturers' },
+            { eyebrow: 'Directory', label: 'Dealers', description: 'Browse dealer storefronts and seller hubs.', path: '/dealers' },
+          ]),
+        },
+      ],
+    };
+  } else if (/^\/dealers$/i.test(pathname)) {
+    page = {
+      title: 'Equipment Dealers',
+      eyebrow: 'Dealer Directory',
+      description: 'The dealer directory remains online while live inventory route data retries.',
+      intro: 'This directory is the public dealer hub for the marketplace. Live seller counts are temporarily unavailable, but the canonical dealer directory and search entry points remain online.',
+      breadcrumbs: [
+        { label: 'Home', path: '/' },
+        { label: 'Dealers', path: '/dealers' },
+      ],
+      primaryAction: { href: '/search', label: 'Open Marketplace Search' },
+      secondaryAction: { href: '/forestry-equipment-for-sale', label: 'Open Market Hub' },
+      sections: [
+        {
+          eyebrow: 'Related Hubs',
+          title: 'Continue Through Core Directories',
+          description: 'Use the main route families while live dealer counts repopulate.',
+          html: renderSimpleLinkCards([
+            { eyebrow: 'Market', label: 'Forestry Equipment For Sale', description: 'Return to the canonical public market hub.', path: '/forestry-equipment-for-sale' },
+            { eyebrow: 'Directory', label: 'Equipment Categories', description: 'Browse machine-type route families.', path: '/categories' },
+            { eyebrow: 'Directory', label: 'Manufacturers', description: 'Browse brand route families.', path: '/manufacturers' },
+            { eyebrow: 'Directory', label: 'States', description: 'Open regional route coverage and state markets.', path: '/states' },
+          ]),
+        },
+      ],
+    };
+  }
+
+  const canonicalPath = /^\/(forestry-equipment-for-sale|categories|manufacturers|states|dealers)$/i.test(pathname)
+    ? pathname
+    : '/forestry-equipment-for-sale';
+
+  res
+    .set('x-ssr-fallback', 'firestore-quota')
+    .status(200)
+    .type('html')
+    .send(
+      renderInventoryPage({
+        title: page.title,
+        eyebrow: page.eyebrow,
+        description: page.description,
+        canonicalUrl: `${baseUrl}${canonicalPath}`,
+        intro: page.intro,
+        breadcrumbs: page.breadcrumbs,
+        stats: [
+          { label: 'Route Status', value: 'Live' },
+          { label: 'Inventory Data', value: 'Retrying' },
+          { label: 'Mode', value: 'SSR Fallback' },
+          { label: 'Canonical', value: 'Active' },
+        ],
+        featureCards: [
+          {
+            eyebrow: 'Stability',
+            title: 'Public routes stay online',
+            description: 'The SSR layer is serving a fallback so canonical route families do not disappear during temporary data quota pressure.',
+          },
+          {
+            eyebrow: 'Dealer Hub',
+            title: 'Core marketplace navigation remains intact',
+            description: 'Buyers and dealers can still reach the main market hub, search app, and top directory pages.',
+          },
+          {
+            eyebrow: 'Recovery',
+            title: 'Live inventory will repopulate automatically',
+            description: 'Once Firestore read capacity is available again, the hybrid public pages will resume serving live marketplace data.',
+          },
+        ],
+        sections: page.sections,
+        listings: [],
+        primaryAction: page.primaryAction,
+        secondaryAction: page.secondaryAction,
+        jsonLd: buildCollectionJsonLd(page.title, page.description, `${baseUrl}${canonicalPath}`, [], page.breadcrumbs),
+      })
+    );
+  return true;
 }
 
 function isHybridPublicPath(pathname) {
@@ -2214,6 +2534,9 @@ async function handlePublicPagesRequest(req, res, next) {
     }
   } catch (error) {
     console.error('Failed to render hybrid public page:', error);
+    if (isFirestoreQuotaError(error) && renderQuotaFallbackPage(req, res)) {
+      return;
+    }
     if (typeof next === 'function') {
       return next(error);
     }
