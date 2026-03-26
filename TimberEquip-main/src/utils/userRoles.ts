@@ -1,9 +1,12 @@
 import { UserRole } from '../types';
 
 export const EDITABLE_USER_ROLE_OPTIONS: ReadonlyArray<{ value: UserRole; label: string }> = [
+  { value: 'buyer', label: 'Buyer' },
+  { value: 'member', label: 'Free Member' },
+  { value: 'individual_seller', label: 'Individual Seller' },
   { value: 'dealer', label: 'Dealer' },
   { value: 'pro_dealer', label: 'Pro Dealer' },
-  { value: 'member', label: 'Free Member' },
+  { value: 'developer', label: 'Developer' },
   { value: 'editor', label: 'Editor' },
   { value: 'content_manager', label: 'Content Manager' },
   { value: 'admin', label: 'Admin' },
@@ -12,26 +15,32 @@ export const EDITABLE_USER_ROLE_OPTIONS: ReadonlyArray<{ value: UserRole; label:
 
 export function normalizeEditableUserRole(role?: UserRole | string | null): UserRole {
   switch (role) {
+    case 'buyer':
+      return 'buyer';
+    case 'member':
+      return 'member';
+    case 'individual_seller':
+      return 'individual_seller';
+    case 'dealer_staff':
+      return 'dealer';
+    case 'dealer_manager':
+      return 'pro_dealer';
+    case 'developer':
+      return 'developer';
     case 'super_admin':
       return 'super_admin';
     case 'admin':
-    case 'developer':
       return 'admin';
     case 'content_manager':
       return 'content_manager';
     case 'editor':
       return 'editor';
     case 'dealer':
-    case 'dealer_staff':
       return 'dealer';
     case 'pro_dealer':
-    case 'dealer_manager':
       return 'pro_dealer';
-    case 'individual_seller':
-    case 'member':
-    case 'buyer':
     default:
-      return 'member';
+      return 'buyer';
   }
 }
 
@@ -47,7 +56,7 @@ export function getAssignableUserRoleOptions(actorRole?: UserRole | string | nul
   }
 
   if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer' || normalizedActorRole === 'dealer_manager' || normalizedActorRole === 'dealer_staff') {
-    return EDITABLE_USER_ROLE_OPTIONS.filter((option) => ['dealer', 'pro_dealer', 'member'].includes(option.value));
+    return EDITABLE_USER_ROLE_OPTIONS.filter((option) => ['dealer', 'pro_dealer', 'member', 'buyer'].includes(option.value));
   }
 
   return [];
@@ -55,6 +64,14 @@ export function getAssignableUserRoleOptions(actorRole?: UserRole | string | nul
 
 export function getUserRoleDisplayLabel(role?: UserRole | string | null): string {
   switch (normalizeEditableUserRole(role)) {
+    case 'buyer':
+      return 'Buyer';
+    case 'member':
+      return 'Free Member';
+    case 'individual_seller':
+      return 'Individual Seller';
+    case 'developer':
+      return 'Developer';
     case 'super_admin':
       return 'Super Admin';
     case 'admin':
@@ -67,9 +84,7 @@ export function getUserRoleDisplayLabel(role?: UserRole | string | null): string
       return 'Dealer';
     case 'pro_dealer':
       return 'Pro Dealer';
-    case 'member':
-      return 'Free Member';
     default:
-      return 'Free Member';
+      return 'Buyer';
   }
 }

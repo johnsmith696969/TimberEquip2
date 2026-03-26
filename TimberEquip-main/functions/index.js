@@ -4612,7 +4612,7 @@ async function serializeAdminUser(userDoc) {
 function canCreateManagedRole(parentRole, childRole) {
   const normalizedParentRole = normalizeUserRole(parentRole);
   const normalizedChildRole = normalizeUserRole(childRole);
-  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member', 'buyer'];
+  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
   const dealerManagedRoles = ['dealer', 'pro_dealer', 'member', 'buyer'];
 
   if (normalizedParentRole === 'super_admin') return true;

@@ -34,7 +34,7 @@ export function ConsentBanner() {
           initial={{ y: 100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
-          className="fixed bottom-6 left-6 right-6 md:left-auto md:right-8 md:max-w-md z-[1000]"
+          className="fixed bottom-6 left-6 right-6 md:left-auto md:right-8 md:max-w-md z-30"
         >
           <div
             className={`p-6 rounded-sm shadow-2xl backdrop-blur-md border ${

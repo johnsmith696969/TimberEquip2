@@ -145,7 +145,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!userFeedback) return undefined;
-    const timeoutId = window.setTimeout(() => setUserFeedback(null), 6500);
+    const timeoutId = window.setTimeout(() => setUserFeedback(null), 9000);
     return () => window.clearTimeout(timeoutId);
   }, [userFeedback]);
 
@@ -524,12 +524,25 @@ export function AdminDashboard() {
   };
 
   const handleChangeUserRole = async (uid: string, role: UserRole) => {
+    const pendingKey = `${uid}:role`;
+    const account = accounts.find((entry) => entry.id === uid);
+    const previousRole = account?.role;
+
     try {
       setUserFeedback(null);
-      const account = accounts.find((entry) => entry.id === uid);
       if (!account) return;
 
       const normalizedRole = normalizeEditableUserRole(role);
+      if (normalizeEditableUserRole(previousRole) === normalizedRole) {
+        return;
+      }
+
+      setPendingUserActionKey(pendingKey);
+      setAccounts(prev => prev.map((entry) => (
+        entry.id === uid
+          ? { ...entry, role: normalizedRole }
+          : entry
+      )));
 
       const result = await adminUserService.updateUser(uid, {
         displayName: account.displayName || account.name,
@@ -542,6 +555,11 @@ export function AdminDashboard() {
       if (result.user) {
         setAccounts(prev => prev.map(a => a.id === uid ? result.user! : a));
       }
+      try {
+        await fetchUsers();
+      } catch (refreshError) {
+        console.warn('Unable to refresh users after role change:', refreshError);
+      }
       if (editingAccount?.id === uid) {
         setUserEditForm((prev) => ({ ...prev, role: normalizedRole }));
       }
@@ -551,10 +569,17 @@ export function AdminDashboard() {
       });
     } catch (err) {
       console.error('Error changing user role:', err);
+      setAccounts(prev => prev.map((entry) => (
+        entry.id === uid
+          ? { ...entry, role: previousRole || entry.role }
+          : entry
+      )));
       setUserFeedback({
         tone: 'error',
         message: err instanceof Error ? err.message : 'Unable to update the user role.',
       });
+    } finally {
+      setPendingUserActionKey('');
     }
   };
 
@@ -614,6 +639,11 @@ export function AdminDashboard() {
         setAccounts(prev => prev.map(account => account.id === editingAccount.id ? result.user! : account));
       }
       closeUserEditor();
+      try {
+        await fetchUsers();
+      } catch (refreshError) {
+        console.warn('Unable to refresh users after saving user edits:', refreshError);
+      }
       setUserFeedback({
         tone: result.warning ? 'warning' : 'success',
         message: result.warning || result.message || 'User details updated successfully.',
@@ -1126,7 +1156,8 @@ export function AdminDashboard() {
                       value={normalizedAccountRole}
                       onChange={e => handleChangeUserRole(account.id, e.target.value as UserRole)}
                       className="select-industrial text-[9px] py-1"
-                      disabled={!isRoleEditable}
+                      disabled={!isRoleEditable || isUserActionPending(account.id, 'role')}
+                      aria-busy={isUserActionPending(account.id, 'role')}
                     >
                       {accountRoleOptions.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
@@ -2584,23 +2615,56 @@ export function AdminDashboard() {
           </header>
 
           {userFeedback && (
-            <div className={`mb-6 rounded-sm border px-4 py-3 shadow-sm ${
-              userFeedback.tone === 'error'
-                ? 'border-red-200 bg-red-50 text-red-700'
-                : userFeedback.tone === 'warning'
-                  ? 'border-amber-200 bg-amber-50 text-amber-800'
-                  : 'border-data/30 bg-data/10 text-data'
-            }`}>
-              <div className="flex items-start gap-3">
-                {userFeedback.tone === 'error' ? <AlertCircle size={16} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={16} className="mt-0.5 shrink-0" />}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em]">
-                    {userFeedback.tone === 'error' ? 'Update Failed' : userFeedback.tone === 'warning' ? 'Saved With Notice' : 'Saved'}
-                  </p>
-                  <p className="text-xs font-semibold leading-5">{userFeedback.message}</p>
+            <>
+              <div className={`mb-6 rounded-sm border px-4 py-3 shadow-sm ${
+                userFeedback.tone === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : userFeedback.tone === 'warning'
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-data/30 bg-data/10 text-data'
+              }`}>
+                <div className="flex items-start gap-3">
+                  {userFeedback.tone === 'error' ? <AlertCircle size={16} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={16} className="mt-0.5 shrink-0" />}
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em]">
+                      {userFeedback.tone === 'error' ? 'Update Failed' : userFeedback.tone === 'warning' ? 'Saved With Notice' : 'Saved'}
+                    </p>
+                    <p className="text-xs font-semibold leading-5">{userFeedback.message}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div className="pointer-events-none fixed right-4 top-20 z-[2200] w-full max-w-sm">
+                <div
+                  className={`pointer-events-auto rounded-sm border px-4 py-3 shadow-[0_18px_55px_rgba(15,23,42,0.22)] backdrop-blur ${
+                    userFeedback.tone === 'error'
+                      ? 'border-red-200 bg-red-50/95 text-red-700'
+                      : userFeedback.tone === 'warning'
+                        ? 'border-amber-200 bg-amber-50/95 text-amber-800'
+                        : 'border-data/30 bg-white/95 text-data'
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="flex items-start gap-3">
+                    {userFeedback.tone === 'error' ? <AlertCircle size={18} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={18} className="mt-0.5 shrink-0" />}
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em]">
+                        {userFeedback.tone === 'error' ? 'Update Failed' : userFeedback.tone === 'warning' ? 'Saved With Notice' : 'Saved'}
+                      </p>
+                      <p className="text-xs font-semibold leading-5">{userFeedback.message}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUserFeedback(null)}
+                      className="rounded-sm border border-current/15 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] hover:bg-black/5"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {loading ? (
@@ -2649,11 +2713,11 @@ export function AdminDashboard() {
 
       <AnimatePresence>
         {editingAccount && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-ink/60 p-4 flex items-center justify-center"
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] bg-ink/60 p-4 flex items-center justify-center"
           >
             <motion.div
               initial={{ opacity: 0, y: 12 }}

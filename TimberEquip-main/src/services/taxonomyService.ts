@@ -9,6 +9,7 @@ interface TaxonomyResponse {
 
 let taxonomyCache: EquipmentTaxonomy | null = null;
 let fullTaxonomyCache: FullEquipmentTaxonomy | null = null;
+const taxonomyAssetUrl = new URL('../../final_taxonomy_with_manufacturer_buying_guides.json', import.meta.url).href;
 
 const EMPTY_FULL_TAXONOMY: FullEquipmentTaxonomy = {};
 
@@ -100,7 +101,7 @@ export const taxonomyService = {
     }
 
     try {
-      const response = await fetch('/final_taxonomy_with_manufacturer_buying_guides.json');
+      const response = await fetch(taxonomyAssetUrl);
       if (!response.ok) {
         taxonomyCache = cloneBundledTaxonomy();
         return taxonomyCache;
@@ -122,7 +123,7 @@ export const taxonomyService = {
     }
 
     try {
-      const response = await fetch('/final_taxonomy_with_manufacturer_buying_guides.json');
+      const response = await fetch(taxonomyAssetUrl);
       if (!response.ok) {
         fullTaxonomyCache = buildFullTaxonomyFallback();
         return fullTaxonomyCache;
