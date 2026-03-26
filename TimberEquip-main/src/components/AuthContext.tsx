@@ -87,15 +87,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (firebaseUser) {
         setLoading(true);
         // User is signed in, subscribe to their profile in Firestore
-        unsubscribeProfile = userService.subscribeToProfile(firebaseUser.uid, (profile) => {
+        unsubscribeProfile = userService.subscribeToProfile(firebaseUser.uid, (profile, meta) => {
           void (async () => {
             if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
+              return;
+            }
+
+            if (meta?.error) {
+              const isAdmin = ADMIN_EMAILS.includes((firebaseUser.email || '').trim().toLowerCase());
+              setUser((current) => normalizeProfile({
+                uid: firebaseUser.uid,
+                displayName: current?.displayName || firebaseUser.displayName || 'Anonymous User',
+                email: firebaseUser.email || current?.email || '',
+                role: (current?.role || (isAdmin ? 'super_admin' : 'member')) as UserProfile['role'],
+                photoURL: firebaseUser.photoURL || current?.photoURL || '',
+                coverPhotoUrl: current?.coverPhotoUrl || '',
+                company: current?.company || '',
+                phoneNumber: current?.phoneNumber || '',
+                website: current?.website || '',
+                about: current?.about || '',
+                bio: current?.bio || '',
+                location: current?.location || '',
+                accountStatus: current?.accountStatus || 'active',
+                onboardingIntent: current?.onboardingIntent || 'free_member',
+                activeSubscriptionPlanId: current?.activeSubscriptionPlanId || null,
+                subscriptionStatus: current?.subscriptionStatus || null,
+                listingCap: current?.listingCap || 0,
+                managedAccountCap: current?.managedAccountCap || 0,
+                currentSubscriptionId: current?.currentSubscriptionId || null,
+                currentPeriodEnd: current?.currentPeriodEnd || null,
+                favorites: Array.isArray(current?.favorites) ? current.favorites : [],
+                emailVerified: firebaseUser.emailVerified,
+                createdAt: current?.createdAt || new Date().toISOString(),
+              }));
+              setLoading(false);
               return;
             }
 
             if (profile) {
               const mergedProfile = normalizeProfile({
                 ...profile,
+                displayName: profile.displayName || firebaseUser.displayName || 'Anonymous User',
+                email: profile.email || firebaseUser.email || '',
+                photoURL: firebaseUser.photoURL || profile.photoURL || '',
                 emailVerified: firebaseUser.emailVerified,
               });
 
@@ -125,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               } else {
                 setUser(mergedProfile);
               }
-            } else {
+            } else if (meta?.exists === false) {
               // Create profile if it doesn't exist
               const isAdmin = ADMIN_EMAILS.includes((firebaseUser.email || '').trim().toLowerCase());
               const newProfile: UserProfile = {

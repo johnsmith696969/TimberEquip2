@@ -248,6 +248,14 @@ function isInspectionManagerRole(role?: string | null): boolean {
   return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager'].includes(normalize(role));
 }
 
+function canReadAllInspectionRequests(role?: string | null): boolean {
+  return ['super_admin', 'admin', 'developer'].includes(normalize(role));
+}
+
+function canManageAssignedInspectionRequests(role?: string | null): boolean {
+  return ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
+}
+
 function getFeaturedListingCapForRole(role?: string | null): number {
   const normalizedRole = normalize(role);
   if (isAdminPublisherRole(normalizedRole)) return Number.POSITIVE_INFINITY;
@@ -1119,12 +1127,30 @@ export const equipmentService = {
     const role = options?.role || '';
 
     try {
-      if (isInspectionManagerRole(role)) {
+      if (canReadAllInspectionRequests(role)) {
         const snapshot = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
         return snapshot.docs.map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest));
       }
 
       if (!userUid) return [];
+
+      if (canManageAssignedInspectionRequests(role)) {
+        const [assignedSnapshot, matchedSnapshot] = await Promise.all([
+          getDocs(query(collection(db, path), where('assignedToUid', '==', userUid))),
+          getDocs(query(collection(db, path), where('matchedDealerUid', '==', userUid))),
+        ]);
+
+        const seen = new Set<string>();
+        const merged = [...assignedSnapshot.docs, ...matchedSnapshot.docs].filter((snapshot) => {
+          if (seen.has(snapshot.id)) return false;
+          seen.add(snapshot.id);
+          return true;
+        });
+
+        return merged
+          .map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest))
+          .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
+      }
 
       const snapshot = await getDocs(query(collection(db, path), where('requesterUid', '==', userUid)));
       return snapshot.docs

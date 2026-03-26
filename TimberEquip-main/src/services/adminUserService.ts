@@ -9,6 +9,12 @@ interface AdminUserUpdateInput {
   role: UserRole;
 }
 
+export interface AdminUserMutationResult {
+  user?: Account;
+  message?: string;
+  warning?: string;
+}
+
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
@@ -53,13 +59,13 @@ export const adminUserService = {
     });
   },
 
-  async updateUser(uid: string, input: AdminUserUpdateInput): Promise<Account> {
-    const payload = await getAuthorizedJson<{ user: Account }>(`/api/admin/users/${encodeURIComponent(uid)}`, {
+  async updateUser(uid: string, input: AdminUserUpdateInput): Promise<AdminUserMutationResult> {
+    const payload = await getAuthorizedJson<AdminUserMutationResult>(`/api/admin/users/${encodeURIComponent(uid)}`, {
       method: 'PATCH',
       body: JSON.stringify(input),
     });
 
-    return payload.user;
+    return payload;
   },
 
   async sendPasswordReset(uid: string): Promise<void> {
@@ -68,20 +74,16 @@ export const adminUserService = {
     });
   },
 
-  async lockUser(uid: string): Promise<Account> {
-    const payload = await getAuthorizedJson<{ user: Account }>(`/api/admin/users/${encodeURIComponent(uid)}/lock`, {
+  async lockUser(uid: string): Promise<AdminUserMutationResult> {
+    return getAuthorizedJson<AdminUserMutationResult>(`/api/admin/users/${encodeURIComponent(uid)}/lock`, {
       method: 'POST',
     });
-
-    return payload.user;
   },
 
-  async unlockUser(uid: string): Promise<Account> {
-    const payload = await getAuthorizedJson<{ user: Account }>(`/api/admin/users/${encodeURIComponent(uid)}/unlock`, {
+  async unlockUser(uid: string): Promise<AdminUserMutationResult> {
+    return getAuthorizedJson<AdminUserMutationResult>(`/api/admin/users/${encodeURIComponent(uid)}/unlock`, {
       method: 'POST',
     });
-
-    return payload.user;
   },
 
   async deleteUser(uid: string): Promise<void> {

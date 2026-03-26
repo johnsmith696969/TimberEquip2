@@ -646,18 +646,21 @@ export const userService = {
     }
   },
 
-  subscribeToProfile(uid: string, callback: (profile: UserProfile | null) => void) {
+  subscribeToProfile(
+    uid: string,
+    callback: (profile: UserProfile | null, meta?: { exists?: boolean; error?: Error }) => void
+  ) {
     const path = `users/${uid}`;
     const docRef = doc(db, 'users', uid);
     return onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
-        callback(docSnap.data() as UserProfile);
+        callback(docSnap.data() as UserProfile, { exists: true });
       } else {
-        callback(null);
+        callback(null, { exists: false });
       }
     }, (error) => {
       console.error('User profile snapshot error:', error, { path });
-      callback(null);
+      callback(null, { error: error instanceof Error ? error : new Error(String(error)) });
     });
   },
 

@@ -5677,6 +5677,7 @@ exports.apiProxy = onRequest(
         let targetSnap = null;
         let targetData = {};
         let targetExistsInFirestore = false;
+        let firestoreQuotaLimited = false;
 
         try {
           targetSnap = await targetRef.get();
@@ -5686,6 +5687,7 @@ exports.apiProxy = onRequest(
           if (!isFirestoreQuotaExceeded(error)) {
             throw error;
           }
+          firestoreQuotaLimited = true;
           logger.warn('Admin user action is using auth-only fallback because the Firestore daily read quota is exhausted.', {
             action,
             targetUid,
@@ -5748,17 +5750,23 @@ exports.apiProxy = onRequest(
           }
         }
 
-        await targetRef.set(
-          {
-            accountStatus: nextDisabledState ? 'suspended' : 'active',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+        let warning = '';
+        if (!firestoreQuotaLimited) {
+          await targetRef.set(
+            {
+              accountStatus: nextDisabledState ? 'suspended' : 'active',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } else {
+          warning = 'Authentication status updated. Firestore profile status will sync after the Firestore quota window resets.';
+        }
 
         const refreshedAuthUserRecord = await getAuthUserRecordSafe(targetUid);
         return res.status(200).json({
           message: nextDisabledState ? 'User locked.' : 'User unlocked.',
+          warning,
           user: serializeAdminUserData(
             targetUid,
             {
@@ -5788,6 +5796,7 @@ exports.apiProxy = onRequest(
         let targetSnap = null;
         let currentData = {};
         let targetExistsInFirestore = false;
+        let firestoreQuotaLimited = false;
 
         try {
           targetSnap = await targetRef.get();
@@ -5797,6 +5806,7 @@ exports.apiProxy = onRequest(
           if (!isFirestoreQuotaExceeded(error)) {
             throw error;
           }
+          firestoreQuotaLimited = true;
           logger.warn('Admin user update is using a reduced Firestore read path because the daily read quota is exhausted.', {
             targetUid,
             method: req.method,
@@ -5872,6 +5882,7 @@ exports.apiProxy = onRequest(
           if (!isFirestoreQuotaExceeded(error)) {
             throw error;
           }
+          firestoreQuotaLimited = true;
           logger.warn('Skipping Firestore email uniqueness validation because the daily read quota is exhausted.', {
             targetUid,
             email,
@@ -5924,18 +5935,23 @@ exports.apiProxy = onRequest(
           return res.status(500).json({ error: 'Unable to update authentication role claims.' });
         }
 
-        await targetRef.set(
-          {
-            uid: targetUid,
-            displayName,
-            email,
-            phoneNumber,
-            company,
-            role: requestedRole,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+        let warning = '';
+        if (!firestoreQuotaLimited) {
+          await targetRef.set(
+            {
+              uid: targetUid,
+              displayName,
+              email,
+              phoneNumber,
+              company,
+              role: requestedRole,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } else {
+          warning = 'Authentication role and sign-in fields were updated. Firestore profile details will sync after the Firestore quota window resets.';
+        }
 
         const responseAuthRecord = buildSerializableAuthRecord(authUserRecord, {
           uid: targetUid,
@@ -5945,6 +5961,7 @@ exports.apiProxy = onRequest(
         });
         return res.status(200).json({
           message: 'User updated.',
+          warning,
           user: serializeAdminUserData(
             targetUid,
             {

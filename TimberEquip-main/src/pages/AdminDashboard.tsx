@@ -68,6 +68,7 @@ export function AdminDashboard() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [usersLoadError, setUsersLoadError] = useState('');
   const [usersLoading, setUsersLoading] = useState(false);
+  const [userFeedback, setUserFeedback] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [savingUserEdit, setSavingUserEdit] = useState(false);
   const [pendingUserActionKey, setPendingUserActionKey] = useState('');
@@ -141,6 +142,12 @@ export function AdminDashboard() {
   };
 
   const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  useEffect(() => {
+    if (!userFeedback) return undefined;
+    const timeoutId = window.setTimeout(() => setUserFeedback(null), 6500);
+    return () => window.clearTimeout(timeoutId);
+  }, [userFeedback]);
 
   const downloadCsv = (filenamePrefix: string, headers: string[], rows: string[][]) => {
     const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
@@ -518,12 +525,13 @@ export function AdminDashboard() {
 
   const handleChangeUserRole = async (uid: string, role: UserRole) => {
     try {
+      setUserFeedback(null);
       const account = accounts.find((entry) => entry.id === uid);
       if (!account) return;
 
       const normalizedRole = normalizeEditableUserRole(role);
 
-      const updatedAccount = await adminUserService.updateUser(uid, {
+      const result = await adminUserService.updateUser(uid, {
         displayName: account.displayName || account.name,
         email: account.email,
         phoneNumber: account.phoneNumber || account.phone,
@@ -531,21 +539,43 @@ export function AdminDashboard() {
         role: normalizedRole,
       });
 
-      setAccounts(prev => prev.map(a => a.id === uid ? updatedAccount : a));
+      if (result.user) {
+        setAccounts(prev => prev.map(a => a.id === uid ? result.user! : a));
+      }
+      if (editingAccount?.id === uid) {
+        setUserEditForm((prev) => ({ ...prev, role: normalizedRole }));
+      }
+      setUserFeedback({
+        tone: result.warning ? 'warning' : 'success',
+        message: result.warning || result.message || `${account.displayName || account.name}'s role was updated.`,
+      });
     } catch (err) {
       console.error('Error changing user role:', err);
-      alert(err instanceof Error ? err.message : 'Unable to update the user role.');
+      setUserFeedback({
+        tone: 'error',
+        message: err instanceof Error ? err.message : 'Unable to update the user role.',
+      });
     }
   };
 
   const handleSuspendUser = async (uid: string) => {
     if (!window.confirm('Lock this account and prevent sign-in?')) return;
     try {
-      const updatedAccount = await adminUserService.lockUser(uid);
-      setAccounts(prev => prev.map(a => a.id === uid ? updatedAccount : a));
+      setUserFeedback(null);
+      const result = await adminUserService.lockUser(uid);
+      if (result.user) {
+        setAccounts(prev => prev.map(a => a.id === uid ? result.user! : a));
+      }
+      setUserFeedback({
+        tone: result.warning ? 'warning' : 'success',
+        message: result.warning || result.message || 'Account locked successfully.',
+      });
     } catch (err) {
       console.error('Error suspending user:', err);
-      alert(err instanceof Error ? err.message : 'Unable to lock this account.');
+      setUserFeedback({
+        tone: 'error',
+        message: err instanceof Error ? err.message : 'Unable to lock this account.',
+      });
     }
   };
 
@@ -577,24 +607,38 @@ export function AdminDashboard() {
     if (!editingAccount) return;
 
     try {
+      setUserFeedback(null);
       setSavingUserEdit(true);
-      const updatedAccount = await adminUserService.updateUser(editingAccount.id, userEditForm);
-      setAccounts(prev => prev.map(account => account.id === editingAccount.id ? updatedAccount : account));
+      const result = await adminUserService.updateUser(editingAccount.id, userEditForm);
+      if (result.user) {
+        setAccounts(prev => prev.map(account => account.id === editingAccount.id ? result.user! : account));
+      }
       closeUserEditor();
+      setUserFeedback({
+        tone: result.warning ? 'warning' : 'success',
+        message: result.warning || result.message || 'User details updated successfully.',
+      });
     } catch (error) {
       console.error('Error updating user:', error);
-      alert(error instanceof Error ? error.message : 'Unable to update this user.');
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to update this user.',
+      });
       setSavingUserEdit(false);
     }
   };
 
   const runUserAction = async (uid: string, action: string, task: () => Promise<void>) => {
     try {
+      setUserFeedback(null);
       setPendingUserActionKey(`${uid}:${action}`);
       await task();
     } catch (error) {
       console.error(`Error running ${action} for user ${uid}:`, error);
-      alert(error instanceof Error ? error.message : 'Unable to complete that action.');
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to complete that action.',
+      });
     } finally {
       setPendingUserActionKey('');
     }
@@ -603,7 +647,10 @@ export function AdminDashboard() {
   const handleSendPasswordReset = async (account: Account) => {
     await runUserAction(account.id, 'reset', async () => {
       await adminUserService.sendPasswordReset(account.id);
-      alert(`Password reset email sent to ${account.email}.`);
+      setUserFeedback({
+        tone: 'success',
+        message: `Password reset email sent to ${account.email}.`,
+      });
     });
   };
 
@@ -611,15 +658,27 @@ export function AdminDashboard() {
     if (!window.confirm(`Lock ${account.name}'s account?`)) return;
 
     await runUserAction(account.id, 'lock', async () => {
-      const updatedAccount = await adminUserService.lockUser(account.id);
-      setAccounts(prev => prev.map(entry => entry.id === account.id ? updatedAccount : entry));
+      const result = await adminUserService.lockUser(account.id);
+      if (result.user) {
+        setAccounts(prev => prev.map(entry => entry.id === account.id ? result.user! : entry));
+      }
+      setUserFeedback({
+        tone: result.warning ? 'warning' : 'success',
+        message: result.warning || result.message || `${account.name}'s account was locked.`,
+      });
     });
   };
 
   const handleUnlockUser = async (account: Account) => {
     await runUserAction(account.id, 'unlock', async () => {
-      const updatedAccount = await adminUserService.unlockUser(account.id);
-      setAccounts(prev => prev.map(entry => entry.id === account.id ? updatedAccount : entry));
+      const result = await adminUserService.unlockUser(account.id);
+      if (result.user) {
+        setAccounts(prev => prev.map(entry => entry.id === account.id ? result.user! : entry));
+      }
+      setUserFeedback({
+        tone: result.warning ? 'warning' : 'success',
+        message: result.warning || result.message || `${account.name}'s account was unlocked.`,
+      });
     });
   };
 
@@ -629,6 +688,10 @@ export function AdminDashboard() {
     await runUserAction(account.id, 'delete', async () => {
       await adminUserService.deleteUser(account.id);
       setAccounts(prev => prev.filter(entry => entry.id !== account.id));
+      setUserFeedback({
+        tone: 'success',
+        message: `${account.name}'s account was deleted.`,
+      });
     });
   };
 
@@ -1016,7 +1079,13 @@ export function AdminDashboard() {
         <div className="flex items-center space-x-4">
           <div className="flex items-center bg-bg border border-line px-4 py-2 rounded-sm w-full sm:w-64">
             <Search size={14} className="text-muted mr-3" />
-            <input type="text" placeholder="Search accounts..." className="bg-transparent border-none text-[10px] font-bold focus:ring-0 w-full text-ink uppercase" />
+            <input
+              type="text"
+              value={userSearchQuery}
+              onChange={(e) => setUserSearchQuery(e.target.value)}
+              placeholder="Search accounts..."
+              className="bg-transparent border-none text-[10px] font-bold focus:ring-0 w-full text-ink uppercase"
+            />
           </div>
         </div>
       </div>
@@ -1035,7 +1104,7 @@ export function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {accounts.map(account => (
+              {filteredAccounts.map(account => (
                 <tr key={account.id} className="hover:bg-surface/20 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
@@ -1081,7 +1150,7 @@ export function AdminDashboard() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end space-x-2">
-                      <button className="p-2 text-muted hover:text-ink" title="Edit"><Edit size={14} /></button>
+                      <button className="p-2 text-muted hover:text-ink" title="Edit" onClick={() => openUserEditor(account)}><Edit size={14} /></button>
                       <button
                         onClick={() => handleSuspendUser(account.id)}
                         className="p-2 text-muted hover:text-accent"
@@ -1093,6 +1162,13 @@ export function AdminDashboard() {
                   </td>
                 </tr>
               ))}
+              {filteredAccounts.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-[10px] font-black text-muted uppercase tracking-widest">
+                    No accounts matched that search.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -2506,6 +2582,26 @@ export function AdminDashboard() {
               </button>
             )}
           </header>
+
+          {userFeedback && (
+            <div className={`mb-6 rounded-sm border px-4 py-3 shadow-sm ${
+              userFeedback.tone === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : userFeedback.tone === 'warning'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : 'border-data/30 bg-data/10 text-data'
+            }`}>
+              <div className="flex items-start gap-3">
+                {userFeedback.tone === 'error' ? <AlertCircle size={16} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={16} className="mt-0.5 shrink-0" />}
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em]">
+                    {userFeedback.tone === 'error' ? 'Update Failed' : userFeedback.tone === 'warning' ? 'Saved With Notice' : 'Saved'}
+                  </p>
+                  <p className="text-xs font-semibold leading-5">{userFeedback.message}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {loading ? (
             <div className="flex items-center justify-center h-64">

@@ -7,7 +7,7 @@ import {
   LogOut, Bell, Package,
   CreditCard, Edit, Trash2, Plus,
   ExternalLink, MapPin, Phone,
-  Mail, Building2, Wrench,
+  Mail, Building2, Wrench, MessageSquare,
   Shield, Download, ClipboardList, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,7 +18,7 @@ import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
 import { useLocale } from '../components/LocaleContext';
-import { CallLog, Currency, FinancingRequest, InspectionRequest, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
+import { CallLog, Currency, FinancingRequest, Inquiry, InspectionRequest, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
 import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
@@ -33,32 +33,71 @@ function isValidHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function withAsyncTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
+
 export function Profile() {
   const { formatPrice, language, currency, setLanguage, setCurrency } = useLocale();
   const { user, logout, toggleFavorite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const hasStorefrontAccess = Boolean(user?.role && userService.supportsEnterpriseStorefront(user.role));
-  const hasAdminProfileScope = Boolean(user?.role && ADMIN_PROFILE_ROLES.has(user.role));
-  const canManageInspectionRequests = Boolean(user?.role && INSPECTION_MANAGER_ROLES.has(user.role));
-  const canViewInspectionRequests = Boolean(user);
+  const hasUser = Boolean(user);
+  const normalizedRole = hasUser ? userService.normalizeRole(user?.role) : '';
+  const hasStorefrontAccess = Boolean(normalizedRole && userService.supportsEnterpriseStorefront(normalizedRole));
+  const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
+  const canManageInspectionRequests = Boolean(normalizedRole && INSPECTION_MANAGER_ROLES.has(normalizedRole));
+  const canViewSavedEquipment = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewSearchAlerts = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewMyListings = hasUser && ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
+  const canViewSellerInquiries = hasUser && ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
+  const canViewSellerCalls = canViewMyListings;
+  const canViewBuyerFinancing = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewInspectionRequests = hasUser;
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
   const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
   const profileTabs = useMemo(() => {
-    const tabs = ['Overview', 'Saved Equipment', 'Search Alerts', 'My Listings', 'Calls', 'Financing'];
+    const tabs = ['Overview'];
+    if (canViewSavedEquipment) tabs.push('Saved Equipment');
+    if (canViewSearchAlerts) tabs.push('Search Alerts');
+    if (canViewMyListings) tabs.push('My Listings');
+    if (canViewSellerInquiries) tabs.push('Inquiries');
+    if (canViewSellerCalls) tabs.push('Calls');
+    if (canViewBuyerFinancing) tabs.push('Financing');
     if (hasStorefrontAccess) tabs.push(storefrontTabLabel);
     if (canViewInspectionRequests) tabs.push('Inspections');
     tabs.push('Privacy & Data', 'Account Settings');
     return tabs;
-  }, [canViewInspectionRequests, hasStorefrontAccess, storefrontTabLabel]);
+  }, [
+    canViewBuyerFinancing,
+    canViewInspectionRequests,
+    canViewMyListings,
+    canViewSavedEquipment,
+    canViewSearchAlerts,
+    canViewSellerCalls,
+    canViewSellerInquiries,
+    hasStorefrontAccess,
+    storefrontTabLabel,
+  ]);
   const profileTabItems = useMemo(() => {
-    const items = [
-      { label: 'Overview', icon: LayoutDashboard },
-      { label: 'Saved Equipment', icon: Bookmark },
-      { label: 'Search Alerts', icon: Bell },
-      { label: 'My Listings', icon: Package },
-      { label: 'Calls', icon: Phone },
-      { label: 'Financing', icon: CreditCard },
-    ];
+    const items = [{ label: 'Overview', icon: LayoutDashboard }];
+    if (canViewSavedEquipment) items.push({ label: 'Saved Equipment', icon: Bookmark });
+    if (canViewSearchAlerts) items.push({ label: 'Search Alerts', icon: Bell });
+    if (canViewMyListings) items.push({ label: 'My Listings', icon: Package });
+    if (canViewSellerInquiries) items.push({ label: 'Inquiries', icon: MessageSquare });
+    if (canViewSellerCalls) items.push({ label: 'Calls', icon: Phone });
+    if (canViewBuyerFinancing) items.push({ label: 'Financing', icon: CreditCard });
     if (hasStorefrontAccess) {
       items.push({ label: storefrontTabLabel, icon: Building2 });
     }
@@ -70,7 +109,17 @@ export function Profile() {
       { label: 'Account Settings', icon: Settings }
     );
     return items;
-  }, [canViewInspectionRequests, hasStorefrontAccess, storefrontTabLabel]);
+  }, [
+    canViewBuyerFinancing,
+    canViewInspectionRequests,
+    canViewMyListings,
+    canViewSavedEquipment,
+    canViewSearchAlerts,
+    canViewSellerCalls,
+    canViewSellerInquiries,
+    hasStorefrontAccess,
+    storefrontTabLabel,
+  ]);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
@@ -250,8 +299,10 @@ export function Profile() {
 
       if (assetType === 'avatar') {
         handleSettingsInputChange('photoURL', downloadUrl);
+        handleStorefrontInputChange('logo', downloadUrl);
       } else {
         handleSettingsInputChange('coverPhotoUrl', downloadUrl);
+        handleStorefrontInputChange('coverPhotoUrl', downloadUrl);
       }
 
       const immediateUpdates = assetType === 'avatar'
@@ -268,11 +319,21 @@ export function Profile() {
             storefrontName: user.storefrontName || user.company || user.displayName,
           };
 
-      await userService.updateProfile(user.uid, immediateUpdates);
-
       if (assetType === 'avatar' && auth.currentUser) {
         await updateAuthProfile(auth.currentUser, { photoURL: downloadUrl });
       }
+
+      await withAsyncTimeout(
+        userService.updateProfile(user.uid, immediateUpdates),
+        15000,
+        `${assetType === 'avatar' ? 'Profile photo' : 'Cover photo'} upload finished, but profile storage is taking too long to respond. Please try again once Firestore quota resets.`
+      );
+
+      setStorefrontPreview((prev) => prev ? ({
+        ...prev,
+        logo: assetType === 'avatar' ? downloadUrl : prev.logo,
+        coverPhotoUrl: assetType === 'cover' ? downloadUrl : prev.coverPhotoUrl,
+      }) : prev);
 
       setSettingsNotice(`${assetType === 'avatar' ? 'Profile photo' : 'Cover photo'} uploaded and saved.`);
     } catch (error) {
@@ -330,10 +391,6 @@ export function Profile() {
         storefrontName: user.storefrontName || user.company || nextDisplayName,
       };
 
-      await userService.updateProfile(user.uid, baseProfileUpdates);
-      setLanguage(settingsForm.preferredLanguage);
-      setCurrency(settingsForm.preferredCurrency);
-
       if (auth.currentUser) {
         const authNeedsUpdate =
           auth.currentUser.displayName !== nextDisplayName ||
@@ -345,16 +402,30 @@ export function Profile() {
             photoURL: nextPhotoUrl || null,
           });
         }
+      }
 
+      await withAsyncTimeout(
+        userService.updateProfile(user.uid, baseProfileUpdates),
+        15000,
+        'Profile storage is taking too long to respond. Please try again once Firestore quota resets.'
+      );
+      setLanguage(settingsForm.preferredLanguage);
+      setCurrency(settingsForm.preferredCurrency);
+
+      if (auth.currentUser) {
         if (auth.currentUser.email !== nextEmail) {
           try {
             await updateEmail(auth.currentUser, nextEmail);
-            await userService.updateProfile(user.uid, {
-              email: nextEmail,
-              role: user.role,
-              storefrontSlug: user.storefrontSlug,
-              storefrontName: user.storefrontName || user.company || nextDisplayName,
-            });
+            await withAsyncTimeout(
+              userService.updateProfile(user.uid, {
+                email: nextEmail,
+                role: user.role,
+                storefrontSlug: user.storefrontSlug,
+                storefrontName: user.storefrontName || user.company || nextDisplayName,
+              }),
+              15000,
+              'Profile email updated in sign-in, but Firestore profile storage is still catching up.'
+            );
           } catch (emailError) {
             const code = (emailError as { code?: string })?.code || '';
             if (code === 'auth/requires-recent-login') {
@@ -365,20 +436,28 @@ export function Profile() {
             throw emailError;
           }
         } else if (user.email !== nextEmail) {
-          await userService.updateProfile(user.uid, {
+          await withAsyncTimeout(
+            userService.updateProfile(user.uid, {
+              email: nextEmail,
+              role: user.role,
+              storefrontSlug: user.storefrontSlug,
+              storefrontName: user.storefrontName || user.company || nextDisplayName,
+            }),
+            15000,
+            'Profile email update is taking too long to reach Firestore.'
+          );
+        }
+      } else if (user.email !== nextEmail) {
+        await withAsyncTimeout(
+          userService.updateProfile(user.uid, {
             email: nextEmail,
             role: user.role,
             storefrontSlug: user.storefrontSlug,
             storefrontName: user.storefrontName || user.company || nextDisplayName,
-          });
-        }
-      } else if (user.email !== nextEmail) {
-        await userService.updateProfile(user.uid, {
-          email: nextEmail,
-          role: user.role,
-          storefrontSlug: user.storefrontSlug,
-          storefrontName: user.storefrontName || user.company || nextDisplayName,
-        });
+          }),
+          15000,
+          'Profile email update is taking too long to reach Firestore.'
+        );
       }
 
       setSettingsNotice('Profile updated successfully.');
@@ -423,6 +502,7 @@ export function Profile() {
   const [savedAssets, setSavedAssets] = useState<Listing[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [inspectionRequests, setInspectionRequests] = useState<InspectionRequest[]>([]);
   const [inspectionQuoteDrafts, setInspectionQuoteDrafts] = useState<Record<string, string>>({});
@@ -430,6 +510,10 @@ export function Profile() {
   const [inspectionError, setInspectionError] = useState('');
   const [inspectionNotice, setInspectionNotice] = useState('');
   const [inspectionRequestsLoading, setInspectionRequestsLoading] = useState(false);
+  const listingTitleLookup = useMemo(
+    () => new Map(myListings.map((listing) => [listing.id, listing.title])),
+    [myListings]
+  );
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
@@ -445,11 +529,12 @@ export function Profile() {
         setProfileDataError('');
         try {
           const results = await Promise.allSettled([
-            equipmentService.getListings({ sellerUid: user.uid }),
-            equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role }),
-            userService.getSavedSearches(user.uid),
-            user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
-            equipmentService.getCalls({ sellerUid: user.uid, role: user.role }),
+            canViewMyListings ? equipmentService.getListings({ sellerUid: user.uid }) : Promise.resolve([]),
+            canViewBuyerFinancing ? equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role }) : Promise.resolve([]),
+            canViewSearchAlerts ? userService.getSavedSearches(user.uid) : Promise.resolve([]),
+            canViewSavedEquipment && user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
+            canViewSellerCalls ? equipmentService.getCalls({ sellerUid: user.uid, role: user.role }) : Promise.resolve([]),
+            canViewSellerInquiries ? equipmentService.getInquiries(user.uid) : Promise.resolve([]),
             hasStorefrontAccess ? equipmentService.getSeller(user.uid) : Promise.resolve(null),
           ]);
 
@@ -458,7 +543,8 @@ export function Profile() {
           setSavedSearches(results[2].status === 'fulfilled' ? results[2].value : []);
           setSavedAssets(results[3].status === 'fulfilled' ? results[3].value : []);
           setCalls(results[4].status === 'fulfilled' ? results[4].value : []);
-          setStorefrontPreview(results[5]?.status === 'fulfilled' ? results[5].value : null);
+          setInquiries(results[5].status === 'fulfilled' ? results[5].value : []);
+          setStorefrontPreview(results[6]?.status === 'fulfilled' ? results[6].value : null);
 
           if (results.some((result) => result.status === 'rejected')) {
             setProfileDataError('Some account data could not be loaded. Refresh to retry.');
@@ -473,6 +559,7 @@ export function Profile() {
         setFinancingRequests([]);
         setSavedSearches([]);
         setSavedAssets([]);
+        setInquiries([]);
         setCalls([]);
         setInspectionRequests([]);
         setInspectionQuoteDrafts({});
@@ -481,7 +568,19 @@ export function Profile() {
       }
     };
     void fetchProfileData();
-  }, [hasStorefrontAccess, hasAdminProfileScope, user?.uid, user?.role, user?.favorites]);
+  }, [
+    canViewBuyerFinancing,
+    canViewMyListings,
+    canViewSavedEquipment,
+    canViewSearchAlerts,
+    canViewSellerCalls,
+    canViewSellerInquiries,
+    hasStorefrontAccess,
+    hasAdminProfileScope,
+    user?.favorites,
+    user?.role,
+    user?.uid,
+  ]);
 
   useEffect(() => {
     const fetchInspectionRequests = async () => {
@@ -688,22 +787,26 @@ export function Profile() {
         .filter(Boolean)
         .slice(0, 30);
 
-      const result = await userService.saveStorefrontProfile(user.uid, {
-        role: user.role,
-        storefrontName,
-        preferredSlug: storefrontForm.storefrontSlug.trim(),
-        storefrontTagline: storefrontForm.storefrontTagline.trim(),
-        storefrontDescription: storefrontForm.storefrontDescription.trim(),
-        location: storefrontForm.location.trim(),
-        phone: storefrontForm.phone.trim(),
-        email: storefrontForm.email.trim().toLowerCase(),
-        website: storefrontForm.website.trim(),
-        logo: storefrontForm.logo.trim() || settingsForm.photoURL.trim(),
-        coverPhotoUrl: storefrontForm.coverPhotoUrl.trim() || settingsForm.coverPhotoUrl.trim(),
-        seoTitle: storefrontForm.seoTitle.trim(),
-        seoDescription: storefrontForm.seoDescription.trim(),
-        seoKeywords,
-      });
+      const result = await withAsyncTimeout(
+        userService.saveStorefrontProfile(user.uid, {
+          role: user.role,
+          storefrontName,
+          preferredSlug: storefrontForm.storefrontSlug.trim(),
+          storefrontTagline: storefrontForm.storefrontTagline.trim(),
+          storefrontDescription: storefrontForm.storefrontDescription.trim(),
+          location: storefrontForm.location.trim(),
+          phone: storefrontForm.phone.trim(),
+          email: storefrontForm.email.trim().toLowerCase(),
+          website: storefrontForm.website.trim(),
+          logo: storefrontForm.logo.trim() || settingsForm.photoURL.trim(),
+          coverPhotoUrl: storefrontForm.coverPhotoUrl.trim() || settingsForm.coverPhotoUrl.trim(),
+          seoTitle: storefrontForm.seoTitle.trim(),
+          seoDescription: storefrontForm.seoDescription.trim(),
+          seoKeywords,
+        }),
+        15000,
+        `${storefrontTabLabel} storage is taking too long to respond. Please try again once Firestore quota resets.`
+      );
 
       const refreshedStorefront = await equipmentService.getSeller(user.uid);
       setStorefrontPreview(refreshedStorefront || null);
@@ -721,18 +824,25 @@ export function Profile() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'Saved Equipment', value: savedAssets.length.toString(), icon: Bookmark },
-          { label: 'Active Alerts', value: savedSearches.filter(a => a.status === 'active').length.toString(), icon: Bell },
-          { label: hasAdminProfileScope ? 'Visible Listings' : 'My Listings', value: myListings.length.toString(), icon: Package }
-        ].map((stat, i) => (
-          <div key={i} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
-            <div className="flex flex-col">
-              <span className="label-micro text-muted mb-1">{stat.label}</span>
-              <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
+          canViewSavedEquipment ? { label: 'Saved Equipment', value: savedAssets.length.toString(), icon: Bookmark } : null,
+          canViewSearchAlerts ? { label: 'Active Alerts', value: savedSearches.filter(a => a.status === 'active').length.toString(), icon: Bell } : null,
+          canViewMyListings ? { label: hasAdminProfileScope ? 'Visible Listings' : 'My Listings', value: myListings.length.toString(), icon: Package } : null,
+          canViewSellerInquiries ? { label: 'Open Inquiries', value: inquiries.filter((inquiry) => ['New', 'Contacted', 'Qualified'].includes(inquiry.status)).length.toString(), icon: MessageSquare } : null,
+          canViewSellerCalls ? { label: 'Logged Calls', value: calls.length.toString(), icon: Phone } : null,
+          canViewBuyerFinancing ? { label: 'Financing Requests', value: financingRequests.length.toString(), icon: CreditCard } : null,
+        ].filter(Boolean).map((stat, i) => {
+          const safeStat = stat as { label: string; value: string; icon: React.ComponentType<{ className?: string; size?: number }> };
+          const Icon = safeStat.icon;
+          return (
+            <div key={i} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
+              <div className="flex flex-col">
+                <span className="label-micro text-muted mb-1">{safeStat.label}</span>
+                <span className="text-3xl font-black tracking-tighter uppercase">{safeStat.value}</span>
+              </div>
+              <Icon className="text-accent" size={32} />
             </div>
-            <stat.icon className="text-accent" size={32} />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Recent Activity */}
@@ -932,6 +1042,109 @@ export function Profile() {
                 <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Submitted Details</p>
                 <p className="text-[11px] leading-relaxed text-ink break-words">
                   {request.message || 'No additional notes were included with this application.'}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const getInquiryStatusClasses = (status: Inquiry['status']) => {
+    switch (status) {
+      case 'Won':
+        return 'bg-data/10 text-data';
+      case 'Lost':
+      case 'Closed':
+        return 'bg-accent/10 text-accent';
+      case 'Qualified':
+      case 'Contacted':
+        return 'bg-amber-500/10 text-amber-700';
+      default:
+        return 'bg-ink text-white';
+    }
+  };
+
+  const renderInquiries = () => (
+    <div className="space-y-8">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-black uppercase tracking-widest">Inquiry Logs</h3>
+        <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+          Review buyer inquiries submitted on your listings and keep lead follow-up visible.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { label: 'Total Inquiries', value: inquiries.length.toString(), icon: MessageSquare },
+          { label: 'New Leads', value: inquiries.filter((inquiry) => inquiry.status === 'New').length.toString(), icon: Clock },
+          { label: 'Won Deals', value: inquiries.filter((inquiry) => inquiry.status === 'Won').length.toString(), icon: CheckCircle2 },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
+            <div className="flex flex-col">
+              <span className="label-micro text-muted mb-1">{stat.label}</span>
+              <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
+            </div>
+            <stat.icon className="text-accent" size={32} />
+          </div>
+        ))}
+      </div>
+
+      {inquiries.length === 0 ? (
+        <div className="bg-surface border border-line p-8 space-y-4">
+          <p className="text-xs font-black uppercase tracking-widest">No inquiries yet.</p>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            Buyer inquiry submissions from your live listings will appear here automatically.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {inquiries.map((inquiry) => (
+            <div key={inquiry.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2 min-w-0">
+                  <p className="text-xs font-black uppercase tracking-widest">{inquiry.buyerName || 'Unknown buyer'}</p>
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+                    <span>{inquiry.type || 'Inquiry'}</span>
+                    <span>{formatDateLabel(inquiry.createdAt)}</span>
+                    <span>{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General listing inquiry'}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInquiryStatusClasses(inquiry.status)}`}>
+                    {inquiry.status}
+                  </span>
+                  {inquiry.assignedToName ? (
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                      Assigned: {inquiry.assignedToName}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-bold uppercase tracking-widest">
+                <div className="bg-bg border border-line p-4 space-y-2">
+                  <p className="text-muted">Contact</p>
+                  <p className="text-xs text-ink break-words">{inquiry.buyerEmail || 'No email provided'}</p>
+                  <p className="text-muted normal-case">{inquiry.buyerPhone || 'No phone provided'}</p>
+                </div>
+                <div className="bg-bg border border-line p-4 space-y-2">
+                  <p className="text-muted">Listing</p>
+                  <p className="text-xs text-ink break-words">{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General inquiry'}</p>
+                  <p className="text-muted">Seller UID: {inquiry.sellerUid || inquiry.sellerId || 'Unknown'}</p>
+                </div>
+                <div className="bg-bg border border-line p-4 space-y-2">
+                  <p className="text-muted">Lead Quality</p>
+                  <p className="text-xs text-ink">Spam Score: {inquiry.spamScore ?? 0}</p>
+                  <p className="text-muted break-words">{inquiry.spamFlags?.length ? inquiry.spamFlags.join(', ') : 'No flags'}</p>
+                </div>
+              </div>
+
+              <div className="bg-bg border border-line p-4 space-y-2">
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Buyer Message</p>
+                <p className="text-[11px] leading-relaxed text-ink break-words">
+                  {inquiry.message || 'No additional message was provided.'}
                 </p>
               </div>
             </div>
@@ -1693,6 +1906,7 @@ export function Profile() {
               {activeTab === 'Overview' && renderOverview()}
               {activeTab === 'My Listings' && renderMyListings()}
               {activeTab === 'Search Alerts' && renderAlerts()}
+              {activeTab === 'Inquiries' && renderInquiries()}
               {activeTab === 'Calls' && renderCalls()}
               {activeTab === 'Financing' && renderFinancing()}
               {activeTab === 'Inspections' && canViewInspectionRequests && renderInspections()}
