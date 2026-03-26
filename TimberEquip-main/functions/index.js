@@ -2822,6 +2822,8 @@ exports.rebuildPublicSeoReadModelScheduled = onSchedule(
   {
     schedule: 'every 6 hours',
     region: 'us-central1',
+    timeoutSeconds: 300,
+    memory: '1GiB',
   },
   async () => {
     try {
