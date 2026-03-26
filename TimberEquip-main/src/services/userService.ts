@@ -316,9 +316,8 @@ export const userService = {
 
     const displayName = String(profile.displayName || profile.company || 'Forestry Equipment Sales Storefront').trim();
     const storefrontRef = doc(db, 'storefronts', normalizedUid);
-    const storefrontSnapshot = await getDoc(storefrontRef);
-    const existingStorefront = storefrontSnapshot.exists() ? storefrontSnapshot.data() || {} : {};
-    const storefrontSlug = String((profile as any).storefrontSlug || existingStorefront.storefrontSlug || '').trim()
+    const requestedStorefrontSlug = String((profile as any).storefrontSlug || '').trim();
+    const storefrontSlug = requestedStorefrontSlug
       || await this.generateUniqueStorefrontSlug(String((profile as any).storefrontName || displayName), normalizedUid);
 
     await setDoc(
@@ -344,7 +343,6 @@ export const userService = {
         seoKeywords: Array.isArray((profile as any).seoKeywords)
           ? (profile as any).seoKeywords.filter((keyword: unknown) => typeof keyword === 'string').slice(0, 30)
           : [],
-        createdAt: storefrontSnapshot.exists() ? existingStorefront.createdAt || serverTimestamp() : serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -428,19 +426,56 @@ export const userService = {
     const path = `users/${uid}`;
     try {
       const sanitizedUpdates = sanitizeUserProfilePayload(updates);
-      await this.ensureUserProfileDocument(uid, sanitizedUpdates);
       await setDoc(doc(db, 'users', uid), {
+        uid,
         ...sanitizedUpdates,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
-      const currentProfile = await this.getProfile(uid);
-      if (currentProfile) {
-        await this.syncStorefrontDocument(uid, {
-          ...currentProfile,
-          ...sanitizedUpdates,
-          role: sanitizedUpdates.role || currentProfile.role,
-        });
+      const storefrontRelevantKeys: Array<keyof UserProfile> = [
+        'displayName',
+        'email',
+        'phoneNumber',
+        'company',
+        'website',
+        'about',
+        'bio',
+        'location',
+        'photoURL',
+        'coverPhotoUrl',
+        'storefrontSlug',
+        'storefrontName',
+        'storefrontTagline',
+        'storefrontDescription',
+        'seoTitle',
+        'seoDescription',
+        'seoKeywords',
+        'role',
+      ];
+
+      const shouldSyncStorefront = storefrontRelevantKeys.some((key) => key in sanitizedUpdates);
+      if (shouldSyncStorefront) {
+        let roleForSync = sanitizedUpdates.role ? this.normalizeRole(sanitizedUpdates.role) : undefined;
+
+        if (!roleForSync && auth.currentUser) {
+          try {
+            const tokenResult = await auth.currentUser.getIdTokenResult();
+            roleForSync = this.normalizeRole(String(tokenResult.claims.role || ''));
+          } catch (tokenError) {
+            console.warn('Unable to resolve role claims for storefront sync:', tokenError);
+          }
+        }
+
+        if (roleForSync && this.supportsEnterpriseStorefront(roleForSync)) {
+          try {
+            await this.syncStorefrontDocument(uid, {
+              ...sanitizedUpdates,
+              role: roleForSync,
+            });
+          } catch (syncError) {
+            console.warn('Profile updated, but storefront sync was skipped:', syncError);
+          }
+        }
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);

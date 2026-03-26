@@ -25,9 +25,19 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
     },
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const rawBody = await response.text().catch(() => '');
+  let payload: Record<string, unknown> = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(payload?.error || 'Admin user request failed.');
+    const fallbackMessage = rawBody.trim() || `Admin user request failed (${response.status}).`;
+    throw new Error(String(payload?.error || fallbackMessage));
   }
 
   return payload as T;

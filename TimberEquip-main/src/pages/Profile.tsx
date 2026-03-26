@@ -255,8 +255,18 @@ export function Profile() {
       }
 
       const immediateUpdates = assetType === 'avatar'
-        ? { photoURL: downloadUrl }
-        : { coverPhotoUrl: downloadUrl };
+        ? {
+            photoURL: downloadUrl,
+            role: user.role,
+            storefrontSlug: user.storefrontSlug,
+            storefrontName: user.storefrontName || user.company || user.displayName,
+          }
+        : {
+            coverPhotoUrl: downloadUrl,
+            role: user.role,
+            storefrontSlug: user.storefrontSlug,
+            storefrontName: user.storefrontName || user.company || user.displayName,
+          };
 
       await userService.updateProfile(user.uid, immediateUpdates);
 
@@ -315,6 +325,9 @@ export function Profile() {
         location: settingsForm.location.trim(),
         photoURL: nextPhotoUrl || null,
         coverPhotoUrl: nextCoverPhotoUrl || null,
+        role: user.role,
+        storefrontSlug: user.storefrontSlug,
+        storefrontName: user.storefrontName || user.company || nextDisplayName,
       };
 
       await userService.updateProfile(user.uid, baseProfileUpdates);
@@ -336,7 +349,12 @@ export function Profile() {
         if (auth.currentUser.email !== nextEmail) {
           try {
             await updateEmail(auth.currentUser, nextEmail);
-            await userService.updateProfile(user.uid, { email: nextEmail });
+            await userService.updateProfile(user.uid, {
+              email: nextEmail,
+              role: user.role,
+              storefrontSlug: user.storefrontSlug,
+              storefrontName: user.storefrontName || user.company || nextDisplayName,
+            });
           } catch (emailError) {
             const code = (emailError as { code?: string })?.code || '';
             if (code === 'auth/requires-recent-login') {
@@ -347,10 +365,20 @@ export function Profile() {
             throw emailError;
           }
         } else if (user.email !== nextEmail) {
-          await userService.updateProfile(user.uid, { email: nextEmail });
+          await userService.updateProfile(user.uid, {
+            email: nextEmail,
+            role: user.role,
+            storefrontSlug: user.storefrontSlug,
+            storefrontName: user.storefrontName || user.company || nextDisplayName,
+          });
         }
       } else if (user.email !== nextEmail) {
-        await userService.updateProfile(user.uid, { email: nextEmail });
+        await userService.updateProfile(user.uid, {
+          email: nextEmail,
+          role: user.role,
+          storefrontSlug: user.storefrontSlug,
+          storefrontName: user.storefrontName || user.company || nextDisplayName,
+        });
       }
 
       setSettingsNotice('Profile updated successfully.');

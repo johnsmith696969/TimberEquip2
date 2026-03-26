@@ -4278,6 +4278,25 @@ function buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, act
   };
 }
 
+function buildSerializableAuthRecord(authRecord, overrides = {}) {
+  if (!authRecord && !overrides) return null;
+  return {
+    uid: authRecord?.uid || overrides.uid || '',
+    email: overrides.email ?? authRecord?.email ?? '',
+    displayName: overrides.displayName ?? authRecord?.displayName ?? '',
+    disabled: overrides.disabled ?? Boolean(authRecord?.disabled),
+    emailVerified: overrides.emailVerified ?? Boolean(authRecord?.emailVerified),
+    customClaims: {
+      ...(authRecord?.customClaims || {}),
+      ...(overrides.customClaims || {}),
+    },
+    metadata: {
+      creationTime: overrides.creationTime ?? authRecord?.metadata?.creationTime ?? '',
+      lastSignInTime: overrides.lastSignInTime ?? authRecord?.metadata?.lastSignInTime ?? '',
+    },
+  };
+}
+
 function isSupportedUserRole(role) {
   return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'].includes(normalizeUserRole(role));
 }
@@ -5859,27 +5878,36 @@ exports.apiProxy = onRequest(
           });
         }
 
-        try {
-          const authUserByEmail = await admin.auth().getUserByEmail(email);
-          if (authUserByEmail.uid !== targetUid) {
-            return res.status(409).json({ error: 'Another authentication account already has that email address.' });
-          }
-        } catch (error) {
-          if (!isAuthUserNotFound(error)) {
-            logger.error('Failed to verify auth email uniqueness', error);
-            return res.status(500).json({ error: 'Unable to validate email uniqueness.' });
+        const currentAuthEmail = String(authUserRecord?.email || '').trim().toLowerCase();
+        const currentAuthDisplayName = String(authUserRecord?.displayName || '').trim();
+        const authEmailChanged = !authUserRecord || currentAuthEmail !== email;
+        const authDisplayNameChanged = !authUserRecord || currentAuthDisplayName !== displayName;
+
+        if (authEmailChanged) {
+          try {
+            const authUserByEmail = await admin.auth().getUserByEmail(email);
+            if (authUserByEmail.uid !== targetUid) {
+              return res.status(409).json({ error: 'Another authentication account already has that email address.' });
+            }
+          } catch (error) {
+            if (!isAuthUserNotFound(error)) {
+              logger.error('Failed to verify auth email uniqueness', error);
+              return res.status(500).json({ error: 'Unable to validate email uniqueness.' });
+            }
           }
         }
 
-        try {
-          await admin.auth().updateUser(targetUid, {
-            displayName,
-            email,
-          });
-        } catch (error) {
-          if (!isAuthUserNotFound(error)) {
-            logger.error(`Failed to update auth user ${targetUid}`, error);
-            return res.status(500).json({ error: 'Unable to update auth profile.' });
+        if (authUserRecord && (authEmailChanged || authDisplayNameChanged)) {
+          try {
+            await admin.auth().updateUser(targetUid, {
+              displayName,
+              email,
+            });
+          } catch (error) {
+            if (!isAuthUserNotFound(error)) {
+              logger.error(`Failed to update auth user ${targetUid}`, error);
+              return res.status(500).json({ error: 'Unable to update auth profile.' });
+            }
           }
         }
 
@@ -5909,7 +5937,12 @@ exports.apiProxy = onRequest(
           { merge: true }
         );
 
-        const refreshedAuthUserRecord = await getAuthUserRecordSafe(targetUid);
+        const responseAuthRecord = buildSerializableAuthRecord(authUserRecord, {
+          uid: targetUid,
+          email,
+          displayName,
+          customClaims: { role: requestedRole },
+        });
         return res.status(200).json({
           message: 'User updated.',
           user: serializeAdminUserData(
@@ -5924,7 +5957,7 @@ exports.apiProxy = onRequest(
               role: requestedRole,
               updatedAt: new Date().toISOString(),
             },
-            refreshedAuthUserRecord
+            responseAuthRecord
           ),
         });
       }
