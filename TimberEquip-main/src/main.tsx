@@ -19,6 +19,9 @@ function getErrorMessage(input: unknown): string {
 function shouldRecoverFromAssetError(message: string): boolean {
   const normalized = message.toLowerCase();
   return normalized.includes('failed to fetch dynamically imported module')
+    || normalized.includes('failed to load module script')
+    || normalized.includes('expected a javascript module script')
+    || normalized.includes('mime type of "text/html"')
     || normalized.includes('importing a module script failed')
     || normalized.includes('error loading dynamically imported module')
     || normalized.includes('loading css chunk');

@@ -138,6 +138,87 @@ function normalizeUserRole(role) {
   return normalized;
 }
 
+function normalizeAccountAccessSource(source) {
+  const normalized = normalize(source);
+  if (['free_member', 'pending_checkout', 'subscription', 'admin_override', 'managed_account'].includes(normalized)) {
+    return normalized;
+  }
+  return '';
+}
+
+function buildAccessClaims(existingClaims = {}, overrides = {}) {
+  const nextClaims = {
+    ...existingClaims,
+  };
+
+  if ('role' in overrides) {
+    nextClaims.role = normalizeUserRole(overrides.role || '');
+  }
+
+  if ('subscriptionPlanId' in overrides) {
+    const planId = String(overrides.subscriptionPlanId || '').trim();
+    if (planId) {
+      nextClaims.subscriptionPlanId = planId;
+    } else {
+      delete nextClaims.subscriptionPlanId;
+    }
+  }
+
+  if ('listingCap' in overrides) {
+    const listingCap = Number(overrides.listingCap);
+    if (Number.isFinite(listingCap) && listingCap > 0) {
+      nextClaims.listingCap = listingCap;
+    } else {
+      delete nextClaims.listingCap;
+    }
+  }
+
+  if ('managedAccountCap' in overrides) {
+    const managedAccountCap = Number(overrides.managedAccountCap);
+    if (Number.isFinite(managedAccountCap) && managedAccountCap > 0) {
+      nextClaims.managedAccountCap = managedAccountCap;
+    } else {
+      delete nextClaims.managedAccountCap;
+    }
+  }
+
+  if ('subscriptionStatus' in overrides) {
+    const subscriptionStatus = String(overrides.subscriptionStatus || '').trim();
+    if (subscriptionStatus) {
+      nextClaims.subscriptionStatus = subscriptionStatus;
+    } else {
+      delete nextClaims.subscriptionStatus;
+    }
+  }
+
+  if ('accountAccessSource' in overrides) {
+    const accountAccessSource = normalizeAccountAccessSource(overrides.accountAccessSource);
+    if (accountAccessSource) {
+      nextClaims.accountAccessSource = accountAccessSource;
+    } else {
+      delete nextClaims.accountAccessSource;
+    }
+  }
+
+  return nextClaims;
+}
+
+function deriveManualAccountAccessSource(actorRole, requestedRole, existingSource = '') {
+  const normalizedExistingSource = normalizeAccountAccessSource(existingSource);
+  if (normalizedExistingSource) return normalizedExistingSource;
+
+  const normalizedActorRole = normalizeUserRole(actorRole);
+  const normalizedRequestedRole = normalizeUserRole(requestedRole);
+
+  if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer') {
+    return 'managed_account';
+  }
+
+  if (normalizedRequestedRole === 'member') return 'free_member';
+  if (normalizedRequestedRole === 'buyer') return '';
+  return 'admin_override';
+}
+
 function isPrivilegedAdminEmail(email) {
   return normalize(email) === 'caleb@forestryequipmentsales.com';
 }
@@ -3644,21 +3725,22 @@ function resolveSubscriptionQuantityForPlan(planId, quantity, listingCap) {
   return 1;
 }
 
-async function resolveAccountSubscriptionAccessSummary(userUid) {
-  const normalizedUserUid = String(userUid || '').trim();
-  if (!normalizedUserUid) {
-    return {
-      planId: null,
-      listingCap: 0,
-      managedAccountCap: 0,
-      subscriptionStatus: 'pending',
-      currentSubscriptionId: null,
-      currentPeriodEndIso: null,
-      ownerOperatorQuantity: 0,
-    };
-  }
+function emptyAccountSubscriptionAccessSummary() {
+  return {
+    planId: null,
+    listingCap: 0,
+    managedAccountCap: 0,
+    subscriptionStatus: 'pending',
+    currentSubscriptionId: null,
+    currentPeriodEndIso: null,
+    ownerOperatorQuantity: 0,
+  };
+}
 
-  const subscriptionsSnap = await getDb().collection('subscriptions').where('userUid', '==', normalizedUserUid).get();
+function buildAccountSubscriptionAccessSummary(entries = []) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return emptyAccountSubscriptionAccessSummary();
+  }
 
   let ownerOperatorQuantity = 0;
   let hasDealer = false;
@@ -3668,21 +3750,22 @@ async function resolveAccountSubscriptionAccessSummary(userUid) {
   let ownerSubId = null;
   let maxPeriodEndMillis = 0;
 
-  subscriptionsSnap.docs.forEach((doc) => {
-    const data = doc.data() || {};
-    const planId = String(data.planId || '').trim();
-    const checkoutScope = String(data.checkoutScope || '').trim();
-    const listingId = String(data.listingId || '').trim();
+  entries.forEach((entry) => {
+    const planId = String(entry?.planId || '').trim();
+    const checkoutScope = String(entry?.checkoutScope || '').trim();
+    const listingId = String(entry?.listingId || '').trim();
 
     const isAccountSubscription = checkoutScope === 'account' || (checkoutScope === '' && !listingId);
     if (!isAccountSubscription) return;
 
-    const status = String(data.status || '').trim();
-    const cancelAtPeriodEnd = Boolean(data.cancelAtPeriodEnd);
-    const currentPeriodEnd = data.currentPeriodEnd;
-    const currentPeriodEndMillis = currentPeriodEnd && typeof currentPeriodEnd.toMillis === 'function'
-      ? currentPeriodEnd.toMillis()
-      : 0;
+    const status = String(entry?.status || '').trim();
+    const cancelAtPeriodEnd = Boolean(entry?.cancelAtPeriodEnd);
+    const rawCurrentPeriodEndMillis = Number(entry?.currentPeriodEndMillis);
+    const currentPeriodEndMillis = Number.isFinite(rawCurrentPeriodEndMillis)
+      ? rawCurrentPeriodEndMillis
+      : entry?.currentPeriodEnd && typeof entry.currentPeriodEnd.toMillis === 'function'
+        ? entry.currentPeriodEnd.toMillis()
+        : 0;
     const hasRemainingPeriod = currentPeriodEndMillis > Date.now();
     const retainsAccess = statusAllowsSellerAccess(status, cancelAtPeriodEnd, hasRemainingPeriod);
     if (!retainsAccess) return;
@@ -3693,25 +3776,24 @@ async function resolveAccountSubscriptionAccessSummary(userUid) {
 
     if (planId === 'fleet_dealer') {
       hasFleetDealer = true;
-      fleetSubId = fleetSubId || doc.id;
+      fleetSubId = fleetSubId || String(entry?.subscriptionId || '').trim() || null;
       return;
     }
 
     if (planId === 'dealer') {
       hasDealer = true;
-      dealerSubId = dealerSubId || doc.id;
+      dealerSubId = dealerSubId || String(entry?.subscriptionId || '').trim() || null;
       return;
     }
 
     if (planId === 'individual_seller') {
-      ownerSubId = ownerSubId || doc.id;
-      const quantity = resolveSubscriptionQuantityForPlan(planId, data.subscriptionQuantity, data.listingCap);
+      ownerSubId = ownerSubId || String(entry?.subscriptionId || '').trim() || null;
+      const quantity = resolveSubscriptionQuantityForPlan(planId, entry?.subscriptionQuantity, entry?.listingCap);
       ownerOperatorQuantity += quantity;
     }
   });
 
   ownerOperatorQuantity = Math.min(MAX_OWNER_OPERATOR_LISTINGS, ownerOperatorQuantity);
-
   const currentPeriodEndIso = maxPeriodEndMillis > 0 ? new Date(maxPeriodEndMillis).toISOString() : null;
 
   if (hasFleetDealer) {
@@ -3761,6 +3843,70 @@ async function resolveAccountSubscriptionAccessSummary(userUid) {
   };
 }
 
+async function listStripeAccountSubscriptionEntries(stripe, customerId) {
+  const normalizedCustomerId = String(customerId || '').trim();
+  if (!stripe || !normalizedCustomerId) return [];
+
+  const entries = [];
+  let startingAfter = '';
+
+  do {
+    const page = await stripe.subscriptions.list({
+      customer: normalizedCustomerId,
+      status: 'all',
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    page.data.forEach((subscription) => {
+      const metadata = subscription?.metadata || {};
+      entries.push({
+        subscriptionId: String(subscription?.id || '').trim(),
+        planId: String(metadata.planId || '').trim(),
+        checkoutScope: String(metadata.checkoutScope || '').trim(),
+        listingId: String(metadata.listingId || '').trim(),
+        status: normalizeStripeSubscriptionStatus(subscription?.status),
+        cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end),
+        currentPeriodEndMillis: typeof subscription?.current_period_end === 'number'
+          ? Math.floor(subscription.current_period_end) * 1000
+          : 0,
+        subscriptionQuantity: subscription?.items?.data?.[0]?.quantity,
+        listingCap: metadata.listingCap,
+      });
+    });
+
+    startingAfter = page.has_more && page.data.length > 0
+      ? String(page.data[page.data.length - 1].id || '')
+      : '';
+  } while (startingAfter);
+
+  return entries;
+}
+
+async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
+  const normalizedUserUid = String(userUid || '').trim();
+  if (!normalizedUserUid) {
+    return emptyAccountSubscriptionAccessSummary();
+  }
+
+  try {
+    const subscriptionsSnap = await getDb().collection('subscriptions').where('userUid', '==', normalizedUserUid).get();
+    const entries = subscriptionsSnap.docs.map((doc) => ({
+      subscriptionId: doc.id,
+      ...(doc.data() || {}),
+    }));
+    return buildAccountSubscriptionAccessSummary(entries);
+  } catch (error) {
+    const stripe = options?.stripe || null;
+    const customerId = String(options?.customerId || '').trim();
+    if (isFirestoreQuotaExceeded(error) && stripe && customerId) {
+      const stripeEntries = await listStripeAccountSubscriptionEntries(stripe, customerId);
+      return buildAccountSubscriptionAccessSummary(stripeEntries);
+    }
+    throw error;
+  }
+}
+
 function statusAllowsSellerAccess(status, cancelAtPeriodEnd, hasRemainingPeriod) {
   return status === 'active' || status === 'trialing' || ((status === 'past_due' || cancelAtPeriodEnd) && hasRemainingPeriod);
 }
@@ -3770,17 +3916,39 @@ function firestoreTimestampToIso(value) {
   return value.toDate().toISOString();
 }
 
-async function applyAccountSubscriptionToUserProfile({ userUid, planId, subscriptionStatus, subscriptionId, currentPeriodEnd, cancelAtPeriodEnd = false, source }) {
+async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCustomerId = '', userUid, planId, subscriptionStatus, subscriptionId, currentPeriodEnd, cancelAtPeriodEnd = false, source }) {
   const normalizedUserUid = String(userUid || '').trim();
   const normalizedPlanId = String(planId || '').trim();
   if (!normalizedUserUid || !normalizedPlanId) return;
 
   const userRef = getDb().collection('users').doc(normalizedUserUid);
-  const userSnap = await userRef.get();
-  const existingUser = userSnap.data() || {};
-  const existingRole = normalizeUserRole(existingUser.role);
-  const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid);
+  let existingUser = {};
+  let existingRole = 'buyer';
+  let existingAccessSource = '';
+  let resolvedStripeCustomerId = String(stripeCustomerId || '').trim();
+
+  try {
+    const userSnap = await userRef.get();
+    existingUser = userSnap.data() || {};
+    existingRole = normalizeUserRole(existingUser.role);
+    existingAccessSource = normalizeAccountAccessSource(existingUser.accountAccessSource);
+    resolvedStripeCustomerId = resolvedStripeCustomerId || String(existingUser.stripeCustomerId || '').trim();
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+    const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
+    existingRole = normalizeUserRole(String(authUserRecord?.customClaims?.role || ''));
+    existingAccessSource = normalizeAccountAccessSource(authUserRecord?.customClaims?.accountAccessSource);
+  }
+
+  const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid, {
+    stripe,
+    customerId: resolvedStripeCustomerId,
+  });
   const retainsSellerAccess = !!summary.planId;
+  const nextRole = retainsSellerAccess && summary.planId ? getSellerRoleForPlan(summary.planId) : 'member';
+  const nextAccessSource = retainsSellerAccess ? 'subscription' : (existingAccessSource === 'managed_account' ? 'managed_account' : 'free_member');
 
   const updatePayload = {
     activeSubscriptionPlanId: summary.planId,
@@ -3789,17 +3957,36 @@ async function applyAccountSubscriptionToUserProfile({ userUid, planId, subscrip
     managedAccountCap: summary.managedAccountCap,
     currentSubscriptionId: summary.currentSubscriptionId,
     currentPeriodEnd: summary.currentPeriodEndIso,
-    accountStatus: retainsSellerAccess ? 'active' : 'pending',
+    accountStatus: (retainsSellerAccess || nextAccessSource === 'free_member' || nextAccessSource === 'managed_account') ? 'active' : 'pending',
+    accountAccessSource: nextAccessSource,
     onboardingIntent: normalizedPlanId,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 
-  const nextRole = retainsSellerAccess && summary.planId ? getSellerRoleForPlan(summary.planId) : 'member';
   if (!['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)) {
     updatePayload.role = nextRole;
   }
 
   await userRef.set(updatePayload, { merge: true });
+
+  const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
+  if (authUserRecord) {
+    const existingClaims = authUserRecord.customClaims || {};
+    const nextClaims = buildAccessClaims(existingClaims, {
+      role: ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)
+        ? normalizeUserRole(String(existingClaims.role || existingRole || 'buyer'))
+        : nextRole,
+      subscriptionPlanId: summary.planId,
+      listingCap: summary.listingCap,
+      managedAccountCap: summary.managedAccountCap,
+      subscriptionStatus: summary.subscriptionStatus,
+      accountAccessSource: ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)
+        ? normalizeAccountAccessSource(existingClaims.accountAccessSource) || 'admin_override'
+        : nextAccessSource,
+    });
+
+    await admin.auth().setCustomUserClaims(normalizedUserUid, nextClaims);
+  }
 
   await getDb().collection('billingAuditLogs').add({
     action: 'ACCOUNT_SUBSCRIPTION_SYNC',
@@ -3913,10 +4100,54 @@ async function resolveStripePriceIdForPlan(stripe, plan) {
   return priceId;
 }
 
+async function findExistingStripeCustomerId(stripe, userUid, email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!stripe || !normalizedEmail) return '';
+
+  let startingAfter = '';
+
+  do {
+    const page = await stripe.customers.list({
+      email: normalizedEmail,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    const exactMatch = page.data.find((customer) => {
+      if (customer.deleted) return false;
+      return String(customer.metadata?.userUid || '').trim() === String(userUid || '').trim();
+    });
+    if (exactMatch?.id) {
+      return exactMatch.id;
+    }
+
+    const fallbackMatch = page.data.find((customer) => !customer.deleted);
+    if (fallbackMatch?.id) {
+      return fallbackMatch.id;
+    }
+
+    startingAfter = page.has_more && page.data.length > 0
+      ? String(page.data[page.data.length - 1].id || '')
+      : '';
+  } while (startingAfter);
+
+  return '';
+}
+
 async function getOrCreateStripeCustomer(stripe, userUid, email, name) {
   const userRef = getDb().collection('users').doc(userUid);
-  const userSnap = await userRef.get();
-  const existingCustomerId = String(userSnap.data()?.stripeCustomerId || '');
+  let existingCustomerId = '';
+  let firestoreQuotaLimited = false;
+
+  try {
+    const userSnap = await userRef.get();
+    existingCustomerId = String(userSnap.data()?.stripeCustomerId || '');
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+    firestoreQuotaLimited = true;
+  }
 
   if (existingCustomerId) {
     try {
@@ -3929,19 +4160,38 @@ async function getOrCreateStripeCustomer(stripe, userUid, email, name) {
     }
   }
 
+  if (!existingCustomerId) {
+    existingCustomerId = await findExistingStripeCustomerId(stripe, userUid, email);
+    if (existingCustomerId && !firestoreQuotaLimited) {
+      await userRef.set(
+        {
+          stripeCustomerId: existingCustomerId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return existingCustomerId;
+    }
+    if (existingCustomerId) {
+      return existingCustomerId;
+    }
+  }
+
   const customer = await stripe.customers.create({
     email,
     name,
     metadata: { userUid },
   });
 
-  await userRef.set(
-    {
-      stripeCustomerId: customer.id,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  if (!firestoreQuotaLimited) {
+    await userRef.set(
+      {
+        stripeCustomerId: customer.id,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
 
   return customer.id;
 }
@@ -4031,7 +4281,7 @@ async function finalizeListingPaymentFromCheckoutSession(session, source) {
   return { paid: true, listingId, planId };
 }
 
-async function finalizeAccountPaymentFromCheckoutSession(session, source) {
+async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source) {
   const planId = String(session.metadata?.planId || '');
   const userUid = String(session.metadata?.userUid || '');
   const paid = session.payment_status === 'paid';
@@ -4093,6 +4343,8 @@ async function finalizeAccountPaymentFromCheckoutSession(session, source) {
   }
 
   await applyAccountSubscriptionToUserProfile({
+    stripe,
+    stripeCustomerId: String(session.customer || '').trim(),
     userUid,
     planId,
     subscriptionStatus: 'active',
@@ -4104,10 +4356,10 @@ async function finalizeAccountPaymentFromCheckoutSession(session, source) {
   return { paid: true, listingId: null, planId, scope: 'account' };
 }
 
-async function finalizeCheckoutSession(session, source) {
+async function finalizeCheckoutSession(stripe, session, source) {
   const checkoutScope = String(session.metadata?.checkoutScope || '').trim();
   if (checkoutScope === 'account') {
-    return finalizeAccountPaymentFromCheckoutSession(session, source);
+    return finalizeAccountPaymentFromCheckoutSession(stripe, session, source);
   }
 
   const listingResult = await finalizeListingPaymentFromCheckoutSession(session, source);
@@ -4146,7 +4398,7 @@ async function resolveUserUidFromStripeCustomerId(stripeCustomerId) {
   return usersSnap.docs[0].id;
 }
 
-async function syncSubscriptionStateFromStripeObject(rawSubscription, source) {
+async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, source) {
   const stripeSubscriptionId = String(rawSubscription?.id || '').trim();
   if (!stripeSubscriptionId) return;
 
@@ -4224,6 +4476,8 @@ async function syncSubscriptionStateFromStripeObject(rawSubscription, source) {
 
   if (userUid && planId && (checkoutScope === 'account' || !listingId)) {
     await applyAccountSubscriptionToUserProfile({
+      stripe,
+      stripeCustomerId: String(rawSubscription?.customer || '').trim(),
       userUid,
       planId,
       subscriptionStatus,
@@ -4308,6 +4562,17 @@ function isAuthUserNotFound(error) {
 function isFirestoreQuotaExceeded(error) {
   const message = String(error?.message || error || '').toLowerCase();
   return error?.code === 8 || message.includes('resource_exhausted') || message.includes('quota limit exceeded');
+}
+
+function getQuotaExceededApiMessage(path) {
+  const normalizedPath = String(path || '').trim().toLowerCase();
+  if (normalizedPath.startsWith('/billing/')) {
+    return 'Seller billing is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  }
+  if (normalizedPath.startsWith('/admin/')) {
+    return 'This admin action is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  }
+  return 'This action is temporarily unavailable because the Firestore daily read quota is exhausted.';
 }
 
 function timestampValueToIso(value) {
@@ -4727,8 +4992,9 @@ exports.apiProxy = onRequest(
     ],
   },
   async (req, res) => {
+    let path = '/';
     try {
-      const path = (req.path || '/').replace(/^\/api/, '') || '/';
+      path = (req.path || '/').replace(/^\/api/, '') || '/';
       const stripe = createStripeClient();
 
       const publicDealerFeedMatch = path.match(/^\/public\/dealers\/([^/]+)\/feed\.json$/i);
@@ -4827,7 +5093,7 @@ exports.apiProxy = onRequest(
 
         try {
           if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-            await finalizeCheckoutSession(event.data.object, 'webhook');
+            await finalizeCheckoutSession(stripe, event.data.object, 'webhook');
           }
 
           if (
@@ -4835,7 +5101,7 @@ exports.apiProxy = onRequest(
             event.type === 'customer.subscription.updated' ||
             event.type === 'customer.subscription.deleted'
           ) {
-            await syncSubscriptionStateFromStripeObject(event.data.object, `webhook:${event.type}`);
+            await syncSubscriptionStateFromStripeObject(stripe, event.data.object, `webhook:${event.type}`);
           }
 
           if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed') {
@@ -4892,7 +5158,7 @@ exports.apiProxy = onRequest(
 
             if (rawSubscriptionId) {
               const latestSubscription = await stripe.subscriptions.retrieve(rawSubscriptionId);
-              await syncSubscriptionStateFromStripeObject(latestSubscription, `webhook:${event.type}`);
+              await syncSubscriptionStateFromStripeObject(stripe, latestSubscription, `webhook:${event.type}`);
             }
           }
 
@@ -5094,6 +5360,7 @@ exports.apiProxy = onRequest(
             displayName: String(profile.displayName || userRecord.displayName || decodedToken.name || 'Forestry Equipment Sales Admin').trim(),
             role: 'super_admin',
             accountStatus: 'active',
+            accountAccessSource: 'admin_override',
             emailVerified: Boolean(userRecord.emailVerified),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             ...(profileSnap.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp(), favorites: [] }),
@@ -5103,10 +5370,14 @@ exports.apiProxy = onRequest(
 
         const existingClaims = userRecord.customClaims || {};
         if (existingClaims.role !== 'super_admin') {
-          await admin.auth().setCustomUserClaims(uid, {
-            ...existingClaims,
+          await admin.auth().setCustomUserClaims(uid, buildAccessClaims(existingClaims, {
             role: 'super_admin',
-          });
+            accountAccessSource: 'admin_override',
+            subscriptionPlanId: null,
+            subscriptionStatus: null,
+            listingCap: null,
+            managedAccountCap: null,
+          }));
         }
 
         return res.status(200).json({
@@ -5150,15 +5421,35 @@ exports.apiProxy = onRequest(
         }
 
         const userRef = getDb().collection('users').doc(uid);
-        const userSnap = await userRef.get();
-        const existingUser = userSnap.data() || {};
-        const activePlanId = String(existingUser.activeSubscriptionPlanId || '').trim();
-        if (String(existingUser.accountStatus || '') === 'active' && activePlanId) {
+        let existingUser = {};
+        let firestoreQuotaLimited = false;
+        try {
+          const userSnap = await userRef.get();
+          existingUser = userSnap.data() || {};
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          firestoreQuotaLimited = true;
+        }
+
+        const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
+        const summary = await resolveAccountSubscriptionAccessSummary(uid, {
+          stripe,
+          customerId,
+        });
+        const activePlanId = String(
+          (firestoreQuotaLimited ? summary.planId : existingUser.activeSubscriptionPlanId) || ''
+        ).trim();
+        const accountIsActive = firestoreQuotaLimited
+          ? !!summary.planId
+          : String(existingUser.accountStatus || '') === 'active' && !!activePlanId;
+
+        if (accountIsActive && activePlanId) {
           if (plan.id !== 'individual_seller' || activePlanId !== 'individual_seller') {
             return res.status(409).json({ error: 'This account already has an active seller subscription.' });
           }
 
-          const summary = await resolveAccountSubscriptionAccessSummary(uid);
           const currentOwnerQuantity = summary.ownerOperatorQuantity || 0;
           if (currentOwnerQuantity >= MAX_OWNER_OPERATOR_LISTINGS) {
             return res.status(409).json({
@@ -5173,7 +5464,6 @@ exports.apiProxy = onRequest(
           }
         }
 
-        const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
         const baseUrl = getRequestBaseUrl(req);
         const successSeparator = returnPath.includes('?') ? '&' : '?';
 
@@ -5181,6 +5471,7 @@ exports.apiProxy = onRequest(
           {
             onboardingIntent: plan.id,
             accountStatus: 'pending',
+            accountAccessSource: 'pending_checkout',
             subscriptionStatus: 'pending',
             requestedSubscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -5254,7 +5545,7 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const finalized = await finalizeCheckoutSession(session, 'confirm');
+        const finalized = await finalizeCheckoutSession(stripe, session, 'confirm');
 
         return res.status(200).json({
           sessionId: session.id,
@@ -5383,6 +5674,7 @@ exports.apiProxy = onRequest(
 
         const temporaryPassword = generateTemporaryPassword();
         const loginUrl = `${APP_URL}/login?email=${encodeURIComponent(email)}&invited=1`;
+        const manualAccessSource = deriveManualAccountAccessSource(parentRole, normalizedRole);
 
         let authUserRecord;
 
@@ -5395,10 +5687,14 @@ exports.apiProxy = onRequest(
             disabled: false,
           });
 
-          await admin.auth().setCustomUserClaims(authUserRecord.uid, {
-            ...(authUserRecord.customClaims || {}),
+          await admin.auth().setCustomUserClaims(authUserRecord.uid, buildAccessClaims(authUserRecord.customClaims || {}, {
             role: normalizedRole,
-          });
+            accountAccessSource: manualAccessSource,
+            subscriptionPlanId: null,
+            subscriptionStatus: null,
+            listingCap: null,
+            managedAccountCap: null,
+          }));
 
           let resetLink = `${APP_URL}/login`;
           try {
@@ -5415,6 +5711,7 @@ exports.apiProxy = onRequest(
             email,
             displayName,
             role: normalizedRole,
+            accountAccessSource: manualAccessSource || null,
             phoneNumber,
             company: company || String(actorDoc.data()?.company || '').trim(),
             parentAccountUid: ownerUid,
@@ -5893,6 +6190,13 @@ exports.apiProxy = onRequest(
         const currentAuthDisplayName = String(authUserRecord?.displayName || '').trim();
         const authEmailChanged = !authUserRecord || currentAuthEmail !== email;
         const authDisplayNameChanged = !authUserRecord || currentAuthDisplayName !== displayName;
+        const currentRole = normalizeUserRole(String(currentData.role || authUserRecord?.customClaims?.role || 'buyer'));
+        const currentAccessSource = normalizeAccountAccessSource(
+          currentData.accountAccessSource || authUserRecord?.customClaims?.accountAccessSource
+        );
+        const nextAccessSource = requestedRole === currentRole && currentAccessSource
+          ? currentAccessSource
+          : deriveManualAccountAccessSource(actor.actorRole, requestedRole, currentAccessSource);
 
         if (authEmailChanged) {
           try {
@@ -5924,11 +6228,24 @@ exports.apiProxy = onRequest(
 
         try {
           const existingClaims = authUserRecord?.customClaims || {};
-          if (existingClaims.role !== requestedRole) {
-            await admin.auth().setCustomUserClaims(targetUid, {
-              ...existingClaims,
-              role: requestedRole,
-            });
+          const nextClaims = buildAccessClaims(existingClaims, {
+            role: requestedRole,
+            accountAccessSource: nextAccessSource,
+            subscriptionPlanId: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? existingClaims.subscriptionPlanId
+              : null,
+            subscriptionStatus: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? existingClaims.subscriptionStatus
+              : null,
+            listingCap: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? existingClaims.listingCap
+              : null,
+            managedAccountCap: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? existingClaims.managedAccountCap
+              : null,
+          });
+          if (JSON.stringify(existingClaims) !== JSON.stringify(nextClaims)) {
+            await admin.auth().setCustomUserClaims(targetUid, nextClaims);
           }
         } catch (error) {
           logger.error(`Failed to update auth role claims for ${targetUid}`, error);
@@ -5945,6 +6262,7 @@ exports.apiProxy = onRequest(
               phoneNumber,
               company,
               role: requestedRole,
+              accountAccessSource: nextAccessSource || null,
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -5957,7 +6275,22 @@ exports.apiProxy = onRequest(
           uid: targetUid,
           email,
           displayName,
-          customClaims: { role: requestedRole },
+          customClaims: buildAccessClaims(authUserRecord?.customClaims || {}, {
+            role: requestedRole,
+            accountAccessSource: nextAccessSource,
+            subscriptionPlanId: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? authUserRecord?.customClaims?.subscriptionPlanId
+              : null,
+            subscriptionStatus: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? authUserRecord?.customClaims?.subscriptionStatus
+              : null,
+            listingCap: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? authUserRecord?.customClaims?.listingCap
+              : null,
+            managedAccountCap: requestedRole === currentRole && currentAccessSource === 'subscription'
+              ? authUserRecord?.customClaims?.managedAccountCap
+              : null,
+          }),
         });
         return res.status(200).json({
           message: 'User updated.',
@@ -5972,6 +6305,7 @@ exports.apiProxy = onRequest(
               phoneNumber,
               company,
               role: requestedRole,
+              accountAccessSource: nextAccessSource || null,
               updatedAt: new Date().toISOString(),
             },
             responseAuthRecord
@@ -6556,7 +6890,7 @@ exports.apiProxy = onRequest(
       logger.error('apiProxy failed', error);
       if (isFirestoreQuotaExceeded(error)) {
         return res.status(503).json({
-          error: 'This admin action is temporarily unavailable because the Firestore daily read quota is exhausted.',
+          error: getQuotaExceededApiMessage(path),
         });
       }
       return res.status(500).json({ error: 'Internal server error' });

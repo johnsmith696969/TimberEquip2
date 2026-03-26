@@ -196,6 +196,7 @@ export function Profile() {
           if (!active) return;
 
           if (result.paid && result.scope === 'account') {
+            await auth.currentUser?.getIdToken(true);
             const matchedPlan = SELLER_PLAN_DEFINITIONS.find((plan) => plan.id === result.planId);
             const listingCap = matchedPlan?.listingCap || user?.listingCap || 0;
             setCheckoutNotice(

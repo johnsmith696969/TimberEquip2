@@ -64,6 +64,9 @@ export function Register() {
   });
   const navigate = useNavigate();
   const { register, login } = useAuth();
+  const postRegistrationPath = selectedAccountType === 'free_member'
+    ? '/profile'
+    : `/ad-programs?plan=${encodeURIComponent(selectedAccountType)}&startCheckout=1`;
 
   const handleNext = () => setStep(prev => prev + 1);
 
@@ -84,7 +87,10 @@ export function Register() {
       const registrationResult = await register({ ...formData, onboardingIntent: selectedAccountType });
 
       if (!registrationResult.emailVerified) {
-        navigate(`/login?verifyEmailSent=${registrationResult.verificationEmailSent ? '1' : '0'}&email=${encodeURIComponent(formData.email.trim())}`, { replace: true });
+        navigate(
+          `/login?verifyEmailSent=${registrationResult.verificationEmailSent ? '1' : '0'}&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationPath)}`,
+          { replace: true }
+        );
         return;
       }
 
@@ -93,15 +99,15 @@ export function Register() {
         return;
       }
 
-      navigate('/profile', { replace: true });
+      navigate(postRegistrationPath, { replace: true });
     } catch (err: any) {
       if (auth.currentUser) {
         const createdEmail = formData.email.trim();
         if (!auth.currentUser.emailVerified) {
-          navigate(`/login?verifyEmailSent=0&email=${encodeURIComponent(createdEmail)}`, { replace: true });
+          navigate(`/login?verifyEmailSent=0&email=${encodeURIComponent(createdEmail)}&redirect=${encodeURIComponent(postRegistrationPath)}`, { replace: true });
           return;
         }
-        navigate('/profile', { replace: true });
+        navigate(postRegistrationPath, { replace: true });
         return;
       }
 
@@ -111,10 +117,10 @@ export function Register() {
           await login(formData.email.trim(), formData.password);
           if (auth.currentUser && !auth.currentUser.emailVerified) {
             setError('That account exists but email is not verified yet. Verify your email, then sign in.');
-            navigate(`/login?verifyEmailSent=1&email=${encodeURIComponent(formData.email.trim())}`, { replace: true });
+            navigate(`/login?verifyEmailSent=1&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationPath)}`, { replace: true });
             return;
           }
-          navigate('/profile', { replace: true });
+          navigate(postRegistrationPath, { replace: true });
           return;
         } catch {
           setError('That email is already registered. Try logging in instead.');

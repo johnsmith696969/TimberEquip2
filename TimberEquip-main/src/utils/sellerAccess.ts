@@ -3,19 +3,37 @@ import type { UserProfile } from '../types';
 const ADMIN_PUBLISHER_ROLES = new Set(['admin', 'super_admin', 'developer']);
 const MANAGED_SELLER_ROLES = new Set(['dealer', 'pro_dealer']);
 const DEALER_OS_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
+const SELLER_OVERRIDE_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer']);
 
 function normalizeRole(role?: string | null): string {
   return String(role || '').trim().toLowerCase();
 }
 
+function normalizeAccountAccessSource(source?: string | null): string {
+  return String(source || '').trim().toLowerCase();
+}
+
 export function canUserPostListings(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
 
-  const adminCanPublishWithoutPayment = !!(user.role && ADMIN_PUBLISHER_ROLES.has(user.role));
-  const hasActiveSellerPlan = !!(user.activeSubscriptionPlanId && user.accountStatus === 'active');
-  const hasManagedSellerAccess = !!(user.role && MANAGED_SELLER_ROLES.has(user.role) && user.accountStatus === 'active');
+  const normalizedRole = normalizeRole(user.role);
+  const accessSource = normalizeAccountAccessSource(user.accountAccessSource);
+  const adminCanPublishWithoutPayment = !!(normalizedRole && ADMIN_PUBLISHER_ROLES.has(normalizedRole));
+  const hasActiveSellerPlan = !!(accessSource === 'subscription' && user.activeSubscriptionPlanId && user.accountStatus === 'active');
+  const hasManagedSellerAccess = !!(
+    normalizedRole &&
+    SELLER_OVERRIDE_ROLES.has(normalizedRole) &&
+    user.accountStatus === 'active' &&
+    (accessSource === 'managed_account' || accessSource === 'admin_override')
+  );
+  const hasLegacySellerAccess = !!(
+    !accessSource &&
+    normalizedRole &&
+    MANAGED_SELLER_ROLES.has(normalizedRole) &&
+    user.accountStatus === 'active'
+  );
 
-  return adminCanPublishWithoutPayment || hasActiveSellerPlan || hasManagedSellerAccess;
+  return adminCanPublishWithoutPayment || hasActiveSellerPlan || hasManagedSellerAccess || hasLegacySellerAccess;
 }
 
 export function canAccessDealerOs(user: UserProfile | null | undefined): boolean {

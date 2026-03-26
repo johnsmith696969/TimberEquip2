@@ -437,6 +437,7 @@ export interface UserProfile {
   seoKeywords?: string[];
   parentAccountUid?: string;
   accountStatus?: 'active' | 'pending' | 'suspended';
+  accountAccessSource?: 'free_member' | 'pending_checkout' | 'subscription' | 'admin_override' | 'managed_account' | null;
   onboardingIntent?: 'free_member' | 'individual_seller' | 'dealer' | 'fleet_dealer';
   activeSubscriptionPlanId?: 'individual_seller' | 'dealer' | 'fleet_dealer' | null;
   subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'pending' | null;

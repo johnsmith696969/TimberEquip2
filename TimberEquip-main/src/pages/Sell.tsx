@@ -74,6 +74,7 @@ export function Sell() {
           if (!mounted) return;
 
           if (result.paid) {
+            await auth.currentUser?.getIdToken(true);
             setPaymentCompleted(true);
             setCheckoutStatusMessage('Seller account activated. You can now create listings within your plan limits.');
             setShowModal(true);
@@ -122,6 +123,7 @@ export function Sell() {
           }
 
           if (result.paid) {
+            await auth.currentUser?.getIdToken(true);
             setPaymentCompleted(true);
             setCheckoutStatusMessage('Payment received. Your listing is now in the review queue.');
           } else {

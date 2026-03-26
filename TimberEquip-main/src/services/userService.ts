@@ -102,6 +102,16 @@ function sanitizeSeoKeywords(value: unknown): string[] | undefined {
     .slice(0, 30);
 }
 
+function sanitizeAccountAccessSource(value: unknown): UserProfile['accountAccessSource'] | undefined {
+  if (value === undefined) return undefined;
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'free_member' || normalized === 'pending_checkout' || normalized === 'subscription' || normalized === 'admin_override' || normalized === 'managed_account') {
+    return normalized as UserProfile['accountAccessSource'];
+  }
+  return undefined;
+}
+
 function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<UserProfile> {
   const sanitized: Partial<UserProfile> = { ...payload };
 
@@ -122,6 +132,7 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('seoTitle' in payload) sanitized.seoTitle = sanitizeOptionalString(payload.seoTitle, 200) || '';
   if ('seoDescription' in payload) sanitized.seoDescription = sanitizeOptionalString(payload.seoDescription, 600) || '';
   if ('seoKeywords' in payload) sanitized.seoKeywords = sanitizeSeoKeywords(payload.seoKeywords) || [];
+  if ('accountAccessSource' in payload) sanitized.accountAccessSource = sanitizeAccountAccessSource(payload.accountAccessSource) ?? null;
   if ('currentSubscriptionId' in payload) sanitized.currentSubscriptionId = sanitizeOptionalString(payload.currentSubscriptionId, 200) || null;
   if ('currentPeriodEnd' in payload) sanitized.currentPeriodEnd = payload.currentPeriodEnd ? String(payload.currentPeriodEnd) : null;
 
@@ -518,6 +529,7 @@ export const userService = {
       email: input.email,
       displayName: input.displayName,
       role: targetRole,
+      accountAccessSource: 'managed_account',
       phoneNumber: input.phoneNumber || '',
       company: input.company || creatorProfile.company || '',
       parentAccountUid: ownerUid,

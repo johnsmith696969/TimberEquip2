@@ -64,6 +64,7 @@ export function AdPrograms() {
   });
 
   const [pendingPlanCheckout, setPendingPlanCheckout] = useState<ListingPlanId | null>(null);
+  const flowIntent = String(searchParams.get('intent') || '').trim().toLowerCase();
 
   const openLeadForm = (type: 'media-kit' | 'support') => {
     setRequestType(type);
@@ -154,20 +155,30 @@ export function AdPrograms() {
   ];
 
   const startPlanCheckout = async (planId: ListingPlanId) => {
+    const nextParams = new URLSearchParams();
+    if (flowIntent === 'list-equipment') {
+      nextParams.set('intent', 'list-equipment');
+    }
+    nextParams.set('plan', planId);
+
     if (!isAuthenticated) {
       navigate('/login', {
         state: {
-          from: `/ad-programs?plan=${encodeURIComponent(planId)}&startCheckout=1`,
+          from: `/ad-programs?${nextParams.toString()}&startCheckout=1`,
         },
       });
       return;
     }
 
+    const returnPath = flowIntent === 'list-equipment'
+      ? `/sell?plan=${encodeURIComponent(planId)}`
+      : '/profile?source=ad-programs';
+
     setPendingPlanCheckout(planId);
     try {
       const { url } = await billingService.createAccountCheckoutSession(
         planId,
-        '/profile?source=ad-programs'
+        returnPath
       );
       window.location.assign(url);
     } catch (error) {
@@ -189,7 +200,7 @@ export function AdPrograms() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('startCheckout');
     setSearchParams(nextParams, { replace: true });
-  }, [searchParams, isAuthenticated, pendingPlanCheckout, setSearchParams]);
+  }, [flowIntent, isAuthenticated, navigate, pendingPlanCheckout, searchParams, setSearchParams]);
 
   const submitMediaKitRequest = async (e: React.FormEvent) => {
     e.preventDefault();

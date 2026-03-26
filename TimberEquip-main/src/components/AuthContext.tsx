@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
-  onAuthStateChanged,
+  onIdTokenChanged,
   signInWithPopup,
   signInWithRedirect,
   signInWithEmailAndPassword,
@@ -17,6 +17,7 @@ import { userService } from '../services/userService';
 import type { ListingPlanId } from '../services/billingService';
 
 const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
+type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -38,71 +39,119 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function mapRoleToSubscriptionFallback(role: UserProfile['role'] | undefined) {
-  switch (role) {
-    case 'pro_dealer':
-      return {
-        onboardingIntent: 'fleet_dealer' as const,
-        activeSubscriptionPlanId: 'fleet_dealer' as const,
-        subscriptionStatus: 'active' as const,
-        listingCap: 150,
-        managedAccountCap: 3,
-      };
-    case 'dealer':
-      return {
-        onboardingIntent: 'dealer' as const,
-        activeSubscriptionPlanId: 'dealer' as const,
-        subscriptionStatus: 'active' as const,
-        listingCap: 50,
-        managedAccountCap: 3,
-      };
-    case 'individual_seller':
-      return {
-        onboardingIntent: 'individual_seller' as const,
-        activeSubscriptionPlanId: 'individual_seller' as const,
-        subscriptionStatus: 'active' as const,
-        listingCap: 1,
-        managedAccountCap: 0,
-      };
-    default:
-      return {
-        onboardingIntent: 'free_member' as const,
-        activeSubscriptionPlanId: null,
-        subscriptionStatus: null,
-        listingCap: 0,
-        managedAccountCap: 0,
-      };
+function normalizeSubscriptionPlanId(value: unknown): UserProfile['activeSubscriptionPlanId'] {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'individual_seller' || normalized === 'dealer' || normalized === 'fleet_dealer') {
+    return normalized as UserProfile['activeSubscriptionPlanId'];
   }
+  return null;
 }
 
-async function resolveRoleFromAuthState(
+function normalizeSubscriptionStatus(value: unknown): UserProfile['subscriptionStatus'] {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'active' || normalized === 'canceled' || normalized === 'past_due' || normalized === 'trialing' || normalized === 'pending') {
+    return normalized as UserProfile['subscriptionStatus'];
+  }
+  return null;
+}
+
+function normalizeAccountAccessSource(value: unknown): AccountAccessSource | null {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'free_member' || normalized === 'pending_checkout' || normalized === 'subscription' || normalized === 'admin_override' || normalized === 'managed_account') {
+    return normalized as AccountAccessSource;
+  }
+  return null;
+}
+
+function normalizeClaimNumber(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function deriveOnboardingIntent(
+  role: UserProfile['role'],
+  accessSource: AccountAccessSource | null,
+  activeSubscriptionPlanId: UserProfile['activeSubscriptionPlanId'],
+  currentOnboardingIntent?: UserProfile['onboardingIntent'] | null
+): UserProfile['onboardingIntent'] {
+  if (currentOnboardingIntent) return currentOnboardingIntent;
+  if (activeSubscriptionPlanId) return activeSubscriptionPlanId;
+  if (accessSource === 'pending_checkout' && role !== 'member') {
+    return role === 'buyer' ? 'individual_seller' : 'free_member';
+  }
+  return role === 'member' ? 'free_member' : 'free_member';
+}
+
+async function resolveAuthAccessSnapshot(
   firebaseUser: FirebaseUser,
-  currentRole?: UserProfile['role'] | null
-): Promise<UserProfile['role']> {
+  current: UserProfile | null
+): Promise<{
+  role: UserProfile['role'];
+  activeSubscriptionPlanId: UserProfile['activeSubscriptionPlanId'];
+  subscriptionStatus: UserProfile['subscriptionStatus'];
+  listingCap: number | null;
+  managedAccountCap: number | null;
+  accountAccessSource: AccountAccessSource | null;
+}> {
+  let resolvedRole = current?.role || 'member';
+  let activeSubscriptionPlanId = normalizeSubscriptionPlanId(current?.activeSubscriptionPlanId);
+  let subscriptionStatus = normalizeSubscriptionStatus(current?.subscriptionStatus);
+  let listingCap = typeof current?.listingCap === 'number' ? current.listingCap : null;
+  let managedAccountCap = typeof current?.managedAccountCap === 'number' ? current.managedAccountCap : null;
+  let accountAccessSource = normalizeAccountAccessSource(current?.accountAccessSource);
+
   try {
     const tokenResult = await firebaseUser.getIdTokenResult();
     const rawClaimRole = String(tokenResult.claims.role || '').trim();
     if (rawClaimRole) {
-      return userService.normalizeRole(rawClaimRole);
+      resolvedRole = userService.normalizeRole(rawClaimRole);
     }
+    activeSubscriptionPlanId = activeSubscriptionPlanId ?? normalizeSubscriptionPlanId(tokenResult.claims.subscriptionPlanId);
+    subscriptionStatus = subscriptionStatus ?? normalizeSubscriptionStatus(tokenResult.claims.subscriptionStatus);
+    listingCap = listingCap ?? normalizeClaimNumber(tokenResult.claims.listingCap);
+    managedAccountCap = managedAccountCap ?? normalizeClaimNumber(tokenResult.claims.managedAccountCap);
+    accountAccessSource = accountAccessSource ?? normalizeAccountAccessSource(tokenResult.claims.accountAccessSource);
   } catch (error) {
     console.error('Unable to resolve auth role claims during profile fallback:', error);
   }
 
   const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
   if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail)) {
-    return 'super_admin';
+    resolvedRole = 'super_admin';
+    accountAccessSource = accountAccessSource || 'admin_override';
   }
 
-  return currentRole || 'member';
+  if (!accountAccessSource) {
+    if (activeSubscriptionPlanId) {
+      accountAccessSource = 'subscription';
+    } else if (current?.parentAccountUid && ['individual_seller', 'dealer', 'pro_dealer'].includes(resolvedRole)) {
+      accountAccessSource = 'managed_account';
+    } else if (resolvedRole === 'member') {
+      accountAccessSource = 'free_member';
+    }
+  }
+
+  return {
+    role: resolvedRole,
+    activeSubscriptionPlanId,
+    subscriptionStatus,
+    listingCap,
+    managedAccountCap,
+    accountAccessSource,
+  };
 }
 
 async function buildFallbackProfile(
   firebaseUser: FirebaseUser,
   current: UserProfile | null
 ): Promise<UserProfile> {
-  const role = await resolveRoleFromAuthState(firebaseUser, current?.role);
-  const subscriptionFallback = mapRoleToSubscriptionFallback(role);
+  const accessSnapshot = await resolveAuthAccessSnapshot(firebaseUser, current);
+  const role = accessSnapshot.role;
+  const accountAccessSource = accessSnapshot.accountAccessSource;
+  const activeSubscriptionPlanId = current?.activeSubscriptionPlanId ?? accessSnapshot.activeSubscriptionPlanId ?? null;
+  const subscriptionStatus = current?.subscriptionStatus ?? accessSnapshot.subscriptionStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : null);
+  const listingCap = current?.listingCap ?? accessSnapshot.listingCap ?? 0;
+  const managedAccountCap = current?.managedAccountCap ?? accessSnapshot.managedAccountCap ?? 0;
 
   return {
     uid: firebaseUser.uid,
@@ -117,12 +166,13 @@ async function buildFallbackProfile(
     about: current?.about || '',
     bio: current?.bio || '',
     location: current?.location || '',
-    accountStatus: current?.accountStatus || 'active',
-    onboardingIntent: current?.onboardingIntent || subscriptionFallback.onboardingIntent,
-    activeSubscriptionPlanId: current?.activeSubscriptionPlanId ?? subscriptionFallback.activeSubscriptionPlanId,
-    subscriptionStatus: current?.subscriptionStatus ?? subscriptionFallback.subscriptionStatus,
-    listingCap: current?.listingCap ?? subscriptionFallback.listingCap,
-    managedAccountCap: current?.managedAccountCap ?? subscriptionFallback.managedAccountCap,
+    accountStatus: current?.accountStatus || (accountAccessSource === 'pending_checkout' ? 'pending' : 'active'),
+    accountAccessSource,
+    onboardingIntent: deriveOnboardingIntent(role, accountAccessSource, activeSubscriptionPlanId, current?.onboardingIntent),
+    activeSubscriptionPlanId,
+    subscriptionStatus,
+    listingCap,
+    managedAccountCap,
     currentSubscriptionId: current?.currentSubscriptionId || null,
     currentPeriodEnd: current?.currentPeriodEnd || null,
     favorites: Array.isArray(current?.favorites) ? current.favorites : [],
@@ -168,7 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let unsubscribeProfile: (() => void) | null = null;
     let authStateVersion = 0;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribeAuth = onIdTokenChanged(auth, (firebaseUser) => {
       authStateVersion += 1;
       const currentVersion = authStateVersion;
 
@@ -317,6 +367,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isAdmin = ADMIN_EMAILS.includes(email.trim().toLowerCase());
     const nextRole = isAdmin ? 'super_admin' : onboardingIntent === 'free_member' ? 'member' : 'buyer';
     const nextAccountStatus = isAdmin || onboardingIntent === 'free_member' ? 'active' : 'pending';
+    const nextAccessSource: UserProfile['accountAccessSource'] = isAdmin
+      ? 'admin_override'
+      : onboardingIntent === 'free_member'
+        ? 'free_member'
+        : 'pending_checkout';
 
     const profile: UserProfile = {
       uid: credential.user.uid,
@@ -326,6 +381,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       photoURL: credential.user.photoURL || '',
       company: company || '',
       accountStatus: nextAccountStatus,
+      accountAccessSource: nextAccessSource,
       onboardingIntent,
       activeSubscriptionPlanId: null,
       subscriptionStatus: onboardingIntent === 'free_member' ? null : 'pending',

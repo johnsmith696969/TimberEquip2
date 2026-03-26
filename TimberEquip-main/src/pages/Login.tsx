@@ -25,9 +25,11 @@ export function Login() {
   const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail } = useAuth();
   const stateReason = (location.state as { reason?: string; email?: string } | null)?.reason || '';
   const stateEmail = (location.state as { reason?: string; email?: string } | null)?.email || '';
+  const queryRedirectTargetRaw = new URLSearchParams(location.search).get('redirect') || '';
+  const queryRedirectTarget = queryRedirectTargetRaw.startsWith('/') ? queryRedirectTargetRaw : '';
   const redirectTarget = typeof (location.state as { from?: unknown } | null)?.from === 'string'
     ? ((location.state as { from: string }).from || '')
-    : '';
+    : queryRedirectTarget;
 
   // ── Forgot password state ─────────────────────────────────────
   const [showReset, setShowReset] = useState(false);
