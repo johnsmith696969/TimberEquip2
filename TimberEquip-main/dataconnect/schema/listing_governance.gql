@@ -1,0 +1,146 @@
+type Listing @table(name: "listings", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  legacyFirestoreId: String @col(name: "legacy_firestore_id")
+  sellerPartyId: String! @col(name: "seller_party_id")
+  title: String!
+  categoryKey: String! @col(name: "category_key")
+  subcategoryKey: String @col(name: "subcategory_key")
+  manufacturerKey: String @col(name: "manufacturer_key")
+  modelKey: String @col(name: "model_key")
+  locationText: String @col(name: "location_text")
+  priceAmount: Float @col(name: "price_amount", dataType: "numeric(14,2)")
+  currencyCode: String! @col(name: "currency_code") @default(value: "USD")
+  """
+  Allowed values:
+  - draft
+  - submitted
+  - approved_unpaid
+  - live
+  - expired
+  - sold
+  - rejected
+  - archived
+  """
+  lifecycleState: String! @col(name: "lifecycle_state") @default(value: "draft")
+  """
+  Allowed values:
+  - pending
+  - approved
+  - rejected
+  """
+  reviewState: String! @col(name: "review_state") @default(value: "pending")
+  """
+  Allowed values:
+  - pending
+  - paid
+  - failed
+  - waived
+  - refunded
+  """
+  paymentState: String! @col(name: "payment_state") @default(value: "pending")
+  """
+  Allowed values:
+  - draft
+  - active
+  - expired
+  - sold
+  - archived
+  """
+  inventoryState: String! @col(name: "inventory_state") @default(value: "draft")
+  """
+  Allowed values:
+  - private
+  - public_live
+  - public_sold
+  - archived
+  """
+  visibilityState: String! @col(name: "visibility_state") @default(value: "private")
+  primaryImageUrl: String @col(name: "primary_image_url")
+  publishedAt: Timestamp @col(name: "published_at")
+  expiresAt: Timestamp @col(name: "expires_at")
+  soldAt: Timestamp @col(name: "sold_at")
+  sourceSystem: String! @col(name: "source_system") @default(value: "firestore")
+  externalSourceName: String @col(name: "external_source_name")
+  externalSourceId: String @col(name: "external_source_id")
+  metadataJson: Any! @col(name: "metadata_json") @default(sql: "'{}'::jsonb")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type ListingVersion @table(name: "listing_versions", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing! @ref(fields: ["listingId"], references: ["id"])
+  listingId: UUID! @col(name: "listing_id")
+  versionNumber: Int! @col(name: "version_number")
+  versionReason: String @col(name: "version_reason")
+  capturedBy: String! @col(name: "captured_by") @default(value: "system")
+  snapshotJson: Any! @col(name: "snapshot_json")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type ListingStateTransition @table(name: "listing_state_transitions", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing! @ref(fields: ["listingId"], references: ["id"])
+  listingId: UUID! @col(name: "listing_id")
+  transitionAction: String! @col(name: "transition_action")
+  previousState: String @col(name: "previous_state")
+  nextState: String! @col(name: "next_state")
+  previousReviewState: String @col(name: "previous_review_state")
+  nextReviewState: String @col(name: "next_review_state")
+  previousPaymentState: String @col(name: "previous_payment_state")
+  nextPaymentState: String @col(name: "next_payment_state")
+  previousInventoryState: String @col(name: "previous_inventory_state")
+  nextInventoryState: String @col(name: "next_inventory_state")
+  previousVisibilityState: String @col(name: "previous_visibility_state")
+  nextVisibilityState: String @col(name: "next_visibility_state")
+  reasonCode: String @col(name: "reason_code")
+  reasonNote: String @col(name: "reason_note")
+  actorType: String! @col(name: "actor_type") @default(value: "system")
+  actorId: String @col(name: "actor_id")
+  requestId: String @col(name: "request_id")
+  sourceSystem: String! @col(name: "source_system") @default(value: "application")
+  metadataJson: Any! @col(name: "metadata_json") @default(sql: "'{}'::jsonb")
+  occurredAt: Timestamp! @col(name: "occurred_at") @default(expr: "request.time")
+}
+
+type ListingAnomaly @table(name: "listing_anomalies", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing! @ref(fields: ["listingId"], references: ["id"])
+  listingId: UUID! @col(name: "listing_id")
+  anomalyCode: String! @col(name: "anomaly_code")
+  severity: String!
+  status: String! @default(value: "open")
+  detectedBy: String! @col(name: "detected_by") @default(value: "system")
+  ownerId: String @col(name: "owner_id")
+  snapshotJson: Any! @col(name: "snapshot_json") @default(sql: "'{}'::jsonb")
+  detectedAt: Timestamp! @col(name: "detected_at") @default(expr: "request.time")
+  resolvedAt: Timestamp @col(name: "resolved_at")
+  resolutionNote: String @col(name: "resolution_note")
+}
+
+type ListingVisibilitySnapshot @table(name: "listing_visibility_snapshots", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing! @ref(fields: ["listingId"], references: ["id"])
+  listingId: UUID! @col(name: "listing_id")
+  lifecycleState: String! @col(name: "lifecycle_state")
+  reviewState: String! @col(name: "review_state")
+  paymentState: String! @col(name: "payment_state")
+  inventoryState: String! @col(name: "inventory_state")
+  visibilityState: String! @col(name: "visibility_state")
+  isPublic: Boolean! @col(name: "is_public")
+  snapshotReason: String @col(name: "snapshot_reason")
+  snapshotJson: Any! @col(name: "snapshot_json") @default(sql: "'{}'::jsonb")
+  capturedAt: Timestamp! @col(name: "captured_at") @default(expr: "request.time")
+}
+
+type ListingMediaAudit @table(name: "listing_media_audits", key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  listing: Listing! @ref(fields: ["listingId"], references: ["id"])
+  listingId: UUID! @col(name: "listing_id")
+  mediaStatus: String! @col(name: "media_status")
+  primaryImagePresent: Boolean! @col(name: "primary_image_present") @default(value: false)
+  imageCount: Int! @col(name: "image_count") @default(value: 0)
+  validationErrors: Any! @col(name: "validation_errors") @default(sql: "'[]'::jsonb")
+  sourceSystem: String! @col(name: "source_system") @default(value: "application")
+  auditedAt: Timestamp! @col(name: "audited_at") @default(expr: "request.time")
+}

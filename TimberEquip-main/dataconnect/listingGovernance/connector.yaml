@@ -1,0 +1,11 @@
+connectorId: listingGovernance
+generate:
+  javascriptSdk:
+    outputDir: ../../src/lib/dataconnect/generated
+    package: "@dataconnect/generated-timberequip-listing-governance"
+    packageJsonDir: ../..
+    react: true
+  adminNodeSdk:
+    outputDir: ../../functions/generated/dataconnect/listing-governance
+    package: "@dataconnect/admin-generated-timberequip-listing-governance"
+    packageJsonDir: ../../functions

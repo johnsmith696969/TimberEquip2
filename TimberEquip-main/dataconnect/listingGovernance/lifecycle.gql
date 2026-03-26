@@ -1,0 +1,637 @@
+# Phase 1 listing governance connector
+# These operations are intentionally limited to lifecycle governance.
+
+query GetListingGovernance($id: UUID!) @auth(level: USER) {
+  listing(id: $id) {
+    id
+    legacyFirestoreId
+    sellerPartyId
+    title
+    lifecycleState
+    reviewState
+    paymentState
+    inventoryState
+    visibilityState
+    publishedAt
+    expiresAt
+    soldAt
+    updatedAt
+  }
+}
+
+query ListLifecycleQueue(
+  $lifecycleStates: [String!]!
+  $limit: Int! = 50
+) @auth(level: USER) {
+  listings(
+    where: { lifecycleState: { in: $lifecycleStates } }
+    orderBy: { updatedAt: DESC }
+    limit: $limit
+  ) {
+    id
+    title
+    sellerPartyId
+    lifecycleState
+    reviewState
+    paymentState
+    inventoryState
+    visibilityState
+    updatedAt
+  }
+}
+
+query ListListingTransitions(
+  $listingId: UUID!
+  $limit: Int! = 100
+) @auth(level: USER) {
+  listingStateTransitions(
+    where: { listingId: { eq: $listingId } }
+    orderBy: { occurredAt: DESC }
+    limit: $limit
+  ) {
+    id
+    transitionAction
+    previousState
+    nextState
+    previousReviewState
+    nextReviewState
+    previousPaymentState
+    nextPaymentState
+    previousInventoryState
+    nextInventoryState
+    previousVisibilityState
+    nextVisibilityState
+    actorType
+    actorId
+    reasonCode
+    reasonNote
+    occurredAt
+  }
+}
+
+query ListOpenListingAnomalies(
+  $listingId: UUID!
+  $limit: Int! = 50
+) @auth(level: USER) {
+  listingAnomalies(
+    where: {
+      listingId: { eq: $listingId }
+      status: { eq: "open" }
+    }
+    orderBy: { detectedAt: DESC }
+    limit: $limit
+  ) {
+    id
+    anomalyCode
+    severity
+    status
+    detectedBy
+    detectedAt
+    resolvedAt
+    resolutionNote
+  }
+}
+
+mutation SubmitListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonNote: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState in ['draft', 'rejected']", message: "Only draft or rejected listings can be submitted")
+      @check(expr: "this.title != '' && this.sellerPartyId != '' && this.categoryKey != ''", message: "Listing is missing required submission fields") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+      title
+      sellerPartyId
+      categoryKey
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "submitted"
+      reviewState: "pending"
+      inventoryState: "draft"
+      visibilityState: "private"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "submit_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "submitted"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState: "pending"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState: "draft"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "private"
+      reasonNote: $reasonNote
+      actorType: "seller"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation ApproveListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonCode: String
+  $reasonNote: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState == 'submitted'", message: "Only submitted listings can be approved") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "approved_unpaid"
+      reviewState: "approved"
+      visibilityState: "private"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "approve_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "approved_unpaid"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState: "approved"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState_expr: "response.query.listing.inventoryState"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "private"
+      reasonCode: $reasonCode
+      reasonNote: $reasonNote
+      actorType: "admin"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation RejectListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonCode: String!
+  $reasonNote: String!
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState in ['submitted', 'approved_unpaid']", message: "Only submitted or approved_unpaid listings can be rejected") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "rejected"
+      reviewState: "rejected"
+      visibilityState: "private"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "reject_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "rejected"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState: "rejected"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState_expr: "response.query.listing.inventoryState"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "private"
+      reasonCode: $reasonCode
+      reasonNote: $reasonNote
+      actorType: "admin"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation ConfirmListingPayment(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonCode: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState == 'approved_unpaid'", message: "Only approved_unpaid listings can accept payment confirmation")
+      @check(expr: "this.paymentState in ['pending', 'failed']", message: "Payment confirmation expects a pending or failed payment state") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      paymentState: "paid"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "confirm_payment"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState_expr: "response.query.listing.lifecycleState"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState_expr: "response.query.listing.reviewState"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState: "paid"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState_expr: "response.query.listing.inventoryState"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState_expr: "response.query.listing.visibilityState"
+      reasonCode: $reasonCode
+      actorType: "billing_webhook"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation PublishListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState in ['approved_unpaid', 'sold']", message: "Only approved_unpaid or sold listings can be published")
+      @check(expr: "this.reviewState == 'approved'", message: "Only approved listings can be published")
+      @check(expr: "this.paymentState in ['paid', 'waived']", message: "Only paid or waived listings can be published") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "live"
+      inventoryState: "active"
+      visibilityState: "public_live"
+      publishedAt_expr: "request.time"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "publish_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "live"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState_expr: "response.query.listing.reviewState"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState: "active"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "public_live"
+      actorType: "system"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation ExpireListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonCode: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState == 'live'", message: "Only live listings can expire")
+      @check(expr: "this.visibilityState == 'public_live'", message: "Only publicly live listings can expire") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "expired"
+      inventoryState: "expired"
+      visibilityState: "private"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "expire_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "expired"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState_expr: "response.query.listing.reviewState"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState: "expired"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "private"
+      reasonCode: $reasonCode
+      actorType: "system"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation RelistListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonNote: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState in ['expired', 'sold']", message: "Only expired or sold listings can be relisted")
+      @check(expr: "this.reviewState == 'approved'", message: "Only approved listings can be relisted")
+      @check(expr: "this.paymentState in ['paid', 'waived']", message: "Only paid or waived listings can be relisted") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "live"
+      inventoryState: "active"
+      visibilityState: "public_live"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "relist_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "live"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState_expr: "response.query.listing.reviewState"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState: "active"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "public_live"
+      reasonNote: $reasonNote
+      actorType: "seller"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation MarkListingSold(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonNote: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found")
+      @check(expr: "this.lifecycleState == 'live'", message: "Only live listings can be marked sold")
+      @check(expr: "this.visibilityState == 'public_live'", message: "Only publicly live listings can be marked sold") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "sold"
+      inventoryState: "sold"
+      visibilityState: "public_sold"
+      soldAt_expr: "request.time"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "mark_listing_sold"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "sold"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState_expr: "response.query.listing.reviewState"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState: "sold"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "public_sold"
+      reasonNote: $reasonNote
+      actorType: "seller"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation ArchiveListing(
+  $id: UUID!
+  $actorId: String
+  $requestId: String
+  $reasonCode: String
+  $reasonNote: String
+) @transaction @auth(level: USER) {
+  query {
+    listing(id: $id)
+      @redact
+      @check(message: "Listing not found") {
+      id
+      lifecycleState
+      reviewState
+      paymentState
+      inventoryState
+      visibilityState
+    }
+  }
+  listing_update(
+    id: $id
+    data: {
+      lifecycleState: "archived"
+      inventoryState: "archived"
+      visibilityState: "archived"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+  listingStateTransition_insert(
+    data: {
+      listingId_expr: "response.query.listing.id"
+      transitionAction: "archive_listing"
+      previousState_expr: "response.query.listing.lifecycleState"
+      nextState: "archived"
+      previousReviewState_expr: "response.query.listing.reviewState"
+      nextReviewState_expr: "response.query.listing.reviewState"
+      previousPaymentState_expr: "response.query.listing.paymentState"
+      nextPaymentState_expr: "response.query.listing.paymentState"
+      previousInventoryState_expr: "response.query.listing.inventoryState"
+      nextInventoryState: "archived"
+      previousVisibilityState_expr: "response.query.listing.visibilityState"
+      nextVisibilityState: "archived"
+      reasonCode: $reasonCode
+      reasonNote: $reasonNote
+      actorType: "operator"
+      actorId: $actorId
+      requestId: $requestId
+      sourceSystem: "dataconnect"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}
+
+mutation ResolveListingAnomaly(
+  $id: UUID!
+  $resolutionNote: String!
+) @transaction @auth(level: USER) {
+  listingAnomaly_update(
+    id: $id
+    data: {
+      status: "resolved"
+      resolutionNote: $resolutionNote
+      resolvedAt_expr: "request.time"
+    }
+  ) {
+    key
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "initialState": "draft",
+  "states": ["draft", "submitted", "approved_unpaid", "live", "expired", "sold", "rejected", "archived"],
+  "actions": [
+    {
+      "action": "submit_listing",
+      "from": ["draft", "rejected"],
+      "to": "submitted",
+      "actorTypes": ["seller", "dealer", "admin", "migration_worker"],
+      "requires": ["title_present", "seller_party_present", "category_present"],
+      "writes": { "review_state": "pending", "inventory_state": "draft", "visibility_state": "private" }
+    },
+    {
+      "action": "approve_listing",
+      "from": ["submitted"],
+      "to": "approved_unpaid",
+      "actorTypes": ["admin", "operator"],
+      "requires": ["reviewable_payload"],
+      "writes": { "review_state": "approved", "visibility_state": "private" }
+    },
+    {
+      "action": "reject_listing",
+      "from": ["submitted", "approved_unpaid"],
+      "to": "rejected",
+      "actorTypes": ["admin", "operator"],
+      "requires": ["rejection_reason_present"],
+      "writes": { "review_state": "rejected", "visibility_state": "private" }
+    },
+    {
+      "action": "confirm_payment",
+      "from": ["approved_unpaid"],
+      "to": "approved_unpaid",
+      "actorTypes": ["billing_webhook", "admin", "operator"],
+      "requires": ["payment_state_pending_or_failed", "billable_listing_or_waiver"],
+      "writes": { "payment_state": "paid" }
+    },
+    {
+      "action": "publish_listing",
+      "from": ["approved_unpaid", "sold"],
+      "to": "live",
+      "actorTypes": ["system", "admin", "operator", "billing_webhook"],
+      "requires": ["review_state_approved", "payment_state_paid_or_waived", "not_expired"],
+      "writes": { "inventory_state": "active", "visibility_state": "public_live", "published_at": "now" }
+    },
+    {
+      "action": "expire_listing",
+      "from": ["live"],
+      "to": "expired",
+      "actorTypes": ["system", "admin", "operator"],
+      "requires": ["expiration_due"],
+      "writes": { "inventory_state": "expired", "visibility_state": "private" }
+    },
+    {
+      "action": "relist_listing",
+      "from": ["expired", "sold"],
+      "to": "live",
+      "actorTypes": ["seller", "dealer", "admin", "operator"],
+      "requires": ["review_state_approved", "payment_state_paid_or_waived", "not_expired"],
+      "writes": { "inventory_state": "active", "visibility_state": "public_live" }
+    },
+    {
+      "action": "mark_listing_sold",
+      "from": ["live"],
+      "to": "sold",
+      "actorTypes": ["seller", "dealer", "admin", "operator"],
+      "requires": ["live_listing", "visibility_state_public_live"],
+      "writes": { "inventory_state": "sold", "visibility_state": "public_sold", "sold_at": "now" }
+    },
+    {
+      "action": "archive_listing",
+      "from": ["draft", "submitted", "approved_unpaid", "live", "expired", "sold", "rejected"],
+      "to": "archived",
+      "actorTypes": ["seller", "dealer", "admin", "operator", "system"],
+      "requires": [],
+      "writes": { "inventory_state": "archived", "visibility_state": "archived" }
+    }
+  ],
+  "anomalyCodes": [
+    "live_without_paid_payment",
+    "live_without_approved_review",
+    "expired_but_public",
+    "sold_without_sold_at",
+    "rejected_but_public",
+    "approved_unpaid_with_published_at",
+    "missing_primary_image",
+    "missing_seller_reference",
+    "missing_location",
+    "invalid_expiration_window",
+    "duplicate_external_source_key",
+    "orphan_transition_record"
+  ]
+}

@@ -19,6 +19,7 @@
     "validate:production:smoke": "node scripts/validate-deploy-config.mjs --env production --require-smoke",
     "verify:staging": "npm run lint && npm run build:noindex",
     "verify:production": "npm run lint && npm run build:indexable",
+    "governance:backfill": "node scripts/backfill-listing-governance.cjs",
     "smoke:routes": "node scripts/http-smoke-check.mjs",
     "prepare:seo-mode": "node scripts/prepare-seo-mode.mjs",
     "deploy:firebase": "node scripts/firebase-deploy.mjs",

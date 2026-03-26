@@ -1,0 +1,13 @@
+specVersion: "v1beta"
+serviceId: timberequip-marketplace
+location: us-central1
+schema:
+  source: ./schema
+  datasource:
+    postgresql:
+      database: timberequip
+      cloudSql:
+        instanceId: REPLACE_WITH_CLOUD_SQL_INSTANCE_ID
+        schemaValidation: COMPATIBLE
+connectorDirs:
+  - ./listingGovernance

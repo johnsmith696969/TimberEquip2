@@ -15,6 +15,7 @@ const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = req
 const { templates } = require('./email-templates/index.js');
 const { handlePublicPagesRequest } = require('./public-pages.js');
 const { rebuildPublicSeoReadModel, syncPublicSeoForListingChange, syncPublicSeoForSellerChange } = require('./public-seo-read-model.js');
+const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
@@ -2767,16 +2768,34 @@ exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
     region: 'us-central1',
   },
   async (event) => {
-    try {
-      await syncPublicSeoForListingChange({
-        listingId: event.params.listingId,
-        before: event.data?.before?.data() || null,
-        after: event.data?.after?.data() || null,
-      });
-    } catch (error) {
+    const listingId = event.params.listingId;
+    const before = event.data?.before?.data() || null;
+    const after = event.data?.after?.data() || null;
+
+    const [seoResult, governanceResult] = await Promise.allSettled([
+      syncPublicSeoForListingChange({
+        listingId,
+        before,
+        after,
+      }),
+      syncListingGovernanceArtifactsForWrite({
+        listingId,
+        before,
+        after,
+      }),
+    ]);
+
+    if (seoResult.status === 'rejected') {
       logger.error('Failed to sync public SEO read model for listing write', {
-        listingId: event.params.listingId,
-        error: error instanceof Error ? error.message : error,
+        listingId,
+        error: seoResult.reason instanceof Error ? seoResult.reason.message : seoResult.reason,
+      });
+    }
+
+    if (governanceResult.status === 'rejected') {
+      logger.error('Failed to sync listing governance artifacts for listing write', {
+        listingId,
+        error: governanceResult.reason instanceof Error ? governanceResult.reason.message : governanceResult.reason,
       });
     }
   }
