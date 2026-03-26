@@ -182,7 +182,7 @@ export function BlogPostDetail() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title={`TimberEquip.com | ${post.seoTitle || post.title}`}
+        title={`Forestry Equipment Sales | ${post.seoTitle || post.title}`}
         description={post.seoDescription || post.summary}
         canonicalPath={getNewsPostCanonicalPath(post)}
       />

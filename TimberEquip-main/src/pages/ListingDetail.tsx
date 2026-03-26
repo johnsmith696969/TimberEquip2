@@ -573,7 +573,7 @@ export function ListingDetail() {
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
   const detailSeoTitle = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''}`.replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
-  const detailSeoDescription = `${detailSeoTitle} listed on TimberEquip.com. View price, hours, specs, seller information, financing, and logistics options.`;
+  const detailSeoDescription = `${detailSeoTitle} listed on Forestry Equipment Sales. View price, hours, specs, seller information, financing, and logistics options.`;
   const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
   const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
   const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
@@ -662,7 +662,7 @@ export function ListingDetail() {
 
   return (
     <div className="min-h-screen bg-bg pb-24">
-      <Seo title={`TimberEquip.com | ${detailSeoTitle}`} description={detailSeoDescription} canonicalPath={listingPath} jsonLd={detailJsonLd} />
+      <Seo title={`Forestry Equipment Sales | ${detailSeoTitle}`} description={detailSeoDescription} canonicalPath={listingPath} jsonLd={detailJsonLd} />
       {/* Breadcrumbs & Actions */}
       <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
@@ -1022,7 +1022,7 @@ export function ListingDetail() {
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black uppercase tracking-widest mb-1">{t('listingDetail.transactionPolicy', 'Transaction Policy')}</span>
                   <p className="text-[10px] font-medium text-muted leading-relaxed">
-                    {t('listingDetail.transactionPolicyCopy', 'Always use the TimberEquip platform for inquiries. Never send funds directly to sellers without a verified escrow system.')}
+                    {t('listingDetail.transactionPolicyCopy', 'Always use the Forestry Equipment Sales platform for inquiries. Never send funds directly to sellers without a verified escrow system.')}
                   </p>
                 </div>
               </div>
@@ -1481,7 +1481,7 @@ export function ListingDetail() {
 
                     <div className="pt-2 border-t border-line">
                       <button type="submit" className="btn-industrial btn-accent w-full py-4">Submit Logistics Request</button>
-                      <p className="text-[9px] font-medium text-muted text-center mt-4 uppercase tracking-widest">Sent to seller and TimberEquip logistics desk for quote review.</p>
+                      <p className="text-[9px] font-medium text-muted text-center mt-4 uppercase tracking-widest">Sent to seller and the Forestry Equipment Sales logistics desk for quote review.</p>
                     </div>
                   </form>
                 )}

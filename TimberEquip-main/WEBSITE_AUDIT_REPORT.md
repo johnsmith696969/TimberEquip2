@@ -1,4 +1,4 @@
-# TimberEquip Website Audit Report
+# Forestry Equipment Sales Website Audit Report
 
 **Date:** March 23, 2026  
 **Status:** Website is ~75% functional with critical compilation issue and missing core feature integration
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-Your TimberEquip platform has solid foundational features but has **1 critical blocker**, **3 major gaps**, and **several UI/UX issues** that need addressing before launch readiness and dealer API integration.
+Your Forestry Equipment Sales platform has solid foundational features but has **1 critical blocker**, **3 major gaps**, and **several UI/UX issues** that need addressing before launch readiness and dealer API integration.
 
 ### Current Site Status:
 - ✅ **Core e-commerce working**: Products, search, filtering, bookmarks, comparisons
@@ -72,15 +72,15 @@ Prior to integration, you need:
 
 ```
 <<<<<<< HEAD
-# TimberEquip
-TimberEquip is an e-commerce webapp...
+# Forestry Equipment Sales
+Forestry Equipment Sales is an e-commerce webapp...
 =======
 # Run and deploy your AI Studio app
 ...
 >>>>>>> 3fe2283
 ```
 
-**Fix:** Resolve conflict and keep the TimberEquip description  
+**Fix:** Resolve conflict and keep the Forestry Equipment Sales description  
 **Estimated time:** 5 minutes
 
 ---

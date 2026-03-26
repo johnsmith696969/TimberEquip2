@@ -1,0 +1,1408 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  AlertCircle,
+  ArrowUpRight,
+  BadgeCheck,
+  Building2,
+  Database,
+  Package,
+  Plus,
+  RefreshCw,
+  Settings,
+  Star,
+  Trash2,
+  Upload,
+} from 'lucide-react';
+import { useAuth } from '../components/AuthContext';
+import { ListingModal } from '../components/admin/ListingModal';
+import {
+  dealerFeedService,
+  type DealerFeedIngestResult,
+  type DealerFeedItem,
+  type DealerFeedLog,
+  type DealerFeedProfile,
+  type DealerFeedSourceType,
+} from '../services/dealerFeedService';
+import { equipmentService } from '../services/equipmentService';
+import { userService } from '../services/userService';
+import { type Inquiry, type Listing, type Seller } from '../types';
+import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap } from '../utils/sellerAccess';
+import { useLocale } from '../components/LocaleContext';
+
+type FeedMode = 'json' | 'xml' | 'url';
+type InventoryFilter = 'all' | 'live' | 'featured' | 'imported' | 'sold';
+type LeadFilter = 'all' | 'new' | 'working' | 'closed';
+
+const FEED_MODE_META: Record<FeedMode, { label: string; sourceType: DealerFeedSourceType; helper: string }> = {
+  json: {
+    label: 'JSON / Array',
+    sourceType: 'json',
+    helper: 'Paste either a JSON array of machines or a JSON object that contains inventory items.',
+  },
+  xml: {
+    label: 'XML',
+    sourceType: 'xml',
+    helper: 'Paste raw XML inventory feeds and DealerOS will resolve listing records automatically.',
+  },
+  url: {
+    label: 'API / Feed URL',
+    sourceType: 'auto',
+    helper: 'Point DealerOS at a live JSON or XML endpoint and preview the mapped inventory before import.',
+  },
+};
+
+function formatLogTime(value: DealerFeedLog['processedAt'] | DealerFeedLog['createdAt']) {
+  if (!value) return '—';
+  if (typeof value === 'object' && value && 'toDate' in value && typeof value.toDate === 'function') {
+    return value.toDate().toLocaleString();
+  }
+  const resolved = new Date(value as string | number);
+  return Number.isNaN(resolved.getTime()) ? '—' : resolved.toLocaleString();
+}
+
+function isImportedListing(listing: Listing): boolean {
+  return !!listing.externalSource?.sourceName;
+}
+
+function getFeedModeFromProfile(profile: DealerFeedProfile): FeedMode {
+  if (profile.feedUrl) return 'url';
+  return profile.sourceType === 'xml' ? 'xml' : 'json';
+}
+
+export function DealerOS() {
+  const { user } = useAuth();
+  const { formatPrice } = useLocale();
+  const ownerUid = getDealerInventoryOwnerUid(user);
+  const featuredCap = getFeaturedListingCap(user);
+  const dealerAccess = canAccessDealerOs(user);
+
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [logs, setLogs] = useState<DealerFeedLog[]>([]);
+  const [profiles, setProfiles] = useState<DealerFeedProfile[]>([]);
+  const [storefrontProfile, setStorefrontProfile] = useState<Seller | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
+  const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingListing, setEditingListing] = useState<Listing | null>(null);
+  const [savingListing, setSavingListing] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [seatSummary, setSeatSummary] = useState<{ seatLimit: number; seatCount: number }>({ seatLimit: 0, seatCount: 0 });
+
+  const [feedMode, setFeedMode] = useState<FeedMode>('json');
+  const [feedSourceName, setFeedSourceName] = useState('DealerOS Import');
+  const [feedRawInput, setFeedRawInput] = useState('');
+  const [feedUrl, setFeedUrl] = useState('');
+  const [feedDryRun, setFeedDryRun] = useState(true);
+  const [feedPreviewItems, setFeedPreviewItems] = useState<DealerFeedItem[]>([]);
+  const [feedPreviewType, setFeedPreviewType] = useState<'json' | 'xml' | ''>('');
+  const [feedPreviewCount, setFeedPreviewCount] = useState(0);
+  const [feedResult, setFeedResult] = useState<DealerFeedIngestResult | null>(null);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedError, setFeedError] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [currentProfileId, setCurrentProfileId] = useState('');
+  const [feedNightlySyncEnabled, setFeedNightlySyncEnabled] = useState(true);
+  const [syndicationNotice, setSyndicationNotice] = useState('');
+  const [syndicationError, setSyndicationError] = useState('');
+
+  const [leadFilter, setLeadFilter] = useState<LeadFilter>('all');
+  const [selectedInquiryId, setSelectedInquiryId] = useState('');
+  const [leadActionLoading, setLeadActionLoading] = useState(false);
+  const [leadActionError, setLeadActionError] = useState('');
+  const [leadActionSuccess, setLeadActionSuccess] = useState('');
+  const [leadNoteDraft, setLeadNoteDraft] = useState('');
+
+  const loadDealerOsData = async () => {
+    if (!ownerUid) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setPageError('');
+    try {
+      const [inventory, leads, feedLogs, managedSeats, savedProfiles, sellerProfile] = await Promise.all([
+        equipmentService.getSellerListings(ownerUid, { includeSold: true }),
+        equipmentService.getInquiries(ownerUid),
+        dealerFeedService.getRecentLogs(12, ownerUid),
+        userService.getManagedAccountSeatContext(ownerUid),
+        dealerFeedService.getSavedProfiles(ownerUid),
+        equipmentService.getSeller(ownerUid),
+      ]);
+
+      setListings(inventory);
+      setInquiries(leads);
+      setLogs(feedLogs);
+      setSeatSummary({ seatLimit: managedSeats.seatLimit, seatCount: managedSeats.seatCount });
+      setProfiles(savedProfiles);
+      setStorefrontProfile(sellerProfile || null);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'DealerOS could not load yet.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDealerOsData();
+  }, [ownerUid]);
+
+  useEffect(() => {
+    if (inquiries.length === 0) {
+      if (selectedInquiryId) setSelectedInquiryId('');
+      return;
+    }
+
+    if (!selectedInquiryId || !inquiries.some((inquiry) => inquiry.id === selectedInquiryId)) {
+      setSelectedInquiryId(inquiries[0].id);
+    }
+  }, [inquiries, selectedInquiryId]);
+
+  const activeListings = useMemo(
+    () => listings.filter((listing) => String(listing.status || 'active').toLowerCase() !== 'sold'),
+    [listings]
+  );
+  const featuredListings = useMemo(
+    () => activeListings.filter((listing) => !!listing.featured),
+    [activeListings]
+  );
+  const importedListings = useMemo(
+    () => listings.filter((listing) => isImportedListing(listing)),
+    [listings]
+  );
+  const newLeadCount = useMemo(
+    () => inquiries.filter((inquiry) => inquiry.status === 'New').length,
+    [inquiries]
+  );
+  const listingLookup = useMemo(
+    () => new Map(listings.map((listing) => [listing.id, listing])),
+    [listings]
+  );
+  const filteredInquiries = useMemo(() => {
+    return inquiries.filter((inquiry) => {
+      if (leadFilter === 'new') return inquiry.status === 'New';
+      if (leadFilter === 'working') return ['Contacted', 'Qualified', 'Won'].includes(inquiry.status);
+      if (leadFilter === 'closed') return ['Lost', 'Closed'].includes(inquiry.status);
+      return true;
+    });
+  }, [inquiries, leadFilter]);
+  const selectedInquiry = useMemo(
+    () => inquiries.find((inquiry) => inquiry.id === selectedInquiryId) || null,
+    [inquiries, selectedInquiryId]
+  );
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
+  const publicDealerId = storefrontProfile?.storefrontSlug || ownerUid;
+  const publicDealerPageUrl = publicDealerId ? `${appOrigin}/dealers/${encodeURIComponent(publicDealerId)}` : '';
+  const publicDealerFeedUrl = publicDealerId ? `${appOrigin}/api/public/dealers/${encodeURIComponent(publicDealerId)}/feed.json` : '';
+  const publicDealerEmbedUrl = publicDealerId ? `${appOrigin}/api/public/dealers/${encodeURIComponent(publicDealerId)}/embed?limit=12` : '';
+  const publicDealerEmbedScriptUrl = `${appOrigin}/api/public/dealer-embed.js`;
+  const embedScriptSnippet = publicDealerId
+    ? `<div id="timberequip-dealer-inventory"></div>\n<script src="${publicDealerEmbedScriptUrl}" data-dealer="${publicDealerId}" data-target="timberequip-dealer-inventory" data-limit="12" data-featured-only="false" data-height="980"></script>`
+    : '';
+  const iframeSnippet = publicDealerId
+    ? `<iframe src="${publicDealerEmbedUrl}" loading="lazy" style="width:100%;min-height:980px;border:0;" referrerpolicy="strict-origin-when-cross-origin"></iframe>`
+    : '';
+
+  const filteredListings = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    return listings.filter((listing) => {
+      if (inventoryFilter === 'live' && String(listing.status || 'active').toLowerCase() === 'sold') return false;
+      if (inventoryFilter === 'featured' && !listing.featured) return false;
+      if (inventoryFilter === 'imported' && !isImportedListing(listing)) return false;
+      if (inventoryFilter === 'sold' && String(listing.status || 'active').toLowerCase() !== 'sold') return false;
+
+      if (!normalizedQuery) return true;
+      const haystack = [
+        listing.title,
+        listing.make,
+        listing.manufacturer,
+        listing.model,
+        listing.stockNumber,
+        listing.location,
+        listing.externalSource?.sourceName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(normalizedQuery);
+    });
+  }, [inventoryFilter, listings, searchQuery]);
+
+  const handleSaveListing = async (formData: Partial<Listing>) => {
+    setSavingListing(true);
+    setActionError('');
+    try {
+      if (editingListing) {
+        await equipmentService.updateListing(editingListing.id, {
+          ...formData,
+          sellerUid: ownerUid,
+          sellerId: ownerUid,
+        });
+      } else {
+        await equipmentService.addListing({
+          ...(formData as Omit<Listing, 'id' | 'createdAt' | 'updatedAt' | 'approvalStatus' | 'approvedBy'>),
+          sellerUid: ownerUid,
+          sellerId: ownerUid,
+        });
+      }
+
+      setIsModalOpen(false);
+      setEditingListing(null);
+      await loadDealerOsData();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to save this listing.');
+      throw error;
+    } finally {
+      setSavingListing(false);
+    }
+  };
+
+  const handleDeleteListing = async (listing: Listing) => {
+    if (!window.confirm(`Delete ${listing.title}? This cannot be undone.`)) {
+      return;
+    }
+
+    setActionError('');
+    try {
+      await equipmentService.deleteListing(listing.id);
+      await loadDealerOsData();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to delete this listing.');
+    }
+  };
+
+  const handleToggleFeatured = async (listing: Listing) => {
+    setActionError('');
+    if (!listing.featured && featuredCap > 0 && featuredListings.length >= featuredCap) {
+      setActionError(`This account can feature up to ${featuredCap} active ${featuredCap === 1 ? 'listing' : 'listings'}.`);
+      return;
+    }
+
+    try {
+      await equipmentService.updateListing(listing.id, { featured: !listing.featured, sellerUid: ownerUid, sellerId: ownerUid });
+      await loadDealerOsData();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to update featured selection.');
+    }
+  };
+
+  const clearFeedPreviewState = () => {
+    setFeedPreviewItems([]);
+    setFeedPreviewCount(0);
+    setFeedPreviewType('');
+  };
+
+  const resetFeedPreview = () => {
+    clearFeedPreviewState();
+    setFeedResult(null);
+    setFeedError('');
+  };
+
+  const handleLoadFeedProfile = (profile: DealerFeedProfile) => {
+    setCurrentProfileId(profile.id);
+    setFeedSourceName(profile.sourceName);
+    setFeedMode(getFeedModeFromProfile(profile));
+    setFeedRawInput(profile.rawInput || '');
+    setFeedUrl(profile.feedUrl || '');
+    setFeedNightlySyncEnabled(profile.nightlySyncEnabled);
+    setProfileError('');
+    resetFeedPreview();
+  };
+
+  const handleSaveFeedProfile = async () => {
+    if (!ownerUid) return;
+    if (!feedSourceName.trim()) {
+      setProfileError('Source name is required before saving a feed profile.');
+      return;
+    }
+    if (feedMode === 'url' && !feedUrl.trim()) {
+      setProfileError('Add a feed URL before saving this profile.');
+      return;
+    }
+    if (feedMode !== 'url' && !feedRawInput.trim()) {
+      setProfileError('Add a payload before saving this profile.');
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      const savedProfile = await dealerFeedService.saveProfile({
+        id: currentProfileId || undefined,
+        sellerUid: ownerUid,
+        sourceName: feedSourceName.trim(),
+        sourceType: FEED_MODE_META[feedMode].sourceType,
+        rawInput: feedMode === 'url' ? '' : feedRawInput,
+        feedUrl: feedMode === 'url' ? feedUrl.trim() : '',
+        nightlySyncEnabled: feedNightlySyncEnabled,
+      });
+
+      const refreshedProfiles = await dealerFeedService.getSavedProfiles(ownerUid);
+      setProfiles(refreshedProfiles);
+      setCurrentProfileId(savedProfile.id);
+      setSyndicationNotice('');
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Unable to save this feed profile.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleDeleteFeedProfile = async (profile: DealerFeedProfile) => {
+    if (!ownerUid) return;
+    if (!window.confirm(`Delete the feed profile "${profile.sourceName}"?`)) {
+      return;
+    }
+
+    setProfileError('');
+    try {
+      await dealerFeedService.deleteProfile(profile.id);
+      const refreshedProfiles = await dealerFeedService.getSavedProfiles(ownerUid);
+      setProfiles(refreshedProfiles);
+      if (currentProfileId === profile.id) {
+        setCurrentProfileId('');
+        setFeedNightlySyncEnabled(true);
+      }
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Unable to delete this feed profile.');
+    }
+  };
+
+  const handleToggleProfileNightlySync = async (profile: DealerFeedProfile) => {
+    if (!ownerUid) return;
+
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      await dealerFeedService.updateProfile(profile.id, {
+        nightlySyncEnabled: !profile.nightlySyncEnabled,
+      });
+      const refreshedProfiles = await dealerFeedService.getSavedProfiles(ownerUid);
+      setProfiles(refreshedProfiles);
+      if (currentProfileId === profile.id) {
+        setFeedNightlySyncEnabled(!profile.nightlySyncEnabled);
+      }
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Unable to update nightly sync settings.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleResolveFeed = async (): Promise<DealerFeedItem[]> => {
+    if (!feedSourceName.trim()) {
+      setFeedError('Source name is required.');
+      return [];
+    }
+    if (feedMode === 'url' && !feedUrl.trim()) {
+      setFeedError('Feed URL is required.');
+      return [];
+    }
+    if (feedMode !== 'url' && !feedRawInput.trim()) {
+      setFeedError('Feed payload is required.');
+      return [];
+    }
+
+    setFeedLoading(true);
+    setFeedError('');
+    setFeedResult(null);
+    try {
+      const resolved = await dealerFeedService.resolveSource({
+        sourceName: feedSourceName.trim(),
+        sourceType: FEED_MODE_META[feedMode].sourceType,
+        rawInput: feedMode === 'url' ? undefined : feedRawInput,
+        feedUrl: feedMode === 'url' ? feedUrl.trim() : undefined,
+      });
+
+      setFeedPreviewItems(resolved.items);
+      setFeedPreviewCount(resolved.itemCount);
+      setFeedPreviewType(resolved.detectedType);
+      return resolved.items;
+    } catch (error) {
+      clearFeedPreviewState();
+      setFeedError(error instanceof Error ? error.message : 'Unable to parse this feed source.');
+      return [];
+    } finally {
+      setFeedLoading(false);
+    }
+  };
+
+  const handleRunImport = async () => {
+    const items = feedPreviewItems.length > 0 ? feedPreviewItems : await handleResolveFeed();
+    if (items.length === 0) return;
+
+    setFeedLoading(true);
+    setFeedError('');
+    try {
+      const result = await dealerFeedService.ingest({
+        sourceName: feedSourceName.trim(),
+        dealerId: ownerUid,
+        dryRun: feedDryRun,
+        items,
+      });
+      setFeedResult(result);
+      await loadDealerOsData();
+    } catch (error) {
+      setFeedError(error instanceof Error ? error.message : 'Feed import failed.');
+    } finally {
+      setFeedLoading(false);
+    }
+  };
+
+  const handleInquiryStatusChange = async (status: Inquiry['status']) => {
+    if (!selectedInquiry) return;
+
+    setLeadActionLoading(true);
+    setLeadActionError('');
+    setLeadActionSuccess('');
+    try {
+      await equipmentService.updateInquiryStatus(selectedInquiry.id, status);
+      await loadDealerOsData();
+      setLeadActionSuccess(`Lead marked ${status}.`);
+    } catch (error) {
+      setLeadActionError(error instanceof Error ? error.message : 'Unable to update lead status.');
+    } finally {
+      setLeadActionLoading(false);
+    }
+  };
+
+  const handleAssignLeadToCurrentUser = async () => {
+    if (!selectedInquiry || !user?.uid) return;
+
+    setLeadActionLoading(true);
+    setLeadActionError('');
+    setLeadActionSuccess('');
+    try {
+      await equipmentService.assignInquiry(
+        selectedInquiry.id,
+        user.uid,
+        user.displayName || user.storefrontName || user.company || 'Dealer Team'
+      );
+      await loadDealerOsData();
+      setLeadActionSuccess('Lead assigned to your account.');
+    } catch (error) {
+      setLeadActionError(error instanceof Error ? error.message : 'Unable to assign this lead.');
+    } finally {
+      setLeadActionLoading(false);
+    }
+  };
+
+  const handleAddLeadNote = async () => {
+    if (!selectedInquiry) return;
+    const text = leadNoteDraft.trim();
+    if (!text) {
+      setLeadActionError('Enter a note before saving it to the lead.');
+      return;
+    }
+
+    setLeadActionLoading(true);
+    setLeadActionError('');
+    setLeadActionSuccess('');
+    try {
+      await equipmentService.addInquiryInternalNote(selectedInquiry.id, {
+        text,
+        authorUid: user?.uid,
+        authorName: user?.displayName || user?.storefrontName || user?.company || 'Dealer Team',
+      });
+      setLeadNoteDraft('');
+      await loadDealerOsData();
+      setLeadActionSuccess('Internal note added to the lead.');
+    } catch (error) {
+      setLeadActionError(error instanceof Error ? error.message : 'Unable to save the internal note.');
+    } finally {
+      setLeadActionLoading(false);
+    }
+  };
+
+  const handleCopySyndicationValue = async (value: string, label: string) => {
+    if (!value) {
+      setSyndicationError(`${label} is not available until the storefront is saved.`);
+      setSyndicationNotice('');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setSyndicationNotice(`${label} copied.`);
+      setSyndicationError('');
+    } catch (error) {
+      setSyndicationError(error instanceof Error ? error.message : `Unable to copy ${label.toLowerCase()}.`);
+      setSyndicationNotice('');
+    }
+  };
+
+  if (!dealerAccess) {
+    return null;
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 py-8 md:px-8">
+      <section className="grid gap-6 rounded-sm border border-line bg-surface p-6 lg:grid-cols-[1.6fr_1fr]">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent">
+              <BadgeCheck size={12} /> DealerOS
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+              {user?.role === 'pro_dealer' ? 'Pro Dealer Workspace' : 'Dealer Workspace'}
+            </span>
+          </div>
+          <div>
+            <h1 className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl">Manage Inventory, Imports, and Featured Placement</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted">
+              DealerOS keeps live inventory, feed imports, and featured listing placement in one operator workspace. Featured listings stay at the front of public browse surfaces.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingListing(null);
+                setIsModalOpen(true);
+              }}
+              className="btn-industrial btn-accent flex items-center gap-2 px-5 py-3"
+            >
+              <Plus size={14} /> Add Machine
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadDealerOsData()}
+              className="btn-industrial flex items-center gap-2 px-5 py-3"
+            >
+              <RefreshCw size={14} /> Refresh Workspace
+            </button>
+            <Link to="/profile" className="btn-industrial flex items-center gap-2 px-5 py-3">
+              <Settings size={14} /> Storefront Settings
+            </Link>
+            <Link to="/sell" className="btn-industrial flex items-center gap-2 px-5 py-3">
+              <ArrowUpRight size={14} /> Listing Form
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          {[
+            { label: 'Active Inventory', value: activeListings.length, icon: Package },
+            { label: 'Featured Slots', value: `${featuredListings.length}/${featuredCap || 0}`, icon: Star },
+            { label: 'New Leads', value: newLeadCount, icon: Building2 },
+            { label: 'Imported Units', value: importedListings.length, icon: Database },
+          ].map((card) => (
+            <div key={card.label} className="rounded-sm border border-line bg-bg p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{card.label}</span>
+                <card.icon size={15} className="text-accent" />
+              </div>
+              <div className="mt-3 text-3xl font-black tracking-tight text-ink">{card.value}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {pageError ? (
+        <div className="flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span className="text-sm font-bold">{pageError}</span>
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className="flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span className="text-sm font-bold">{actionError}</span>
+        </div>
+      ) : null}
+
+      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-tight text-ink">Featured Listing Control</h2>
+              <p className="mt-1 text-sm text-muted">Dealers can feature 3 active units. Pro Dealers can feature 6. Featured inventory gets priority placement in browse surfaces.</p>
+            </div>
+            <div className="rounded-sm border border-line bg-bg px-4 py-3 text-right">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Slots Remaining</div>
+              <div className="text-2xl font-black tracking-tight text-ink">{Math.max((featuredCap || 0) - featuredListings.length, 0)}</div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3">
+            {featuredListings.length === 0 ? (
+              <div className="rounded-sm border border-dashed border-line bg-bg px-4 py-5 text-sm text-muted">
+                No featured listings are selected yet.
+              </div>
+            ) : (
+              featuredListings.map((listing) => (
+                <div key={listing.id} className="flex flex-col gap-3 rounded-sm border border-line bg-bg p-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-accent">
+                        <Star size={10} /> Featured
+                      </span>
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{listing.category}</span>
+                    </div>
+                    <div className="mt-2 text-sm font-black uppercase tracking-tight text-ink">{listing.title}</div>
+                    <div className="mt-1 text-sm text-muted">{listing.location || 'No location'} · {formatPrice(listing.price, listing.currency)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleFeatured(listing)}
+                    className="btn-industrial px-4 py-2 text-[10px]"
+                  >
+                    Remove From Featured
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <h2 className="text-lg font-black uppercase tracking-tight text-ink">Account Capacity</h2>
+          <div className="mt-5 space-y-3">
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Managed Seats</div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-ink">{seatSummary.seatCount}/{seatSummary.seatLimit || 0}</div>
+            </div>
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Public Storefront</div>
+              <div className="mt-2 text-sm font-bold text-ink">{user?.storefrontName || user?.company || user?.displayName || 'Dealer storefront'}</div>
+              <div className="mt-1 text-xs text-muted">Use Profile to update branding, team details, SEO copy, and public storefront metadata.</div>
+              <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-muted">
+                {publicDealerId ? `Dealer slug: ${publicDealerId}` : 'Save your storefront to publish a dealer slug.'}
+              </div>
+            </div>
+            <div className="rounded-sm border border-line bg-bg p-4 text-xs leading-relaxed text-muted">
+              Best next steps: wire your primary dealer feed, feature your top revenue units, and keep location + stock numbers consistent for cleaner import updates.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Import Console</h2>
+              <p className="mt-1 text-sm text-muted">Resolve JSON arrays, nested JSON objects, XML feeds, or live API URLs before running a dry run or write import.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                resetFeedPreview();
+              }}
+              className="btn-industrial px-4 py-2 text-[10px]"
+            >
+              Reset
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-5">
+            <div>
+              <label className="label-micro block">Source Name</label>
+              <div className="mt-1 flex flex-col gap-3 md:flex-row">
+                <input
+                  value={feedSourceName}
+                  onChange={(event) => {
+                    setFeedSourceName(event.target.value);
+                    resetFeedPreview();
+                  }}
+                  className="input-industrial w-full"
+                  placeholder="e.g. Deere API, Ritchie XML, Inventory Sync"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSaveFeedProfile()}
+                  disabled={profileSaving}
+                  className="btn-industrial shrink-0 px-4 py-3 text-[10px] disabled:opacity-50"
+                >
+                  {profileSaving ? 'Saving…' : currentProfileId ? 'Update Profile' : 'Save Profile'}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Nightly Sync Window</div>
+                  <div className="mt-1 text-sm font-bold text-ink">2:00 AM Central Time</div>
+                  <div className="mt-1 text-xs text-muted">Enabled profiles are resolved and imported automatically every night from the saved source.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFeedNightlySyncEnabled((current) => !current)}
+                  className={`relative h-6 w-12 rounded-full transition-colors ${feedNightlySyncEnabled ? 'bg-accent' : 'bg-line'}`}
+                  aria-label="Toggle nightly sync"
+                >
+                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${feedNightlySyncEnabled ? 'right-1' : 'left-1'}`} />
+                </button>
+              </div>
+              <div className="mt-3 text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                {feedNightlySyncEnabled ? 'Nightly sync enabled for this saved profile' : 'Nightly sync disabled for this saved profile'}
+              </div>
+            </div>
+
+            {profileError ? (
+              <div className="flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span className="text-sm font-bold">{profileError}</span>
+              </div>
+            ) : null}
+
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Saved Feed Profiles</div>
+                  <div className="mt-1 text-xs text-muted">Store repeatable source settings for quick reloads and dry-run checks.</div>
+                </div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{profiles.length} saved</div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {profiles.length === 0 ? (
+                  <div className="rounded-sm border border-dashed border-line px-4 py-4 text-xs text-muted">
+                    Save your current JSON, XML, or URL setup to reuse it for scheduled imports and vendor feed checks.
+                  </div>
+                ) : (
+                  profiles.map((profile) => (
+                    <div key={profile.id} className="flex flex-col gap-3 rounded-sm border border-line bg-surface p-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="text-xs font-black uppercase tracking-[0.16em] text-ink">{profile.sourceName}</div>
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted">
+                          {getFeedModeFromProfile(profile) === 'url' ? 'API / Feed URL' : FEED_MODE_META[getFeedModeFromProfile(profile)].label}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                          <span className={`rounded-full px-2 py-1 ${profile.nightlySyncEnabled ? 'bg-accent/10 text-accent' : 'bg-line/60 text-ink'}`}>
+                            {profile.nightlySyncEnabled ? 'Nightly Sync On' : 'Nightly Sync Off'}
+                          </span>
+                          {profile.lastSyncStatus ? <span>{profile.lastSyncStatus}</span> : null}
+                          {profile.lastSyncAt ? <span>{formatLogTime(profile.lastSyncAt)}</span> : null}
+                        </div>
+                        {profile.lastSyncMessage ? (
+                          <div className="mt-2 text-xs text-muted">{profile.lastSyncMessage}</div>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleProfileNightlySync(profile)}
+                          disabled={profileSaving}
+                          className="btn-industrial px-3 py-2 text-[10px] disabled:opacity-50"
+                        >
+                          {profile.nightlySyncEnabled ? 'Disable Nightly Sync' : 'Enable Nightly Sync'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLoadFeedProfile(profile)}
+                          className="btn-industrial px-3 py-2 text-[10px]"
+                        >
+                          Load
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteFeedProfile(profile)}
+                          className="btn-industrial px-3 py-2 text-[10px] text-accent"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              {(Object.keys(FEED_MODE_META) as FeedMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setFeedMode(mode);
+                    resetFeedPreview();
+                  }}
+                  className={`rounded-sm border px-4 py-3 text-left transition-colors ${feedMode === mode ? 'border-ink bg-bg text-ink' : 'border-line bg-surface text-muted hover:text-ink'}`}
+                >
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em]">{FEED_MODE_META[mode].label}</div>
+                  <div className="mt-2 text-xs leading-relaxed">{FEED_MODE_META[mode].helper}</div>
+                </button>
+              ))}
+            </div>
+
+            {feedMode === 'url' ? (
+              <div>
+                <label className="label-micro block">Feed URL</label>
+                <input
+                  value={feedUrl}
+                  onChange={(event) => {
+                    setFeedUrl(event.target.value);
+                    resetFeedPreview();
+                  }}
+                  className="input-industrial mt-1 w-full"
+                  placeholder="https://dealer.example.com/inventory-feed.xml"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="label-micro block">Feed Payload</label>
+                <textarea
+                  rows={12}
+                  value={feedRawInput}
+                  onChange={(event) => {
+                    setFeedRawInput(event.target.value);
+                    resetFeedPreview();
+                  }}
+                  className="input-industrial mt-1 w-full resize-y font-mono text-[11px]"
+                  placeholder={feedMode === 'json'
+                    ? '[{"externalId":"SKU-1","title":"2021 Tigercat 620E Skidder"}]'
+                    : '<inventory><item><id>SKU-1</id><title>2021 Tigercat 620E Skidder</title></item></inventory>'}
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setFeedDryRun((current) => !current)}
+                className={`relative h-6 w-12 rounded-full transition-colors ${feedDryRun ? 'bg-accent' : 'bg-line'}`}
+                aria-label="Toggle dry run"
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${feedDryRun ? 'right-1' : 'left-1'}`} />
+              </button>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                {feedDryRun ? 'Dry Run Enabled' : 'Live Import Enabled'}
+              </span>
+            </div>
+
+            {feedError ? (
+              <div className="flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span className="text-sm font-bold">{feedError}</span>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void handleResolveFeed()}
+                disabled={feedLoading}
+                className="btn-industrial flex items-center gap-2 px-5 py-3 disabled:opacity-50"
+              >
+                <Database size={14} /> Resolve Feed
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRunImport()}
+                disabled={feedLoading}
+                className="btn-industrial btn-accent flex items-center gap-2 px-5 py-3 disabled:opacity-50"
+              >
+                {feedLoading ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+                {feedDryRun ? 'Run Dry Import' : 'Import Inventory'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Preview</h2>
+          <div className="mt-5 space-y-4">
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Detected Type</div>
+              <div className="mt-2 text-xl font-black tracking-tight text-ink">{feedPreviewType || '—'}</div>
+            </div>
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Resolved Items</div>
+              <div className="mt-2 text-xl font-black tracking-tight text-ink">{feedPreviewCount}</div>
+            </div>
+            <div className="rounded-sm border border-line bg-bg p-4 text-xs text-muted">
+              {feedPreviewItems.length === 0
+                ? 'Resolve a feed source to preview the normalized items that will be imported.'
+                : 'Preview confirms the importer found inventory records and normalized the expected listing fields.'}
+            </div>
+
+            {feedResult ? (
+              <div className="rounded-sm border border-line bg-bg p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Last Import Result</div>
+                <div className="mt-3 grid grid-cols-3 gap-3 text-center text-xs font-black uppercase tracking-widest">
+                  <div className="rounded-sm border border-line px-3 py-3 text-ink">
+                    <div className="text-xl tracking-tight">{feedResult.processed}</div>
+                    <div className="mt-1 text-[9px] text-muted">Processed</div>
+                  </div>
+                  <div className="rounded-sm border border-line px-3 py-3 text-accent">
+                    <div className="text-xl tracking-tight">{feedResult.upserted}</div>
+                    <div className="mt-1 text-[9px] text-muted">Upserted</div>
+                  </div>
+                  <div className="rounded-sm border border-line px-3 py-3 text-muted">
+                    <div className="text-xl tracking-tight">{feedResult.skipped}</div>
+                    <div className="mt-1 text-[9px] text-muted">Skipped</div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-sm border border-line bg-surface p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Dealer Site Syndication</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">Publish the same approved inventory on the dealer storefront, expose a machine-readable JSON feed, and give the dealer a copy-paste embed for their own website.</p>
+          </div>
+          {publicDealerPageUrl ? (
+            <a href={publicDealerPageUrl} target="_blank" rel="noreferrer" className="btn-industrial flex items-center gap-2 px-5 py-3">
+              <ArrowUpRight size={14} /> Open Dealer Page
+            </a>
+          ) : null}
+        </div>
+
+        {syndicationError ? (
+          <div className="mt-5 flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <span className="text-sm font-bold">{syndicationError}</span>
+          </div>
+        ) : null}
+
+        {syndicationNotice ? (
+          <div className="mt-5 rounded-sm border border-line bg-bg p-4 text-sm font-bold text-ink">{syndicationNotice}</div>
+        ) : null}
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-sm border border-line bg-bg p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Public JSON Feed</div>
+                <div className="mt-1 text-xs text-muted">Use this for downstream syncs, partner integrations, or dealer-owned websites that want raw inventory data.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopySyndicationValue(publicDealerFeedUrl, 'JSON feed URL')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Copy URL
+              </button>
+            </div>
+            <textarea
+              readOnly
+              rows={4}
+              value={publicDealerFeedUrl}
+              className="input-industrial mt-4 w-full resize-none font-mono text-[11px]"
+            />
+          </div>
+
+          <div className="rounded-sm border border-line bg-bg p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Hosted Inventory Embed</div>
+                <div className="mt-1 text-xs text-muted">This is the TimberEquip-hosted inventory view for the dealer. Use it directly in an iframe when a script install is not needed.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopySyndicationValue(publicDealerEmbedUrl, 'embed URL')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Copy URL
+              </button>
+            </div>
+            <textarea
+              readOnly
+              rows={4}
+              value={publicDealerEmbedUrl}
+              className="input-industrial mt-4 w-full resize-none font-mono text-[11px]"
+            />
+          </div>
+
+          <div className="rounded-sm border border-line bg-bg p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Copy-Paste Script Embed</div>
+                <div className="mt-1 text-xs text-muted">Preferred option for dealers who want TimberEquip inventory embedded on their own website with one snippet.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopySyndicationValue(embedScriptSnippet, 'script embed snippet')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Copy Script
+              </button>
+            </div>
+            <textarea
+              readOnly
+              rows={5}
+              value={embedScriptSnippet}
+              className="input-industrial mt-4 w-full resize-none font-mono text-[11px]"
+            />
+          </div>
+
+          <div className="rounded-sm border border-line bg-bg p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Iframe Embed Fallback</div>
+                <div className="mt-1 text-xs text-muted">Use this when the dealer site can only accept iframe markup.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopySyndicationValue(iframeSnippet, 'iframe embed snippet')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Copy Iframe
+              </button>
+            </div>
+            <textarea
+              readOnly
+              rows={4}
+              value={iframeSnippet}
+              className="input-industrial mt-4 w-full resize-none font-mono text-[11px]"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-tight text-ink">Lead Inbox</h2>
+              <p className="mt-1 text-sm text-muted">Track new inbound leads, assign follow-up, and leave internal notes without leaving DealerOS.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'new', 'working', 'closed'] as LeadFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setLeadFilter(filter)}
+                  className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${leadFilter === filter ? 'border-ink bg-bg text-ink' : 'border-line text-muted'}`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-sm border border-line">
+            <div className="divide-y divide-line bg-surface">
+              {filteredInquiries.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm font-bold text-muted">No leads match the current filter.</div>
+              ) : (
+                filteredInquiries.map((inquiry) => {
+                  const listing = inquiry.listingId ? listingLookup.get(inquiry.listingId) : undefined;
+                  const active = inquiry.id === selectedInquiryId;
+                  return (
+                    <button
+                      key={inquiry.id}
+                      type="button"
+                      onClick={() => setSelectedInquiryId(inquiry.id)}
+                      className={`flex w-full flex-col gap-2 px-4 py-4 text-left transition-colors ${active ? 'bg-bg' : 'hover:bg-bg/60'}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-black uppercase tracking-tight text-ink">{inquiry.buyerName}</div>
+                        <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${inquiry.status === 'New' ? 'bg-accent/10 text-accent' : 'bg-line/60 text-ink'}`}>
+                          {inquiry.status}
+                        </span>
+                      </div>
+                      <div className="text-xs font-bold text-muted">{listing?.title || 'General dealer inquiry'}</div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+                        <span>{inquiry.buyerEmail}</span>
+                        <span>{new Date(inquiry.createdAt).toLocaleString()}</span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Lead Detail</h2>
+            {selectedInquiry ? (
+              <select
+                value={selectedInquiry.status}
+                onChange={(event) => void handleInquiryStatusChange(event.target.value as Inquiry['status'])}
+                disabled={leadActionLoading}
+                className="input-industrial w-full max-w-[220px]"
+              >
+                {(['New', 'Contacted', 'Qualified', 'Won', 'Lost', 'Closed'] as Inquiry['status'][]).map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+
+          {leadActionError ? (
+            <div className="mt-4 flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span className="text-sm font-bold">{leadActionError}</span>
+            </div>
+          ) : null}
+
+          {leadActionSuccess ? (
+            <div className="mt-4 rounded-sm border border-line bg-bg p-4 text-sm font-bold text-ink">{leadActionSuccess}</div>
+          ) : null}
+
+          {!selectedInquiry ? (
+            <div className="mt-5 rounded-sm border border-dashed border-line bg-bg px-4 py-10 text-center text-sm font-bold text-muted">
+              Select a lead to review the contact details, message history, and next actions.
+            </div>
+          ) : (
+            <div className="mt-5 space-y-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-sm border border-line bg-bg p-4">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Buyer</div>
+                  <div className="mt-2 text-base font-black uppercase tracking-tight text-ink">{selectedInquiry.buyerName}</div>
+                  <div className="mt-2 text-sm text-muted">{selectedInquiry.buyerEmail}</div>
+                  <div className="mt-1 text-sm text-muted">{selectedInquiry.buyerPhone || 'No phone provided'}</div>
+                </div>
+                <div className="rounded-sm border border-line bg-bg p-4">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Assignment</div>
+                  <div className="mt-2 text-sm font-bold text-ink">{selectedInquiry.assignedToName || 'Unassigned'}</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleAssignLeadToCurrentUser()}
+                      disabled={leadActionLoading || !user?.uid}
+                      className="btn-industrial px-4 py-2 text-[10px] disabled:opacity-50"
+                    >
+                      Assign To Me
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-sm border border-line bg-bg p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Inquiry Context</div>
+                <div className="mt-2 text-sm font-bold text-ink">
+                  {selectedInquiry.listingId ? listingLookup.get(selectedInquiry.listingId)?.title || 'Listing lead' : 'General dealer inquiry'}
+                </div>
+                <div className="mt-2 text-xs uppercase tracking-[0.18em] text-muted">
+                  {selectedInquiry.type} · received {new Date(selectedInquiry.createdAt).toLocaleString()}
+                </div>
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-muted">{selectedInquiry.message}</p>
+              </div>
+
+              <div className="rounded-sm border border-line bg-bg p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Internal Notes</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                    {(selectedInquiry.internalNotes || []).length} note{(selectedInquiry.internalNotes || []).length === 1 ? '' : 's'}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {(selectedInquiry.internalNotes || []).length === 0 ? (
+                    <div className="rounded-sm border border-dashed border-line px-4 py-4 text-xs text-muted">
+                      No internal notes yet. Save follow-up commitments and call outcomes here.
+                    </div>
+                  ) : (
+                    (selectedInquiry.internalNotes || []).map((note) => (
+                      <div key={note.id} className="rounded-sm border border-line bg-surface p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                          <span>{note.authorName || 'Dealer Team'}</span>
+                          <span>{new Date(note.createdAt).toLocaleString()}</span>
+                        </div>
+                        <div className="mt-2 text-sm leading-relaxed text-ink">{note.text}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  <textarea
+                    rows={4}
+                    value={leadNoteDraft}
+                    onChange={(event) => setLeadNoteDraft(event.target.value)}
+                    className="input-industrial w-full resize-y"
+                    placeholder="Add a follow-up note, next-call plan, or quoted terms..."
+                  />
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => void handleAddLeadNote()}
+                      disabled={leadActionLoading}
+                      className="btn-industrial btn-accent px-4 py-3 text-[10px] disabled:opacity-50"
+                    >
+                      Save Internal Note
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-sm border border-line bg-surface p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Inventory Control</h2>
+            <p className="mt-1 text-sm text-muted">Manage live inventory, mark featured units, and keep imported listings in sync.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'live', 'featured', 'imported', 'sold'] as InventoryFilter[]).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setInventoryFilter(filter)}
+                className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${inventoryFilter === filter ? 'border-ink bg-bg text-ink' : 'border-line text-muted'}`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="input-industrial w-full lg:max-w-md"
+            placeholder="Search title, make, model, location, stock, source..."
+          />
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+            Showing {filteredListings.length} of {listings.length} listings
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-x-auto rounded-sm border border-line">
+          <table className="w-full min-w-[980px] text-left">
+            <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+              <tr>
+                <th className="px-4 py-3">Machine</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Featured</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Location</th>
+                <th className="px-4 py-3">Feed</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line bg-surface">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-muted">Loading DealerOS inventory…</td>
+                </tr>
+              ) : filteredListings.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-muted">No listings match the current filter.</td>
+                </tr>
+              ) : (
+                filteredListings.map((listing) => (
+                  <tr key={listing.id} className="align-top hover:bg-bg/60">
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-black uppercase tracking-tight text-ink">{listing.title}</div>
+                      <div className="mt-1 text-xs text-muted">{listing.make || listing.manufacturer || 'Unknown make'} · {listing.model}</div>
+                      <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-muted">{listing.stockNumber || listing.id}</div>
+                    </td>
+                    <td className="px-4 py-4 text-xs font-bold text-ink">{listing.status || 'active'}</td>
+                    <td className="px-4 py-4">
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleFeatured(listing)}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${listing.featured ? 'bg-accent/10 text-accent' : 'bg-line/50 text-muted'}`}
+                      >
+                        <Star size={11} /> {listing.featured ? 'Featured' : 'Standard'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-4 text-xs font-bold text-ink">{formatPrice(listing.price, listing.currency)}</td>
+                    <td className="px-4 py-4 text-xs text-muted">{listing.location || '—'}</td>
+                    <td className="px-4 py-4 text-xs text-muted">{listing.externalSource?.sourceName || 'Manual'}</td>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingListing(listing);
+                            setIsModalOpen(true);
+                          }}
+                          className="btn-industrial px-3 py-2 text-[10px]"
+                        >
+                          Edit
+                        </button>
+                        <Link to={`/listing/${listing.id}`} className="btn-industrial px-3 py-2 text-[10px]">
+                          View
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteListing(listing)}
+                          className="btn-industrial px-3 py-2 text-[10px] text-accent"
+                        >
+                          <Trash2 size={12} className="mr-1 inline-block" /> Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <h2 className="text-lg font-black uppercase tracking-tight text-ink">Recent Import Activity</h2>
+          <div className="mt-5 overflow-x-auto rounded-sm border border-line">
+            <table className="w-full min-w-[720px] text-left">
+              <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                <tr>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Processed</th>
+                  <th className="px-4 py-3">Upserted</th>
+                  <th className="px-4 py-3">Skipped</th>
+                  <th className="px-4 py-3">Mode</th>
+                  <th className="px-4 py-3">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line bg-surface">
+                {logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm font-bold text-muted">No import runs have been recorded yet.</td>
+                  </tr>
+                ) : (
+                  logs.map((log) => (
+                    <tr key={log.id}>
+                      <td className="px-4 py-4 text-xs font-black uppercase tracking-tight text-ink">{log.sourceName}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-ink">{log.processed}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-accent">{log.upserted}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-muted">{log.skipped}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-ink">{log.dryRun ? 'Dry Run' : 'Live'}</td>
+                      <td className="px-4 py-4 text-xs text-muted">{formatLogTime(log.processedAt || log.createdAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-sm border border-line bg-surface p-6">
+          <h2 className="text-lg font-black uppercase tracking-tight text-ink">Operator Notes</h2>
+          <div className="mt-5 space-y-4 text-sm leading-relaxed text-muted">
+            <p>Featured listings now surface ahead of standard inventory in browse-first experiences, so reserve those slots for units with the strongest close rate or highest gross margin.</p>
+            <p>Use dry runs for every new vendor feed. That catches field mismatches before a live import starts creating or updating records.</p>
+            <p>Keep stock numbers, serials, and locations consistent across feeds. Cleaner source data gives you cleaner upserts and fewer duplicate units.</p>
+          </div>
+        </div>
+      </section>
+
+      <ListingModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          if (savingListing) return;
+          setIsModalOpen(false);
+          setEditingListing(null);
+        }}
+        listing={editingListing}
+        onSave={handleSaveListing}
+      />
+    </div>
+  );
+}
+
+export default DealerOS;

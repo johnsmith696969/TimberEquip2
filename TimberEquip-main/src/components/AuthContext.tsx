@@ -16,7 +16,7 @@ import { UserProfile } from '../types';
 import { userService } from '../services/userService';
 import type { ListingPlanId } from '../services/billingService';
 
-const ADMIN_EMAILS = ['calebhappy@gmail.com'];
+const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -37,6 +37,30 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+async function bootstrapPrivilegedAdminProfile(firebaseUser: FirebaseUser | null | undefined): Promise<boolean> {
+  const currentUser = firebaseUser || auth.currentUser;
+  const normalizedEmail = (currentUser?.email || '').trim().toLowerCase();
+  if (!currentUser || !normalizedEmail || !ADMIN_EMAILS.includes(normalizedEmail)) {
+    return false;
+  }
+
+  try {
+    const token = await currentUser.getIdToken(true);
+    const response = await fetch('/api/auth/bootstrap-profile-role', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error('Privileged role bootstrap failed:', error);
+    return false;
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -87,7 +111,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
               if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && mergedProfile.role !== 'super_admin') {
                 try {
-                  await userService.updateProfile(firebaseUser.uid, { role: 'super_admin' });
+                  const promoted = await bootstrapPrivilegedAdminProfile(firebaseUser);
+                  if (!promoted) {
+                    await userService.updateProfile(firebaseUser.uid, { role: 'super_admin' });
+                  }
                 } catch (_) {
                   // Ignore update failure; still use email-based admin access
                 }
@@ -121,6 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               };
               try {
                 await userService.createProfile(newProfile);
+                if (isAdmin) {
+                  await bootstrapPrivilegedAdminProfile(firebaseUser);
+                }
               } catch (_) {
                 // Non-blocking; continue with local profile representation.
               }
@@ -225,6 +255,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await userService.createProfile(profile);
+      if (isAdmin) {
+        await bootstrapPrivilegedAdminProfile(credential.user);
+      }
     } catch (error) {
       // Auth account already exists at this point; do not fail hard on profile write race.
       console.error('Profile creation warning after auth registration:', error);

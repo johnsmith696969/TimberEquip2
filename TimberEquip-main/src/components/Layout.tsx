@@ -14,13 +14,13 @@ import { useAuth } from './AuthContext';
 import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { userService } from '../services/userService';
-import timberEquipLogo from '../../logos/TimberEquip-Logo.svg';
-import timberEquipDuskLogo from '../../logos/TimberEquip-Brand-Logo-Dusk.svg';
+import forestryEquipmentSalesLogo from '../../logos/Forestry_Equipment_Sales_Light_Mode_Logo.svg';
+import forestryEquipmentSalesDuskLogo from '../../logos/Forestry_Equipment_Sales_Dusk_Mode_Logo.svg';
 import logoTransparent from '../../logos/Logo-Transparent.png';
-import { getListEquipmentPath } from '../utils/sellerAccess';
+import { canAccessDealerOs, getListEquipmentPath } from '../utils/sellerAccess';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
-const ADMIN_EMAILS = ['calebhappy@gmail.com'];
+const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -41,7 +41,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, currency, setCurrency, t } = useLocale();
   const { user, logout, isAuthenticated } = useAuth();
-  const headerLogo = theme === 'dark' ? timberEquipDuskLogo : timberEquipLogo;
+  const headerLogo = theme === 'dark' ? forestryEquipmentSalesDuskLogo : forestryEquipmentSalesLogo;
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,19 +55,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
       (user.email && ADMIN_EMAILS.includes(user.email.trim().toLowerCase()))
     )
   );
-  const accountRoute = hasAdminAccess ? '/admin' : '/profile';
+  const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
+  const accountRoute = hasAdminAccess ? '/admin' : hasDealerOsAccess ? '/dealer-os' : '/profile';
 
   useEffect(() => {
     const pageTitles: Record<string, string> = {
-      '/': 'Logging Equipment For Sale | Forestry Equipment For Sale | TimberEquip.com',
-      '/search': `TimberEquip.com | ${t('layout.inventory', 'Inventory')}`,
-      '/sell': `TimberEquip.com | ${t('layout.sellEquipment', 'Sell Equipment')}`,
-      '/categories': `TimberEquip.com | ${t('layout.categories', 'Categories')}`,
-      '/auctions': `TimberEquip.com | ${t('layout.auctions', 'Auctions')}`,
-      '/financing': `TimberEquip.com | ${t('layout.financing', 'Financing')}`,
-      '/blog': `TimberEquip.com | ${t('layout.equipmentNews', 'Equipment News')}`,
-      '/contact': 'TimberEquip.com | Contact TimberEquip',
-      '/about': 'TimberEquip.com | About TimberEquip'
+      '/': 'Logging Equipment For Sale | Forestry Equipment For Sale | Forestry Equipment Sales',
+      '/search': `Forestry Equipment Sales | ${t('layout.inventory', 'Inventory')}`,
+      '/sell': `Forestry Equipment Sales | ${t('layout.sellEquipment', 'Sell Equipment')}`,
+      '/categories': `Forestry Equipment Sales | ${t('layout.categories', 'Categories')}`,
+      '/auctions': `Forestry Equipment Sales | ${t('layout.auctions', 'Auctions')}`,
+      '/financing': `Forestry Equipment Sales | ${t('layout.financing', 'Financing')}`,
+      '/blog': `Forestry Equipment Sales | ${t('layout.equipmentNews', 'Equipment News')}`,
+      '/contact': 'Forestry Equipment Sales | Contact Forestry Equipment Sales',
+      '/about': 'Forestry Equipment Sales | About Forestry Equipment Sales'
     };
 
     if (pageTitles[location.pathname]) {
@@ -265,6 +266,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="hidden sm:inline">{theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}</span>
           </button>
           <Link to={listEquipmentPath} className="text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
+          {hasDealerOsAccess ? <Link to="/dealer-os" className="text-ink font-bold hover:underline">DealerOS</Link> : null}
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-4">
               <Link to={accountRoute} className="text-ink font-bold flex items-center">
@@ -285,7 +287,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Link to="/" className="flex items-center">
           <img
             src={headerLogo}
-            alt="TimberEquip"
+            alt="Forestry Equipment Sales"
             className="h-14 md:h-16 w-auto object-contain"
           />
         </Link>
@@ -447,7 +449,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/" className="flex items-center">
                 <img
                   src={logoTransparent}
-                  alt="TimberEquip"
+                  alt="Forestry Equipment Sales"
                   className="h-12 w-12 object-contain"
                 />
               </Link>
@@ -516,7 +518,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           
           <div className="mt-24 pt-12 border-t border-line flex flex-col md:flex-row justify-between items-center text-[10px] font-bold text-muted uppercase tracking-[0.2em]">
             <div className="flex items-center space-x-4">
-              <span>{t('layout.siteCopyright', '© 2026 TIMBEREQUIP | LOGGING EQUIPMENT MARKETPLACE.')}</span>
+              <span>{t('layout.siteCopyright', '© 2026 FORESTRY EQUIPMENT SALES | LOGGING EQUIPMENT MARKETPLACE.')}</span>
               <span className="hidden md:inline text-line">|</span>
               <span className="text-ink">EST. 1998</span>
             </div>

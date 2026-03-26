@@ -25,10 +25,10 @@ firebase functions:secrets:set SMTP_PASS
 # value: <google-app-password>
 
 firebase functions:secrets:set EMAIL_FROM
-# value: TimberEquip <support@timberequip.com>
+# value: Forestry Equipment Sales <support@timberequip.com>
 
 firebase functions:secrets:set ADMIN_EMAILS
-# value: support@timberequip.com,calebhappy@gmail.com
+# value: support@timberequip.com,caleb@forestryequipmentsales.com
 ```
 
 Notes:

@@ -67,9 +67,17 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
+    function normalizeUserRole(role) {
+      return role == 'dealer_staff'
+        ? 'dealer'
+        : role == 'dealer_manager'
+          ? 'pro_dealer'
+          : role;
+    }
+
     function getUserRole() {
       return currentUserDocExists()
-        ? get(currentUserPath()).data.role
+        ? normalizeUserRole(get(currentUserPath()).data.role)
         : '';
     }
 
@@ -88,15 +96,19 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return isAuthenticated() && getUserRole() == role;
+      return isAuthenticated() && getUserRole() == normalizeUserRole(role);
     }
 
     function hasAnyRole(roles) {
-      return isAuthenticated() && getUserRole() in roles;
+      return isAuthenticated() && (
+        getUserRole() in roles ||
+        (getUserRole() == 'dealer' && 'dealer_staff' in roles) ||
+        (getUserRole() == 'pro_dealer' && 'dealer_manager' in roles)
+      );
     }
 
     function isPrivilegedAdminEmail() {
-      return isAuthenticated() && request.auth.token.email == "calebhappy@gmail.com" && request.auth.token.email_verified == true;
+      return isAuthenticated() && request.auth.token.email == "caleb@forestryequipmentsales.com" && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
@@ -108,11 +120,11 @@ service cloud.firestore {
     }
 
     function isDealer() {
-      return isAdmin() || hasAnyRole(['dealer', 'dealer_manager']);
+      return isAdmin() || hasAnyRole(['dealer', 'pro_dealer']);
     }
 
     function isInspectionManager() {
-      return isAdmin() || hasAnyRole(['dealer', 'dealer_manager']);
+      return isAdmin() || hasAnyRole(['dealer', 'pro_dealer']);
     }
 
     function isListingOwner(data) {
@@ -130,8 +142,8 @@ service cloud.firestore {
     }
 
     function canManageRole(targetRole) {
-      return (isAdmin() && targetRole in ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'member', 'buyer']) ||
-             (isDealer() && targetRole in ['dealer_manager', 'dealer_staff', 'member', 'buyer']);
+          return (isAdmin() && normalizeUserRole(targetRole) in ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member', 'buyer']) ||
+            (isDealer() && normalizeUserRole(targetRole) in ['dealer', 'pro_dealer', 'member', 'buyer']);
     }
 
     function isValidEmail(email) {
@@ -154,7 +166,7 @@ service cloud.firestore {
       return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'role', 'emailVerified']) &&
              data.displayName is string && data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
-             data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'individual_seller', 'member', 'buyer'] &&
+             data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'] &&
              data.emailVerified is bool &&
              data.createdAt is timestamp &&
              (!('favorites' in data) || (data.favorites is list && data.favorites.size() < 1000));
@@ -215,9 +227,10 @@ service cloud.firestore {
     function isValidBlogPost(data) {
       return data.keys().hasAll(['title', 'content', 'authorUid', 'status']) &&
              data.title is string && data.title.size() < 500 &&
-             data.content is string && data.content.size() < 50000 &&
+             data.content is string && data.content.size() < 500000 &&
              data.authorUid is string && data.authorUid.size() > 0 &&
-             data.status in ['draft', 'published'];
+             data.status in ['draft', 'published'] &&
+             (!('reviewStatus' in data) || data.reviewStatus in ['draft', 'published', 'in_review', 'scheduled']);
     }
 
     function isValidInquiryCreate(data) {
@@ -324,7 +337,7 @@ service cloud.firestore {
     function isValidStorefront(data) {
           return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
-            data.role in ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager', 'individual_seller'] &&
+            data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller'] &&
              data.storefrontEnabled is bool &&
             (!('storefrontSlug' in data) || (data.storefrontSlug is string && data.storefrontSlug.size() <= 200)) &&
             (!('canonicalPath' in data) || (data.canonicalPath is string && data.canonicalPath.size() <= 255)) &&
@@ -405,7 +418,7 @@ service cloud.firestore {
       return data.keys().hasOnly(['dealerId', 'userUid', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
              isNonEmptyString(data.dealerId, 128) &&
              isNonEmptyString(data.userUid, 128) &&
-             data.role in ['dealer_admin', 'dealer_staff'] &&
+             data.role in ['dealer', 'pro_dealer'] &&
              data.permissions is map &&
              data.createdAt is timestamp &&
              data.updatedAt is timestamp;
@@ -503,7 +516,7 @@ service cloud.firestore {
         (
           request.auth.uid == storefrontId &&
           request.resource.data.uid == request.auth.uid &&
-          request.resource.data.role in ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager', 'individual_seller']
+          request.resource.data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller']
         )
       );
       allow delete: if isAdmin();

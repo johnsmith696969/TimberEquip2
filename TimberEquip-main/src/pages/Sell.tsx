@@ -13,9 +13,9 @@ import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
 import { canUserPostListings } from '../utils/sellerAccess';
 
-const VERIFIED_ROLES = new Set(['admin', 'super_admin', 'dealer', 'dealer_manager', 'dealer_staff']);
+const VERIFIED_ROLES = new Set(['admin', 'super_admin', 'dealer', 'pro_dealer']);
 const ADMIN_PUBLISHER_ROLES = new Set(['admin', 'super_admin', 'developer']);
-const MANAGED_SELLER_ROLES = new Set(['dealer_manager', 'dealer_staff']);
+const MANAGED_SELLER_ROLES = new Set(['dealer', 'pro_dealer']);
 const SUPPORTED_PLANS = new Set<ListingPlanId>(['individual_seller', 'dealer', 'fleet_dealer']);
 
 export function Sell() {

@@ -1,4 +1,4 @@
-# Firebase Configuration Guide for TimberEquip
+# Firebase Configuration Guide for Forestry Equipment Sales
 
 Complete setup instructions for Firebase image storage and account information storage.
 
@@ -12,7 +12,7 @@ Complete setup instructions for Firebase image storage and account information s
 
 ### Step 1: Enable Firebase Services
 
-In the Firebase Console for your TimberEquip project:
+In the Firebase Console for your Forestry Equipment Sales project:
 
 1. **Cloud Storage**
    - Navigate to `Build > Cloud Storage`
@@ -94,12 +94,12 @@ service firebase.storage {
   // ========================================
   function isAdmin(uid) {
     return request.auth != null && 
-           (request.auth.token.email == "calebhappy@gmail.com");
+           (request.auth.token.email == "caleb@forestryequipmentsales.com");
   }
 
   function isEditor(uid) {
     return request.auth != null && 
-           (request.auth.token.email == "calebhappy@gmail.com" ||
+           (request.auth.token.email == "caleb@forestryequipmentsales.com" ||
             isRole(uid, ['super_admin', 'admin', 'content_manager', 'editor']));
   }
 
@@ -276,7 +276,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return request.auth.token.email == "calebhappy@gmail.com" ||
+      return request.auth.token.email == "caleb@forestryequipmentsales.com" ||
              getUserRole() in ['super_admin', 'admin', 'developer'];
     }
 

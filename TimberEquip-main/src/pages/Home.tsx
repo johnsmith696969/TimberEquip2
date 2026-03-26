@@ -264,8 +264,8 @@ export function Home() {
   return (
     <div className="flex flex-col">
       <Seo
-        title="Logging Equipment For Sale | Forestry Equipment For Sale | TimberEquip.com"
-        description="Browse in-stock new and used logging equipment listings on TimberEquip. Shop by category, make, model, year, hours, and price."
+        title="Logging Equipment For Sale | Forestry Equipment For Sale | Forestry Equipment Sales"
+        description="Browse in-stock new and used logging equipment listings on Forestry Equipment Sales. Shop by category, make, model, year, hours, and price."
         canonicalPath="/"
       />
 

@@ -12,7 +12,7 @@ import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { type AccountOnboardingChoice } from '../services/billingService';
 
-const ADMIN_EMAILS = ['calebhappy@gmail.com'];
+const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 
 const ACCOUNT_OPTIONS: Array<{
   id: AccountOnboardingChoice;
@@ -279,7 +279,7 @@ export function Register() {
                 <div className="flex items-center space-x-3">
                   <input type="checkbox" required className="w-4 h-4 border-line rounded-sm accent-accent" id="terms" />
                   <label htmlFor="terms" className="text-[10px] font-bold text-muted uppercase tracking-widest cursor-pointer leading-relaxed">
-                    I accept the TimberEquip <span className="text-accent underline">Terms of Service</span> and <span className="text-accent underline">Privacy Policy</span>.
+                    I accept the Forestry Equipment Sales <span className="text-accent underline">Terms of Service</span> and <span className="text-accent underline">Privacy Policy</span>.
                   </label>
                 </div>
 
@@ -316,7 +316,7 @@ export function Register() {
                 <span className="text-[9px] font-black uppercase tracking-widest mb-1">Secure Registration</span>
                 <p className="text-[9px] font-medium text-muted leading-relaxed">
                   Your identity is protected via AES-256 encryption. 
-                  TimberEquip does not share operator data with unauthorized third parties.
+                  Forestry Equipment Sales does not share operator data with unauthorized third parties.
                 </p>
               </div>
             </div>

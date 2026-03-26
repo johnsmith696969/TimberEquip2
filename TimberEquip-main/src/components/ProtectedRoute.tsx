@@ -1,17 +1,19 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { canAccessDealerOs } from '../utils/sellerAccess';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
-const ADMIN_EMAILS = ['calebhappy@gmail.com'];
+const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireDealerOs?: boolean;
   requireVerified?: boolean;
 }
 
-export function ProtectedRoute({ children, requireAdmin = false, requireVerified = true }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs = false, requireVerified = true }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
 
@@ -28,6 +30,10 @@ export function ProtectedRoute({ children, requireAdmin = false, requireVerified
 
   if (requireAdmin && !hasAdminAccess) {
     return <Navigate to="/" replace />;
+  }
+
+  if (requireDealerOs && !canAccessDealerOs(user)) {
+    return <Navigate to="/profile" replace />;
   }
 
   if (requireVerified && user && !user.emailVerified) {

@@ -87,7 +87,7 @@ export function Inspections() {
     notes: '',
   });
 
-  const requestChecklist = `TIMBEREQUIP INSPECTION CHECKLIST
+  const requestChecklist = `FORESTRY EQUIPMENT SALES INSPECTION CHECKLIST
 
 Machine Reference:
 Stock Number:
@@ -125,7 +125,7 @@ FINAL DISPOSITION
 - Service or repair recommended
 `;
 
-  const partnerPacket = `TIMBEREQUIP INSPECTION PARTNER INTAKE
+  const partnerPacket = `FORESTRY EQUIPMENT SALES INSPECTION PARTNER INTAKE
 
 Company:
 Primary Contact:
@@ -264,8 +264,8 @@ Notes:
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="TimberEquip.com | Inspections"
-        description="Inspection request intake, partner enrollment, and printable machine checklists for TimberEquip buyers, dealers, and owner operators."
+        title="Forestry Equipment Sales | Inspections"
+        description="Inspection request intake, partner enrollment, and printable machine checklists for Forestry Equipment Sales buyers, dealers, and sellers."
         canonicalPath="/inspections"
       />
 
@@ -276,10 +276,10 @@ Notes:
             Buyer-ready field inspections for dealers, pro dealers, and owner operators
           </h1>
           <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-white/70">
-            Request an inspection, let TimberEquip match the machine to the nearest dealer coverage point, join the inspection partner network, and download a printable machine review sheet for field use.
+            Request an inspection, let Forestry Equipment Sales match the machine to the nearest dealer coverage point, join the inspection partner network, and download a printable machine review sheet for field use.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <button onClick={() => downloadTextFile('timberequip-inspection-checklist.txt', requestChecklist)} className="btn-industrial btn-accent px-6 py-4">
+            <button onClick={() => downloadTextFile('forestry-equipment-sales-inspection-checklist.txt', requestChecklist)} className="btn-industrial btn-accent px-6 py-4">
               <FileDown size={16} /> Download Checklist
             </button>
             <button onClick={() => window.print()} className="btn-industrial bg-white/10 border border-white/20 px-6 py-4 hover:bg-white hover:text-ink">
@@ -326,7 +326,7 @@ Notes:
             <span className="label-micro text-accent">Buyer Request</span>
             <h2 className="mt-3 text-2xl font-black uppercase tracking-tighter">Request an inspection</h2>
             <p className="mt-3 text-sm font-medium leading-relaxed text-muted">
-              Match the machine to the nearest dealer first, then route the request to the TimberEquip support desk with the recommended inspection partner included.
+              Match the machine to the nearest dealer first, then route the request to the Forestry Equipment Sales support desk with the recommended inspection partner included.
             </p>
 
             <form onSubmit={submitRequest} className="mt-8 space-y-4">
@@ -380,7 +380,7 @@ Notes:
                     <div className="border border-line bg-surface p-5">
                       <span className="label-micro text-accent">Recommended Dealer</span>
                       <h3 className="mt-3 text-xl font-black uppercase tracking-tight">{dealerMatch.recommendedDealer.name}</h3>
-                      <p className="mt-2 text-sm font-medium text-muted">{dealerMatch.recommendedDealer.company || dealerMatch.recommendedDealer.storefrontName || 'TimberEquip dealer account'}</p>
+                      <p className="mt-2 text-sm font-medium text-muted">{dealerMatch.recommendedDealer.company || dealerMatch.recommendedDealer.storefrontName || 'Forestry Equipment Sales dealer account'}</p>
                       <div className="mt-4 space-y-2 text-sm text-muted">
                         <div className="flex items-center gap-2">
                           <MapPin size={14} className="text-accent" />
@@ -462,7 +462,7 @@ Notes:
               <textarea rows={5} placeholder="CAPACITY, TRAVEL RANGE, FIELD TOOLS, AND NOTES" className="input-industrial w-full" value={partnerForm.notes} onChange={(event) => setPartnerForm((prev) => ({ ...prev, notes: event.target.value }))} />
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button type="submit" className="btn-industrial btn-accent flex-1 py-4">Send Partner Intake</button>
-                <button type="button" onClick={() => downloadTextFile('timberequip-inspection-partner-intake.txt', partnerPacket)} className="btn-industrial flex-1 py-4">Download Intake Template</button>
+                <button type="button" onClick={() => downloadTextFile('forestry-equipment-sales-inspection-partner-intake.txt', partnerPacket)} className="btn-industrial flex-1 py-4">Download Intake Template</button>
               </div>
             </form>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   LayoutDashboard, Package, MessageSquare, 
   Users, Settings, TrendingUp, Plus,
@@ -9,7 +9,7 @@ import {
   FileText, Image, Layers, Database, Upload, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { equipmentService } from '../services/equipmentService';
+import { equipmentService, type AdminListingsCursor } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { adminUserService } from '../services/adminUserService';
 import { cmsService } from '../services/cmsService';
@@ -18,38 +18,25 @@ import { billingService, Invoice, Subscription, BillingAuditLog } from '../servi
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { InquiryList } from '../components/admin/InquiryList';
+import { VirtualizedListingsTable } from '../components/admin/VirtualizedListingsTable';
 import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
+import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
 
 type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
+
+const LISTINGS_PAGE_SIZE = 50;
 
 export function AdminDashboard() {
   const { user: authUser, logout: authLogout } = useAuth();
   const { formatPrice } = useLocale();
   const profileName = authUser?.displayName || 'Caleb Happy';
-  const roleLabel =
-    authUser?.role === 'super_admin'
-      ? 'Super Admin'
-      : authUser?.role === 'admin'
-        ? 'Admin'
-        : authUser?.role === 'developer'
-          ? 'Developer'
-          : authUser?.role === 'content_manager'
-            ? 'Content Manager'
-            : authUser?.role === 'dealer_manager'
-              ? 'Dealer Manager'
-              : authUser?.role === 'dealer_staff'
-                ? 'Dealer Staff'
-                : authUser?.role === 'dealer'
-                  ? 'Dealer'
-                  : authUser?.role === 'individual_seller'
-                    ? 'Owner Operator'
-                    : authUser?.role === 'member'
-                      ? 'Member'
-                      : 'Buyer';
+  const roleLabel = getUserRoleDisplayLabel(authUser?.role);
+  const assignableRoleOptions = getAssignableUserRoleOptions(authUser?.role);
+  const canAssignSuperAdmin = assignableRoleOptions.some((option) => option.value === 'super_admin');
   const [listings, setListings] = useState<Listing[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -58,10 +45,24 @@ export function AdminDashboard() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [billingLogs, setBillingLogs] = useState<BillingAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingLoaded, setBillingLoaded] = useState(false);
+  const [billingLoadError, setBillingLoadError] = useState('');
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentLoaded, setContentLoaded] = useState(false);
+  const [contentLoadError, setContentLoadError] = useState('');
+  const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showDemoListings, setShowDemoListings] = useState(false);
+  const [listingPage, setListingPage] = useState(1);
+  const [listingHasMore, setListingHasMore] = useState(false);
+  const [nextListingCursor, setNextListingCursor] = useState<AdminListingsCursor>(null);
+  const [listingCursorHistory, setListingCursorHistory] = useState<AdminListingsCursor[]>([null]);
+  const [listingsLoadError, setListingsLoadError] = useState('');
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -81,7 +82,7 @@ export function AdminDashboard() {
     email: '',
     phoneNumber: '',
     company: '',
-    role: 'buyer'
+    role: 'member'
   });
   const [newManagedAccount, setNewManagedAccount] = useState<{
     displayName: string;
@@ -92,10 +93,11 @@ export function AdminDashboard() {
   }>({
     displayName: '',
     email: '',
-    role: 'dealer_staff',
+    role: 'dealer',
     company: '',
     phoneNumber: ''
   });
+  const listingsInitializedRef = useRef(false);
 
   // ── Dealer Feed state ──────────────────────────────────────────────
   const [dfSubTab,     setDfSubTab]     = useState<'ingest' | 'logs'>('ingest');
@@ -152,31 +154,7 @@ export function AdminDashboard() {
   };
 
   const getAdminRoleDisplayLabel = (role: UserRole) => {
-    switch (role) {
-      case 'super_admin':
-        return 'Super Admin';
-      case 'admin':
-        return 'Admin';
-      case 'developer':
-        return 'Developer';
-      case 'content_manager':
-        return 'Content Manager';
-      case 'editor':
-        return 'Editor';
-      case 'dealer':
-        return 'Dealer';
-      case 'dealer_manager':
-        return 'Dealer Manager';
-      case 'dealer_staff':
-        return 'Dealer Staff';
-      case 'individual_seller':
-        return 'Owner Operator';
-      case 'member':
-      case 'buyer':
-        return 'Buyer';
-      default:
-        return 'Buyer';
-    }
+    return getUserRoleDisplayLabel(role);
   };
 
   const isPublishedPost = (post: BlogPost) => {
@@ -266,63 +244,145 @@ export function AdminDashboard() {
     }
   };
 
+  const fetchBillingData = async (force = false) => {
+    if (!authUser?.uid || billingLoading || (billingLoaded && !force)) {
+      return;
+    }
+
+    setBillingLoading(true);
+    setBillingLoadError('');
+    try {
+      const [invoicesData, subscriptionsData, logsData] = await Promise.all([
+        billingService.getAdminInvoices(),
+        billingService.getAdminSubscriptions(),
+        billingService.getAdminAuditLogs()
+      ]);
+      setInvoices(invoicesData);
+      setSubscriptions(subscriptionsData);
+      setBillingLogs(logsData);
+      setBillingLoaded(true);
+    } catch (billingError) {
+      console.warn('Billing data not available:', billingError);
+      setBillingLoadError(billingError instanceof Error ? billingError.message : 'Billing data is not available right now.');
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const fetchContentData = async (force = false) => {
+    if (!authUser?.uid || contentLoading || (contentLoaded && !force)) {
+      return;
+    }
+
+    setContentLoading(true);
+    setContentLoadError('');
+    try {
+      const [postsData, mediaData, blocksData] = await Promise.all([
+        cmsService.getBlogPosts(),
+        cmsService.getMedia(),
+        cmsService.getContentBlocks()
+      ]);
+      setBlogPosts(postsData);
+      setMediaItems(mediaData);
+      setContentBlocks(blocksData);
+      setContentLoaded(true);
+    } catch (cmsErr) {
+      console.warn('CMS data not available:', cmsErr);
+      setContentLoadError(cmsErr instanceof Error ? cmsErr.message : 'Content data is not available right now.');
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const loadListingsPage = async (
+    cursor: AdminListingsCursor,
+    pageNumber: number,
+    includeDemoListings = showDemoListings
+  ) => {
+    setListingsLoading(true);
+    setListingsLoadError('');
+    try {
+      const page = await equipmentService.getAdminListingsPage({
+        pageSize: LISTINGS_PAGE_SIZE,
+        cursor,
+        includeDemoListings,
+      });
+
+      // Validate and normalize listings data
+      const validatedListings = Array.isArray(page.listings) 
+        ? page.listings.map(l => ({
+            ...l,
+            images: Array.isArray(l.images) ? l.images : [],
+            title: l.title || '(Untitled)',
+            category: l.category || 'Uncategorized',
+            manufacturer: l.manufacturer || l.make || '',
+            price: typeof l.price === 'number' ? l.price : 0,
+            hours: typeof l.hours === 'number' ? l.hours : 0,
+            leads: typeof l.leads === 'number' ? l.leads : 0,
+          }))
+        : [];
+
+      setListings(validatedListings);
+      setNextListingCursor(page.nextCursor);
+      setListingHasMore(page.hasMore);
+      setListingPage(pageNumber);
+      setDemoInventoryRecommended(false);
+      setListingCursorHistory((previous) => {
+        const nextHistory = previous.slice(0, Math.max(pageNumber - 1, 0));
+        nextHistory[pageNumber - 1] = cursor;
+        return nextHistory.length > 0 ? nextHistory : [null];
+      });
+      listingsInitializedRef.current = true;
+    } catch (error) {
+      console.error('Error loading listings page:', error);
+      setListingsLoadError(
+        error instanceof Error ? error.message : 'Failed to load machine inventory. Please try again.'
+      );
+      setListings([]);
+    } finally {
+      setListingsLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     if (!authUser?.uid) {
+      listingsInitializedRef.current = false;
       setLoading(false);
       return;
     }
 
     setLoading(true);
+  setBillingLoaded(false);
+  setBillingLoadError('');
+  setContentLoaded(false);
+  setContentLoadError('');
+  setInvoices([]);
+  setSubscriptions([]);
+  setBillingLogs([]);
+  setBlogPosts([]);
+  setMediaItems([]);
+  setContentBlocks([]);
     // Fetch users independently so a failure doesn't block the rest of the dashboard
     void fetchUsers();
     try {
-      const [listingsData, inquiriesData, callsData] = await Promise.all([
-        equipmentService.getListings({ includeUnapproved: true, inStockOnly: false, sortBy: 'newest' }),
+      const [listingsPage, inquiriesData, callsData] = await Promise.all([
+        equipmentService.getAdminListingsPage({
+          pageSize: LISTINGS_PAGE_SIZE,
+          includeDemoListings: showDemoListings,
+        }),
         equipmentService.getInquiries(),
         equipmentService.getCalls(),
       ]);
 
-      const skidderCount = listingsData.filter((listing) => listing.category === 'Skidders').length;
-      const firewoodProcessorCount = listingsData.filter((listing) => listing.category === 'Firewood Processors').length;
-
-      if (skidderCount < 10 || firewoodProcessorCount < 10) {
-        await equipmentService.seedDemoInventory();
-        const refreshedListings = await equipmentService.getListings({ includeUnapproved: true, inStockOnly: false, sortBy: 'newest' });
-        setListings(refreshedListings);
-      } else {
-        setListings(listingsData);
-      }
-
+      setListings(listingsPage.listings);
+      setNextListingCursor(listingsPage.nextCursor);
+      setListingHasMore(listingsPage.hasMore);
+      setListingPage(1);
+      setListingCursorHistory([null]);
+      setDemoInventoryRecommended(false);
       setInquiries(inquiriesData);
       setCalls(callsData);
-
-      // Fetch billing data separately to avoid blocking if backend isn't ready
-      try {
-        const [invoicesData, subscriptionsData, logsData] = await Promise.all([
-          billingService.getAdminInvoices(),
-          billingService.getAdminSubscriptions(),
-          billingService.getAdminAuditLogs()
-        ]);
-        setInvoices(invoicesData);
-        setSubscriptions(subscriptionsData);
-        setBillingLogs(logsData);
-      } catch (billingError) {
-        console.warn('Billing data not available:', billingError);
-      }
-
-      // Fetch CMS data
-      try {
-        const [postsData, mediaData, blocksData] = await Promise.all([
-          cmsService.getBlogPosts(),
-          cmsService.getMedia(),
-          cmsService.getContentBlocks()
-        ]);
-        setBlogPosts(postsData);
-        setMediaItems(mediaData);
-        setContentBlocks(blocksData);
-      } catch (cmsErr) {
-        console.warn('CMS data not available:', cmsErr);
-      }
+      listingsInitializedRef.current = true;
     } catch (error) {
       console.error('Error fetching admin data:', error);
     } finally {
@@ -333,6 +393,25 @@ export function AdminDashboard() {
   useEffect(() => {
     void fetchData();
   }, [authUser?.uid]);
+
+  useEffect(() => {
+    if (activeTab === 'billing' || activeTab === 'tracking') {
+      void fetchBillingData();
+    }
+
+    if (activeTab === 'content') {
+      void fetchContentData();
+    }
+  }, [activeTab, authUser?.uid]);
+
+  useEffect(() => {
+    if (!authUser?.uid || !listingsInitializedRef.current) {
+      return;
+    }
+
+    setSearchQuery('');
+    void loadListingsPage(null, 1, showDemoListings);
+  }, [showDemoListings]);
 
   const openNativeMap = (location: string) => {
     const encodedLocation = encodeURIComponent(location);
@@ -422,7 +501,7 @@ export function AdminDashboard() {
       setNewManagedAccount({
         displayName: '',
         email: '',
-        role: 'dealer_staff',
+        role: 'dealer',
         company: '',
         phoneNumber: ''
       });
@@ -442,12 +521,14 @@ export function AdminDashboard() {
       const account = accounts.find((entry) => entry.id === uid);
       if (!account) return;
 
+      const normalizedRole = normalizeEditableUserRole(role);
+
       const updatedAccount = await adminUserService.updateUser(uid, {
         displayName: account.displayName || account.name,
         email: account.email,
         phoneNumber: account.phoneNumber || account.phone,
         company: account.company,
-        role,
+        role: normalizedRole,
       });
 
       setAccounts(prev => prev.map(a => a.id === uid ? updatedAccount : a));
@@ -475,7 +556,7 @@ export function AdminDashboard() {
       email: account.email,
       phoneNumber: account.phoneNumber || account.phone || '',
       company: account.company || '',
-      role: account.role,
+      role: normalizeEditableUserRole(account.role),
     });
   };
 
@@ -487,7 +568,7 @@ export function AdminDashboard() {
       email: '',
       phoneNumber: '',
       company: '',
-      role: 'buyer',
+      role: 'member',
     });
   };
 
@@ -553,11 +634,13 @@ export function AdminDashboard() {
 
   const isUserActionPending = (uid: string, action: string) => pendingUserActionKey === `${uid}:${action}`;
 
-  const filteredListings = listings.filter(l => 
+  // Memoize filtered listings to avoid recalculating on every render
+  const filteredListings = useMemo(() => listings.filter(l => 
     l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (l.manufacturer || l.make || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     l.model.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ), [listings, searchQuery]);
+  const recentOverviewListings = listings.slice(0, 5);
 
   const filteredAccounts = accounts.filter(account => {
     const haystack = [
@@ -703,7 +786,7 @@ export function AdminDashboard() {
   };
 
   const stats = [
-    { label: 'Active Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
+    { label: 'Visible Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
     { label: 'Total Leads', value: inquiries.length, change: '+24%', icon: MessageSquare, color: 'text-secondary' },
     { label: 'Call Volume', value: calls.length, change: '+8%', icon: Phone, color: 'text-data' },
     { label: 'Active Users', value: accounts.length, change: '+15%', icon: Users, color: 'text-ink' }
@@ -779,7 +862,7 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {listings.slice(0, 5).map(listing => (
+                {recentOverviewListings.map(listing => (
                   <tr key={listing.id} className="hover:bg-surface/20 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-4">
@@ -820,6 +903,13 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
+                {recentOverviewListings.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-10 text-center text-[10px] font-black uppercase tracking-widest text-muted">
+                      No inventory available yet.
+                    </td>
+                  </tr>
+                )}
                 {calls.slice(0, 5).map(call => (
                   <tr key={call.id} className="hover:bg-surface/20 transition-colors">
                     <td className="px-6 py-4">
@@ -860,14 +950,9 @@ export function AdminDashboard() {
         <input value={newManagedAccount.displayName} onChange={(e) => setNewManagedAccount({ ...newManagedAccount, displayName: e.target.value })} placeholder="NAME" className="input-industrial md:col-span-2" required />
         <input value={newManagedAccount.email} onChange={(e) => setNewManagedAccount({ ...newManagedAccount, email: e.target.value })} placeholder="EMAIL" className="input-industrial md:col-span-2" type="email" required />
         <select value={newManagedAccount.role} onChange={(e) => setNewManagedAccount({ ...newManagedAccount, role: e.target.value as UserRole })} className="select-industrial md:col-span-1">
-          <option value="admin">Admin</option>
-          <option value="developer">Developer</option>
-          <option value="content_manager">Content Manager</option>
-          <option value="editor">Editor</option>
-          <option value="dealer_manager">Dealer Manager</option>
-          <option value="dealer_staff">Dealer Staff</option>
-          <option value="member">Buyer (Free Member)</option>
-          <option value="buyer">Buyer</option>
+          {assignableRoleOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
         </select>
         <button type="submit" disabled={creatingAccount} className="btn-industrial btn-accent md:col-span-1 py-2">
           {creatingAccount ? 'Creating...' : 'Add Role'}
@@ -901,13 +986,13 @@ export function AdminDashboard() {
             </thead>
             <tbody className="divide-y divide-line/50">
               {[
-                { role: 'Full Access (super_admin)', inv: true,  cont: true,  users: true,  bill: true,  set: true,  dev: true  },
-                { role: 'Admin',                    inv: true,  cont: true,  users: true,  bill: true,  set: true,  dev: false },
-                { role: 'Developer',                inv: true,  cont: false, users: false, bill: false, set: true,  dev: true  },
-                { role: 'Content Manager',          inv: false, cont: true,  users: false, bill: false, set: false, dev: false },
-                { role: 'Editor',                   inv: false, cont: true,  users: false, bill: false, set: false, dev: false },
-                { role: 'Dealer Manager',           inv: true,  cont: false, users: true,  bill: false, set: false, dev: false },
-                { role: 'Dealer Staff',             inv: true,  cont: false, users: false, bill: false, set: false, dev: false },
+                { role: 'Super Admin',      inv: true,  cont: true,  users: true,  bill: true,  set: true,  dev: true  },
+                { role: 'Admin',            inv: true,  cont: true,  users: true,  bill: true,  set: true,  dev: false },
+                { role: 'Content Manager',  inv: false, cont: true,  users: false, bill: false, set: false, dev: false },
+                { role: 'Editor',           inv: false, cont: true,  users: false, bill: false, set: false, dev: false },
+                { role: 'Pro Dealer',       inv: true,  cont: false, users: true,  bill: false, set: false, dev: false },
+                { role: 'Dealer',           inv: true,  cont: false, users: false, bill: false, set: false, dev: false },
+                { role: 'Free Member',      inv: false, cont: false, users: false, bill: false, set: false, dev: false },
               ].map(row => (
                 <tr key={row.role} className="hover:bg-surface/20">
                   <td className="px-3 py-2 text-ink">{row.role}</td>
@@ -960,22 +1045,26 @@ export function AdminDashboard() {
                   </td>
                   <td className="px-6 py-4 text-xs font-black text-ink uppercase">{account.company}</td>
                   <td className="px-6 py-4">
+                    {(() => {
+                      const normalizedAccountRole = normalizeEditableUserRole(account.role);
+                      const accountRoleOptions = canAssignSuperAdmin || normalizedAccountRole !== 'super_admin'
+                        ? assignableRoleOptions
+                        : [{ value: 'super_admin' as UserRole, label: 'Super Admin' }, ...assignableRoleOptions];
+                      const isRoleEditable = accountRoleOptions.some((option) => option.value === normalizedAccountRole);
+
+                      return (
                     <select
-                      value={account.role}
+                      value={normalizedAccountRole}
                       onChange={e => handleChangeUserRole(account.id, e.target.value as UserRole)}
                       className="select-industrial text-[9px] py-1"
+                      disabled={!isRoleEditable}
                     >
-                      <option value="super_admin">Full Access</option>
-                      <option value="admin">Admin</option>
-                      <option value="developer">Developer</option>
-                      <option value="content_manager">Content Manager</option>
-                      <option value="editor">Editor</option>
-                      <option value="dealer_manager">Dealer Manager</option>
-                      <option value="dealer_staff">Dealer Staff</option>
-                      <option value="individual_seller">Owner Operator</option>
-                      <option value="member">Buyer (Free Member)</option>
-                      <option value="buyer">Buyer</option>
+                      {accountRoleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-sm ${
@@ -1087,12 +1176,27 @@ export function AdminDashboard() {
 
   const renderListings = () => (
     <div className="space-y-6">
+      {listingsLoadError && (
+        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 rounded-sm p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={16} className="text-red-500 shrink-0" />
+            <span className="text-xs font-bold text-red-700">{listingsLoadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadListingsPage(null, 1, showDemoListings)}
+            className="btn-industrial py-1.5 px-4 text-[10px] shrink-0"
+          >
+            <RefreshCw size={12} className="mr-1.5" /> Retry
+          </button>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface p-6 border border-line rounded-sm">
         <div className="flex items-center bg-bg border border-line px-4 py-2 rounded-sm w-full sm:w-96">
           <Search size={16} className="text-muted mr-3" />
           <input 
             type="text" 
-            placeholder="Search inventory..." 
+            placeholder="Filter loaded inventory..." 
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="bg-transparent border-none text-xs font-bold focus:ring-0 w-full text-ink uppercase" 
@@ -1100,10 +1204,17 @@ export function AdminDashboard() {
         </div>
         <div className="flex items-center space-x-4">
           <button
+            type="button"
+            onClick={() => setShowDemoListings((current) => !current)}
+            className="btn-industrial py-2 px-4"
+          >
+            {showDemoListings ? 'Hide Demo Inventory' : 'Show Demo Inventory'}
+          </button>
+          <button
             onClick={async () => {
               try {
                 await equipmentService.seedDemoInventory();
-                await fetchData();
+                await loadListingsPage(null, 1, showDemoListings);
                 alert('Demo inventory seeded: 3 listings in every taxonomy subcategory.');
               } catch (error) {
                 console.error('Failed to seed demo inventory:', error);
@@ -1128,67 +1239,51 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
-                <th className="px-6 py-4">Equipment</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Price</th>
-                <th className="px-6 py-4">Hours</th>
-                <th className="px-6 py-4">Location</th>
-                <th className="px-6 py-4">Leads</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {filteredListings.map(listing => (
-                <tr key={listing.id} className="hover:bg-surface/20 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-surface rounded-sm overflow-hidden border border-line">
-                        <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-black uppercase tracking-tight text-ink">{listing.title}</span>
-                        <span className="text-[9px] font-bold text-muted uppercase">{listing.manufacturer} • {listing.year}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-[10px] font-bold text-muted uppercase">{listing.category}</td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs font-black tracking-tighter text-ink">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
-                  </td>
-                  <td className="px-6 py-4 text-xs font-black text-ink">{listing.hours.toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <button onClick={() => openNativeMap(listing.location)} className="flex items-center text-[10px] font-bold text-accent uppercase hover:underline">
-                      <MapPin size={10} className="mr-1" /> {listing.location}
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-xs font-black text-ink">{listing.leads}</td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end space-x-2">
-                      <button 
-                        onClick={() => { setEditingListing(listing); setIsModalOpen(true); }}
-                        className="p-2 text-muted hover:text-ink"
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteListing(listing.id)}
-                        className="p-2 text-muted hover:text-accent"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {demoInventoryRecommended ? (
+        <div className="flex items-center gap-2 border border-secondary/30 bg-secondary/5 rounded-sm px-4 py-3 text-xs font-medium text-secondary">
+          <AlertCircle size={14} className="shrink-0" />
+          <span>Demo inventory coverage is low. Use Seed Demo Inventory when you want to backfill taxonomy coverage, but it no longer blocks the dashboard from loading.</span>
         </div>
+      ) : null}
+
+      <div className="flex flex-col gap-2 rounded-sm border border-line bg-bg px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted sm:flex-row sm:items-center sm:justify-between">
+        <span>
+          Showing {filteredListings.length} loaded listings on page {listingPage}
+          {!showDemoListings ? ' (demo ads hidden by default)' : ''}
+        </span>
+        <span>
+          {listingsLoading ? 'Loading next inventory slice...' : listingHasMore ? 'More listings available' : 'End of loaded inventory'}
+        </span>
       </div>
+
+      <VirtualizedListingsTable
+        listings={filteredListings}
+        onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
+        onDelete={handleDeleteListing}
+        openNativeMap={openNativeMap}
+      />
+
+      {listingPage > 1 || listingHasMore ? (
+        <div className="flex items-center justify-between rounded-sm border border-line bg-surface px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted">
+          <button
+            type="button"
+            onClick={() => void loadListingsPage(listingCursorHistory[listingPage - 2] ?? null, listingPage - 1, showDemoListings)}
+            disabled={listingPage === 1 || listingsLoading}
+            className="btn-industrial py-2 px-4 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span>{filteredListings.length.toLocaleString()} currently loaded</span>
+          <button
+            type="button"
+            onClick={() => void loadListingsPage(nextListingCursor, listingPage + 1, showDemoListings)}
+            disabled={!listingHasMore || listingsLoading || !nextListingCursor}
+            className="btn-industrial py-2 px-4 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -1443,6 +1538,32 @@ export function AdminDashboard() {
   );
 
   const renderBilling = () => {
+    if (billingLoading && invoices.length === 0 && subscriptions.length === 0 && billingLogs.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+
+    if (billingLoadError && invoices.length === 0 && subscriptions.length === 0 && billingLogs.length === 0) {
+      return (
+        <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={16} className="text-red-500 shrink-0" />
+            <span className="text-xs font-bold text-red-700">{billingLoadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchBillingData(true)}
+            className="btn-industrial py-1.5 px-4 text-[10px] shrink-0"
+          >
+            <RefreshCw size={12} className="mr-1.5" /> Retry
+          </button>
+        </div>
+      );
+    }
+
     const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
     const pendingCount = invoices.filter(i => i.status === 'pending').length;
     const failedCount = invoices.filter(i => i.status === 'failed').length;
@@ -1566,6 +1687,13 @@ export function AdminDashboard() {
             <h3 className="text-lg font-black uppercase tracking-tighter">Billing Audit Trail</h3>
           </div>
           <div className="space-y-4">
+            {billingLoadError ? (
+              <div className="flex items-center gap-3 rounded-sm border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-800">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{billingLoadError}</span>
+              </div>
+            ) : null}
+
             {billingLogs.map((log, i) => (
               <div key={i} className="flex justify-between items-center py-2 border-b border-white/10 last:border-0">
                 <div className="flex flex-col">
@@ -1583,8 +1711,42 @@ export function AdminDashboard() {
     );
   };
 
-  const renderContent = () => (
+  const renderContent = () => {
+    if (contentLoading && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+
+    if (contentLoadError && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0) {
+      return (
+        <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={16} className="text-red-500 shrink-0" />
+            <span className="text-xs font-bold text-red-700">{contentLoadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchContentData(true)}
+            className="btn-industrial py-1.5 px-4 text-[10px] shrink-0"
+          >
+            <RefreshCw size={12} className="mr-1.5" /> Retry
+          </button>
+        </div>
+      );
+    }
+
+    return (
     <div className="space-y-6">
+      {contentLoadError ? (
+        <div className="flex items-center gap-3 rounded-sm border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-800">
+          <AlertCircle size={14} className="shrink-0" />
+          <span>{contentLoadError}</span>
+        </div>
+      ) : null}
+
       <div className="flex justify-end">
         <button
           type="button"
@@ -1842,7 +2004,8 @@ export function AdminDashboard() {
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   const renderSettings = () => (    <div className="max-w-3xl space-y-8">
       <section className="bg-surface border border-line rounded-sm overflow-hidden">
@@ -1870,7 +2033,7 @@ export function AdminDashboard() {
             </div>
             <div className="space-y-1">
               <label className="label-micro">Email Address</label>
-              <input type="email" defaultValue={authUser?.email || "calebhappy@gmail.com"} className="input-industrial w-full" />
+              <input type="email" defaultValue={authUser?.email || "caleb@forestryequipmentsales.com"} className="input-industrial w-full" />
             </div>
             <div className="space-y-1">
               <label className="label-micro">Phone Number</label>
@@ -2459,17 +2622,12 @@ export function AdminDashboard() {
                       onChange={(e) => setUserEditForm((prev) => ({ ...prev, role: e.target.value as UserRole }))}
                       className="select-industrial w-full"
                     >
-                      <option value="super_admin">Super Admin</option>
-                      <option value="admin">Admin</option>
-                      <option value="developer">Developer</option>
-                      <option value="content_manager">Content Manager</option>
-                      <option value="editor">Editor</option>
-                      <option value="dealer">Dealer</option>
-                      <option value="dealer_manager">Dealer Manager</option>
-                      <option value="dealer_staff">Dealer Staff</option>
-                      <option value="individual_seller">Owner Operator</option>
-                      <option value="member">Buyer (Free Member)</option>
-                      <option value="buyer">Buyer</option>
+                      {(canAssignSuperAdmin || userEditForm.role !== 'super_admin'
+                        ? assignableRoleOptions
+                        : [{ value: 'super_admin' as UserRole, label: 'Super Admin' }, ...assignableRoleOptions]
+                      ).map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

@@ -72,7 +72,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
             name: `${listing.year} ${getListingManufacturer(listing)} ${listing.model}`.trim(),
             brand: {
               '@type': 'Brand',
-              name: getListingManufacturer(listing) || 'TimberEquip',
+              name: getListingManufacturer(listing) || 'Forestry Equipment Sales',
             },
             offers: {
               '@type': 'Offer',
@@ -184,7 +184,7 @@ function SeoInventoryTemplate({
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={`${title} | TimberEquip`} description={description} canonicalPath={canonicalPath} jsonLd={jsonLd} />
+      <Seo title={`${title} | Forestry Equipment Sales`} description={description} canonicalPath={canonicalPath} jsonLd={jsonLd} />
       <Breadcrumbs items={breadcrumbs} />
 
       <section className="border-b border-line bg-surface px-4 py-20 md:px-8">
@@ -311,7 +311,7 @@ export function LoggingHubPage() {
     <SeoInventoryTemplate
       eyebrow="Phase 1 SEO Hub"
       title="Logging Equipment For Sale"
-      description="Browse TimberEquip logging equipment inventory across core categories, manufacturers, and states using the new clean-route SEO hub structure."
+      description="Browse Forestry Equipment Sales logging equipment inventory across core categories, manufacturers, and states using the new clean-route SEO hub structure."
       canonicalPath={`/${MARKET_ROUTE_LABELS.logging}`}
       intro="This hub establishes the clean commercial landing page for the marketplace's primary logging equipment intent while the broader search experience remains available for custom filtering."
       breadcrumbs={[
@@ -337,7 +337,7 @@ export function ForestryHubPage() {
     <SeoInventoryTemplate
       eyebrow="Phase 1 SEO Hub"
       title="Forestry Equipment For Sale"
-      description="Browse TimberEquip forestry equipment inventory across core machine types, brands, and regions using the clean Phase 1 route architecture."
+      description="Browse Forestry Equipment Sales forestry equipment inventory across core machine types, brands, and regions using the clean Phase 1 route architecture."
       canonicalPath={`/${MARKET_ROUTE_LABELS.forestry}`}
       intro="This companion hub covers broader forestry equipment demand and gives the site a second high-value landing page family without changing the underlying inventory or search systems."
       breadcrumbs={[
@@ -393,7 +393,7 @@ export function CategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow="Category Hub"
       title={`${resolvedCategory} For Sale`}
-      description={`Browse ${resolvedCategory.toLowerCase()} listings on TimberEquip with clean category routing, live inventory, and internal links to top manufacturers and state markets.`}
+      description={`Browse ${resolvedCategory.toLowerCase()} listings on Forestry Equipment Sales with clean category routing, live inventory, and internal links to top manufacturers and state markets.`}
       canonicalPath={buildCategoryPath(resolvedCategory)}
       intro={`This category route is the Phase 1 template for ${resolvedCategory.toLowerCase()} demand. It turns the existing filtered-inventory experience into a stable landing page with dedicated metadata and related-route links.`}
       breadcrumbs={[
@@ -425,7 +425,7 @@ export function ManufacturerLandingPage() {
     <SeoInventoryTemplate
       eyebrow="Manufacturer Hub"
       title={`${resolvedManufacturer} Logging Equipment For Sale`}
-      description={`Browse ${resolvedManufacturer} logging equipment for sale on TimberEquip with live inventory, top machine categories, and linked state markets.`}
+      description={`Browse ${resolvedManufacturer} logging equipment for sale on Forestry Equipment Sales with live inventory, top machine categories, and linked state markets.`}
       canonicalPath={buildManufacturerPath(resolvedManufacturer)}
       intro={`This route is the clean manufacturer landing page for ${resolvedManufacturer}. It replaces an equivalent manufacturer query-string view with a stable canonical surface tied to live marketplace inventory.`}
       breadcrumbs={[
@@ -498,7 +498,7 @@ export function StateCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow="State + Category Hub"
       title={`${resolvedCategory} For Sale In ${resolvedState}`}
-      description={`Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} with a clean combined route backed by live TimberEquip inventory.`}
+      description={`Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} with a clean combined route backed by live Forestry Equipment Sales inventory.`}
       canonicalPath={buildStateCategoryPath(resolvedState, resolvedCategory)}
       intro={`This combined route is the Phase 1 template for a regional category intent. It narrows inventory to ${resolvedState} ${resolvedCategory.toLowerCase()} demand and links back into the broader route family.`}
       breadcrumbs={[
@@ -536,7 +536,7 @@ export function ManufacturerCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow="Manufacturer + Category Hub"
       title={`${resolvedManufacturer} ${resolvedCategory} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} listings with a clean manufacturer-category route and live TimberEquip inventory.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} listings with a clean manufacturer-category route and live Forestry Equipment Sales inventory.`}
       canonicalPath={buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory)}
       intro={`This combined route isolates a high-intent make-and-machine query and establishes a stable canonical surface for buyers looking specifically for ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} inventory.`}
       breadcrumbs={[
@@ -609,7 +609,7 @@ export function DealerDirectoryPage() {
     <SeoInventoryTemplate
       eyebrow="Dealer Directory"
       title="Logging Equipment Dealers"
-      description="Browse TimberEquip dealer storefronts, inventory-rich sellers, and clean dealer URLs introduced in the Phase 1 SEO architecture."
+      description="Browse Forestry Equipment Sales dealer storefronts, inventory-rich sellers, and clean dealer URLs introduced in the Phase 1 SEO architecture."
       canonicalPath="/dealers"
       intro="This directory is the first crawlable dealer surface in the new route family. It keeps legacy seller URLs intact while introducing clean dealer storefront paths backed by live marketplace sellers."
       breadcrumbs={[

@@ -26,7 +26,7 @@ export function Terms() {
               <Gavel className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Binding Agreement</h3>
               <p className="text-sm text-muted leading-relaxed">
-                By accessing the TimberEquip network, you agree to be bound by these terms.
+                By accessing the Forestry Equipment Sales network, you agree to be bound by these terms.
               </p>
             </div>
             <div className="bg-surface border border-line p-8 flex flex-col space-y-4">
@@ -40,7 +40,7 @@ export function Terms() {
               <AlertTriangle className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Liability</h3>
               <p className="text-sm text-muted leading-relaxed">
-                TimberEquip is a marketplace and is not liable for the condition of equipment.
+                Forestry Equipment Sales is a marketplace and is not liable for the condition of equipment.
               </p>
             </div>
           </div>
@@ -49,7 +49,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Marketplace Usage</h2>
               <p>
-                The TimberEquip network is designed for professional logging operations. 
+                The Forestry Equipment Sales network is designed for professional logging operations. 
                 Users must provide accurate information and maintain professional conduct.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
@@ -83,7 +83,7 @@ export function Terms() {
               <p>
                 Sellers are responsible for the accuracy of their listings. 
                 All specifications, including hours, year, and condition, must be verified. 
-                TimberEquip reserves the right to remove any listing that fails our verification process.
+                Forestry Equipment Sales reserves the right to remove any listing that fails our verification process.
               </p>
             </section>
 
@@ -100,7 +100,7 @@ export function Terms() {
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">4. Dispute Resolution</h2>
               <p>
                 Any disputes between buyers and sellers must be resolved through our established arbitration process. 
-                TimberEquip provides the platform for communication but does not guarantee the outcome of any transaction.
+                Forestry Equipment Sales provides the platform for communication but does not guarantee the outcome of any transaction.
               </p>
             </section>
 
@@ -112,7 +112,7 @@ export function Terms() {
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight text-ink">
                 <span>legal@timberequip.run.app</span>
-                <span>+1 (800) TIMBER-LEGAL</span>
+                <span>+1 (800) 846-2373</span>
               </div>
             </section>
           </div>

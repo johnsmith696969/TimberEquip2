@@ -81,6 +81,53 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function sanitizeOptionalString(value: unknown, maxLength?: number): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  return typeof maxLength === 'number' ? normalized.slice(0, maxLength) : normalized;
+}
+
+function sanitizeOptionalUrl(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+}
+
+function sanitizeSeoKeywords(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .map((keyword) => String(keyword || '').trim())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<UserProfile> {
+  const sanitized: Partial<UserProfile> = { ...payload };
+
+  if ('displayName' in payload) sanitized.displayName = sanitizeOptionalString(payload.displayName, 100) || '';
+  if ('email' in payload) sanitized.email = sanitizeOptionalString(payload.email, 320)?.toLowerCase() || '';
+  if ('phoneNumber' in payload) sanitized.phoneNumber = sanitizeOptionalString(payload.phoneNumber, 60) || '';
+  if ('company' in payload) sanitized.company = sanitizeOptionalString(payload.company, 200) || '';
+  if ('website' in payload) sanitized.website = sanitizeOptionalString(payload.website, 200) || '';
+  if ('about' in payload) sanitized.about = sanitizeOptionalString(payload.about, 5000) || '';
+  if ('bio' in payload) sanitized.bio = sanitizeOptionalString(payload.bio, 1000) || '';
+  if ('location' in payload) sanitized.location = sanitizeOptionalString(payload.location, 200) || '';
+  if ('photoURL' in payload) sanitized.photoURL = sanitizeOptionalUrl(payload.photoURL) ?? null;
+  if ('coverPhotoUrl' in payload) sanitized.coverPhotoUrl = sanitizeOptionalUrl(payload.coverPhotoUrl) ?? null;
+  if ('storefrontName' in payload) sanitized.storefrontName = sanitizeOptionalString(payload.storefrontName, 180) || '';
+  if ('storefrontSlug' in payload) sanitized.storefrontSlug = sanitizeOptionalString(payload.storefrontSlug, 200) || '';
+  if ('storefrontTagline' in payload) sanitized.storefrontTagline = sanitizeOptionalString(payload.storefrontTagline, 240) || '';
+  if ('storefrontDescription' in payload) sanitized.storefrontDescription = sanitizeOptionalString(payload.storefrontDescription, 5000) || '';
+  if ('seoTitle' in payload) sanitized.seoTitle = sanitizeOptionalString(payload.seoTitle, 200) || '';
+  if ('seoDescription' in payload) sanitized.seoDescription = sanitizeOptionalString(payload.seoDescription, 600) || '';
+  if ('seoKeywords' in payload) sanitized.seoKeywords = sanitizeSeoKeywords(payload.seoKeywords) || [];
+  if ('currentSubscriptionId' in payload) sanitized.currentSubscriptionId = sanitizeOptionalString(payload.currentSubscriptionId, 200) || null;
+  if ('currentPeriodEnd' in payload) sanitized.currentPeriodEnd = payload.currentPeriodEnd ? String(payload.currentPeriodEnd) : null;
+
+  return sanitized;
+}
+
 export const userService = {
   normalizeRole(role: string | undefined): UserRole {
     const normalized = (role || '').toLowerCase();
@@ -89,31 +136,64 @@ export const userService = {
     if (normalized === 'developer') return 'developer';
     if (normalized === 'content_manager') return 'content_manager';
     if (normalized === 'editor') return 'editor';
+    if (normalized === 'dealer_staff') return 'dealer';
     if (normalized === 'dealer') return 'dealer';
-    if (normalized === 'dealer_manager') return 'dealer_manager';
-    if (normalized === 'dealer_staff') return 'dealer_staff';
+    if (normalized === 'dealer_manager' || normalized === 'pro_dealer') return 'pro_dealer';
     if (normalized === 'individual_seller') return 'individual_seller';
     if (normalized === 'member') return 'member';
     return 'buyer';
   },
 
   canCreateManagedRole(parentRole: UserRole, childRole: UserRole): boolean {
-    const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'member', 'buyer'];
-    const dealerManagedRoles: UserRole[] = ['dealer_manager', 'dealer_staff', 'member', 'buyer'];
+    const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member', 'buyer'];
+    const dealerManagedRoles: UserRole[] = ['dealer', 'pro_dealer', 'member', 'buyer'];
 
     if (parentRole === 'super_admin') return true;
     if (parentRole === 'admin') return adminManagedRoles.includes(childRole);
-    if (parentRole === 'dealer' || parentRole === 'dealer_manager') return dealerManagedRoles.includes(childRole);
+    if (parentRole === 'dealer' || parentRole === 'pro_dealer') return dealerManagedRoles.includes(childRole);
     return false;
   },
 
   supportsEnterpriseStorefront(role?: string): boolean {
     const normalized = this.normalizeRole(role);
-    return ['individual_seller', 'dealer', 'dealer_manager', 'admin', 'super_admin'].includes(normalized);
+    return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalized);
   },
 
   buildStorefrontSlug(value: string): string {
     return slugifyStorefrontValue(value) || 'timber-equip-storefront';
+  },
+
+  async ensureUserProfileDocument(uid: string, seed: Partial<UserProfile> = {}): Promise<void> {
+    const normalizedUid = String(uid || '').trim();
+    if (!normalizedUid) {
+      throw new Error('A valid user is required.');
+    }
+
+    const userRef = doc(db, 'users', normalizedUid);
+    const existingSnapshot = await getDoc(userRef);
+    if (existingSnapshot.exists()) {
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+    const sanitizedSeed = sanitizeUserProfilePayload(seed);
+    await setDoc(
+      userRef,
+      {
+        uid: normalizedUid,
+        favorites: [],
+        email: currentUser?.email || '',
+        displayName: currentUser?.displayName || 'Forestry Equipment Sales User',
+        photoURL: currentUser?.photoURL || null,
+        emailVerified: currentUser?.emailVerified || false,
+        accountStatus: 'active',
+        role: 'buyer',
+        createdAt: serverTimestamp(),
+        ...sanitizedSeed,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   },
 
   async generateUniqueStorefrontSlug(value: string, excludeUid?: string): Promise<string> {
@@ -176,7 +256,12 @@ export const userService = {
       ? input.seoKeywords.map((keyword) => String(keyword || '').trim()).filter(Boolean).slice(0, 30)
       : [];
 
-    await updateDoc(doc(db, 'users', normalizedUid), {
+    await this.ensureUserProfileDocument(normalizedUid, {
+      role,
+      storefrontEnabled: true,
+    });
+
+    await setDoc(doc(db, 'users', normalizedUid), {
       website: String(input.website || '').trim(),
       location: String(input.location || '').trim(),
       phoneNumber: String(input.phone || '').trim(),
@@ -190,7 +275,7 @@ export const userService = {
       seoDescription: String(input.seoDescription || '').trim(),
       seoKeywords,
       updatedAt: serverTimestamp(),
-    });
+    }, { merge: true });
 
     await setDoc(
       storefrontRef,
@@ -229,7 +314,7 @@ export const userService = {
     const role = this.normalizeRole(profile.role);
     if (!this.supportsEnterpriseStorefront(role)) return;
 
-    const displayName = String(profile.displayName || profile.company || 'TimberEquip Storefront').trim();
+    const displayName = String(profile.displayName || profile.company || 'Forestry Equipment Sales Storefront').trim();
     const storefrontRef = doc(db, 'storefronts', normalizedUid);
     const storefrontSnapshot = await getDoc(storefrontRef);
     const existingStorefront = storefrontSnapshot.exists() ? storefrontSnapshot.data() || {} : {};
@@ -315,13 +400,13 @@ export const userService = {
   async createProfile(profile: UserProfile): Promise<void> {
     const path = `users/${profile.uid}`;
     try {
-      const docRef = doc(db, 'users', profile.uid);
-      await setDoc(docRef, {
-        ...profile,
+      const sanitizedProfile = sanitizeUserProfilePayload(profile);
+      await this.ensureUserProfileDocument(profile.uid, {
+        ...sanitizedProfile,
         createdAt: serverTimestamp()
       });
 
-      await this.syncStorefrontDocument(profile.uid, profile);
+      await this.syncStorefrontDocument(profile.uid, sanitizedProfile as UserProfile);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
     }
@@ -330,10 +415,10 @@ export const userService = {
   async toggleFavorite(uid: string, listingId: string, isFavorite: boolean): Promise<void> {
     const path = `users/${uid}`;
     try {
-      const docRef = doc(db, 'users', uid);
-      await updateDoc(docRef, {
+      await this.ensureUserProfileDocument(uid);
+      await setDoc(doc(db, 'users', uid), {
         favorites: isFavorite ? arrayRemove(listingId) : arrayUnion(listingId)
-      });
+      }, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -342,18 +427,19 @@ export const userService = {
   async updateProfile(uid: string, updates: Partial<UserProfile>): Promise<void> {
     const path = `users/${uid}`;
     try {
-      const docRef = doc(db, 'users', uid);
-      await updateDoc(docRef, {
-        ...updates,
+      const sanitizedUpdates = sanitizeUserProfilePayload(updates);
+      await this.ensureUserProfileDocument(uid, sanitizedUpdates);
+      await setDoc(doc(db, 'users', uid), {
+        ...sanitizedUpdates,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
 
       const currentProfile = await this.getProfile(uid);
       if (currentProfile) {
         await this.syncStorefrontDocument(uid, {
           ...currentProfile,
-          ...updates,
-          role: updates.role || currentProfile.role,
+          ...sanitizedUpdates,
+          role: sanitizedUpdates.role || currentProfile.role,
         });
       }
     } catch (error) {
@@ -375,13 +461,13 @@ export const userService = {
 
     const creatorRole = this.normalizeRole(creatorProfile.role);
     const targetRole = this.normalizeRole(input.role);
-    const ownerUid = creatorRole === 'dealer_manager' ? (creatorProfile.parentAccountUid || currentUser.uid) : currentUser.uid;
+    const ownerUid = creatorRole === 'pro_dealer' ? (creatorProfile.parentAccountUid || currentUser.uid) : currentUser.uid;
 
     if (!this.canCreateManagedRole(creatorRole, targetRole)) {
       throw new Error('You do not have permission to create this account role.');
     }
 
-    if (creatorRole === 'dealer' || creatorRole === 'dealer_manager') {
+    if (creatorRole === 'dealer' || creatorRole === 'pro_dealer') {
       const seatContext = await this.getManagedAccountSeatContext(ownerUid);
       if (seatContext.seatLimit < 1) {
         throw new Error('An active Dealer or Fleet Dealer subscription is required before adding managed accounts.');

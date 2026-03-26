@@ -28,7 +28,7 @@ import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
 
-const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'dealer_manager', 'admin', 'super_admin']);
+const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
 
 function roleLabel(role?: string): string {
@@ -36,7 +36,9 @@ function roleLabel(role?: string): string {
     case 'individual_seller':
       return 'Owner Operator';
     case 'dealer':
+    case 'dealer_staff':
       return 'Dealer';
+    case 'pro_dealer':
     case 'dealer_manager':
       return 'Pro Dealer';
     case 'admin':
@@ -140,30 +142,30 @@ export function SellerProfile() {
   }, [id]);
 
   const seoTitle = useMemo(() => {
-    if (!seller) return 'Dealer Storefront | TimberEquip.com';
+    if (!seller) return 'Dealer Storefront | Forestry Equipment Sales';
     const headline = seller.storefrontName || seller.name;
     if (isDealerRoute && categorySlug) {
-      return `${headline} ${titleCaseSlug(categorySlug)} Inventory | TimberEquip.com`;
+      return `${headline} ${titleCaseSlug(categorySlug)} Inventory | Forestry Equipment Sales`;
     }
     if (isDealerRoute && isInventoryRoute) {
-      return `${headline} Inventory | TimberEquip.com`;
+      return `${headline} Inventory | Forestry Equipment Sales`;
     }
-    return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | TimberEquip.com`;
+    return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | Forestry Equipment Sales`;
   }, [seller, isDealerRoute, categorySlug, isInventoryRoute]);
 
   const seoDescription = useMemo(() => {
-    if (!seller) return 'Browse seller storefront inventory on TimberEquip.com.';
+    if (!seller) return 'Browse seller storefront inventory on Forestry Equipment Sales.';
     const headline = seller.storefrontName || seller.name;
     if (isDealerRoute && categorySlug) {
-      return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on TimberEquip.`;
+      return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on Forestry Equipment Sales.`;
     }
     if (isDealerRoute && isInventoryRoute) {
-      return `Browse live inventory from ${headline} on TimberEquip.`;
+      return `Browse live inventory from ${headline} on Forestry Equipment Sales.`;
     }
     return (
       seller.seoDescription ||
       seller.storefrontDescription ||
-      `${headline} storefront on TimberEquip.com. Browse inventory, contact details, and active listings.`
+      `${headline} storefront on Forestry Equipment Sales. Browse inventory, contact details, and active listings.`
     );
   }, [seller, isDealerRoute, categorySlug, isInventoryRoute]);
 
@@ -283,11 +285,11 @@ export function SellerProfile() {
     );
   }
 
-  const coverImage = seller.coverPhotoUrl || 'https://picsum.photos/seed/timberequip-storefront/1920/720';
-  const logoImage = seller.logo || 'https://picsum.photos/seed/timberequip-logo/260/260';
+  const coverImage = seller.coverPhotoUrl || 'https://picsum.photos/seed/forestry-equipment-sales-storefront/1920/720';
+  const logoImage = seller.logo || 'https://picsum.photos/seed/forestry-equipment-sales-logo/260/260';
   const headline = seller.storefrontName || seller.name;
   const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
-  const description = seller.storefrontDescription || 'This storefront is managed on TimberEquip.com with branded inventory, verified seller controls, and direct lead routing.';
+  const description = seller.storefrontDescription || 'This storefront is managed on Forestry Equipment Sales with branded inventory, verified seller controls, and direct lead routing.';
   const preferredDealerPath = buildDealerPath(seller);
   const canonicalPath = (() => {
     if (isDealerRoute) {
@@ -393,7 +395,7 @@ export function SellerProfile() {
                         className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
                       />
                       <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/50 break-all">
-                        timberequip.com/seller/{editData.storefrontSlug || 'your-storefront-slug'}
+                        forestryequipmentsales.com/seller/{editData.storefrontSlug || 'your-storefront-slug'}
                       </p>
                     </div>
                     <div>

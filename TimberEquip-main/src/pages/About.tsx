@@ -23,7 +23,7 @@ export function About() {
             <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Institutional Profile</span>
           </div>
           <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter mb-12 leading-none">
-            The <span className="text-accent">TimberEquip</span> <br />
+            The <span className="text-accent">Forestry Equipment Sales</span> <br />
             Standard
           </h1>
           <p className="text-white/60 text-xl font-medium max-w-3xl leading-relaxed">
@@ -45,7 +45,7 @@ export function About() {
             <div className="space-y-8 text-muted font-medium leading-relaxed">
               <p>
                 For decades, the forestry equipment market has operated on fragmented data and inefficient transaction procedures. 
-                TimberEquip was established to provide a unified, transparent platform for global asset exchange.
+                Forestry Equipment Sales was established to provide a unified, transparent platform for global asset exchange.
               </p>
               <p>
                 We leverage real-time AMV indexing and verified dealer networks to ensure that every transaction 

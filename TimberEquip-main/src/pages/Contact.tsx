@@ -191,7 +191,7 @@ export function Contact() {
                       </div>
                       <h3 className="text-4xl font-black uppercase tracking-tighter mb-4">Message Sent</h3>
                       <p className="text-muted font-medium max-w-md mb-12 leading-relaxed">
-                        Your inquiry has been successfully sent to the TimberEquip team. 
+                        Your inquiry has been successfully sent to the Forestry Equipment Sales team. 
                         A representative will review your message and respond within 24 hours.
                       </p>
                       <button onClick={() => setStep(1)} className="btn-industrial btn-accent py-5 px-12">
@@ -210,7 +210,7 @@ export function Contact() {
               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Contact Information</h4>
               <div className="space-y-10">
                 {[
-                  { title: 'Global Support', desc: '+1 (800) TIMBER-EQUIP', icon: Headphones, link: 'tel:+18008462373' },
+                  { title: 'Global Support', desc: '+1 (800) 846-2373', icon: Headphones, link: 'tel:+18008462373' },
                   { title: 'Email Support', desc: 'SUPPORT@TIMBEREQUIP.COM', icon: Mail, link: 'mailto:support@timberequip.com' },
                   { title: 'Global HQ', desc: '4335 KINGSTON RD, DULUTH, MN 55803', icon: MapPin, link: '#' },
                   { title: 'Market Hours', desc: '24/7 GLOBAL ACCESS', icon: Clock, link: '#' }

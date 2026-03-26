@@ -1,5 +1,5 @@
 {
-  "name": "TimberEquip: Industrial Forestry Marketplace",
-  "description": "The premier industrial marketplace for logging and firewood equipment. Featuring advanced market value analytics, real-time inventory updates, and professional-grade financing tools.",
+  "name": "Forestry Equipment Sales: Industrial Forestry Marketplace",
+  "description": "The industrial marketplace for logging and firewood equipment. Featuring advanced market value analytics, real-time inventory updates, and professional-grade financing tools.",
   "requestFramePermissions": ["geolocation"]
 }

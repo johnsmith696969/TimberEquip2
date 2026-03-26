@@ -72,7 +72,7 @@ service firebase.storage {
     // Helper functions
     function isAdmin(uid) {
       // First check token email (works without Firestore lookup)
-      return (request.auth.token.email in ['calebhappy@gmail.com'] && request.auth.token.email_verified == true) ||
+      return (request.auth.token.email in ['caleb@forestryequipmentsales.com'] && request.auth.token.email_verified == true) ||
         get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
     }
 

@@ -8,11 +8,11 @@
 
 ## Executive Overview
 
-This document outlines the architecture needed to ingest equipment listings from third-party dealer APIs and integrate them into the TimberEquip marketplace.
+This document outlines the architecture needed to ingest equipment listings from third-party dealer APIs and integrate them into the Forestry Equipment Sales marketplace.
 
 ### Goals
 1. Pull equipment data from multiple dealer sources via API
-2. Normalize dealer data to TimberEquip schema
+2. Normalize dealer data to Forestry Equipment Sales schema
 3. Handle duplicate detection (same equipment from multiple dealers)
 4. Maintain audit trail of data sources
 5. Allow dealers to manage their feed status
@@ -38,7 +38,7 @@ This document outlines the architecture needed to ingest equipment listings from
 ┌──────────────────────────▼──────────────────────────────────────┐
 │           Data Validation & Normalization Layer                 │
 │   • Schema validation                                            │
-│   • Field mapping (dealer fields → TimberEquip fields)          │
+│   • Field mapping (dealer fields → Forestry Equipment Sales fields)          │
 │   • Data quality checks                                         │
 │   • Currency/unit conversion                                    │
 └──────────────────────────┬──────────────────────────────────────┘
@@ -51,7 +51,7 @@ This document outlines the architecture needed to ingest equipment listings from
 └──────────────────────────┬──────────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────────┐
-│          Firestore / TimberEquip Database                       │
+│          Firestore / Forestry Equipment Sales Database                       │
 │   • dealerListings collection                                  │
 │   • dealerFeeds collection                                     │
 │   • dealerAuditLog collection                                  │
@@ -391,7 +391,7 @@ export class DealerDataNormalizer {
   }
   
   private mapFields(dealerData: any): any {
-    // Map external fields to TimberEquip fields
+    // Map external fields to Forestry Equipment Sales fields
   }
   
   private applyBusinessRules(normalized: any): any {

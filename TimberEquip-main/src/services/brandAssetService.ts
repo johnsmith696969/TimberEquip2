@@ -14,7 +14,7 @@ export interface BrandAssetUrls {
 }
 
 const DEFAULT_BRAND_ASSET_URLS: BrandAssetUrls = {
-  brandLogo: '/TimberEquip-Logo.svg',
+  brandLogo: '/Forestry_Equipment_Sales_Light_Mode_Logo.svg',
   footerIcon: '/Logo-Transparent.png',
   appleTouchIcon: '/apple-touch-icon.png',
   favicon32: '/favicon-32x32.png',
@@ -55,7 +55,7 @@ export async function getCurrentBrandAssetUrls(): Promise<BrandAssetUrls> {
     androidChrome512,
     manifest,
   ] = await Promise.all([
-    resolveFromBrandAssets('TimberEquip-Logo.svg'),
+    resolveFromBrandAssets('Forestry_Equipment_Sales_Light_Mode_Logo.svg'),
     resolveFromBrandAssets('Logo-Transparent.png'),
     resolveFromBrandAssets('apple-touch-icon.png'),
     resolveFromBrandAssets('favicon-32x32.png'),

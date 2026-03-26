@@ -1,10 +1,10 @@
-# TimberEquip Full Site Audit And Firestore Plan
+# Forestry Equipment Sales Full Site Audit And Firestore Plan
 
 Audit date: 2026-03-25
 
 ## Scope
 
-This audit covers the current TimberEquip web app, its Firebase / Firestore-backed features, and the major failure points observed during live troubleshooting.
+This audit covers the current Forestry Equipment Sales web app, its Firebase / Firestore-backed features, and the major failure points observed during live troubleshooting.
 
 Audit basis:
 

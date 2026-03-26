@@ -38,8 +38,7 @@ export type UserRole =
   | 'content_manager'
   | 'editor'
   | 'dealer'
-  | 'dealer_manager'
-  | 'dealer_staff'
+  | 'pro_dealer'
   | 'individual_seller'
   | 'member'
   | 'buyer';
@@ -206,6 +205,11 @@ export interface Listing {
   createdAt: string;
   updatedAt?: string;
   specs: ListingSpecs;
+  externalSource?: {
+    sourceName?: string;
+    externalId?: string;
+    importedAt?: string | { seconds?: number; nanoseconds?: number } | { toDate?: () => Date };
+  };
   // Legacy fields for compatibility if needed
   manufacturer?: string;
   sellerId?: string;

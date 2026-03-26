@@ -4,8 +4,8 @@ import { motion } from 'framer-motion';
 import {
   Facebook,
 } from 'lucide-react';
-import timberEquipLogo from '../../logos/TimberEquip-Logo.svg';
-import timberEquipDuskLogo from '../../logos/TimberEquip-Brand-Logo-Dusk.svg';
+import forestryEquipmentSalesLogo from '../../logos/Forestry_Equipment_Sales_Light_Mode_Logo.svg';
+import forestryEquipmentSalesDuskLogo from '../../logos/Forestry_Equipment_Sales_Dusk_Mode_Logo.svg';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { getListEquipmentPath } from '../utils/sellerAccess';
@@ -13,7 +13,7 @@ import { getListEquipmentPath } from '../utils/sellerAccess';
 export function MetaLeadMachineSection() {
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
-  const brandLogo = theme === 'dark' ? timberEquipDuskLogo : timberEquipLogo;
+  const brandLogo = theme === 'dark' ? forestryEquipmentSalesDuskLogo : forestryEquipmentSalesLogo;
   const headingClass = theme === 'light' ? 'text-ink' : 'text-white';
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
 
@@ -43,11 +43,11 @@ export function MetaLeadMachineSection() {
                 Turn every machine into a traffic and lead asset.
               </h2>
               <p className="max-w-2xl text-sm leading-7 text-muted md:text-base">
-                TimberEquip is built to do more than host listings. Dealers can manage
+                Forestry Equipment Sales is built to do more than host listings. Dealers can manage
                 equipment in one place, connect Meta business assets, push inventory into
                 a catalog-ready structure, and drive buyers back to their dealer page on
-                TimberEquip.com, where leads are tracked within their profile. We can also
-                feed dealer websites directly with their active TimberEquip.com listings.
+                Forestry Equipment Sales, where leads are tracked within their profile. We can also
+                feed dealer websites directly with their active Forestry Equipment Sales listings.
               </p>
             </div>
 
@@ -70,14 +70,14 @@ export function MetaLeadMachineSection() {
           >
             <img
               src={brandLogo}
-              alt="TimberEquip"
+              alt="Forestry Equipment Sales"
               className="h-12 w-auto object-contain"
             />
             <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-accent">
               Dealer Website Syndication Ready
             </p>
             <p className="mt-2 max-w-xs text-sm leading-6 text-muted">
-              We can push each dealer's active TimberEquip listings into their own website
+              We can push each dealer's active Forestry Equipment Sales listings into their own website
               feed so inventory stays synced without duplicate work.
             </p>
           </motion.div>

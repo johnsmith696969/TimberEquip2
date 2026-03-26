@@ -104,7 +104,7 @@ export function Categories() {
   );
   const inventoryChange = totalPreviousWeek > 0 ? ((totalActive - totalPreviousWeek) / totalPreviousWeek) * 100 : 0;
 
-  const seoTitle = 'Equipment Categories | Browse Logging Equipment by Type | TimberEquip.com';
+  const seoTitle = 'Equipment Categories | Browse Logging Equipment by Type | Forestry Equipment Sales';
   const seoDescription =
     'Browse logging equipment by category: Skidders, Feller Bunchers, Harvesters, Forwarders, Log Loaders, Firewood Processors. Real-time inventory metrics.';
 

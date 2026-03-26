@@ -18,16 +18,23 @@ import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
 import { useLocale } from '../components/LocaleContext';
-import { CallLog, FinancingRequest, InspectionRequest, Listing, SavedSearch, Seller, UserProfile } from '../types';
+import { CallLog, Currency, FinancingRequest, InspectionRequest, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
 import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
+import { getUserRoleDisplayLabel } from '../utils/userRoles';
 
-const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'dealer_manager', 'admin', 'super_admin', 'developer']);
+const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
+const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
+const CURRENCY_OPTIONS: Currency[] = ['USD', 'CAD', 'EUR', 'GBP', 'NOK', 'SEK', 'CHF', 'PLN', 'CZK', 'RON', 'DKK', 'HUF'];
+
+function isValidHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
 
 export function Profile() {
-  const { formatPrice } = useLocale();
+  const { formatPrice, language, currency, setLanguage, setCurrency } = useLocale();
   const { user, logout, toggleFavorite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasStorefrontAccess = Boolean(user?.role && userService.supportsEnterpriseStorefront(user.role));
@@ -35,6 +42,7 @@ export function Profile() {
   const canManageInspectionRequests = Boolean(user?.role && INSPECTION_MANAGER_ROLES.has(user.role));
   const canViewInspectionRequests = Boolean(user);
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
+  const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
   const profileTabs = useMemo(() => {
     const tabs = ['Overview', 'Saved Equipment', 'Search Alerts', 'My Listings', 'Calls', 'Financing'];
     if (hasStorefrontAccess) tabs.push(storefrontTabLabel);
@@ -88,6 +96,11 @@ export function Profile() {
     email: '',
     phoneNumber: '',
     company: '',
+    website: '',
+    bio: '',
+    about: '',
+    preferredLanguage: 'EN' as Language,
+    preferredCurrency: 'USD' as Currency,
     location: '',
     photoURL: '',
     coverPhotoUrl: '',
@@ -171,11 +184,16 @@ export function Profile() {
       email: user.email || '',
       phoneNumber: user.phoneNumber || '',
       company: user.company || '',
+      website: user.website || '',
+      bio: user.bio || '',
+      about: user.about || '',
+      preferredLanguage: user.preferredLanguage || language,
+      preferredCurrency: user.preferredCurrency || currency,
       location: user.location || '',
       photoURL: user.photoURL || '',
       coverPhotoUrl: (user as UserProfile & { coverPhotoUrl?: string }).coverPhotoUrl || '',
     });
-  }, [user]);
+  }, [currency, language, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -259,6 +277,11 @@ export function Profile() {
     if (!user?.uid) return;
     const nextDisplayName = settingsForm.displayName.trim();
     const nextEmail = settingsForm.email.trim().toLowerCase();
+    const nextPhotoUrl = settingsForm.photoURL.trim();
+    const nextCoverPhotoUrl = settingsForm.coverPhotoUrl.trim();
+    const nextWebsite = settingsForm.website.trim();
+    const nextBio = settingsForm.bio.trim();
+    const nextAbout = settingsForm.about.trim();
 
     if (!nextDisplayName) {
       setSettingsError('Full name is required.');
@@ -270,38 +293,50 @@ export function Profile() {
       return;
     }
 
+    if (nextWebsite && !isValidHttpUrl(nextWebsite)) {
+      setSettingsError('Website must start with http:// or https://');
+      return;
+    }
+
     setIsSavingSettings(true);
     setSettingsError('');
     setSettingsNotice('');
 
     try {
-      const profileUpdates: Partial<UserProfile> = {
+      const baseProfileUpdates: Partial<UserProfile> = {
         displayName: nextDisplayName,
-        email: nextEmail,
         phoneNumber: settingsForm.phoneNumber.trim(),
         company: settingsForm.company.trim(),
+        website: nextWebsite,
+        bio: nextBio,
+        about: nextAbout,
+        preferredLanguage: settingsForm.preferredLanguage,
+        preferredCurrency: settingsForm.preferredCurrency,
         location: settingsForm.location.trim(),
-        photoURL: settingsForm.photoURL.trim(),
-        coverPhotoUrl: settingsForm.coverPhotoUrl.trim(),
+        photoURL: nextPhotoUrl || null,
+        coverPhotoUrl: nextCoverPhotoUrl || null,
       };
 
-      await userService.updateProfile(user.uid, profileUpdates);
+      await userService.updateProfile(user.uid, baseProfileUpdates);
+      setLanguage(settingsForm.preferredLanguage);
+      setCurrency(settingsForm.preferredCurrency);
 
       if (auth.currentUser) {
         const authNeedsUpdate =
           auth.currentUser.displayName !== nextDisplayName ||
-          (settingsForm.photoURL.trim() && auth.currentUser.photoURL !== settingsForm.photoURL.trim());
+          auth.currentUser.photoURL !== (nextPhotoUrl || null);
 
         if (authNeedsUpdate) {
           await updateAuthProfile(auth.currentUser, {
             displayName: nextDisplayName,
-            photoURL: settingsForm.photoURL.trim() || null,
+            photoURL: nextPhotoUrl || null,
           });
         }
 
         if (auth.currentUser.email !== nextEmail) {
           try {
             await updateEmail(auth.currentUser, nextEmail);
+            await userService.updateProfile(user.uid, { email: nextEmail });
           } catch (emailError) {
             const code = (emailError as { code?: string })?.code || '';
             if (code === 'auth/requires-recent-login') {
@@ -311,7 +346,11 @@ export function Profile() {
             }
             throw emailError;
           }
+        } else if (user.email !== nextEmail) {
+          await userService.updateProfile(user.uid, { email: nextEmail });
         }
+      } else if (user.email !== nextEmail) {
+        await userService.updateProfile(user.uid, { email: nextEmail });
       }
 
       setSettingsNotice('Profile updated successfully.');
@@ -333,7 +372,7 @@ export function Profile() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `timberequip-data-export-${user?.uid}.json`;
+    a.download = `forestry-equipment-sales-data-export-${user?.uid}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -800,7 +839,7 @@ export function Profile() {
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-black uppercase tracking-widest">Financing Applications</h3>
         <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-          Review financing forms you submitted through TimberEquip and track their current status.
+          Review financing forms you submitted through Forestry Equipment Sales and track their current status.
         </p>
       </div>
 
@@ -964,7 +1003,7 @@ export function Profile() {
           <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
             {canManageInspectionRequests
               ? 'Review routed inspection requests, set pricing, and respond as the assigned dealer or admin.'
-              : 'Track the inspection requests you submitted through TimberEquip.'}
+              : 'Track the inspection requests you submitted through Forestry Equipment Sales.'}
           </p>
         </div>
 
@@ -1377,6 +1416,40 @@ export function Profile() {
               onChange={(e) => handleSettingsInputChange('company', e.target.value)}
             />
           </div>
+          <div className="space-y-2">
+            <label className="label-micro">Website</label>
+            <input
+              type="url"
+              className="input-industrial w-full"
+              placeholder="https://example.com"
+              value={settingsForm.website}
+              onChange={(e) => handleSettingsInputChange('website', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="label-micro">Preferred Language</label>
+            <select
+              className="input-industrial w-full"
+              value={settingsForm.preferredLanguage}
+              onChange={(e) => handleSettingsInputChange('preferredLanguage', e.target.value as Language)}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="label-micro">Preferred Currency</label>
+            <select
+              className="input-industrial w-full"
+              value={settingsForm.preferredCurrency}
+              onChange={(e) => handleSettingsInputChange('preferredCurrency', e.target.value as Currency)}
+            >
+              {CURRENCY_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-2 md:col-span-2">
             <label className="label-micro">Address</label>
             <input
@@ -1385,6 +1458,24 @@ export function Profile() {
               placeholder="Street, City, State/Province, Country"
               value={settingsForm.location}
               onChange={(e) => handleSettingsInputChange('location', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="label-micro">Short Bio</label>
+            <textarea
+              className="input-industrial w-full min-h-[100px]"
+              placeholder="Short introduction shown across your account presence"
+              value={settingsForm.bio}
+              onChange={(e) => handleSettingsInputChange('bio', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="label-micro">About</label>
+            <textarea
+              className="input-industrial w-full min-h-[140px]"
+              placeholder="Company background, specialties, service area, or buyer preferences"
+              value={settingsForm.about}
+              onChange={(e) => handleSettingsInputChange('about', e.target.value)}
             />
           </div>
         </div>
@@ -1397,6 +1488,27 @@ export function Profile() {
         >
           {isSavingSettings ? 'Saving...' : 'Save Changes'}
         </button>
+      </section>
+
+      <section className="space-y-6">
+        <h3 className="text-sm font-black uppercase tracking-widest border-b border-line pb-4">Account Summary</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {[
+            { label: 'Role', value: roleDisplayLabel },
+            { label: 'Account Status', value: user?.accountStatus || 'active' },
+            { label: 'Email Verified', value: user?.emailVerified ? 'verified' : 'unverified' },
+            { label: 'Subscription', value: user?.activeSubscriptionPlanId || 'none' },
+            { label: 'Listing Capacity', value: typeof user?.listingCap === 'number' ? String(user.listingCap) : '0' },
+            { label: 'Managed Seats', value: typeof user?.managedAccountCap === 'number' ? String(user.managedAccountCap) : '0' },
+            { label: 'Storefront Access', value: hasStorefrontAccess ? 'enabled' : 'not available' },
+            { label: 'Member Since', value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'n/a' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-sm border border-line bg-surface p-4">
+              <p className="label-micro text-muted mb-2">{item.label}</p>
+              <p className="text-xs font-black uppercase tracking-widest break-words">{item.value}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="space-y-6">
@@ -1452,7 +1564,7 @@ export function Profile() {
               )}
             </div>
             <div className="flex flex-col min-w-0">
-              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{user?.role} Profile</span>
+              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{roleDisplayLabel} Profile</span>
               <h1 className={`text-2xl md:text-4xl font-black uppercase tracking-tighter truncate ${coverPhotoPreview ? 'text-white' : ''}`}>
                 {user?.displayName}
               </h1>

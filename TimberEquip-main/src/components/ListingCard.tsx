@@ -46,7 +46,7 @@ export function ListingCard({
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
   const amvPercent = hasAmv ? Math.abs((amvDiff / safeMarketValueEstimate) * 100).toFixed(1) : null;
-  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/timberequip-placeholder/640/480';
+  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/forestry-equipment-sales-placeholder/640/480';
   const estimatedMonthlyPayment = Math.round(calcMonthlyPayment(safePrice, 6, 60));
   const displayMake = listing.make || listing.manufacturer || 'Unknown Make';
   const displayModel = listing.model || 'Unknown Model';

@@ -1,5 +1,5 @@
 /**
- * TimberEquip Email Templates
+ * Forestry Equipment Sales Email Templates
  *
  * Usage:
  *   const { subject, html } = templates.leadNotification({ sellerName, buyerName, listingTitle, listingUrl, message });
@@ -73,12 +73,12 @@ function baseLayout(title, headerSubtitle, content) {
   <div class="shell">
     <div class="wrapper">
       <div class="header">
-        <p class="eyebrow">TimberEquip Marketplace</p>
+        <p class="eyebrow">Forestry Equipment Sales Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/logos/TimberEquip-Brand-Logo-Dusk-Email.png" alt="TimberEquip" />
+          <img class="header-logo-img" src="https://timberequip.com/logos/Forestry_Equipment_Sales_Email_Logo_on_dark_background.png" alt="Forestry Equipment Sales" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
-        <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the TimberEquip network.</p>
+        <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the Forestry Equipment Sales network.</p>
         <hr class="header-divider" />
       </div>
       <div class="body">
@@ -88,11 +88,11 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="footer">
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>
-          <p>TimberEquip connects buyers, sellers, and partners across used and new logging equipment, financing workflows, and industrial inventory marketing.</p>
+          <p>Forestry Equipment Sales connects buyers, sellers, and partners across used and new logging equipment, financing workflows, and industrial inventory marketing.</p>
         </div>
         <p>
-          &copy; ${new Date().getFullYear()} TimberEquip &mdash; The Forestry Equipment Marketplace<br />
-          <a href="https://timberequip.com">timberequip.com</a> &middot;
+          &copy; ${new Date().getFullYear()} Forestry Equipment Sales &mdash; The Forestry Equipment Marketplace<br />
+          <a href="https://timberequip.com">Forestry Equipment Sales</a> &middot;
           <a href="https://timberequip.com/privacy">Privacy Policy</a> &middot;
           <a href="https://timberequip.com/terms">Terms</a>
         </p>
@@ -171,9 +171,9 @@ const templates = {
         ? 'We received your financing request'
         : 'We\'ve notified the seller';
     const description = normalizedType === 'Shipping'
-      ? `Your logistics request for <strong>${listingTitle}</strong> has been sent to <strong>${sellerName}</strong> and the TimberEquip team for follow-up.`
+      ? `Your logistics request for <strong>${listingTitle}</strong> has been sent to <strong>${sellerName}</strong> and the Forestry Equipment Sales team for follow-up.`
       : normalizedType === 'Financing'
-        ? `Your financing request for <strong>${listingTitle}</strong> has been logged. The seller and TimberEquip team have been notified so they can review the deal details.`
+        ? `Your financing request for <strong>${listingTitle}</strong> has been logged. The seller and Forestry Equipment Sales team have been notified so they can review the deal details.`
         : `Your inquiry for <strong>${listingTitle}</strong> has been sent to <strong>${sellerName}</strong>. They typically respond within 24 hours.`;
     const html = baseLayout(subject, 'Inquiry Confirmed', `
       <p class="label">${normalizedType} Confirmation</p>
@@ -198,13 +198,13 @@ const templates = {
    * Sent to new users after sign-up to welcome and prompt email verification.
    */
   welcomeVerification({ displayName, verificationLink }) {
-    const subject = 'Welcome to TimberEquip — Verify Your Email';
-    const html = baseLayout(subject, 'Welcome to TimberEquip', `
+    const subject = 'Welcome to Forestry Equipment Sales — Verify Your Email';
+    const html = baseLayout(subject, 'Welcome to Forestry Equipment Sales', `
       <p class="label">Account Verification</p>
       <h2>Verify your email to get started</h2>
       <p>Hi <strong>${displayName}</strong>,</p>
       <p>
-        Thanks for joining TimberEquip — the marketplace built specifically for
+        Thanks for joining Forestry Equipment Sales — the marketplace built specifically for
         forestry and logging equipment professionals. Your account is ready, but
         we need you to verify your email address first.
       </p>
@@ -255,7 +255,7 @@ const templates = {
       <p>Hi <strong>${sellerName}</strong>,</p>
       <p>
         Great news — <strong>${listingTitle}</strong> has been reviewed and approved.
-        It is now publicly visible to buyers across TimberEquip.
+        It is now publicly visible to buyers across Forestry Equipment Sales.
       </p>
       <span class="badge success-badge">Active &amp; Visible</span>
       <br /><br />
@@ -275,7 +275,7 @@ const templates = {
       <p class="label">Listing Intake</p>
       <h2>Your listing is now in review</h2>
       <p>Hi <strong>${sellerName}</strong>,</p>
-      <p>We received your listing for <strong>${listingTitle}</strong>. It is now queued for review by the TimberEquip team before it goes live in search results.</p>
+      <p>We received your listing for <strong>${listingTitle}</strong>. It is now queued for review by the Forestry Equipment Sales team before it goes live in search results.</p>
       ${renderInfoPanel([
         { label: 'Listing', value: listingTitle },
         { label: 'Status', value: 'Pending Review' },
@@ -315,7 +315,7 @@ const templates = {
       : String(amountPaid || 'Paid');
     const html = baseLayout(subject, 'Invoice Payment Received', `
       <p class="label">Billing Receipt</p>
-      <h2>Your TimberEquip payment was received</h2>
+      <h2>Your Forestry Equipment Sales payment was received</h2>
       <p>Hi <strong>${displayName}</strong>,</p>
       <p>We received your payment for <span class="badge success-badge">${planName}</span>.</p>
       <div style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:2px; padding:20px; margin:20px 0;">
@@ -366,12 +366,12 @@ const templates = {
 
   mediaKitRequestConfirmation({ requesterName, requestType, companyName, supportUrl }) {
     const normalizedType = requestType === 'support' ? 'Partner / Support' : 'Media Kit';
-    const subject = `TimberEquip ${normalizedType} request received`;
+    const subject = `Forestry Equipment Sales ${normalizedType} request received`;
     const html = baseLayout(subject, 'Request Received', `
       <p class="label">Ad Programs</p>
       <h2>We received your ${normalizedType.toLowerCase()} request</h2>
       <p>Hi <strong>${requesterName}</strong>,</p>
-      <p>Thanks for reaching out to TimberEquip. Our team has your ${normalizedType.toLowerCase()} request and will follow up with the right next step.</p>
+      <p>Thanks for reaching out to Forestry Equipment Sales. Our team has your ${normalizedType.toLowerCase()} request and will follow up with the right next step.</p>
       ${renderInfoPanel([
         { label: 'Request Type', value: normalizedType },
         { label: 'Company', value: companyName || 'Not provided' },
@@ -386,12 +386,12 @@ const templates = {
     const normalizedAmount = typeof requestedAmount === 'number'
       ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(requestedAmount)
       : 'Not provided';
-    const subject = 'TimberEquip financing request received';
+    const subject = 'Forestry Equipment Sales financing request received';
     const html = baseLayout(subject, 'Financing Request Received', `
       <p class="label">Financing Center</p>
       <h2>Your financing request is in review</h2>
       <p>Hi <strong>${applicantName}</strong>,</p>
-      <p>We received your financing request and routed it to the TimberEquip financing team for review.</p>
+      <p>We received your financing request and routed it to the Forestry Equipment Sales financing team for review.</p>
       ${renderInfoPanel([
         { label: 'Requested Amount', value: normalizedAmount },
         { label: 'Company', value: company || 'Not provided' },
@@ -404,36 +404,36 @@ const templates = {
   },
 
   contactRequestConfirmation({ name, category, supportUrl }) {
-    const subject = 'TimberEquip contact request received';
+    const subject = 'Forestry Equipment Sales contact request received';
     const html = baseLayout(subject, 'Contact Request Received', `
       <p class="label">Contact Center</p>
       <h2>Your message is with our team</h2>
       <p>Hi <strong>${name}</strong>,</p>
-      <p>Thanks for contacting TimberEquip. We received your message and routed it to the correct team.</p>
+      <p>Thanks for contacting Forestry Equipment Sales. We received your message and routed it to the correct team.</p>
       ${renderInfoPanel([
         { label: 'Category', value: category || 'General Support' },
         { label: 'Status', value: 'Received' },
         { label: 'Response Window', value: 'Typically within 24 hours' },
       ])}
-      <a href="${supportUrl}" class="cta">Visit TimberEquip</a>
+      <a href="${supportUrl}" class="cta">Visit Forestry Equipment Sales</a>
     `);
     return { subject, html };
   },
 
   subscriptionCreated({ displayName, planName }) {
-    const subject = 'You\'ve Subscribed to TimberEquip.com';
+    const subject = 'You\'ve Subscribed to Forestry Equipment Sales';
     const html = baseLayout(subject, 'Subscription Confirmed', `
       <p class="label">Seller Plan</p>
-      <h2>Welcome to TimberEquip subscriptions</h2>
+      <h2>Welcome to Forestry Equipment Sales subscriptions</h2>
       <p>Hi <strong>${displayName}</strong>,</p>
-      <p>Your <span class="badge success-badge">${planName}</span> plan has been created successfully. Your account is now set up to publish and manage seller listings inside TimberEquip.</p>
+      <p>Your <span class="badge success-badge">${planName}</span> plan has been created successfully. Your account is now set up to publish and manage seller listings inside Forestry Equipment Sales.</p>
       <a href="https://timberequip.com/profile" class="cta">Manage Subscription</a>
     `);
     return { subject, html };
   },
 
   newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
-    const subject = `New TimberEquip Match: ${listingTitle}`;
+    const subject = `New Forestry Equipment Sales Match: ${listingTitle}`;
     const html = baseLayout(subject, 'New Matching Equipment', `
       <p class="label">Saved Search Match</p>
       <h2>A new listing matches your saved search</h2>
@@ -506,12 +506,12 @@ const templates = {
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
-    const subject = 'Your TimberEquip team account is ready';
+    const subject = 'Your Forestry Equipment Sales team account is ready';
     const html = baseLayout(subject, 'Team Account Invitation', `
       <p class="label">Managed Account</p>
-      <h2>Your TimberEquip seat has been created</h2>
+      <h2>Your Forestry Equipment Sales seat has been created</h2>
       <p>Hi <strong>${displayName}</strong>,</p>
-      <p><strong>${inviterName}</strong> created a TimberEquip team account for you${company ? ` under <strong>${company}</strong>` : ''}.</p>
+      <p><strong>${inviterName}</strong> created a Forestry Equipment Sales team account for you${company ? ` under <strong>${company}</strong>` : ''}.</p>
       <div style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:2px; padding:20px; margin:20px 0;">
         <div class="info-row"><span class="info-label">Email</span><span class="info-value">${email}</span></div>
         <div class="info-row"><span class="info-label">Role</span><span class="info-value">${formattedRole || 'Buyer'}</span></div>
@@ -564,20 +564,20 @@ const templates = {
   },
 
   inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl }) {
-    const subject = `TimberEquip inspection request received for ${equipment}`;
+    const subject = `Forestry Equipment Sales inspection request received for ${equipment}`;
     const html = baseLayout(subject, 'Inspection Request Received', `
       <p class="label">Inspection Desk</p>
       <h2>Your inspection request is now in the queue</h2>
       <p>Hi <strong>${requesterName}</strong>,</p>
-      <p>We received your TimberEquip inspection request and routed it to the inspection management desk.</p>
+      <p>We received your Forestry Equipment Sales inspection request and routed it to the inspection management desk.</p>
       ${renderInfoPanel([
         { label: 'Equipment', value: equipment },
         { label: 'Location', value: inspectionLocation },
         { label: 'Requested Timeline', value: timeline || 'Not provided' },
         { label: 'Recommended Dealer', value: matchedDealerName || 'No dealer matched yet' },
       ])}
-      <p>An inspection-capable dealer or TimberEquip administrator will review the request and respond with acceptance, decline, or a quoted inspection price.</p>
-      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta">Open TimberEquip</a>` : ''}
+      <p>An inspection-capable dealer or Forestry Equipment Sales administrator will review the request and respond with acceptance, decline, or a quoted inspection price.</p>
+      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta">Open Forestry Equipment Sales</a>` : ''}
     `);
     return { subject, html };
   },
@@ -613,13 +613,13 @@ const templates = {
       <p class="label">Inspection Desk</p>
       <h2>Your inspection request has been updated</h2>
       <p>Hi <strong>${requesterName}</strong>,</p>
-      <p>Your request for <strong>${equipment}</strong> has been updated by ${managerName || 'the TimberEquip team'}.</p>
+      <p>Your request for <strong>${equipment}</strong> has been updated by ${managerName || 'the Forestry Equipment Sales team'}.</p>
       ${renderInfoPanel([
         { label: 'Status', value: normalizedStatus },
         { label: 'Inspection Location', value: inspectionLocation },
         { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not provided' },
       ])}
-      <p>If you have questions about this update, reply directly to the TimberEquip inspection desk.</p>
+      <p>If you have questions about this update, reply directly to the Forestry Equipment Sales inspection desk.</p>
     `);
     return { subject, html };
   },

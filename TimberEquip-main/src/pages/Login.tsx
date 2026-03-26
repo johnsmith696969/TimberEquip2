@@ -12,7 +12,7 @@ import { signOut } from 'firebase/auth';
 import { useAuth } from '../components/AuthContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 
-const ADMIN_EMAILS = ['calebhappy@gmail.com'];
+const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -188,7 +188,7 @@ export function Login() {
       >
         <div className="bg-[#0a0a0a] text-white p-12">
           <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2 block">Member Login</span>
-          <h1 className="text-4xl font-black tracking-tighter uppercase leading-none text-white">TimberEquip <br /> <span className="text-accent">Marketplace</span></h1>
+          <h1 className="text-4xl font-black tracking-tighter uppercase leading-none text-white">Forestry Equipment <br /> <span className="text-accent">Sales</span></h1>
         </div>
 
         <div className="p-12">
@@ -300,7 +300,7 @@ export function Login() {
 
           <div className="mt-8 pt-8 border-t border-line flex flex-col space-y-6">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to TimberEquip?</span>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to Forestry Equipment Sales?</span>
               <Link to="/register" className="text-[10px] font-black text-accent uppercase hover:underline">Create Account</Link>
             </div>
             

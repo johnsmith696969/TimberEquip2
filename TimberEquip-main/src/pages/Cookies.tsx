@@ -44,7 +44,7 @@ export function Cookies() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Essential Cookies</h2>
               <p>
-                These cookies are strictly necessary for the TimberEquip platform to function. 
+                These cookies are strictly necessary for the Forestry Equipment Sales platform to function. 
                 They enable core features like authentication, security, and the inquiry system.
               </p>
               <div className="bg-surface border border-line p-6 flex items-start space-x-4">
@@ -91,7 +91,7 @@ export function Cookies() {
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
                 <span>support@timberequip.run.app</span>
-                <span>+1 (800) TIMBER-SUPPORT</span>
+                <span>+1 (800) 846-2373</span>
               </div>
             </section>
           </div>

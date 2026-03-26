@@ -30,6 +30,7 @@ const DealerDirectoryPage = lazy(() => import('./pages/SeoLandingPages').then((m
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
 const Register = lazy(() => import('./pages/Register').then((module) => ({ default: module.Register })));
 const Sell = lazy(() => import('./pages/Sell').then((module) => ({ default: module.Sell })));
+const DealerOS = lazy(() => import('./pages/DealerOS').then((module) => ({ default: module.DealerOS })));
 const Financing = lazy(() => import('./pages/Financing').then((module) => ({ default: module.Financing })));
 const Profile = lazy(() => import('./pages/Profile').then((module) => ({ default: module.Profile })));
 const About = lazy(() => import('./pages/About').then((module) => ({ default: module.About })));
@@ -88,6 +89,7 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/sell" element={<ProtectedRoute><Sell /></ProtectedRoute>} />
+                    <Route path="/dealer-os" element={<ProtectedRoute requireDealerOs><DealerOS /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/about" element={<About />} />

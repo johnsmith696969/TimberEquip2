@@ -1,6 +1,7 @@
 import { db, auth } from '../firebase';
 import { 
   collection, 
+  type DocumentData,
   doc, 
   getDoc, 
   getDocs, 
@@ -11,10 +12,12 @@ import {
   where, 
   orderBy, 
   limit, 
+  startAfter,
   serverTimestamp,
   arrayUnion,
   onSnapshot,
-  getDocFromServer
+  getDocFromServer,
+  type QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { Listing, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
@@ -35,7 +38,11 @@ const DEMO_CATEGORY_BASE_PRICES: Record<string, number> = {
   'Trailers': 36000,
 };
 
-const SUPERADMIN_EMAIL = 'calebhappy@gmail.com';
+const SUPERADMIN_EMAIL = 'caleb@forestryequipmentsales.com';
+const FEATURED_LISTING_CAPS: Record<string, number> = {
+  dealer: 3,
+  pro_dealer: 6,
+};
 
 function normalize(value?: string | null): string {
   return (value || '').trim().toLowerCase();
@@ -137,6 +144,14 @@ export interface CategoryInventoryMetric {
   averagePrice: number | null;
 }
 
+export type AdminListingsCursor = QueryDocumentSnapshot<DocumentData> | null;
+
+export interface AdminListingsPage {
+  listings: Listing[];
+  nextCursor: AdminListingsCursor;
+  hasMore: boolean;
+}
+
 const toMillis = (value: unknown): number | undefined => {
   if (!value) return undefined;
   if (typeof value === 'string') {
@@ -226,11 +241,17 @@ function isAdminPublisherRole(role?: string | null): boolean {
 }
 
 function isVerifiedSellerRole(role?: string | null): boolean {
-  return ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
+  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
 }
 
 function isInspectionManagerRole(role?: string | null): boolean {
-  return ['super_admin', 'admin', 'developer', 'dealer', 'dealer_manager'].includes(normalize(role));
+  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager'].includes(normalize(role));
+}
+
+function getFeaturedListingCapForRole(role?: string | null): number {
+  const normalizedRole = normalize(role);
+  if (isAdminPublisherRole(normalizedRole)) return Number.POSITIVE_INFINITY;
+  return FEATURED_LISTING_CAPS[normalizedRole] || 0;
 }
 
 function canReadAllFinancingRequests(role?: string | null): boolean {
@@ -245,6 +266,52 @@ function isDemoListing(listing: Listing): boolean {
   const id = normalize(listing.id);
   const seller = normalize(listing.sellerUid || listing.sellerId);
   return id.startsWith('demo-') || id.startsWith('catalog-') || seller.includes('demo');
+}
+
+async function getSellerFeatureContext(sellerUid?: string | null): Promise<{ ownerUid: string; role: string; featuredCap: number }> {
+  const normalizedSellerUid = String(sellerUid || '').trim();
+  if (!normalizedSellerUid) {
+    return { ownerUid: '', role: '', featuredCap: 0 };
+  }
+
+  const sellerSnapshot = await getDoc(doc(db, 'users', normalizedSellerUid));
+  const sellerData = sellerSnapshot.exists() ? (sellerSnapshot.data() as Record<string, unknown>) : {};
+  const ownerUid = String(sellerData.parentAccountUid || normalizedSellerUid).trim();
+  const ownerSnapshot = ownerUid && ownerUid !== normalizedSellerUid ? await getDoc(doc(db, 'users', ownerUid)) : sellerSnapshot;
+  const ownerData = ownerSnapshot.exists() ? (ownerSnapshot.data() as Record<string, unknown>) : sellerData;
+  const role = normalize(String(ownerData.role || sellerData.role || ''));
+
+  return {
+    ownerUid,
+    role,
+    featuredCap: getFeaturedListingCapForRole(role),
+  };
+}
+
+async function ensureFeaturedListingCapacity(params: { sellerUid?: string | null; listingId?: string; nextFeatured?: boolean }): Promise<{ ownerUid: string; role: string; featuredCap: number }> {
+  const nextFeatured = !!params.nextFeatured;
+  const context = await getSellerFeatureContext(params.sellerUid);
+
+  if (!nextFeatured || !context.ownerUid || !Number.isFinite(context.featuredCap)) {
+    return context;
+  }
+
+  if (context.featuredCap < 1) {
+    throw new Error('This account role cannot mark listings as featured.');
+  }
+
+  const snapshot = await getDocs(query(collection(db, 'listings'), where('sellerUid', '==', context.ownerUid), where('featured', '==', true)));
+  const activeFeaturedCount = snapshot.docs.filter((docSnapshot) => {
+    if (params.listingId && docSnapshot.id === params.listingId) return false;
+    const data = docSnapshot.data() as Partial<Listing>;
+    return normalize(String(data.status || 'active')) !== 'sold';
+  }).length;
+
+  if (activeFeaturedCount >= context.featuredCap) {
+    throw new Error(`This account can feature up to ${context.featuredCap} active ${context.featuredCap === 1 ? 'listing' : 'listings'}. Unfeature one before selecting another.`);
+  }
+
+  return context;
 }
 
 function buildCatalogDemoListing(
@@ -285,7 +352,7 @@ function buildCatalogDemoListing(
     currency: 'USD',
     hours,
     condition,
-    description: `${year} ${titleManufacturer} ${subcategory} catalog listing generated from the TimberEquip equipment taxonomy for full category coverage and workflow validation.`,
+    description: `${year} ${titleManufacturer} ${subcategory} catalog listing generated from the Forestry Equipment Sales equipment taxonomy for full category coverage and workflow validation.`,
     images: Array.from({ length: 8 }).map((_, imageIndex) => `https://picsum.photos/seed/${seedBase}-${imageIndex}/1400/900`),
     imageVariants: Array.from({ length: 8 }).map((_, imageIndex) => ({
       detailUrl: `https://picsum.photos/seed/${seedBase}-detail-${imageIndex}/1600/1000`,
@@ -613,16 +680,27 @@ export const equipmentService = {
         }
 
         const sortBy = filters.sortBy || 'newest';
+        const sortWithFeaturedPriority = (compare: (a: Listing, b: Listing) => number, prioritizeFeatured = true) => {
+          const sorted = [...listings].sort((a, b) => {
+            if (prioritizeFeatured) {
+              const featuredDelta = Number(!!b.featured) - Number(!!a.featured);
+              if (featuredDelta !== 0) return featuredDelta;
+            }
+            return compare(a, b);
+          });
+          listings = sorted;
+        };
+
         if (sortBy === 'price_asc') {
           listings = [...listings].sort((a, b) => a.price - b.price);
         } else if (sortBy === 'price_desc') {
           listings = [...listings].sort((a, b) => b.price - a.price);
         } else if (sortBy === 'popular') {
-          listings = [...listings].sort((a, b) => (b.views + b.leads * 3) - (a.views + a.leads * 3));
+          sortWithFeaturedPriority((a, b) => (b.views + b.leads * 3) - (a.views + a.leads * 3));
         } else if (sortBy === 'relevance' && filters.q) {
-          listings = [...listings].sort((a, b) => relevanceScore(b, filters.q as string) - relevanceScore(a, filters.q as string));
+          sortWithFeaturedPriority((a, b) => relevanceScore(b, filters.q as string) - relevanceScore(a, filters.q as string));
         } else {
-          listings = [...listings].sort((a, b) => {
+          sortWithFeaturedPriority((a, b) => {
             const aTime = new Date(a.createdAt as string).getTime() || 0;
             const bTime = new Date(b.createdAt as string).getTime() || 0;
             return bTime - aTime;
@@ -634,6 +712,72 @@ export const equipmentService = {
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
+    }
+  },
+
+  async getAdminListingsPage(options?: {
+    pageSize?: number;
+    cursor?: AdminListingsCursor;
+    includeDemoListings?: boolean;
+  }): Promise<AdminListingsPage> {
+    const path = 'listings';
+    const pageSize = Math.max(1, Math.min(options?.pageSize ?? 50, 100));
+    const includeDemoListings = !!options?.includeDemoListings;
+    const chunkSize = includeDemoListings ? pageSize : Math.max(pageSize, 100);
+
+    try {
+      let cursor = options?.cursor ?? null;
+      let nextCursor: AdminListingsCursor = cursor;
+      let hasMore = false;
+      const listings: Listing[] = [];
+
+      while (listings.length < pageSize) {
+        const baseQuery = query(
+          collection(db, path),
+          orderBy('createdAt', 'desc'),
+          limit(chunkSize)
+        );
+        const pageQuery = cursor ? query(baseQuery, startAfter(cursor)) : baseQuery;
+        const querySnapshot = await getDocs(pageQuery);
+
+        if (querySnapshot.empty) {
+          nextCursor = null;
+          hasMore = false;
+          break;
+        }
+
+        nextCursor = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
+        hasMore = querySnapshot.docs.length === chunkSize;
+        cursor = nextCursor;
+
+        for (const docSnapshot of querySnapshot.docs) {
+          const listing = normalizeListingImages({ id: docSnapshot.id, ...docSnapshot.data() } as Listing);
+          if (!includeDemoListings && isDemoListing(listing)) {
+            continue;
+          }
+          listings.push(listing);
+          if (listings.length >= pageSize) {
+            break;
+          }
+        }
+
+        if (!hasMore) {
+          break;
+        }
+      }
+
+      return {
+        listings,
+        nextCursor: hasMore ? nextCursor : null,
+        hasMore,
+      };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return {
+        listings: [],
+        nextCursor: null,
+        hasMore: false,
+      };
     }
   },
 
@@ -675,6 +819,58 @@ export const equipmentService = {
     }
   },
 
+  async getSellerFeaturedListingUsage(sellerUid: string): Promise<number> {
+    const context = await getSellerFeatureContext(sellerUid);
+    if (!context.ownerUid) return 0;
+
+    try {
+      const snapshot = await getDocs(query(collection(db, 'listings'), where('sellerUid', '==', context.ownerUid), where('featured', '==', true)));
+      return snapshot.docs.filter((docSnapshot) => {
+        const data = docSnapshot.data() as Partial<Listing>;
+        return normalize(String(data.status || 'active')) !== 'sold';
+      }).length;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'listings');
+      return 0;
+    }
+  },
+
+  async getSellerListings(sellerUid: string, options?: { includeSold?: boolean }): Promise<Listing[]> {
+    const normalizedSellerUid = String(sellerUid || '').trim();
+    if (!normalizedSellerUid) return [];
+
+    const path = 'listings';
+    try {
+      const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
+        getDocs(query(collection(db, path), where('sellerUid', '==', normalizedSellerUid))),
+        getDocs(query(collection(db, path), where('sellerId', '==', normalizedSellerUid))),
+      ]);
+
+      const seen = new Set<string>();
+      const merged = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs]
+        .filter((docSnapshot) => {
+          if (seen.has(docSnapshot.id)) return false;
+          seen.add(docSnapshot.id);
+          return true;
+        })
+        .map((docSnapshot) => normalizeListingImages({ id: docSnapshot.id, ...docSnapshot.data() } as Listing));
+
+      const includeSold = !!options?.includeSold;
+      return merged
+        .filter((listing) => includeSold || normalize(String(listing.status || 'active')) !== 'sold')
+        .sort((a, b) => {
+          const featuredDelta = Number(!!b.featured) - Number(!!a.featured);
+          if (featuredDelta !== 0) return featuredDelta;
+          const aTime = new Date(a.createdAt as string).getTime() || 0;
+          const bTime = new Date(b.createdAt as string).getTime() || 0;
+          return bTime - aTime;
+        });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
   async getListing(id: string): Promise<Listing | undefined> {
     const path = `listings/${id}`;
     try {
@@ -700,11 +896,17 @@ export const equipmentService = {
         throw new Error(`Listing quality validation failed: ${qualityErrors.join(' ')}`);
       }
 
+      const featureContext = await ensureFeaturedListingCapacity({
+        sellerUid: listing.sellerUid || auth.currentUser?.uid,
+        nextFeatured: listing.featured,
+      });
+      const sellerScopeUid = featureContext.ownerUid || String(listing.sellerUid || auth.currentUser?.uid || '').trim();
+
       let sellerVerified = false;
       let sellerRole = '';
       let sellerEmail = '';
-      if (listing.sellerUid) {
-        const sellerDoc = await getDoc(doc(db, 'users', listing.sellerUid));
+      if (sellerScopeUid) {
+        const sellerDoc = await getDoc(doc(db, 'users', sellerScopeUid));
         if (sellerDoc.exists()) {
           const sellerData = sellerDoc.data() as any;
           sellerRole = normalize(sellerData.role);
@@ -726,10 +928,12 @@ export const equipmentService = {
       await setDoc(docRef, {
         ...listing,
         id: docRef.id,
+        sellerUid: sellerScopeUid,
+        sellerId: sellerScopeUid,
         sellerVerified,
         qualityValidated: true,
         approvalStatus: nextApprovalStatus,
-        approvedBy: adminPublisher ? listing.sellerUid || auth.currentUser?.uid || null : null,
+        approvedBy: adminPublisher ? sellerScopeUid || auth.currentUser?.uid || null : null,
         status: nextStatus,
         paymentStatus: nextPaymentStatus,
         createdAt: serverTimestamp(),
@@ -755,9 +959,17 @@ export const equipmentService = {
         throw new Error(`Listing quality validation failed: ${qualityErrors.join(' ')}`);
       }
 
+      const featureContext = await ensureFeaturedListingCapacity({
+        sellerUid: merged.sellerUid || auth.currentUser?.uid,
+        listingId: id,
+        nextFeatured: merged.featured,
+      });
+      const sellerScopeUid = featureContext.ownerUid || String(merged.sellerUid || auth.currentUser?.uid || '').trim();
+
       const docRef = doc(db, 'listings', id);
       await updateDoc(docRef, {
         ...updates,
+        ...(sellerScopeUid ? { sellerUid: sellerScopeUid, sellerId: sellerScopeUid } : {}),
         qualityValidated: true,
         updatedAt: serverTimestamp()
       });
@@ -1114,12 +1326,12 @@ export const equipmentService = {
       if (storefrontSnap.exists()) {
         const data = storefrontSnap.data() || {};
         const rawRole = String(data.role || '').toLowerCase();
-        const isDealerRole = ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+        const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
 
         return {
           id: storefrontSnap.id,
           uid: storefrontSnap.id,
-          name: String(data.storefrontName || data.displayName || 'TimberEquip Seller'),
+          name: String(data.storefrontName || data.displayName || 'Forestry Equipment Sales Seller'),
           type: isDealerRole ? 'Dealer' : 'Private',
           role: (data.role || 'buyer') as any,
           storefrontSlug: String(data.storefrontSlug || ''),
@@ -1147,12 +1359,12 @@ export const equipmentService = {
       if (userSnap.exists()) {
         const data = userSnap.data() || {};
         const rawRole = String(data.role || '').toLowerCase();
-        const isDealerRole = ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+        const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
 
         return {
           id: userSnap.id,
           uid: userSnap.id,
-          name: data.displayName || data.name || 'TimberEquip Seller',
+          name: data.displayName || data.name || 'Forestry Equipment Sales Seller',
           type: isDealerRole ? 'Dealer' : 'Private',
           role: (data.role || 'buyer') as any,
           storefrontSlug: data.storefrontSlug || '',
@@ -1208,9 +1420,9 @@ export const equipmentService = {
           title: String(post.title || 'Untitled'),
           summary: String(post.excerpt || '').trim() || String(post.content || '').replace(/<[^>]*>/g, '').slice(0, 220),
           content: String(post.content || ''),
-          author: String(post.authorName || 'TimberEquip Editorial'),
+          author: String(post.authorName || 'Forestry Equipment Sales Editorial'),
           date: new Date(dateMs).toISOString(),
-          image: String(post.image || '').trim() || 'https://picsum.photos/seed/timberequip-news/1600/900',
+          image: String(post.image || '').trim() || 'https://picsum.photos/seed/forestry-equipment-sales-news/1600/900',
           category: String(post.category || 'Industry News'),
           seoTitle: String(post.seoTitle || '').trim(),
           seoDescription: String(post.seoDescription || '').trim(),
@@ -1288,9 +1500,9 @@ export const equipmentService = {
           title: String(post.title || 'Untitled'),
           summary: String(post.excerpt || '').trim() || String(post.content || '').replace(/<[^>]*>/g, '').slice(0, 220),
           content: String(post.content || ''),
-          author: String(post.authorName || 'TimberEquip Editorial'),
+          author: String(post.authorName || 'Forestry Equipment Sales Editorial'),
           date: new Date(dateMs).toISOString(),
-          image: String(post.image || '').trim() || 'https://picsum.photos/seed/timberequip-news/1600/900',
+          image: String(post.image || '').trim() || 'https://picsum.photos/seed/forestry-equipment-sales-news/1600/900',
           category: String(post.category || 'Industry News'),
           seoTitle: String(post.seoTitle || '').trim(),
           seoDescription: String(post.seoDescription || '').trim(),
@@ -1502,7 +1714,7 @@ export const equipmentService = {
 
       Object.entries(EQUIPMENT_TAXONOMY).forEach(([topLevelCategory, subcategories], categoryIndex) => {
         Object.entries(subcategories).forEach(([subcategory, manufacturers], subcategoryIndex) => {
-          const baseManufacturer = manufacturers[0] || 'TIMBEREQUIP';
+          const baseManufacturer = manufacturers[0] || 'FORESTRY EQUIPMENT SALES';
           const baseYear = 2021 + ((categoryIndex + subcategoryIndex) % 3);
           const baseHours = 900 + categoryIndex * 140 + subcategoryIndex * 40;
           for (let variant = 1; variant <= 3; variant++) {
@@ -1534,7 +1746,7 @@ export const equipmentService = {
               currency: 'USD',
               hours,
               condition,
-              description: `${year} ${titleManufacturer} ${subcategory} demo listing built from the TimberEquip taxonomy for browse, filter, and upload workflow validation.`,
+              description: `${year} ${titleManufacturer} ${subcategory} demo listing built from the Forestry Equipment Sales taxonomy for browse, filter, and upload workflow validation.`,
               images: Array.from({ length: 10 }).map((_, imageIndex) => `https://picsum.photos/seed/${seedBase}-${imageIndex}/1200/800`),
               imageVariants: Array.from({ length: 10 }).map((_, imageIndex) => {
                 const detailUrl = `https://picsum.photos/seed/${seedBase}-detail-${imageIndex}/1600/1000`;

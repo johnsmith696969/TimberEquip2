@@ -1,5 +1,5 @@
-# TimberEquip
-TimberEquip is an e-commerce webapp for the Timber Industry. Our main focus is helping loggers & firewood producers market their heavy equipment, and provide institutional grade analysis on markets.
+# Forestry Equipment Sales
+Forestry Equipment Sales is an e-commerce webapp for the Timber Industry. Our main focus is helping loggers & firewood producers market their heavy equipment, and provide institutional grade analysis on markets.
 
 ## Run Locally
 

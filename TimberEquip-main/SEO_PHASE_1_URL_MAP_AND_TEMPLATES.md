@@ -1,8 +1,8 @@
-# TimberEquip SEO Phase 1 URL Map And Templates
+# Forestry Equipment Sales SEO Phase 1 URL Map And Templates
 
 ## Purpose
 
-This document defines Phase 1 of the TimberEquip SEO build.
+This document defines Phase 1 of the Forestry Equipment Sales SEO build.
 
 Phase 1 covers:
 
@@ -279,7 +279,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Category} For Sale | TimberEquip`
+- title pattern: `{Category} For Sale | Forestry Equipment Sales`
 - description pattern with marketplace and buyer intent language
 - CollectionPage + ItemList schema
 
@@ -311,7 +311,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Manufacturer} Logging Equipment For Sale | TimberEquip`
+- title pattern: `{Manufacturer} Logging Equipment For Sale | Forestry Equipment Sales`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -343,8 +343,8 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `Logging Equipment For Sale In {State} | TimberEquip` for logging hubs
-- title pattern: `Forestry Equipment For Sale In {State} | TimberEquip` for forestry hubs
+- title pattern: `Logging Equipment For Sale In {State} | Forestry Equipment Sales` for logging hubs
+- title pattern: `Forestry Equipment For Sale In {State} | Forestry Equipment Sales` for forestry hubs
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -373,7 +373,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Category} For Sale In {State} | TimberEquip`
+- title pattern: `{Category} For Sale In {State} | Forestry Equipment Sales`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -401,7 +401,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Manufacturer} {Category} For Sale | TimberEquip`
+- title pattern: `{Manufacturer} {Category} For Sale | Forestry Equipment Sales`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -433,7 +433,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Dealer Name} Logging Equipment For Sale | TimberEquip`
+- title pattern: `{Dealer Name} Logging Equipment For Sale | Forestry Equipment Sales`
 - Organization or LocalBusiness schema
 - ItemList schema on inventory pages
 - canonical target should prefer the dealer/storefront slug route over `/seller/:id` once both exist
@@ -467,7 +467,7 @@ Required additions:
 
 Title pattern:
 
-- `{Year} {Manufacturer} {Model} For Sale | TimberEquip`
+- `{Year} {Manufacturer} {Model} For Sale | Forestry Equipment Sales`
 
 Description pattern:
 

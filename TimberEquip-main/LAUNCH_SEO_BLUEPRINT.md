@@ -1,15 +1,15 @@
-# TimberEquip Launch SEO Blueprint
+# Forestry Equipment Sales Launch SEO Blueprint
 
 ## Purpose
 
-This document is the launch SEO blueprint for TimberEquip.
+This document is the launch SEO blueprint for Forestry Equipment Sales.
 
 Companion execution documents:
 
 - `SEO_IMPLEMENTATION_BACKLOG.md`
 - `SEO_PHASE_1_URL_MAP_AND_TEMPLATES.md`
 
-It is designed for a future public launch when TimberEquip is ready to be indexable and compete for commercial search demand across:
+It is designed for a future public launch when Forestry Equipment Sales is ready to be indexable and compete for commercial search demand across:
 
 - forestry equipment
 - logging equipment
@@ -17,7 +17,7 @@ It is designed for a future public launch when TimberEquip is ready to be indexa
 - forestry equipment for sale
 - logging equipment for sale by state
 - logging equipment for sale by manufacturer
-- logging equipment for sale by dealer/storefront
+- logging equipment for sale by dealer
 - category + state + manufacturer combinations
 
 This blueprint assumes the current repo remains in noindex mode until launch readiness is complete.
@@ -46,7 +46,7 @@ This blueprint assumes the current repo remains in noindex mode until launch rea
 
 ## Strategic Goal
 
-TimberEquip should launch as a category-dominant industrial marketplace, not just a searchable inventory app.
+Forestry Equipment Sales should launch as a category-dominant industrial marketplace, not just a searchable inventory app.
 
 The SEO target is to build a crawlable, indexable page system for:
 
@@ -54,7 +54,7 @@ The SEO target is to build a crawlable, indexable page system for:
 2. Category terms
 3. Manufacturer terms
 4. State/location terms
-5. Dealer/storefront terms
+5. Dealer terms
 6. Commercial long-tail combinations
 7. Editorial support content that reinforces transactional pages
 
@@ -622,9 +622,9 @@ Before public SEO launch, publish at minimum:
 - submit Search Console properties
 - begin rank tracking
 
-## What TimberEquip Must Do To Beat Large Marketplaces
+## What Forestry Equipment Sales Must Do To Beat Large Marketplaces
 
-TimberEquip should not try to win by looking like a smaller generic marketplace.
+Forestry Equipment Sales should not try to win by looking like a smaller generic marketplace.
 
 It should win by being:
 
@@ -667,6 +667,6 @@ Do not open indexing until these are complete:
 - canonical strategy for filters
 - minimum viable content library
 
-If TimberEquip goes public before that, Google will likely see it as a thinner faceted inventory app instead of a category authority marketplace.
+If Forestry Equipment Sales goes public before that, Google will likely see it as a thinner faceted inventory app instead of a category authority marketplace.
 
-If TimberEquip launches after that work, it can compete much more seriously for forestry and logging equipment search demand.
+If Forestry Equipment Sales launches after that work, it can compete much more seriously for forestry and logging equipment search demand.

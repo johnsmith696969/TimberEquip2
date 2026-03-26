@@ -1,4 +1,4 @@
-# TimberEquip Execution Checklist
+# Forestry Equipment Sales Execution Checklist
 
 Last updated: 2026-03-25
 

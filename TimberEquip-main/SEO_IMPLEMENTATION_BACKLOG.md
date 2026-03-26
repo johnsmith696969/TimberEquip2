@@ -1,10 +1,10 @@
-# TimberEquip SEO Implementation Backlog
+# Forestry Equipment Sales SEO Implementation Backlog
 
 ## Purpose
 
 This file converts the launch SEO blueprint into an implementation backlog.
 
-It is intentionally designed for pre-launch execution while TimberEquip remains in `noindex` mode.
+It is intentionally designed for pre-launch execution while Forestry Equipment Sales remains in `noindex` mode.
 
 ## Operating Rules
 

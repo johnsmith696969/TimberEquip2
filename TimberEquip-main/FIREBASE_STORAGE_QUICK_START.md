@@ -1,6 +1,6 @@
 # Firebase Storage Integration Quick Start
 
-Quick reference for integrating image/video uploads into TimberEquip components.
+Quick reference for integrating image/video uploads into Forestry Equipment Sales components.
 
 ---
 

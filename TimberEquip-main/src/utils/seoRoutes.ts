@@ -74,5 +74,5 @@ export function buildDealerPath(seller: Pick<Seller, 'id' | 'storefrontSlug'>): 
 }
 
 export function isDealerRole(role?: string): boolean {
-  return ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(String(role || '').toLowerCase());
+  return ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(String(role || '').toLowerCase());
 }

@@ -26,7 +26,7 @@ export function Privacy() {
               <Shield className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Data Encryption</h3>
               <p className="text-sm text-muted leading-relaxed">
-                All data transmitted through the TimberEquip platform is encrypted using AES-256 encryption. 
+                All data transmitted through the Forestry Equipment Sales platform is encrypted using AES-256 encryption. 
                 We never store raw payment data on our servers.
               </p>
             </div>
@@ -63,7 +63,7 @@ export function Privacy() {
               <ul className="list-disc pl-6 space-y-2">
                 <li>Facilitating connections between buyers and sellers.</li>
                 <li>Processing financing applications through our verified partners.</li>
-                <li>Improving the TimberEquip marketplace algorithms.</li>
+                <li>Improving the Forestry Equipment Sales marketplace algorithms.</li>
                 <li>Ensuring the security and integrity of the global network.</li>
               </ul>
             </section>
@@ -71,7 +71,7 @@ export function Privacy() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">3. Your Rights (GDPR/CCPA)</h2>
               <p>
-                As a user of the TimberEquip network, you have the following rights:
+                As a user of the Forestry Equipment Sales network, you have the following rights:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                 <div className="border border-line p-6 flex items-start space-x-4">
@@ -108,7 +108,7 @@ export function Privacy() {
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
                 <span>privacy@timberequip.run.app</span>
-                <span>+1 (800) TIMBER-PRIVACY</span>
+                <span>+1 (800) 846-2373</span>
               </div>
             </section>
           </div>

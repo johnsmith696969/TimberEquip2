@@ -1,6 +1,6 @@
 # Firebase Image & Video Upload Setup Guide
 
-Complete walkthrough for setting up Firebase Cloud Storage and integrating image/video uploads for TimberEquip.
+Complete walkthrough for setting up Firebase Cloud Storage and integrating image/video uploads for Forestry Equipment Sales.
 
 ---
 
@@ -23,7 +23,7 @@ This guide covers:
 ### 1.1 Create Cloud Storage Bucket
 
 1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select your TimberEquip project
+2. Select your Forestry Equipment Sales project
 3. In left sidebar, click **Storage** (under "Build")
 4. Click **Create bucket**
 5. Configure:
@@ -81,7 +81,7 @@ gsutil cors get gs://[your-bucket-name]
 The `storage.rules` file in your project defines security policies. Deploy it:
 
 ```bash
-cd /workspaces/TimberEquip
+cd /workspaces/Forestry Equipment Sales
 
 # Login to Firebase (if not already)
 firebase login

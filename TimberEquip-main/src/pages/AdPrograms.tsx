@@ -241,7 +241,7 @@ export function AdPrograms() {
               <span className="text-accent">AND VISIBILITY</span>
             </h1>
             <p className="text-lg text-muted leading-relaxed mb-10 max-w-2xl">
-              Pair your TimberEquip seller plan with Featured Inventory to move key equipment higher in the marketplace.
+              Pair your Forestry Equipment Sales seller plan with Featured Inventory to move key equipment higher in the marketplace.
               Built for owner operators, dealers, and high-volume dealer groups.
             </p>
             <div className="flex flex-wrap gap-4">
@@ -469,7 +469,7 @@ export function AdPrograms() {
                     </div>
                     <div>
                       <label className="label-micro block mb-2">Company Name</label>
-                      <input type="text" value={mediaKitForm.companyName} onChange={(e) => setMediaKitForm((prev) => ({ ...prev, companyName: e.target.value }))} className="input-industrial w-full py-3" placeholder="TIMBEREQUIP" />
+                      <input type="text" value={mediaKitForm.companyName} onChange={(e) => setMediaKitForm((prev) => ({ ...prev, companyName: e.target.value }))} className="input-industrial w-full py-3" placeholder="FORESTRY EQUIPMENT SALES" />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

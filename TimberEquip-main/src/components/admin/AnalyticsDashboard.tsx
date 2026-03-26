@@ -73,7 +73,7 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
   // ── Account metrics ─────────────────────────────────────────────
   const totalAccounts   = accounts.length;
   const activeAccounts  = accounts.filter(a => a.status === 'Active').length;
-  const dealerAccounts  = accounts.filter(a => ['dealer', 'dealer_manager', 'dealer_staff'].includes(a.role)).length;
+  const dealerAccounts  = accounts.filter(a => ['dealer', 'pro_dealer'].includes(a.role)).length;
   const sellerAccounts  = accounts.filter(a => a.role === 'individual_seller').length;
   const adminAccounts   = accounts.filter(a => ['super_admin', 'admin', 'developer'].includes(a.role)).length;
 

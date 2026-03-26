@@ -242,7 +242,7 @@ export function Financing() {
                       <div className="bg-surface/30 border border-line p-6 flex items-start space-x-4">
                         <input type="checkbox" className="w-5 h-5 border-line rounded-sm accent-accent mt-1" id="consent" />
                         <label htmlFor="consent" className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest cursor-pointer">
-                          I authorize TimberEquip Financing and its partners to perform a credit inquiry and verify all provided entity information. 
+                          I authorize Forestry Equipment Sales Financing and its partners to perform a credit inquiry and verify all provided entity information. 
                           I understand that this is an initial application and subject to final approval.
                         </label>
                       </div>
@@ -289,7 +289,7 @@ export function Financing() {
                       </div>
                       <h3 className="text-4xl font-black uppercase tracking-tighter mb-4">Application Submitted</h3>
                       <p className="text-muted font-medium max-w-md mb-12 leading-relaxed">
-                        Your credit application has been successfully submitted to the TimberEquip Financing center. 
+                        Your credit application has been successfully submitted to the Forestry Equipment Sales Financing center. 
                         A credit officer will review your entity profile and contact you within 24 hours.
                       </p>
                       <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">

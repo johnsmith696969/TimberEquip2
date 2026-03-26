@@ -632,8 +632,8 @@ export function Search() {
   };
 
   const seoTitle = filters.q
-    ? `TimberEquip.com | ${filters.q} Listings (${filteredListings.length})`
-    : 'TimberEquip.com | New & Used Logging Equipment For Sale';
+    ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
+    : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
 
   const seoDescription =
     'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
@@ -652,7 +652,7 @@ export function Search() {
         sku: listing.stockNumber || listing.id,
         brand: {
           '@type': 'Brand',
-          name: listing.make || listing.manufacturer || listing.brand || 'TimberEquip'
+          name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales'
         },
         offers: {
           '@type': 'Offer',

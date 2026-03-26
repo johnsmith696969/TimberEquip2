@@ -10,6 +10,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const sgMail = require('@sendgrid/mail');
 const sharp = require('sharp');
 const Stripe = require('stripe');
+const { XMLParser } = require('fast-xml-parser');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { templates } = require('./email-templates/index.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
@@ -42,6 +43,12 @@ const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
+const dealerFeedXmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '',
+  parseTagValue: true,
+  trimValues: true,
+});
 
 function ensureSendGridClientConfigured() {
   const apiKey = String(SENDGRID_API_KEY.value() || '').trim();
@@ -70,9 +77,10 @@ function htmlToText(html) {
     .trim();
 }
 
-async function sendEmail({ to, subject, html }) {
+async function sendEmail({ to, subject, html, replyTo }) {
   ensureSendGridClientConfigured();
-  const from = String(EMAIL_FROM.value() || '"TimberEquip" <noreply@timberequip.com>').trim();
+  const from = String(EMAIL_FROM.value() || '"Forestry Equipment Sales" <noreply@timberequip.com>').trim();
+  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || 'info@timberequip.com').trim();
   const recipients = (Array.isArray(to) ? to : [to])
     .map((recipient) => String(recipient || '').trim())
     .filter(Boolean);
@@ -84,6 +92,7 @@ async function sendEmail({ to, subject, html }) {
   await sgMail.send({
     to: recipients,
     from,
+    replyTo: resolvedReplyTo,
     subject,
     html,
     text: htmlToText(html),
@@ -119,8 +128,15 @@ function normalize(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeUserRole(role) {
+  const normalized = normalize(role);
+  if (normalized === 'dealer_staff') return 'dealer';
+  if (normalized === 'dealer_manager') return 'pro_dealer';
+  return normalized;
+}
+
 function isPrivilegedAdminEmail(email) {
-  return normalize(email) === 'calebhappy@gmail.com';
+  return normalize(email) === 'caleb@forestryequipmentsales.com';
 }
 
 function includesNormalized(haystack, needle) {
@@ -325,7 +341,7 @@ async function resolveInspectionTarget({ listingId, reference, inspectionLocatio
 }
 
 async function getInspectionDealerCandidates() {
-  const roles = ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'];
+  const roles = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'];
   const snapshot = await getDb().collection('users').where('role', 'in', roles).get();
 
   return snapshot.docs
@@ -337,7 +353,7 @@ async function getInspectionDealerCandidates() {
       const candidateName = String(data.storefrontName || data.displayName || data.company || data.name || '').trim();
       return {
         uid: doc.id,
-        name: candidateName || 'TimberEquip Dealer',
+        name: candidateName || 'Forestry Equipment Sales Dealer',
         storefrontName: String(data.storefrontName || '').trim(),
         company: String(data.company || '').trim(),
         email: String(data.email || '').trim(),
@@ -420,7 +436,7 @@ async function findClosestInspectionDealer(input) {
 }
 
 async function getInspectionNotificationRecipients() {
-  const roles = ['dealer', 'dealer_manager', 'admin', 'super_admin', 'developer'];
+  const roles = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'];
   const snapshot = await getDb().collection('users').where('role', 'in', roles).get();
   const recipients = new Map();
 
@@ -466,6 +482,221 @@ function normalizeImageUrls(value) {
   return value
     .map((entry) => String(entry || '').trim())
     .filter((entry) => /^https?:\/\//i.test(entry));
+}
+
+function normalizeFeedKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function flattenFeedImageUrls(value, depth = 0) {
+  if (depth > 5 || value == null) return [];
+
+  if (typeof value === 'string') {
+    const candidate = value.trim();
+    return /^https?:\/\//i.test(candidate) ? [candidate] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => flattenFeedImageUrls(entry, depth + 1));
+  }
+
+  if (!isPlainObject(value)) {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([key, nestedValue]) => {
+    const normalizedKey = normalizeFeedKey(key);
+    if (['image', 'imageurl', 'imageurls', 'images', 'photo', 'photos', 'gallery', 'media', 'thumbnail', 'thumb', 'url', 'href', 'src', 'full', 'large'].includes(normalizedKey)) {
+      return flattenFeedImageUrls(nestedValue, depth + 1);
+    }
+    return flattenFeedImageUrls(nestedValue, depth + 1);
+  });
+}
+
+function findFeedValue(value, candidateKeys, depth = 0) {
+  if (depth > 5 || value == null) return undefined;
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = findFeedValue(entry, candidateKeys, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (candidateKeys.has(normalizeFeedKey(key)) && nestedValue !== undefined && nestedValue !== null && nestedValue !== '') {
+      return nestedValue;
+    }
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    const found = findFeedValue(nestedValue, candidateKeys, depth + 1);
+    if (found !== undefined) return found;
+  }
+
+  return undefined;
+}
+
+function buildFallbackDealerFeedExternalId(item) {
+  const pieces = [
+    findFeedValue(item, new Set(['stocknumber', 'stock', 'stockid', 'sku'])),
+    findFeedValue(item, new Set(['serialnumber', 'serial', 'vin'])),
+    findFeedValue(item, new Set(['title', 'name', 'headline'])),
+    findFeedValue(item, new Set(['model'])),
+    findFeedValue(item, new Set(['year'])),
+  ]
+    .map((piece) => String(piece || '').trim().toLowerCase())
+    .filter(Boolean)
+    .map((piece) => piece.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''));
+
+  return pieces.join('-').slice(0, 120);
+}
+
+function extractDealerFeedItemsFromPayload(value, depth = 0) {
+  if (depth > 6 || value == null) return [];
+
+  if (Array.isArray(value)) {
+    const objectEntries = value.filter(isPlainObject);
+    if (objectEntries.length > 0) return objectEntries;
+
+    for (const entry of value) {
+      const nested = extractDealerFeedItemsFromPayload(entry, depth + 1);
+      if (nested.length > 0) return nested;
+    }
+    return [];
+  }
+
+  if (!isPlainObject(value)) {
+    return [];
+  }
+
+  const priorityKeys = ['items', 'listings', 'inventory', 'results', 'data', 'equipment', 'machines', 'units', 'records', 'entries', 'entry', 'products'];
+  for (const priorityKey of priorityKeys) {
+    const matchingEntry = Object.entries(value).find(([key]) => normalizeFeedKey(key) === normalizeFeedKey(priorityKey));
+    if (!matchingEntry) continue;
+    const nested = extractDealerFeedItemsFromPayload(matchingEntry[1], depth + 1);
+    if (nested.length > 0) return nested;
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    const nested = extractDealerFeedItemsFromPayload(nestedValue, depth + 1);
+    if (nested.length > 0) return nested;
+  }
+
+  return [value];
+}
+
+function normalizeResolvedDealerFeedItem(item) {
+  if (!isPlainObject(item)) return null;
+
+  const externalId = normalizeNonEmptyString(
+    findFeedValue(item, new Set(['externalid', 'id', 'stocknumber', 'stock', 'sku', 'serialnumber', 'serial', 'vin'])),
+    buildFallbackDealerFeedExternalId(item)
+  );
+
+  const manufacturer = normalizeNonEmptyString(findFeedValue(item, new Set(['manufacturer', 'make', 'brand'])), 'Unknown');
+  const model = normalizeNonEmptyString(findFeedValue(item, new Set(['model'])), 'Unknown');
+  const title = normalizeNonEmptyString(findFeedValue(item, new Set(['title', 'name', 'headline'])), `${manufacturer} ${model}`.trim());
+  const category = normalizeNonEmptyString(findFeedValue(item, new Set(['category', 'department', 'type'])), 'Uncategorized');
+  const subcategory = normalizeNonEmptyString(findFeedValue(item, new Set(['subcategory', 'class'])), category);
+  const images = Array.from(new Set(flattenFeedImageUrls(findFeedValue(item, new Set(['images', 'imageurls', 'gallery', 'photos', 'media'])) || item))).slice(0, 40);
+
+  return {
+    externalId,
+    title,
+    price: toFiniteNumberOrUndefined(findFeedValue(item, new Set(['price', 'saleprice', 'askingprice', 'listprice', 'amount']))),
+    currency: normalizeNonEmptyString(findFeedValue(item, new Set(['currency', 'currencycode'])), 'USD'),
+    year: toFiniteNumberOrUndefined(findFeedValue(item, new Set(['year']))),
+    manufacturer,
+    model,
+    category,
+    subcategory,
+    condition: normalizeNonEmptyString(findFeedValue(item, new Set(['condition', 'status'])), 'Used'),
+    location: normalizeNonEmptyString(findFeedValue(item, new Set(['location', 'citystate', 'yardlocation', 'address']))),
+    imageUrls: images,
+    description: normalizeNonEmptyString(findFeedValue(item, new Set(['description', 'comments', 'details', 'remark', 'remarks']))),
+    hours: toFiniteNumberOrUndefined(findFeedValue(item, new Set(['hours', 'hourmeter', 'machinehours']))),
+    specs: isPlainObject(findFeedValue(item, new Set(['specs', 'specifications', 'attributes'])))
+      ? findFeedValue(item, new Set(['specs', 'specifications', 'attributes']))
+      : {},
+  };
+}
+
+function parseDealerFeedPayload(rawInput, sourceType = 'auto') {
+  const payloadText = String(rawInput || '').trim();
+  if (!payloadText) {
+    throw new Error('Feed payload is empty.');
+  }
+
+  const normalizedType = normalizeNonEmptyString(sourceType, 'auto').toLowerCase();
+  const parsers = normalizedType === 'json'
+    ? ['json']
+    : normalizedType === 'xml'
+      ? ['xml']
+      : ['json', 'xml'];
+
+  let lastError = null;
+  for (const parserType of parsers) {
+    try {
+      const parsed = parserType === 'json'
+        ? JSON.parse(payloadText)
+        : dealerFeedXmlParser.parse(payloadText);
+      const items = extractDealerFeedItemsFromPayload(parsed)
+        .map((item) => normalizeResolvedDealerFeedItem(item))
+        .filter((item) => item && item.externalId && item.title);
+
+      if (items.length === 0) {
+        throw new Error('No listing items were found in the supplied feed payload.');
+      }
+
+      return {
+        detectedType: parserType,
+        items,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Unable to parse dealer feed payload.');
+}
+
+function isPrivateIpv4Host(hostname) {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return false;
+  const octets = hostname.split('.').map((part) => Number(part));
+  if (octets[0] === 10 || octets[0] === 127) return true;
+  if (octets[0] === 192 && octets[1] === 168) return true;
+  if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+  return false;
+}
+
+function validateDealerFeedUrl(feedUrl) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(String(feedUrl || '').trim());
+  } catch (_) {
+    throw new Error('Feed URL is invalid.');
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('Only http and https feed URLs are supported.');
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  if (!hostname || ['localhost', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local') || isPrivateIpv4Host(hostname)) {
+    throw new Error('Local and private-network feed URLs are not allowed.');
+  }
+
+  return parsedUrl.toString();
 }
 
 function normalizeDealerFeedListing(item, sellerUid, sourceName) {
@@ -514,6 +745,411 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName) {
     },
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
+}
+
+async function fetchDealerFeedPayloadFromSource({ rawInput, feedUrl, requestedType = 'auto' }) {
+  let payloadText = normalizeNonEmptyString(rawInput);
+  let parseType = normalizeNonEmptyString(requestedType, 'auto').toLowerCase();
+
+  if (!payloadText && !feedUrl) {
+    throw new Error('Either rawInput or feedUrl is required.');
+  }
+
+  if (feedUrl) {
+    const safeUrl = validateDealerFeedUrl(feedUrl);
+    const response = await fetch(safeUrl, {
+      headers: {
+        Accept: 'application/json, application/xml, text/xml, text/plain;q=0.8, */*;q=0.5',
+        'User-Agent': 'ForestryEquipmentSalesDealerFeedResolver/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Feed request failed with ${response.status}.`);
+    }
+
+    payloadText = await response.text();
+    if (parseType === 'auto') {
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (contentType.includes('xml')) parseType = 'xml';
+      else if (contentType.includes('json')) parseType = 'json';
+    }
+  }
+
+  return { payloadText, parseType };
+}
+
+async function resolveDealerFeedSource(params) {
+  const sourceName = normalizeNonEmptyString(params?.sourceName, 'dealer_feed');
+  const requestedType = normalizeNonEmptyString(params?.sourceType, 'auto').toLowerCase();
+  const { payloadText, parseType } = await fetchDealerFeedPayloadFromSource({
+    rawInput: params?.rawInput,
+    feedUrl: params?.feedUrl,
+    requestedType,
+  });
+
+  const resolved = parseDealerFeedPayload(payloadText, parseType);
+  const limitedItems = resolved.items.slice(0, 1000);
+
+  return {
+    ok: true,
+    sourceName,
+    detectedType: resolved.detectedType,
+    itemCount: limitedItems.length,
+    items: limitedItems,
+    preview: limitedItems.slice(0, 25).map((item) => ({
+      externalId: item.externalId,
+      title: item.title,
+      manufacturer: item.manufacturer,
+      model: item.model,
+      price: item.price || null,
+      category: item.category,
+    })),
+  };
+}
+
+async function ingestDealerFeedItems(params) {
+  const actorUid = normalizeNonEmptyString(params?.actorUid, 'dealer-feed-sync');
+  const actorRole = normalizeNonEmptyString(params?.actorRole, 'system');
+  const sellerUid = normalizeNonEmptyString(params?.sellerUid || params?.dealerId);
+  const sourceName = normalizeNonEmptyString(params?.sourceName, 'dealer_feed');
+  const dryRun = Boolean(params?.dryRun);
+  const items = Array.isArray(params?.items) ? params.items : [];
+  const persistLog = params?.persistLog !== false;
+  const syncContext = params?.syncContext && typeof params.syncContext === 'object' ? params.syncContext : null;
+
+  if (!sellerUid) {
+    throw new Error('dealerId could not be resolved.');
+  }
+  if (items.length === 0) {
+    throw new Error('items[] is required.');
+  }
+  if (items.length > 1000) {
+    throw new Error('Maximum 1000 items per ingest request.');
+  }
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors = [];
+  const preview = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    try {
+      const normalized = normalizeDealerFeedListing(item, sellerUid, sourceName);
+      if (!normalized.externalSource.externalId) {
+        skipped += 1;
+        if (preview.length < 50) {
+          preview.push({
+            externalId: '',
+            title: normalized.title,
+            action: 'skip',
+          });
+        }
+        continue;
+      }
+
+      const existing = await getDb()
+        .collection('listings')
+        .where('sellerUid', '==', sellerUid)
+        .where('externalSource.externalId', '==', normalized.externalSource.externalId)
+        .limit(1)
+        .get();
+
+      const nextAction = existing.empty ? 'insert' : 'update';
+      if (preview.length < 50) {
+        preview.push({
+          externalId: normalized.externalSource.externalId,
+          title: normalized.title,
+          action: nextAction,
+        });
+      }
+
+      if (dryRun) {
+        if (existing.empty) created += 1;
+        else updated += 1;
+        continue;
+      }
+
+      if (existing.empty) {
+        await getDb().collection('listings').add({
+          ...normalized,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        created += 1;
+      } else {
+        await existing.docs[0].ref.set(normalized, { merge: true });
+        updated += 1;
+      }
+    } catch (err) {
+      errors.push({ index, reason: err?.message || 'Unknown ingest error' });
+    }
+  }
+
+  const errorMessages = errors.map(({ index, reason }) => `Item ${index + 1}: ${reason}`);
+  const processed = items.length;
+  const upserted = created + updated;
+
+  const logPayload = {
+    actorUid,
+    actorRole,
+    sellerUid,
+    dealerId: sellerUid,
+    sourceName,
+    dryRun,
+    totalReceived: items.length,
+    processed,
+    created,
+    updated,
+    upserted,
+    skipped,
+    errorCount: errors.length,
+    errors: errorMessages.slice(0, 100),
+    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(syncContext ? { syncContext } : {}),
+  };
+
+  if (!dryRun && persistLog) {
+    await getDb().collection('dealerFeedIngestLogs').add(logPayload);
+  }
+
+  return {
+    ok: true,
+    processed,
+    upserted,
+    skipped,
+    errors: errorMessages,
+    dryRun,
+    preview,
+    created,
+    updated,
+    dealerId: sellerUid,
+    sellerUid,
+    sourceName,
+  };
+}
+
+function buildPublicDealerListingPayload(listingId, rawListing, dealer) {
+  const listing = rawListing || {};
+  const images = Array.isArray(listing.images)
+    ? listing.images.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : [];
+
+  return {
+    id: listingId,
+    sellerUid: dealer.sellerUid,
+    title: normalizeNonEmptyString(listing.title, 'Equipment Listing'),
+    category: normalizeNonEmptyString(listing.category, 'Uncategorized'),
+    subcategory: normalizeNonEmptyString(listing.subcategory),
+    make: normalizeNonEmptyString(listing.make || listing.manufacturer),
+    manufacturer: normalizeNonEmptyString(listing.manufacturer || listing.make),
+    model: normalizeNonEmptyString(listing.model),
+    year: toFiniteNumberOrUndefined(listing.year) || null,
+    price: toFiniteNumberOrUndefined(listing.price) || 0,
+    currency: normalizeNonEmptyString(listing.currency, 'USD'),
+    hours: toFiniteNumberOrUndefined(listing.hours) || null,
+    condition: normalizeNonEmptyString(listing.condition, 'Used'),
+    location: normalizeNonEmptyString(listing.location),
+    description: normalizeNonEmptyString(listing.description),
+    featured: Boolean(listing.featured),
+    images,
+    image: images[0] || '',
+    listingUrl: `${APP_URL}/listing/${listingId}`,
+    dealerUrl: `${APP_URL}/dealers/${encodeURIComponent(dealer.publicId)}`,
+    stockNumber: normalizeNonEmptyString(listing.stockNumber),
+    externalId: normalizeNonEmptyString(listing?.externalSource?.externalId),
+    sourceName: normalizeNonEmptyString(listing?.externalSource?.sourceName),
+    updatedAt: timestampValueToIso(listing.updatedAt),
+    createdAt: timestampValueToIso(listing.createdAt),
+  };
+}
+
+function isPublicDealerListingVisible(listing) {
+  const approvalStatus = normalizeNonEmptyString(listing?.approvalStatus, '').toLowerCase();
+  const paymentStatus = normalizeNonEmptyString(listing?.paymentStatus, '').toLowerCase();
+  const status = normalizeNonEmptyString(listing?.status, 'active').toLowerCase();
+
+  if (approvalStatus !== 'approved') return false;
+  if (paymentStatus !== 'paid') return false;
+  if (status === 'sold') return false;
+
+  const expiresAt = listing?.expiresAt;
+  const expiresAtMs = typeof expiresAt?.toMillis === 'function'
+    ? expiresAt.toMillis()
+    : expiresAt?.seconds
+      ? expiresAt.seconds * 1000
+      : expiresAt
+        ? new Date(expiresAt).getTime()
+        : null;
+
+  return !expiresAtMs || Number.isNaN(expiresAtMs) || expiresAtMs > Date.now();
+}
+
+async function resolvePublicDealer(identity) {
+  const normalizedIdentity = normalizeNonEmptyString(identity);
+  if (!normalizedIdentity) {
+    throw new Error('Dealer identifier is required.');
+  }
+
+  const db = getDb();
+  let sellerSnap = await db.collection('storefronts').doc(normalizedIdentity).get();
+
+  if (!sellerSnap.exists) {
+    const storefrontSlugSnapshot = await db.collection('storefronts').where('storefrontSlug', '==', normalizedIdentity).limit(1).get();
+    if (!storefrontSlugSnapshot.empty) {
+      sellerSnap = storefrontSlugSnapshot.docs[0];
+    }
+  }
+
+  if (!sellerSnap.exists) {
+    sellerSnap = await db.collection('users').doc(normalizedIdentity).get();
+  }
+
+  if (!sellerSnap.exists) {
+    const userSlugSnapshot = await db.collection('users').where('storefrontSlug', '==', normalizedIdentity).limit(1).get();
+    if (!userSlugSnapshot.empty) {
+      sellerSnap = userSlugSnapshot.docs[0];
+    }
+  }
+
+  if (!sellerSnap.exists) {
+    throw new Error('Dealer storefront was not found.');
+  }
+
+  const data = sellerSnap.data() || {};
+  const sellerUid = sellerSnap.id;
+  const publicId = normalizeNonEmptyString(data.storefrontSlug, sellerUid);
+
+  return {
+    sellerUid,
+    publicId,
+    storefrontSlug: publicId,
+    storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Dealer Storefront'),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    location: normalizeNonEmptyString(data.location),
+    phone: normalizeNonEmptyString(data.phone || data.phoneNumber),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.logo || data.photoURL),
+  };
+}
+
+async function getPublicDealerListings(sellerUid, options = {}) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  const limitCount = Math.max(1, Math.min(Number(options.limitCount || 24), 100));
+  const featuredOnly = Boolean(options.featuredOnly);
+
+  const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
+    getDb().collection('listings').where('sellerUid', '==', normalizedSellerUid).get(),
+    getDb().collection('listings').where('sellerId', '==', normalizedSellerUid).get(),
+  ]);
+
+  const seen = new Set();
+  const listings = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs]
+    .filter((docSnap) => {
+      if (seen.has(docSnap.id)) return false;
+      seen.add(docSnap.id);
+      return true;
+    })
+    .map((docSnap) => ({ id: docSnap.id, data: docSnap.data() || {} }))
+    .filter(({ data }) => isPublicDealerListingVisible(data))
+    .filter(({ data }) => !featuredOnly || Boolean(data.featured))
+    .sort((left, right) => {
+      const featuredDelta = Number(Boolean(right.data.featured)) - Number(Boolean(left.data.featured));
+      if (featuredDelta !== 0) return featuredDelta;
+      const leftTime = new Date(timestampValueToIso(left.data.createdAt) || 0).getTime() || 0;
+      const rightTime = new Date(timestampValueToIso(right.data.createdAt) || 0).getTime() || 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, limitCount);
+
+  return listings;
+}
+
+function renderDealerEmbedHtml({ dealer, listings, feedUrl, featuredOnly }) {
+  const cards = listings.map((listing) => {
+    const priceValue = Number(listing.price || 0);
+    const formattedPrice = priceValue > 0
+      ? `${listing.currency || 'USD'} ${priceValue.toLocaleString()}`
+      : 'Request Price';
+    const location = listing.location || 'Location available on request';
+    const subtitle = [listing.year, listing.make || listing.manufacturer, listing.model].filter(Boolean).join(' ');
+    const badge = listing.featured ? '<span class="te-badge">Featured</span>' : '';
+    const image = listing.image
+      ? `<img src="${listing.image}" alt="${listing.title}" loading="lazy" />`
+      : '<div class="te-image-placeholder">Inventory</div>';
+
+    return `
+      <article class="te-card">
+        <a class="te-card-link" href="${listing.listingUrl}" target="_blank" rel="noopener noreferrer">
+          <div class="te-image-wrap">${image}</div>
+          <div class="te-card-body">
+            <div class="te-card-top">${badge}<span class="te-category">${listing.category || 'Equipment'}</span></div>
+            <h3>${listing.title}</h3>
+            <p class="te-subtitle">${subtitle || 'Equipment listing'}</p>
+            <div class="te-meta">
+              <span>${formattedPrice}</span>
+              <span>${location}</span>
+            </div>
+          </div>
+        </a>
+      </article>
+    `;
+  }).join('');
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${dealer.storefrontName} Inventory</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Arial, sans-serif; background: #f5f5f2; color: #171717; }
+      .te-shell { padding: 20px; }
+      .te-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; margin-bottom: 20px; align-items: end; }
+      .te-title { margin: 0; font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+      .te-copy { margin: 8px 0 0; font-size: 13px; color: #525252; max-width: 720px; }
+      .te-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+      .te-button { appearance: none; border: 1px solid #171717; background: #171717; color: white; text-decoration: none; padding: 10px 14px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+      .te-button.te-secondary { background: transparent; color: #171717; }
+      .te-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+      .te-card { background: white; border: 1px solid #d4d4d4; min-height: 100%; }
+      .te-card-link { color: inherit; text-decoration: none; display: flex; flex-direction: column; min-height: 100%; }
+      .te-image-wrap { aspect-ratio: 4 / 3; background: #e5e5e5; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+      .te-image-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .te-image-placeholder { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #737373; }
+      .te-card-body { padding: 16px; display: grid; gap: 10px; }
+      .te-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .te-badge { display: inline-flex; padding: 4px 8px; background: #d97706; color: white; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+      .te-category { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: #737373; }
+      h3 { margin: 0; font-size: 18px; line-height: 1.2; }
+      .te-subtitle { margin: 0; font-size: 12px; color: #525252; }
+      .te-meta { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
+      .te-empty { padding: 32px; background: white; border: 1px dashed #a3a3a3; font-size: 13px; color: #525252; }
+      @media (max-width: 640px) { .te-shell { padding: 16px; } .te-title { font-size: 20px; } }
+    </style>
+  </head>
+  <body>
+    <div class="te-shell">
+      <header class="te-header">
+        <div>
+          <h1 class="te-title">${dealer.storefrontName}${featuredOnly ? ' Featured Inventory' : ' Inventory'}</h1>
+          <p class="te-copy">${dealer.storefrontDescription || dealer.storefrontTagline || 'Live inventory syndicated from Forestry Equipment Sales DealerOS.'}</p>
+        </div>
+        <div class="te-actions">
+          <a class="te-button" href="${APP_URL}/dealers/${encodeURIComponent(dealer.publicId)}" target="_blank" rel="noopener noreferrer">View Dealer Page</a>
+          <a class="te-button te-secondary" href="${feedUrl}" target="_blank" rel="noopener noreferrer">JSON Feed</a>
+        </div>
+      </header>
+      ${listings.length > 0 ? `<section class="te-grid">${cards}</section>` : '<div class="te-empty">No inventory is currently available for this dealer feed.</div>'}
+    </div>
+  </body>
+</html>`;
 }
 
 function listingMatchesSavedSearch(listing, savedSearch) {
@@ -1022,7 +1658,7 @@ exports.onInspectionRequestUpdated = onDocumentUpdated(
         equipment: after.equipment || after.listingTitle || 'Equipment inspection',
         status: after.status || 'Updated',
         quotedPrice: typeof after.quotedPrice === 'number' ? after.quotedPrice : null,
-        managerName: after.assignedToName || after.matchedDealerName || 'the TimberEquip inspection team',
+        managerName: after.assignedToName || after.matchedDealerName || 'the Forestry Equipment Sales inspection team',
         inspectionLocation: after.inspectionLocation || 'Unknown',
       });
       await sendEmail({ to: requesterEmail, ...payload });
@@ -1501,6 +2137,97 @@ exports.expireListingsByDate = onSchedule(
   }
 );
 
+exports.dealerFeedNightlySync = onSchedule(
+  {
+    schedule: '0 2 * * *',
+    timeZone: 'America/Chicago',
+    region: 'us-central1',
+  },
+  async () => {
+    const profilesSnap = await getDb()
+      .collection('dealerFeedProfiles')
+      .where('nightlySyncEnabled', '==', true)
+      .get();
+
+    if (profilesSnap.empty) {
+      logger.info('dealerFeedNightlySync: no enabled feed profiles found');
+      return;
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const profileDoc of profilesSnap.docs) {
+      const profile = profileDoc.data() || {};
+      const sellerUid = normalizeNonEmptyString(profile.sellerUid);
+      const sourceName = normalizeNonEmptyString(profile.sourceName, 'dealer_feed');
+
+      if (!sellerUid) {
+        failureCount += 1;
+        await profileDoc.ref.set(
+          {
+            lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastSyncStatus: 'failed',
+            lastSyncMessage: 'sellerUid is missing from this saved feed profile.',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        continue;
+      }
+
+      try {
+        const resolved = await resolveDealerFeedSource({
+          sourceName,
+          sourceType: profile.sourceType,
+          rawInput: profile.rawInput,
+          feedUrl: profile.feedUrl,
+        });
+
+        const result = await ingestDealerFeedItems({
+          actorUid: 'dealer-feed-nightly-sync',
+          actorRole: 'system',
+          sellerUid,
+          sourceName,
+          dryRun: false,
+          items: resolved.items,
+          persistLog: true,
+          syncContext: {
+            trigger: 'nightly-2am-cst',
+            profileId: profileDoc.id,
+          },
+        });
+
+        successCount += 1;
+        await profileDoc.ref.set(
+          {
+            lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastSyncStatus: 'success',
+            lastSyncMessage: `Processed ${result.processed} items and upserted ${result.upserted}.`,
+            lastResolvedType: resolved.detectedType,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        failureCount += 1;
+        logger.error(`dealerFeedNightlySync failed for profile ${profileDoc.id}`, error);
+        await profileDoc.ref.set(
+          {
+            lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastSyncStatus: 'failed',
+            lastSyncMessage: error instanceof Error ? error.message : 'Nightly sync failed.',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
+
+    logger.info(`dealerFeedNightlySync: completed with ${successCount} success and ${failureCount} failure profiles`);
+  }
+);
+
 const marketRatesCache = {
   value: null,
   fetchedAt: 0,
@@ -1836,7 +2563,9 @@ function getListingCheckoutPlan(rawPlanId) {
 }
 
 function getSellerRoleForPlan(planId) {
-  return planId === 'individual_seller' ? 'individual_seller' : 'dealer';
+  if (planId === 'individual_seller') return 'individual_seller';
+  if (planId === 'fleet_dealer') return 'pro_dealer';
+  return 'dealer';
 }
 
 function getPlanDisplayName(planId) {
@@ -1995,7 +2724,7 @@ async function applyAccountSubscriptionToUserProfile({ userUid, planId, subscrip
   const userRef = getDb().collection('users').doc(normalizedUserUid);
   const userSnap = await userRef.get();
   const existingUser = userSnap.data() || {};
-  const existingRole = String(existingUser.role || '').trim();
+  const existingRole = normalizeUserRole(existingUser.role);
   const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid);
   const retainsSellerAccess = !!summary.planId;
 
@@ -2012,7 +2741,7 @@ async function applyAccountSubscriptionToUserProfile({ userUid, planId, subscrip
   };
 
   const nextRole = retainsSellerAccess && summary.planId ? getSellerRoleForPlan(summary.planId) : 'member';
-  if (!['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer_manager', 'dealer_staff'].includes(existingRole)) {
+  if (!['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)) {
     updatePayload.role = nextRole;
   }
 
@@ -2467,11 +3196,16 @@ function canAdministrateAccount(role) {
 }
 
 function isSupportedUserRole(role) {
-  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'individual_seller', 'member', 'buyer'].includes(role);
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'].includes(normalizeUserRole(role));
 }
 
 function isAuthUserNotFound(error) {
   return error?.code === 'auth/user-not-found';
+}
+
+function isFirestoreQuotaExceeded(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return error?.code === 8 || message.includes('resource_exhausted') || message.includes('quota limit exceeded');
 }
 
 function timestampValueToIso(value) {
@@ -2498,9 +3232,27 @@ async function getAdminActorContext(req) {
 
   const actorUid = decodedToken.uid;
   const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+  if (isPrivilegedAdminEmail(actorEmail)) {
+    return {
+      decodedToken,
+      actorUid,
+      actorEmail,
+      actorDoc: {
+        exists: true,
+        data: () => ({
+          uid: actorUid,
+          email: actorEmail,
+          role: 'super_admin',
+          displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
+        }),
+      },
+      actorRole: 'super_admin',
+    };
+  }
+
   const actorDoc = await getDb().collection('users').doc(actorUid).get();
-  const actorRole = normalize(String(actorDoc.data()?.role || ''));
-  const canManageUsers = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
+  const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
+  const canManageUsers = canAdministrateAccount(actorRole);
 
   if (!canManageUsers) {
     return { error: 'Forbidden', status: 403 };
@@ -2554,7 +3306,7 @@ async function serializeAdminUser(userDoc) {
     phone,
     phoneNumber: phone,
     company: String(data.company || '').trim(),
-    role: isSupportedUserRole(String(data.role || '')) ? String(data.role) : 'buyer',
+    role: isSupportedUserRole(String(data.role || '')) ? normalizeUserRole(String(data.role || '')) : 'buyer',
     status: toAccountStatusLabel(accountStatus, authDisabled),
     accountStatus,
     authDisabled,
@@ -2571,21 +3323,95 @@ async function serializeAdminUser(userDoc) {
 }
 
 function canCreateManagedRole(parentRole, childRole) {
-  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'member', 'buyer'];
-  const dealerManagedRoles = ['dealer_manager', 'dealer_staff', 'member', 'buyer'];
+  const normalizedParentRole = normalizeUserRole(parentRole);
+  const normalizedChildRole = normalizeUserRole(childRole);
+  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member', 'buyer'];
+  const dealerManagedRoles = ['dealer', 'pro_dealer', 'member', 'buyer'];
 
-  if (parentRole === 'super_admin') return true;
-  if (parentRole === 'admin') return adminManagedRoles.includes(childRole);
-  if (parentRole === 'dealer' || parentRole === 'dealer_manager') return dealerManagedRoles.includes(childRole);
+  if (normalizedParentRole === 'super_admin') return true;
+  if (normalizedParentRole === 'admin' || normalizedParentRole === 'developer') return adminManagedRoles.includes(normalizedChildRole);
+  if (normalizedParentRole === 'dealer' || normalizedParentRole === 'pro_dealer') return dealerManagedRoles.includes(normalizedChildRole);
   return false;
 }
 
 function isDealerManagedRole(role) {
-  return ['dealer', 'dealer_manager'].includes(role);
+  return ['dealer', 'pro_dealer'].includes(normalizeUserRole(role));
 }
 
 function generateTemporaryPassword() {
   return `TE-${randomBytes(9).toString('base64url')}!7a`;
+}
+
+function buildTemplateTestPayload(templateKey) {
+  const normalizedTemplateKey = String(templateKey || '').trim();
+  const listingUrl = `${APP_URL}/listing/test-listing-001`;
+  const renewUrl = `${APP_URL}/profile#subscription`;
+
+  switch (normalizedTemplateKey) {
+    case 'subscriptionCreated':
+      return templates.subscriptionCreated({
+        displayName: 'Caleb',
+        planName: 'Dealer Ad Package',
+      });
+    case 'subscriptionExpired':
+      return templates.subscriptionExpired({
+        displayName: 'Caleb',
+        planName: 'Dealer Ad Package',
+        renewUrl,
+      });
+    case 'subscriptionExpiring':
+      return templates.subscriptionExpiring({
+        displayName: 'Caleb',
+        planName: 'Dealer Ad Package',
+        expiryDate: 'April 1, 2026',
+        renewUrl,
+      });
+    case 'mediaKitRequestConfirmation':
+      return templates.mediaKitRequestConfirmation({
+        requesterName: 'Caleb',
+        requestType: 'media-kit',
+        companyName: 'Forestry Equipment Sales Media',
+        supportUrl: `${APP_URL}/ad-programs`,
+      });
+    case 'partnerRequestConfirmation':
+      return templates.mediaKitRequestConfirmation({
+        requesterName: 'Caleb',
+        requestType: 'support',
+        companyName: 'Partner Co',
+        supportUrl: `${APP_URL}/ad-programs`,
+      });
+    case 'financingRequestConfirmation':
+      return templates.financingRequestConfirmation({
+        applicantName: 'Caleb',
+        requestedAmount: 185000,
+        company: 'North Woods Logging',
+        dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Financing')}`,
+      });
+    case 'logisticsInquiryConfirmation':
+      return templates.inquiryConfirmation({
+        buyerName: 'Caleb',
+        listingTitle: '2020 Tigercat 635H Skidder',
+        listingUrl,
+        sellerName: 'Forestry Equipment Sales Dealer',
+        inquiryType: 'Shipping',
+      });
+    case 'financingInquiryConfirmation':
+      return templates.inquiryConfirmation({
+        buyerName: 'Caleb',
+        listingTitle: '2020 Tigercat 635H Skidder',
+        listingUrl,
+        sellerName: 'Forestry Equipment Sales Dealer',
+        inquiryType: 'Financing',
+      });
+    case 'contactRequestConfirmation':
+      return templates.contactRequestConfirmation({
+        name: 'Caleb',
+        category: 'Partner With Us',
+        supportUrl: `${APP_URL}/contact`,
+      });
+    default:
+      return null;
+  }
 }
 
 exports.apiProxy = onRequest(
@@ -2607,6 +3433,56 @@ exports.apiProxy = onRequest(
     try {
       const path = (req.path || '/').replace(/^\/api/, '') || '/';
       const stripe = createStripeClient();
+
+      const publicDealerFeedMatch = path.match(/^\/public\/dealers\/([^/]+)\/feed\.json$/i);
+      if (req.method === 'GET' && publicDealerFeedMatch) {
+        const dealer = await resolvePublicDealer(decodeURIComponent(publicDealerFeedMatch[1] || ''));
+        const limitCount = Math.max(1, Math.min(Number(req.query.limit || 24), 100));
+        const featuredOnly = ['1', 'true', 'yes'].includes(String(req.query.featuredOnly || '').trim().toLowerCase());
+        const listings = await getPublicDealerListings(dealer.sellerUid, { limitCount, featuredOnly });
+        const payload = listings.map(({ id, data }) => buildPublicDealerListingPayload(id, data, dealer));
+
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        return res.status(200).json({
+          dealer: {
+            id: dealer.sellerUid,
+            slug: dealer.publicId,
+            storefrontName: dealer.storefrontName,
+            storefrontTagline: dealer.storefrontTagline,
+            storefrontDescription: dealer.storefrontDescription,
+            website: dealer.website,
+            phone: dealer.phone,
+            email: dealer.email,
+            location: dealer.location,
+          },
+          count: payload.length,
+          featuredOnly,
+          feedUrl: `${APP_URL}/api/public/dealers/${encodeURIComponent(dealer.publicId)}/feed.json`,
+          listings: payload,
+        });
+      }
+
+      const publicDealerEmbedMatch = path.match(/^\/public\/dealers\/([^/]+)\/embed$/i);
+      if (req.method === 'GET' && publicDealerEmbedMatch) {
+        const dealer = await resolvePublicDealer(decodeURIComponent(publicDealerEmbedMatch[1] || ''));
+        const limitCount = Math.max(1, Math.min(Number(req.query.limit || 12), 60));
+        const featuredOnly = ['1', 'true', 'yes'].includes(String(req.query.featuredOnly || '').trim().toLowerCase());
+        const listings = await getPublicDealerListings(dealer.sellerUid, { limitCount, featuredOnly });
+        const payload = listings.map(({ id, data }) => buildPublicDealerListingPayload(id, data, dealer));
+        const feedUrl = `${APP_URL}/api/public/dealers/${encodeURIComponent(dealer.publicId)}/feed.json${featuredOnly ? '?featuredOnly=true' : ''}`;
+
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        return res.status(200).send(renderDealerEmbedHtml({ dealer, listings: payload, feedUrl, featuredOnly }));
+      }
+
+      if (req.method === 'GET' && path === '/public/dealer-embed.js') {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Content-Type', 'application/javascript; charset=utf-8');
+        return res.status(200).send(`(function(){var script=document.currentScript;var dealer=script&&script.dataset?script.dataset.dealer:'';var targetId=script&&script.dataset?script.dataset.target:'';var limit=script&&script.dataset&&script.dataset.limit?script.dataset.limit:'12';var featuredOnly=script&&script.dataset&&script.dataset.featuredOnly?script.dataset.featuredOnly:'false';if(!dealer){console.error('TimberEquip dealer embed requires data-dealer.');return;}var target=targetId?document.getElementById(targetId):null;if(!target){target=document.createElement('div');if(script&&script.parentNode){script.parentNode.insertBefore(target,script.nextSibling);}else{document.body.appendChild(target);}}var iframe=document.createElement('iframe');var params=new URLSearchParams();if(limit)params.set('limit',limit);if(featuredOnly)params.set('featuredOnly',featuredOnly);iframe.src='${APP_URL}/api/public/dealers/'+encodeURIComponent(dealer)+'/embed?'+params.toString();iframe.loading='lazy';iframe.style.width='100%';iframe.style.minHeight=(script&&script.dataset&&script.dataset.height?script.dataset.height:'980')+'px';iframe.style.border='0';iframe.style.display='block';iframe.setAttribute('referrerpolicy','strict-origin-when-cross-origin');target.innerHTML='';target.appendChild(iframe);})();`);
+      }
 
       if (req.method === 'POST' && (path === '/billing/webhook' || path === '/webhooks/stripe')) {
         if (!stripe) {
@@ -2893,6 +3769,58 @@ exports.apiProxy = onRequest(
         return res.status(200).json({ sent: true });
       }
 
+      if (req.method === 'POST' && path === '/auth/bootstrap-profile-role') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const email = String(decodedToken.email || '').trim().toLowerCase();
+        if (!isPrivilegedAdminEmail(email)) {
+          return res.status(403).json({ error: 'This account is not allowed to self-promote.' });
+        }
+
+        const uid = String(decodedToken.uid || '').trim();
+        if (!uid) {
+          return res.status(400).json({ error: 'Missing authenticated user id.' });
+        }
+
+        const userRecord = await admin.auth().getUser(uid);
+        const userRef = getDb().collection('users').doc(uid);
+        const profileSnap = await userRef.get();
+        const profile = profileSnap.data() || {};
+
+        await userRef.set(
+          {
+            uid,
+            email,
+            displayName: String(profile.displayName || userRecord.displayName || decodedToken.name || 'Forestry Equipment Sales Admin').trim(),
+            role: 'super_admin',
+            accountStatus: 'active',
+            emailVerified: Boolean(userRecord.emailVerified),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            ...(profileSnap.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp(), favorites: [] }),
+          },
+          { merge: true }
+        );
+
+        const existingClaims = userRecord.customClaims || {};
+        if (existingClaims.role !== 'super_admin') {
+          await admin.auth().setCustomUserClaims(uid, {
+            ...existingClaims,
+            role: 'super_admin',
+          });
+        }
+
+        return res.status(200).json({
+          promoted: true,
+          uid,
+          email,
+          role: 'super_admin',
+          emailVerified: Boolean(userRecord.emailVerified),
+        });
+      }
+
       if (req.method === 'POST' && path === '/billing/create-account-checkout-session') {
         if (!stripe) {
           return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
@@ -3062,7 +3990,7 @@ exports.apiProxy = onRequest(
         const actorUid = decodedToken.uid;
         const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
         const actorDoc = await getDb().collection('users').doc(actorUid).get();
-        const actorRole = normalize(String(actorDoc.data()?.role || ''));
+        const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
         const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
         const actorIsDealer = isDealerManagedRole(actorRole);
 
@@ -3072,7 +4000,7 @@ exports.apiProxy = onRequest(
 
         const displayName = String(req.body?.displayName || '').trim();
         const email = String(req.body?.email || '').trim().toLowerCase();
-        const role = normalize(String(req.body?.role || ''));
+        const role = normalizeUserRole(String(req.body?.role || ''));
         const company = String(req.body?.company || '').trim();
         const phoneNumber = String(req.body?.phoneNumber || '').trim();
         const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
@@ -3166,7 +4094,7 @@ exports.apiProxy = onRequest(
 
           const emailPayload = templates.managedAccountInvite({
             displayName,
-            inviterName: String(actorDoc.data()?.displayName || actorDoc.data()?.company || 'TimberEquip Admin').trim(),
+            inviterName: String(actorDoc.data()?.displayName || actorDoc.data()?.company || 'Forestry Equipment Sales Admin').trim(),
             email,
             role: normalizedRole,
             company: company || String(actorDoc.data()?.company || '').trim(),
@@ -3229,15 +4157,26 @@ exports.apiProxy = onRequest(
           uidChunks.push(authUsers.slice(i, i + 500));
         }
         const profileDocMap = {};
-        await Promise.all(
-          uidChunks.map(async (chunk) => {
-            const refs = chunk.map((u) => db.collection('users').doc(u.uid));
-            const snaps = await db.getAll(...refs);
-            snaps.forEach((snap) => {
-              profileDocMap[snap.id] = snap;
-            });
-          })
-        );
+        let firestoreProfilesAvailable = true;
+        try {
+          await Promise.all(
+            uidChunks.map(async (chunk) => {
+              const refs = chunk.map((u) => db.collection('users').doc(u.uid));
+              const snaps = await db.getAll(...refs);
+              snaps.forEach((snap) => {
+                profileDocMap[snap.id] = snap;
+              });
+            })
+          );
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          firestoreProfilesAvailable = false;
+          logger.warn('Admin user directory falling back to auth-only data because Firestore quota is exhausted.', {
+            authUserCount: authUsers.length,
+          });
+        }
 
         // 3. Merge auth record + Firestore profile for each user
         const users = authUsers.map((authRecord) => {
@@ -3259,6 +4198,13 @@ exports.apiProxy = onRequest(
             timestampValueToIso(data.lastLogin) ||
             updatedAt ||
             createdAt;
+          const fallbackRole = isPrivilegedAdminEmail(email)
+            ? 'super_admin'
+            : normalizeUserRole(String(authRecord.customClaims?.role || 'buyer'));
+          const role = firestoreProfilesAvailable && isSupportedUserRole(String(data.role || ''))
+            ? String(data.role)
+            : fallbackRole;
+          const fallbackAccountStatus = authDisabled ? 'suspended' : 'active';
 
           return {
             id: authRecord.uid,
@@ -3269,9 +4215,9 @@ exports.apiProxy = onRequest(
             phone,
             phoneNumber: phone,
             company: String(data.company || '').trim(),
-            role: isSupportedUserRole(String(data.role || '')) ? String(data.role) : 'buyer',
+            role,
             status: toAccountStatusLabel(accountStatus, authDisabled),
-            accountStatus,
+            accountStatus: firestoreProfilesAvailable ? accountStatus : fallbackAccountStatus,
             authDisabled,
             emailVerified: Boolean(authRecord.emailVerified),
             lastLogin,
@@ -3327,6 +4273,56 @@ exports.apiProxy = onRequest(
         return res.status(200).json(logs);
       }
 
+      if (req.method === 'POST' && path === '/admin/email/test-send') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const body = typeof req.body === 'object' && req.body ? req.body : {};
+        const requestedTemplates = Array.isArray(body.templates) ? body.templates : [];
+        const requestedRecipients = Array.isArray(body.recipients) ? body.recipients : [];
+        const recipients = requestedRecipients
+          .map((recipient) => String(recipient || '').trim())
+          .filter(Boolean);
+
+        if (recipients.length === 0) {
+          return res.status(400).json({ error: 'At least one recipient email is required.' });
+        }
+
+        if (requestedTemplates.length === 0) {
+          return res.status(400).json({ error: 'At least one template key is required.' });
+        }
+
+        const results = [];
+        for (const templateKey of requestedTemplates) {
+          const payload = buildTemplateTestPayload(templateKey);
+          if (!payload) {
+            results.push({ template: String(templateKey || ''), status: 'unsupported' });
+            continue;
+          }
+
+          try {
+            await sendEmail({
+              to: recipients,
+              ...payload,
+              replyTo: 'info@timberequip.com',
+            });
+            results.push({ template: String(templateKey || ''), status: 'sent', subject: payload.subject });
+          } catch (error) {
+            logger.error('Failed test email send', { templateKey, error: String(error?.message || error) });
+            results.push({ template: String(templateKey || ''), status: 'failed', error: String(error?.message || error) });
+          }
+        }
+
+        return res.status(200).json({
+          recipients,
+          replyTo: 'info@timberequip.com',
+          sentBy: actor.actorEmail,
+          results,
+        });
+      }
+
       const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock)$/);
       if (adminUserActionMatch && req.method === 'POST') {
         const actor = await getAdminActorContext(req);
@@ -3364,15 +4360,15 @@ exports.apiProxy = onRequest(
               url: `${APP_URL}/login`,
             });
 
-            const actorName = String(actor.actorDoc.data()?.displayName || actor.actorEmail || 'TimberEquip Admin').trim();
+            const actorName = String(actor.actorDoc.data()?.displayName || actor.actorEmail || 'Forestry Equipment Sales Admin').trim();
             await sendEmail({
               to: email,
-              subject: 'Reset your TimberEquip password',
+              subject: 'Reset your Forestry Equipment Sales password',
               html: `
                 <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
                   <h2 style="margin-bottom: 16px;">Password reset requested</h2>
                   <p>Hello ${displayName},</p>
-                  <p>${actorName} requested a password reset for your TimberEquip account.</p>
+                  <p>${actorName} requested a password reset for your Forestry Equipment Sales account.</p>
                   <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
                   <p>If you did not expect this email, you can ignore it.</p>
                 </div>
@@ -3429,27 +4425,37 @@ exports.apiProxy = onRequest(
 
         const targetRef = getDb().collection('users').doc(targetUid);
         const targetSnap = await targetRef.get();
-        if (!targetSnap.exists) {
-          return res.status(404).json({ error: 'User not found.' });
-        }
 
         if (req.method === 'DELETE') {
+          const authUserRecord = await getAuthUserRecordSafe(targetUid);
+          if (!targetSnap.exists && !authUserRecord) {
+            return res.status(404).json({ error: 'User not found.' });
+          }
+
           if (targetUid === actor.actorUid) {
             return res.status(400).json({ error: 'You cannot delete your own account.' });
           }
 
-          try {
-            await admin.auth().deleteUser(targetUid);
-          } catch (error) {
-            if (!isAuthUserNotFound(error)) {
-              logger.error(`Failed to delete auth user ${targetUid}`, error);
-              return res.status(500).json({ error: 'Unable to delete auth user.' });
+          if (authUserRecord) {
+            try {
+              await admin.auth().deleteUser(targetUid);
+            } catch (error) {
+              if (!isAuthUserNotFound(error)) {
+                logger.error(`Failed to delete auth user ${targetUid}`, error);
+                return res.status(500).json({ error: 'Unable to delete auth user.' });
+              }
             }
           }
 
-          await targetRef.delete();
+          if (targetSnap.exists) {
+            await targetRef.delete();
+          }
 
           return res.status(200).json({ message: 'User deleted.' });
+        }
+
+        if (!targetSnap.exists) {
+          return res.status(404).json({ error: 'User not found.' });
         }
 
         const currentData = targetSnap.data() || {};
@@ -3457,7 +4463,7 @@ exports.apiProxy = onRequest(
         const email = String(req.body?.email ?? currentData.email ?? '').trim().toLowerCase();
         const phoneNumber = String(req.body?.phoneNumber ?? currentData.phoneNumber ?? '').trim();
         const company = String(req.body?.company ?? currentData.company ?? '').trim();
-        const requestedRole = normalize(String(req.body?.role ?? currentData.role ?? 'buyer'));
+        const requestedRole = normalizeUserRole(String(req.body?.role ?? currentData.role ?? 'buyer'));
 
         if (!displayName || !email) {
           return res.status(400).json({ error: 'Display name and email are required.' });
@@ -3538,7 +4544,7 @@ exports.apiProxy = onRequest(
         const actorUid = decodedToken.uid;
         const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
         const actorDoc = await getDb().collection('users').doc(actorUid).get();
-        const actorRole = normalize(String(actorDoc.data()?.role || ''));
+        const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
         const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
         const actorIsDealer = isDealerManagedRole(actorRole);
 
@@ -3569,72 +4575,50 @@ exports.apiProxy = onRequest(
           }
         }
 
-        let created = 0;
-        let updated = 0;
-        let skipped = 0;
-        const errors = [];
-
-        for (let index = 0; index < items.length; index += 1) {
-          const item = items[index];
-          try {
-            const normalized = normalizeDealerFeedListing(item, sellerUid, sourceName);
-            if (!normalized.externalSource.externalId) {
-              skipped += 1;
-              continue;
-            }
-
-            const existing = await getDb()
-              .collection('listings')
-              .where('sellerUid', '==', sellerUid)
-              .where('externalSource.externalId', '==', normalized.externalSource.externalId)
-              .limit(1)
-              .get();
-
-            if (dryRun) {
-              if (existing.empty) created += 1;
-              else updated += 1;
-              continue;
-            }
-
-            if (existing.empty) {
-              await getDb().collection('listings').add({
-                ...normalized,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              });
-              created += 1;
-            } else {
-              await existing.docs[0].ref.set(normalized, { merge: true });
-              updated += 1;
-            }
-          } catch (err) {
-            errors.push({ index, reason: err?.message || 'Unknown ingest error' });
-          }
-        }
-
-        const logPayload = {
+        const result = await ingestDealerFeedItems({
           actorUid,
           actorRole,
           sellerUid,
           sourceName,
           dryRun,
-          totalReceived: items.length,
-          created,
-          updated,
-          skipped,
-          errorCount: errors.length,
-          errors: errors.slice(0, 100),
-          processedAt: admin.firestore.FieldValue.serverTimestamp(),
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
+          items,
+          persistLog: true,
+        });
 
-        if (!dryRun) {
-          await getDb().collection('dealerFeedIngestLogs').add(logPayload);
+        return res.status(200).json(result);
+      }
+
+      if (req.method === 'POST' && path === '/admin/dealer-feeds/resolve') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        return res.status(200).json({
-          ok: true,
-          ...logPayload,
-        });
+        const actorUid = decodedToken.uid;
+        const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+        const actorDoc = await getDb().collection('users').doc(actorUid).get();
+        const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
+        const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
+        const actorIsDealer = isDealerManagedRole(actorRole);
+
+        if (!actorCanAdminister && !actorIsDealer) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        try {
+          const payload = await resolveDealerFeedSource({
+            sourceName: req.body?.sourceName,
+            sourceType: req.body?.sourceType,
+            rawInput: req.body?.rawInput,
+            feedUrl: req.body?.feedUrl,
+          });
+
+          return res.status(200).json(payload);
+        } catch (error) {
+          return res.status(400).json({
+            error: error instanceof Error ? error.message : 'Unable to resolve the dealer feed payload.',
+          });
+        }
       }
 
       if (req.method === 'POST' && path === '/translate') {

@@ -122,13 +122,13 @@ function canCreateManagedRole(parentRole: ManagedAccountRole, childRole: Managed
   const dealerManagedRoles: ManagedAccountRole[] = ['dealer_manager', 'dealer_staff', 'member', 'buyer'];
 
   if (parentRole === 'super_admin') return true;
-  if (parentRole === 'admin') return adminManagedRoles.includes(childRole);
+  if (parentRole === 'admin' || parentRole === 'developer') return adminManagedRoles.includes(childRole);
   if (parentRole === 'dealer' || parentRole === 'dealer_manager') return dealerManagedRoles.includes(childRole);
   return false;
 }
 
 function isPrivilegedAdminEmail(email: unknown): boolean {
-  return String(email || '').trim().toLowerCase() === 'calebhappy@gmail.com';
+  return String(email || '').trim().toLowerCase() === 'caleb@forestryequipmentsales.com';
 }
 
 function canAdministrateAccountRole(role: unknown): boolean {
