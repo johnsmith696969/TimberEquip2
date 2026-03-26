@@ -35,7 +35,7 @@ const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
 function roleLabel(role?: string): string {
   switch (role) {
     case 'individual_seller':
-      return 'Owner Operator';
+      return 'Owner-Operator';
     case 'dealer':
     case 'dealer_staff':
       return 'Dealer';
@@ -594,7 +594,7 @@ export function SellerProfile() {
               )}
               {isOwner && !canManageOwnStorefront && (
                 <div className="border border-white/20 bg-white/5 p-4 rounded-sm text-[10px] font-black uppercase tracking-widest text-white/70">
-                  Storefront branding is available for Owner Operator, Dealer, Pro Dealer, Admin, and Super Admin roles.
+                  Storefront branding is available for Owner-Operator, Dealer, Pro Dealer, Admin, and Super Admin roles.
                 </div>
               )}
               <button className="btn-industrial btn-accent py-4 px-12">

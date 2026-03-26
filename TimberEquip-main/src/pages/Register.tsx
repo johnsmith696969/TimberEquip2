@@ -30,7 +30,7 @@ const ACCOUNT_OPTIONS: Array<{
   },
   {
     id: 'individual_seller',
-    title: 'Owner Operator',
+    title: 'Owner-Operator',
     price: '$39/MO',
     summary: 'Activate an owner-operator account and post one active machine at a time.',
     icon: UserPlus,

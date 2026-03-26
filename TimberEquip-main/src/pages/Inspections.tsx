@@ -273,7 +273,7 @@ Notes:
         <div className="mx-auto max-w-[1600px]">
           <span className="text-[10px] font-black uppercase tracking-[0.24em] text-accent">Inspection Desk</span>
           <h1 className="mt-4 max-w-4xl text-4xl font-black uppercase tracking-tighter md:text-6xl">
-            Buyer-ready field inspections for dealers, pro dealers, and owner operators
+            Buyer-ready field inspections for dealers, pro dealers, and owner-operators
           </h1>
           <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-white/70">
             Request an inspection, let Forestry Equipment Sales match the machine to the nearest dealer coverage point, join the inspection partner network, and download a printable machine review sheet for field use.

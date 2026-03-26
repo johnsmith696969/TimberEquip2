@@ -1507,7 +1507,7 @@ export function Profile() {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="label-micro">SEO Keywords</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner operator" />
+              <input type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" />
             </div>
           </div>
 

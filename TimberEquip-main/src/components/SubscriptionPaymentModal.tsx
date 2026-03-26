@@ -24,12 +24,12 @@ interface Plan {
 const PLANS: Plan[] = [
   {
     id: 'individual_seller',
-    name: 'Owner Operator Ad Program',
+    name: 'Owner-Operator Ad Program',
     price: 39,
     period: 'month',
     icon: User,
     accountType: 'Single Listing',
-    summary: 'Best for owner operators posting one machine at a time.',
+    summary: 'Best for owner-operators posting one machine at a time.',
     listingCap: 1,
     features: [
       'Publish 1 active machine listing',
@@ -236,7 +236,7 @@ export function SubscriptionPaymentModal({
                   <div className="border border-line rounded-sm p-4 bg-bg space-y-3">
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-ink">Owner Operator Quantity</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-ink">Owner-Operator Quantity</p>
                         <p className="text-xs text-muted">Set active listing capacity from 1 to 10.</p>
                       </div>
                       <div className="flex items-center gap-2">

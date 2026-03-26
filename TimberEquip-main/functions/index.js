@@ -3701,7 +3701,7 @@ async function assessRecaptchaToken(token, action) {
 const LISTING_CHECKOUT_PLANS = {
   individual_seller: {
     id: 'individual_seller',
-    name: 'Owner Operator Ad Program',
+    name: 'Owner-Operator Ad Program',
     amountUsd: 39,
     listingCap: 1,
     productId: 'prod_UBpeOgS2Xbot2e',
@@ -5567,10 +5567,10 @@ exports.apiProxy = onRequest(
 
         if (plan.id === 'individual_seller') {
           if (requestedQuantity < 1 || requestedQuantity > MAX_OWNER_OPERATOR_LISTINGS) {
-            return res.status(400).json({ error: `Owner Operator quantity must be between 1 and ${MAX_OWNER_OPERATOR_LISTINGS}.` });
+            return res.status(400).json({ error: `Owner-Operator quantity must be between 1 and ${MAX_OWNER_OPERATOR_LISTINGS}.` });
           }
         } else if (requestedQuantity !== 1) {
-          return res.status(400).json({ error: 'Only Owner Operator supports adjustable quantity.' });
+          return res.status(400).json({ error: 'Only Owner-Operator supports adjustable quantity.' });
         }
 
         const userRef = getDb().collection('users').doc(uid);
@@ -5619,13 +5619,13 @@ exports.apiProxy = onRequest(
           const currentOwnerQuantity = summary.ownerOperatorQuantity || 0;
           if (currentOwnerQuantity >= MAX_OWNER_OPERATOR_LISTINGS) {
             return res.status(409).json({
-              error: `Owner Operator subscriptions are capped at ${MAX_OWNER_OPERATOR_LISTINGS} active listings per account.`,
+              error: `Owner-Operator subscriptions are capped at ${MAX_OWNER_OPERATOR_LISTINGS} active listings per account.`,
             });
           }
 
           if (currentOwnerQuantity + requestedQuantity > MAX_OWNER_OPERATOR_LISTINGS) {
             return res.status(409).json({
-              error: `You currently have ${currentOwnerQuantity} active Owner Operator listing ${currentOwnerQuantity === 1 ? 'slot' : 'slots'}. You can add up to ${MAX_OWNER_OPERATOR_LISTINGS - currentOwnerQuantity} more.`,
+              error: `You currently have ${currentOwnerQuantity} active Owner-Operator listing ${currentOwnerQuantity === 1 ? 'slot' : 'slots'}. You can add up to ${MAX_OWNER_OPERATOR_LISTINGS - currentOwnerQuantity} more.`,
             });
           }
         }

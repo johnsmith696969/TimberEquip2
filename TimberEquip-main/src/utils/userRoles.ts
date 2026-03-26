@@ -3,7 +3,7 @@ import { UserRole } from '../types';
 export const EDITABLE_USER_ROLE_OPTIONS: ReadonlyArray<{ value: UserRole; label: string }> = [
   { value: 'buyer', label: 'Buyer' },
   { value: 'member', label: 'Free Member' },
-  { value: 'individual_seller', label: 'Individual Seller' },
+  { value: 'individual_seller', label: 'Owner-Operator' },
   { value: 'dealer', label: 'Dealer' },
   { value: 'pro_dealer', label: 'Pro Dealer' },
   { value: 'developer', label: 'Developer' },
@@ -69,7 +69,7 @@ export function getUserRoleDisplayLabel(role?: UserRole | string | null): string
     case 'member':
       return 'Free Member';
     case 'individual_seller':
-      return 'Individual Seller';
+      return 'Owner-Operator';
     case 'developer':
       return 'Developer';
     case 'super_admin':

@@ -16,10 +16,10 @@ export interface SellerPlanDefinition {
 export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
   {
     id: 'individual_seller',
-    name: 'Owner Operator Ad Program',
+    name: 'Owner-Operator Ad Program',
     price: 39,
     period: 'month',
-    summary: 'Best for owner operators posting one active machine at a time.',
+    summary: 'Best for owner-operators posting one active machine at a time.',
     listingCap: 1,
   },
   {

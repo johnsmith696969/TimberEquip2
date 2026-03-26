@@ -106,10 +106,10 @@ export function AdPrograms() {
 
   const sellerTiers: SellerTier[] = [
     {
-      title: 'Owner Operator Ad Program',
+      title: 'Owner-Operator Ad Program',
       price: '$39/MO',
       planId: 'individual_seller',
-      roleLabel: 'owner operator',
+      roleLabel: 'owner-operator',
       icon: User,
       summary: 'For independent owners and small operators selling equipment directly.',
       features: [
@@ -253,7 +253,7 @@ export function AdPrograms() {
             </h1>
             <p className="text-lg text-muted leading-relaxed mb-10 max-w-2xl">
               Pair your Forestry Equipment Sales seller plan with Featured Inventory to move key equipment higher in the marketplace.
-              Built for owner operators, dealers, and high-volume dealer groups.
+              Built for owner-operators, dealers, and high-volume dealer groups.
             </p>
             <div className="flex flex-wrap gap-4">
               <button onClick={() => openLeadForm('media-kit')} className="btn-industrial btn-accent">
@@ -289,6 +289,62 @@ export function AdPrograms() {
             </span>
           </div>
         )}
+      </section>
+
+      <section className="py-24 px-4 md:px-8 border-b border-line bg-surface">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-16">
+            <span className="label-micro text-accent mb-4 block">Seller Types</span>
+            <h2 className="text-3xl font-black tracking-tighter uppercase mb-4">Ad Program Selections</h2>
+            <p className="text-muted max-w-2xl">Choose your subscription, complete checkout in Stripe, then return to your account dashboard with your posting limits enabled.</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-accent mt-4">
+              Flow: select plan -&gt; login if needed -&gt; Stripe checkout -&gt; account dashboard with posting limits.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {sellerTiers.map((tier, index) => {
+              const Icon = tier.icon;
+              return (
+                <motion.div
+                  key={tier.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.08 }}
+                  className={`border p-8 rounded-sm transition-colors ${tier.highlight ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(249,115,22,0.12)]' : 'bg-bg border-line'}`}
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <div className={`w-12 h-12 flex items-center justify-center rounded-sm border ${tier.highlight ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface text-muted'}`}>
+                      <Icon size={22} />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.24em] text-muted">{tier.roleLabel}</span>
+                  </div>
+                  <h3 className="text-2xl font-black tracking-tight uppercase mb-2">{tier.title}</h3>
+                  <div className="text-3xl font-black tracking-tighter mb-4">{tier.price}</div>
+                  <p className="text-sm text-muted leading-relaxed mb-6">{tier.summary}</p>
+                  <ul className="space-y-3">
+                    {tier.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-2 text-xs font-bold uppercase tracking-wide">
+                        <CheckCircle2 size={14} className="text-data shrink-0 mt-0.5" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-8">
+                    <button
+                      onClick={() => startPlanCheckout(tier.planId)}
+                      disabled={pendingPlanCheckout === tier.planId}
+                      className={`btn-industrial w-full py-3 text-center disabled:opacity-60 disabled:cursor-not-allowed ${tier.highlight ? 'btn-accent' : ''}`}
+                    >
+                      {pendingPlanCheckout === tier.planId ? 'Redirecting to Stripe...' : `Choose ${tier.title}`}
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       {/* Programs Grid */}
@@ -347,62 +403,6 @@ export function AdPrograms() {
                 </div>
               </motion.div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-24 px-4 md:px-8 border-b border-line bg-surface">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-16">
-            <span className="label-micro text-accent mb-4 block">Seller Types</span>
-            <h2 className="text-3xl font-black tracking-tighter uppercase mb-4">Subscription Tiers</h2>
-            <p className="text-muted max-w-2xl">Choose your subscription, complete checkout in Stripe, then return to your account dashboard with your posting limits enabled.</p>
-            <p className="text-[10px] font-black uppercase tracking-widest text-accent mt-4">
-              Flow: select plan -&gt; login if needed -&gt; Stripe checkout -&gt; account dashboard with posting limits.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {sellerTiers.map((tier, index) => {
-              const Icon = tier.icon;
-              return (
-                <motion.div
-                  key={tier.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.08 }}
-                  className={`border p-8 rounded-sm transition-colors ${tier.highlight ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(249,115,22,0.12)]' : 'bg-bg border-line'}`}
-                >
-                  <div className="flex items-center justify-between mb-6">
-                    <div className={`w-12 h-12 flex items-center justify-center rounded-sm border ${tier.highlight ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface text-muted'}`}>
-                      <Icon size={22} />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.24em] text-muted">{tier.roleLabel}</span>
-                  </div>
-                  <h3 className="text-2xl font-black tracking-tight uppercase mb-2">{tier.title}</h3>
-                  <div className="text-3xl font-black tracking-tighter mb-4">{tier.price}</div>
-                  <p className="text-sm text-muted leading-relaxed mb-6">{tier.summary}</p>
-                  <ul className="space-y-3">
-                    {tier.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2 text-xs font-bold uppercase tracking-wide">
-                        <CheckCircle2 size={14} className="text-data shrink-0 mt-0.5" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="mt-8">
-                    <button
-                      onClick={() => startPlanCheckout(tier.planId)}
-                      disabled={pendingPlanCheckout === tier.planId}
-                      className={`btn-industrial w-full py-3 text-center disabled:opacity-60 disabled:cursor-not-allowed ${tier.highlight ? 'btn-accent' : ''}`}
-                    >
-                      {pendingPlanCheckout === tier.planId ? 'Redirecting to Stripe...' : `Choose ${tier.title}`}
-                    </button>
-                  </div>
-                </motion.div>
-              );
-            })}
           </div>
         </div>
       </section>
