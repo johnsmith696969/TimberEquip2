@@ -11,7 +11,7 @@ const sgMail = require('@sendgrid/mail');
 const sharp = require('sharp');
 const Stripe = require('stripe');
 const { XMLParser } = require('fast-xml-parser');
-const { randomUUID, randomBytes } = require('node:crypto');
+const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = require('node:crypto');
 const { templates } = require('./email-templates/index.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 
@@ -595,43 +595,588 @@ function extractDealerFeedItemsFromPayload(value, depth = 0) {
   return [value];
 }
 
-function normalizeResolvedDealerFeedItem(item) {
+const DEALER_FEED_STATUS_VALUES = new Set(['active', 'paused', 'disabled']);
+const DEALER_FEED_SYNC_MODE_VALUES = new Set(['pull', 'push', 'manual']);
+const DEALER_FEED_SYNC_FREQUENCY_VALUES = new Set(['hourly', 'daily', 'weekly', 'manual']);
+const DEALER_FEED_SOURCE_TYPE_VALUES = new Set(['auto', 'json', 'xml']);
+const DEALER_WEBHOOK_SIGNATURE_WINDOW_MS = 10 * 60 * 1000;
+
+function sha256Hex(value) {
+  return createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+function maskSecret(value, visibleChars = 4) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (normalized.length <= visibleChars * 2) {
+    return `${normalized.slice(0, 2)}…${normalized.slice(-2)}`;
+  }
+  return `${normalized.slice(0, visibleChars)}…${normalized.slice(-visibleChars)}`;
+}
+
+function normalizeDealerFeedStatus(value, fallback = 'active') {
+  const normalized = normalizeNonEmptyString(value, fallback).toLowerCase();
+  return DEALER_FEED_STATUS_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeDealerFeedSyncMode(value, fallback = 'pull') {
+  const normalized = normalizeNonEmptyString(value, fallback).toLowerCase();
+  return DEALER_FEED_SYNC_MODE_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeDealerFeedSyncFrequency(value, fallback = 'daily') {
+  const normalized = normalizeNonEmptyString(value, fallback).toLowerCase();
+  return DEALER_FEED_SYNC_FREQUENCY_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeDealerFeedSourceType(value, fallback = 'auto') {
+  const normalized = normalizeNonEmptyString(value, fallback).toLowerCase();
+  return DEALER_FEED_SOURCE_TYPE_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function generateDealerFeedApiKey() {
+  return `tef_${randomBytes(24).toString('base64url')}`;
+}
+
+function generateDealerWebhookSecret() {
+  return randomBytes(32).toString('hex');
+}
+
+function buildDealerFeedListingDocId(feedId, externalId) {
+  return `${normalizeNonEmptyString(feedId, 'dealer-feed')}__${sha256Hex(externalId).slice(0, 32)}`;
+}
+
+function getNestedValue(target, rawPath) {
+  const segments = String(rawPath || '')
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return undefined;
+
+  let current = target;
+  for (const segment of segments) {
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      if (!Number.isInteger(index)) return undefined;
+      current = current[index];
+      continue;
+    }
+
+    if (current == null || (typeof current !== 'object' && !isPlainObject(current))) {
+      return undefined;
+    }
+
+    if (!(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+
+  return current;
+}
+
+function setNestedValue(target, rawPath, value) {
+  const segments = String(rawPath || '')
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return;
+
+  let current = target;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const isLeaf = index === segments.length - 1;
+    if (isLeaf) {
+      current[segment] = value;
+      return;
+    }
+
+    if (!isPlainObject(current[segment])) {
+      current[segment] = {};
+    }
+    current = current[segment];
+  }
+}
+
+function normalizeDealerFieldMapping(fieldMapping) {
+  if (!Array.isArray(fieldMapping)) return [];
+
+  return fieldMapping
+    .map((entry) => {
+      const externalField = normalizeNonEmptyString(entry?.externalField || entry?.source);
+      const timberequipField = normalizeNonEmptyString(entry?.timberequipField || entry?.target);
+      if (!externalField || !timberequipField) return null;
+      return { externalField, timberequipField };
+    })
+    .filter(Boolean);
+}
+
+function applyDealerFieldMapping(item, fieldMapping) {
+  const normalizedFieldMapping = normalizeDealerFieldMapping(fieldMapping);
+  const overrides = {};
+
+  for (const mapping of normalizedFieldMapping) {
+    let mappedValue = getNestedValue(item, mapping.externalField);
+    if (mappedValue === undefined) {
+      const leaf = mapping.externalField.split('.').map((segment) => segment.trim()).filter(Boolean).pop();
+      if (leaf) {
+        mappedValue = findFeedValue(item, new Set([normalizeFeedKey(mapping.externalField), normalizeFeedKey(leaf)]));
+      }
+    }
+
+    if (mappedValue !== undefined) {
+      setNestedValue(overrides, mapping.timberequipField, mappedValue);
+    }
+  }
+
+  return overrides;
+}
+
+function buildDealerFeedWritePayload(input = {}, defaults = {}) {
+  const feedUrl = normalizeNonEmptyString(input.feedUrl || input.apiEndpoint || defaults.feedUrl || defaults.apiEndpoint);
+  const requestedSyncMode = normalizeNonEmptyString(input.syncMode || defaults.syncMode);
+  const inferredSyncMode = feedUrl ? 'pull' : (normalizeNonEmptyString(input.rawInput || defaults.rawInput) ? 'push' : 'manual');
+  const syncMode = normalizeDealerFeedSyncMode(requestedSyncMode || inferredSyncMode, inferredSyncMode);
+  const nightlySyncEnabled = typeof input.nightlySyncEnabled === 'boolean'
+    ? input.nightlySyncEnabled
+    : typeof defaults.nightlySyncEnabled === 'boolean'
+      ? defaults.nightlySyncEnabled
+      : syncMode === 'pull';
+
+  return {
+    sellerUid: normalizeNonEmptyString(input.sellerUid || input.dealerId || defaults.sellerUid || defaults.dealerId),
+    dealerName: normalizeNonEmptyString(input.dealerName || defaults.dealerName),
+    dealerEmail: normalizeNonEmptyString(input.dealerEmail || defaults.dealerEmail),
+    sourceName: normalizeNonEmptyString(input.sourceName || defaults.sourceName, 'Dealer Feed'),
+    sourceType: normalizeDealerFeedSourceType(input.sourceType || defaults.sourceType || 'auto'),
+    rawInput: normalizeNonEmptyString(
+      Object.prototype.hasOwnProperty.call(input, 'rawInput') ? input.rawInput : defaults.rawInput
+    ),
+    feedUrl,
+    apiEndpoint: feedUrl,
+    status: normalizeDealerFeedStatus(input.status || defaults.status || 'active'),
+    syncMode,
+    syncFrequency: normalizeDealerFeedSyncFrequency(
+      input.syncFrequency || defaults.syncFrequency || (nightlySyncEnabled ? 'daily' : 'manual'),
+      nightlySyncEnabled ? 'daily' : 'manual'
+    ),
+    nightlySyncEnabled,
+    autoPublish: Object.prototype.hasOwnProperty.call(input, 'autoPublish')
+      ? Boolean(input.autoPublish)
+      : Object.prototype.hasOwnProperty.call(defaults, 'autoPublish')
+        ? Boolean(defaults.autoPublish)
+        : true,
+    fieldMapping: normalizeDealerFieldMapping(input.fieldMapping || defaults.fieldMapping),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function serializeDealerFeed(feedId, rawFeed, options = {}) {
+  const feed = rawFeed || {};
+  const webhookUrl = `${APP_URL}/api/dealer/webhook/${encodeURIComponent(feedId)}`;
+
+  return {
+    id: feedId,
+    sellerUid: normalizeNonEmptyString(feed.sellerUid || feed.dealerId),
+    dealerName: normalizeNonEmptyString(feed.dealerName),
+    dealerEmail: normalizeNonEmptyString(feed.dealerEmail),
+    sourceName: normalizeNonEmptyString(feed.sourceName, 'Dealer Feed'),
+    sourceType: normalizeDealerFeedSourceType(feed.sourceType || 'auto'),
+    rawInput: normalizeNonEmptyString(feed.rawInput),
+    feedUrl: normalizeNonEmptyString(feed.feedUrl || feed.apiEndpoint),
+    apiEndpoint: normalizeNonEmptyString(feed.apiEndpoint || feed.feedUrl),
+    status: normalizeDealerFeedStatus(feed.status || 'active'),
+    syncMode: normalizeDealerFeedSyncMode(feed.syncMode || 'pull', 'pull'),
+    syncFrequency: normalizeDealerFeedSyncFrequency(feed.syncFrequency || 'manual', 'manual'),
+    nightlySyncEnabled: Boolean(feed.nightlySyncEnabled),
+    autoPublish: feed.autoPublish !== false,
+    fieldMapping: normalizeDealerFieldMapping(feed.fieldMapping),
+    totalListingsSynced: Number(feed.totalListingsSynced || 0),
+    totalListingsActive: Number(feed.totalListingsActive || 0),
+    totalListingsDeleted: Number(feed.totalListingsDeleted || 0),
+    totalListingsCreated: Number(feed.totalListingsCreated || 0),
+    totalListingsUpdated: Number(feed.totalListingsUpdated || 0),
+    lastSyncAt: feed.lastSyncAt || null,
+    nextSyncAt: feed.nextSyncAt || null,
+    lastSyncStatus: normalizeNonEmptyString(feed.lastSyncStatus),
+    lastSyncMessage: normalizeNonEmptyString(feed.lastSyncMessage),
+    lastResolvedType: normalizeDealerFeedSourceType(feed.lastResolvedType || 'auto'),
+    createdAt: feed.createdAt || null,
+    updatedAt: feed.updatedAt || null,
+    apiKeyMasked: normalizeNonEmptyString(feed.apiKeyPreview) || maskSecret(feed.apiKey),
+    webhookSecretMasked: maskSecret(feed.webhookSecret),
+    webhookUrl,
+    ingestUrl: `${APP_URL}/api/dealer/ingest`,
+    ...(options.includeSecrets ? {
+      apiKey: normalizeNonEmptyString(feed.apiKey),
+      webhookSecret: normalizeNonEmptyString(feed.webhookSecret),
+    } : {}),
+  };
+}
+
+async function ensureDealerFeedFromLegacyProfile(profileId, legacyProfile) {
+  const normalizedProfileId = normalizeNonEmptyString(profileId);
+  if (!normalizedProfileId) return null;
+
+  const feedRef = getDb().collection('dealerFeeds').doc(normalizedProfileId);
+  const existingFeedSnap = await feedRef.get();
+  if (existingFeedSnap.exists) {
+    const existingData = existingFeedSnap.data() || {};
+    if (normalizeNonEmptyString(existingData.apiKey) && normalizeNonEmptyString(existingData.webhookSecret)) {
+      return { id: existingFeedSnap.id, data: existingData, ref: feedRef, migrated: false };
+    }
+  }
+
+  const legacy = legacyProfile || {};
+  const writePayload = buildDealerFeedWritePayload(legacy, legacy);
+  const apiKey = normalizeNonEmptyString(existingFeedSnap.data()?.apiKey, generateDealerFeedApiKey());
+  const webhookSecret = normalizeNonEmptyString(existingFeedSnap.data()?.webhookSecret, generateDealerWebhookSecret());
+  const syncFrequency = normalizeDealerFeedSyncFrequency(
+    writePayload.syncFrequency || (writePayload.nightlySyncEnabled ? 'daily' : 'manual'),
+    writePayload.nightlySyncEnabled ? 'daily' : 'manual'
+  );
+
+  await feedRef.set(
+    {
+      ...writePayload,
+      syncFrequency,
+      apiKey,
+      apiKeyPreview: maskSecret(apiKey),
+      webhookSecret,
+      lastSyncAt: legacy.lastSyncAt || existingFeedSnap.data()?.lastSyncAt || null,
+      lastSyncStatus: normalizeNonEmptyString(legacy.lastSyncStatus || existingFeedSnap.data()?.lastSyncStatus),
+      lastSyncMessage: normalizeNonEmptyString(legacy.lastSyncMessage || existingFeedSnap.data()?.lastSyncMessage),
+      lastResolvedType: normalizeDealerFeedSourceType(
+        legacy.lastResolvedType || existingFeedSnap.data()?.lastResolvedType || writePayload.sourceType || 'auto'
+      ),
+      totalListingsActive: Number(existingFeedSnap.data()?.totalListingsActive || 0),
+      totalListingsDeleted: Number(existingFeedSnap.data()?.totalListingsDeleted || 0),
+      totalListingsSynced: Number(existingFeedSnap.data()?.totalListingsSynced || 0),
+      totalListingsCreated: Number(existingFeedSnap.data()?.totalListingsCreated || 0),
+      totalListingsUpdated: Number(existingFeedSnap.data()?.totalListingsUpdated || 0),
+      nextSyncAt: writePayload.status === 'active' && writePayload.nightlySyncEnabled
+        ? computeNextDealerFeedSyncAt(syncFrequency)
+        : null,
+      createdAt: legacy.createdAt || existingFeedSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      migratedFromLegacyProfile: true,
+      legacyProfileId: normalizedProfileId,
+    },
+    { merge: true }
+  );
+
+  const nextFeedSnap = await feedRef.get();
+  return { id: nextFeedSnap.id, data: nextFeedSnap.data() || {}, ref: feedRef, migrated: true };
+}
+
+async function migrateLegacyDealerFeedProfilesForSeller(sellerUid) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  if (!normalizedSellerUid) return [];
+
+  const legacySnap = await getDb()
+    .collection('dealerFeedProfiles')
+    .where('sellerUid', '==', normalizedSellerUid)
+    .get();
+
+  const migratedFeeds = [];
+  for (const legacyDoc of legacySnap.docs) {
+    const migrated = await ensureDealerFeedFromLegacyProfile(legacyDoc.id, legacyDoc.data() || {});
+    if (migrated) {
+      migratedFeeds.push(migrated);
+    }
+  }
+
+  return migratedFeeds;
+}
+
+function timestampValueToSortableMs(value) {
+  if (!value) return 0;
+  if (typeof value?.toMillis === 'function') {
+    return value.toMillis();
+  }
+  if (typeof value?.toDate === 'function') {
+    return value.toDate().getTime();
+  }
+  if (typeof value?.seconds === 'number') {
+    return value.seconds * 1000;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  const millis = date.getTime();
+  return Number.isNaN(millis) ? 0 : millis;
+}
+
+async function listDealerFeedAuditEntries(feedId, limitCount = 20) {
+  const normalizedFeedId = normalizeNonEmptyString(feedId);
+  if (!normalizedFeedId) return [];
+
+  const auditSnap = await getDb()
+    .collection('dealerAuditLogs')
+    .where('dealerFeedId', '==', normalizedFeedId)
+    .get();
+
+  return auditSnap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .sort((left, right) => timestampValueToSortableMs(right.timestamp) - timestampValueToSortableMs(left.timestamp))
+    .slice(0, Math.max(1, Math.min(Number(limitCount || 20), 100)));
+}
+
+async function listDealerFeedIngestLogs({ sellerUid = '', limitCount = 20 } = {}) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  let queryRef = getDb().collection('dealerFeedIngestLogs');
+  if (normalizedSellerUid) {
+    queryRef = queryRef.where('sellerUid', '==', normalizedSellerUid);
+  }
+
+  const logsSnap = await queryRef.get();
+  return logsSnap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .sort((left, right) => {
+      const rightValue = timestampValueToSortableMs(right.createdAt || right.processedAt);
+      const leftValue = timestampValueToSortableMs(left.createdAt || left.processedAt);
+      return rightValue - leftValue;
+    })
+    .slice(0, Math.max(1, Math.min(Number(limitCount || 20), 100)));
+}
+
+function getDealerFeedApiKeyFromRequest(req) {
+  const headerValue = Array.isArray(req.headers['x-dealer-api-key'])
+    ? req.headers['x-dealer-api-key'][0]
+    : req.headers['x-dealer-api-key'];
+  const authorizationValue = Array.isArray(req.headers.authorization)
+    ? req.headers.authorization[0]
+    : req.headers.authorization;
+  const bearerToken = String(authorizationValue || '').trim().match(/^Bearer\s+(.+)$/i)?.[1] || '';
+  return normalizeNonEmptyString(headerValue || bearerToken || req.body?.apiKey || req.query?.apiKey);
+}
+
+function getRawRequestBodyText(req) {
+  if (req.rawBody && Buffer.isBuffer(req.rawBody)) {
+    return req.rawBody.toString('utf8');
+  }
+  if (typeof req.body === 'string') {
+    return req.body;
+  }
+  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+    return JSON.stringify(req.body);
+  }
+  return '';
+}
+
+async function getDealerFeedStats(feedId) {
+  const normalizedFeedId = normalizeNonEmptyString(feedId);
+  if (!normalizedFeedId) {
+    return {
+      totalListingsActive: 0,
+      totalListingsDeleted: 0,
+      totalListingsSynced: 0,
+    };
+  }
+
+  const snapshot = await getDb().collection('dealerListings').where('dealerFeedId', '==', normalizedFeedId).get();
+  let totalListingsActive = 0;
+  let totalListingsDeleted = 0;
+
+  snapshot.docs.forEach((doc) => {
+    const status = normalizeNonEmptyString(doc.data()?.status, 'active').toLowerCase();
+    if (status === 'deleted' || status === 'archived') {
+      totalListingsDeleted += 1;
+    } else {
+      totalListingsActive += 1;
+    }
+  });
+
+  return {
+    totalListingsActive,
+    totalListingsDeleted,
+    totalListingsSynced: snapshot.size,
+  };
+}
+
+async function logDealerFeedAction({
+  dealerFeedId,
+  sellerUid,
+  action,
+  details,
+  errorMessage = '',
+  itemsProcessed = 0,
+  itemsSucceeded = 0,
+  itemsFailed = 0,
+  metadata = null,
+}) {
+  const normalizedFeedId = normalizeNonEmptyString(dealerFeedId);
+  if (!normalizedFeedId) return;
+
+  await getDb().collection('dealerAuditLogs').add({
+    dealerFeedId: normalizedFeedId,
+    sellerUid: normalizeNonEmptyString(sellerUid),
+    action: normalizeNonEmptyString(action, 'SYNC_EVENT'),
+    details: normalizeNonEmptyString(details, 'Dealer feed event'),
+    errorMessage: normalizeNonEmptyString(errorMessage),
+    itemsProcessed: Number(itemsProcessed || 0),
+    itemsSucceeded: Number(itemsSucceeded || 0),
+    itemsFailed: Number(itemsFailed || 0),
+    metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+function computeDealerFeedEquipmentHash(item) {
+  const serial = normalizeNonEmptyString(item?.serialNumber || item?.serial || item?.vin).toLowerCase();
+  if (serial) {
+    return sha256Hex(`serial:${serial}`);
+  }
+
+  const stock = normalizeNonEmptyString(item?.stockNumber || item?.externalId).toLowerCase();
+  const make = normalizeNonEmptyString(item?.make || item?.manufacturer, 'unknown').toLowerCase();
+  const model = normalizeNonEmptyString(item?.model, 'unknown').toLowerCase();
+  const year = String(item?.year || '').trim();
+  const condition = normalizeNonEmptyString(item?.condition, 'used').toLowerCase();
+  const location = normalizeNonEmptyString(item?.location).toLowerCase();
+  const hours = Number.isFinite(Number(item?.hours)) ? String(Math.round(Number(item.hours))) : '';
+  const price = Number.isFinite(Number(item?.price)) ? String(Math.round(Number(item.price))) : '';
+
+  return sha256Hex([make, model, year, stock, condition, hours, price, location].filter(Boolean).join('|'));
+}
+
+function buildDealerWebhookSignature(secret, timestamp, rawBody) {
+  return createHmac('sha256', String(secret || '').trim())
+    .update(`${String(timestamp || '').trim()}.${String(rawBody || '')}`)
+    .digest('hex');
+}
+
+function parseDealerSignatureHeader(rawHeaderValue) {
+  const value = String(rawHeaderValue || '').trim();
+  if (!value) return '';
+  if (!value.includes('=')) return value;
+  return value.split('=').pop().trim();
+}
+
+function signaturesMatch(left, right) {
+  const normalizedLeft = String(left || '').trim();
+  const normalizedRight = String(right || '').trim();
+  if (!normalizedLeft || !normalizedRight || normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+
+  try {
+    return timingSafeEqual(Buffer.from(normalizedLeft), Buffer.from(normalizedRight));
+  } catch (_) {
+    return false;
+  }
+}
+
+function computeNextDealerFeedSyncAt(syncFrequency, baseDate = new Date()) {
+  const frequency = normalizeDealerFeedSyncFrequency(syncFrequency, 'daily');
+  if (frequency === 'manual') return null;
+
+  const next = new Date(baseDate.getTime());
+  if (frequency === 'hourly') {
+    next.setHours(next.getHours() + 1, 0, 0, 0);
+  } else if (frequency === 'weekly') {
+    next.setDate(next.getDate() + 7);
+  } else {
+    next.setDate(next.getDate() + 1);
+    next.setHours(2, 0, 0, 0);
+  }
+
+  return admin.firestore.Timestamp.fromDate(next);
+}
+
+function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
   if (!isPlainObject(item)) return null;
 
+  const mappedValues = applyDealerFieldMapping(item, fieldMapping);
+  const getMappedValue = (path) => getNestedValue(mappedValues, path);
+
   const externalId = normalizeNonEmptyString(
-    findFeedValue(item, new Set(['externalid', 'id', 'stocknumber', 'stock', 'sku', 'serialnumber', 'serial', 'vin'])),
+    getMappedValue('externalId') ||
+      findFeedValue(item, new Set(['externalid', 'id', 'stocknumber', 'stock', 'sku', 'serialnumber', 'serial', 'vin'])),
     buildFallbackDealerFeedExternalId(item)
   );
 
-  const manufacturer = normalizeNonEmptyString(findFeedValue(item, new Set(['manufacturer', 'make', 'brand'])), 'Unknown');
-  const model = normalizeNonEmptyString(findFeedValue(item, new Set(['model'])), 'Unknown');
-  const title = normalizeNonEmptyString(findFeedValue(item, new Set(['title', 'name', 'headline'])), `${manufacturer} ${model}`.trim());
-  const category = normalizeNonEmptyString(findFeedValue(item, new Set(['category', 'department', 'type'])), 'Uncategorized');
-  const subcategory = normalizeNonEmptyString(findFeedValue(item, new Set(['subcategory', 'class'])), category);
-  const images = Array.from(new Set(flattenFeedImageUrls(findFeedValue(item, new Set(['images', 'imageurls', 'gallery', 'photos', 'media'])) || item))).slice(0, 40);
+  const manufacturer = normalizeNonEmptyString(
+    getMappedValue('manufacturer') ||
+      getMappedValue('make') ||
+      findFeedValue(item, new Set(['manufacturer', 'make', 'brand'])),
+    'Unknown'
+  );
+  const model = normalizeNonEmptyString(getMappedValue('model') || findFeedValue(item, new Set(['model'])), 'Unknown');
+  const title = normalizeNonEmptyString(
+    getMappedValue('title') || findFeedValue(item, new Set(['title', 'name', 'headline'])),
+    `${manufacturer} ${model}`.trim()
+  );
+  const category = normalizeNonEmptyString(
+    getMappedValue('category') || findFeedValue(item, new Set(['category', 'department', 'type'])),
+    'Uncategorized'
+  );
+  const subcategory = normalizeNonEmptyString(
+    getMappedValue('subcategory') || findFeedValue(item, new Set(['subcategory', 'class'])),
+    category
+  );
+  const imageSource =
+    getMappedValue('imageUrls') ||
+    getMappedValue('images') ||
+    findFeedValue(item, new Set(['images', 'imageurls', 'gallery', 'photos', 'media'])) ||
+    item;
+  const images = Array.from(new Set(flattenFeedImageUrls(imageSource))).slice(0, 40);
+  const detectedSpecs = findFeedValue(item, new Set(['specs', 'specifications', 'attributes']));
+  const mappedSpecs = getMappedValue('specs');
 
   return {
     externalId,
     title,
-    price: toFiniteNumberOrUndefined(findFeedValue(item, new Set(['price', 'saleprice', 'askingprice', 'listprice', 'amount']))),
-    currency: normalizeNonEmptyString(findFeedValue(item, new Set(['currency', 'currencycode'])), 'USD'),
-    year: toFiniteNumberOrUndefined(findFeedValue(item, new Set(['year']))),
+    price: toFiniteNumberOrUndefined(
+      getMappedValue('price') || findFeedValue(item, new Set(['price', 'saleprice', 'askingprice', 'listprice', 'amount']))
+    ),
+    currency: normalizeNonEmptyString(
+      getMappedValue('currency') || findFeedValue(item, new Set(['currency', 'currencycode'])),
+      'USD'
+    ),
+    year: toFiniteNumberOrUndefined(getMappedValue('year') || findFeedValue(item, new Set(['year']))),
     manufacturer,
+    make: normalizeNonEmptyString(getMappedValue('make'), manufacturer),
     model,
     category,
     subcategory,
-    condition: normalizeNonEmptyString(findFeedValue(item, new Set(['condition', 'status'])), 'Used'),
-    location: normalizeNonEmptyString(findFeedValue(item, new Set(['location', 'citystate', 'yardlocation', 'address']))),
+    condition: normalizeNonEmptyString(
+      getMappedValue('condition') || findFeedValue(item, new Set(['condition', 'status'])),
+      'Used'
+    ),
+    location: normalizeNonEmptyString(
+      getMappedValue('location') || findFeedValue(item, new Set(['location', 'citystate', 'yardlocation', 'address'])),
+      ''
+    ),
     imageUrls: images,
-    description: normalizeNonEmptyString(findFeedValue(item, new Set(['description', 'comments', 'details', 'remark', 'remarks']))),
-    hours: toFiniteNumberOrUndefined(findFeedValue(item, new Set(['hours', 'hourmeter', 'machinehours']))),
-    specs: isPlainObject(findFeedValue(item, new Set(['specs', 'specifications', 'attributes'])))
-      ? findFeedValue(item, new Set(['specs', 'specifications', 'attributes']))
-      : {},
+    description: normalizeNonEmptyString(
+      getMappedValue('description') || findFeedValue(item, new Set(['description', 'comments', 'details', 'remark', 'remarks'])),
+      ''
+    ),
+    hours: toFiniteNumberOrUndefined(
+      getMappedValue('hours') || findFeedValue(item, new Set(['hours', 'hourmeter', 'machinehours']))
+    ),
+    stockNumber: normalizeNonEmptyString(
+      getMappedValue('stockNumber') || findFeedValue(item, new Set(['stocknumber', 'stock', 'stockid', 'sku'])),
+      ''
+    ),
+    serialNumber: normalizeNonEmptyString(
+      getMappedValue('serialNumber') || findFeedValue(item, new Set(['serialnumber', 'serial', 'vin'])),
+      ''
+    ),
+    dealerSourceUrl: normalizeNonEmptyString(
+      getMappedValue('dealerSourceUrl') ||
+        getMappedValue('sourceUrl') ||
+        findFeedValue(item, new Set(['sourceurl', 'source_url', 'url', 'link', 'permalink', 'landingpage'])),
+      ''
+    ),
+    specs: {
+      ...(isPlainObject(detectedSpecs) ? detectedSpecs : {}),
+      ...(isPlainObject(mappedSpecs) ? mappedSpecs : {}),
+    },
   };
 }
 
-function parseDealerFeedPayload(rawInput, sourceType = 'auto') {
+function parseDealerFeedPayload(rawInput, sourceType = 'auto', fieldMapping = []) {
   const payloadText = String(rawInput || '').trim();
   if (!payloadText) {
     throw new Error('Feed payload is empty.');
@@ -651,7 +1196,7 @@ function parseDealerFeedPayload(rawInput, sourceType = 'auto') {
         ? JSON.parse(payloadText)
         : dealerFeedXmlParser.parse(payloadText);
       const items = extractDealerFeedItemsFromPayload(parsed)
-        .map((item) => normalizeResolvedDealerFeedItem(item))
+        .map((item) => normalizeResolvedDealerFeedItem(item, fieldMapping))
         .filter((item) => item && item.externalId && item.title);
 
       if (items.length === 0) {
@@ -699,49 +1244,103 @@ function validateDealerFeedUrl(feedUrl) {
   return parsedUrl.toString();
 }
 
-function normalizeDealerFeedListing(item, sellerUid, sourceName) {
-  const externalId = normalizeNonEmptyString(item?.externalId);
-  const make = normalizeNonEmptyString(item?.make || item?.manufacturer, 'Unknown');
-  const model = normalizeNonEmptyString(item?.model, 'Unknown');
-  const title = normalizeNonEmptyString(item?.title, `${make} ${model}`.trim());
-  const category = normalizeNonEmptyString(item?.category, 'Uncategorized');
+function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
+  const existingListing = isPlainObject(options?.existingListing) ? options.existingListing : {};
+  const feed = isPlainObject(options?.feed) ? options.feed : {};
+  const externalId = normalizeNonEmptyString(
+    item?.externalId || existingListing?.externalSource?.externalId || existingListing?.externalId
+  );
+  const make = normalizeNonEmptyString(item?.make || item?.manufacturer || existingListing?.make || existingListing?.manufacturer, 'Unknown');
+  const model = normalizeNonEmptyString(item?.model || existingListing?.model, 'Unknown');
+  const title = normalizeNonEmptyString(item?.title || existingListing?.title, `${make} ${model}`.trim());
+  const category = normalizeNonEmptyString(item?.category || existingListing?.category, 'Uncategorized');
+  const subcategory = normalizeNonEmptyString(item?.subcategory || existingListing?.subcategory, category);
+  const year = normalizeFiniteNumber(item?.year, normalizeFiniteNumber(existingListing?.year, new Date().getFullYear()));
+  const price = Math.max(0, normalizeFiniteNumber(item?.price, normalizeFiniteNumber(existingListing?.price, 0)));
+  const hours = Math.max(0, normalizeFiniteNumber(item?.hours, normalizeFiniteNumber(existingListing?.hours, 0)));
+  const images = normalizeImageUrls(item?.images || item?.imageUrls || existingListing?.images);
+  const stockNumber = normalizeNonEmptyString(item?.stockNumber || existingListing?.stockNumber);
+  const serialNumber = normalizeNonEmptyString(item?.serialNumber || existingListing?.serialNumber);
+  const dealerSourceUrl = normalizeNonEmptyString(
+    item?.dealerSourceUrl || item?.sourceUrl || existingListing?.externalSource?.dealerSourceUrl
+  );
+  const autoPublish = Object.prototype.hasOwnProperty.call(options, 'autoPublish')
+    ? Boolean(options.autoPublish)
+    : feed.autoPublish !== false;
+  const existingStatus = normalizeNonEmptyString(existingListing?.status).toLowerCase();
+  const existingApprovalStatus = normalizeNonEmptyString(existingListing?.approvalStatus).toLowerCase();
+  const existingPaymentStatus = normalizeNonEmptyString(existingListing?.paymentStatus).toLowerCase();
+  const existingExternalSource = isPlainObject(existingListing?.externalSource) ? existingListing.externalSource : {};
+  const dealerFeedId = normalizeNonEmptyString(options?.dealerFeedId || existingExternalSource?.dealerFeedId || feed.id);
 
-  const year = normalizeFiniteNumber(item?.year, new Date().getFullYear());
-  const price = Math.max(0, normalizeFiniteNumber(item?.price, 0));
-  const hours = Math.max(0, normalizeFiniteNumber(item?.hours, 0));
-  const images = normalizeImageUrls(item?.images);
+  let status = autoPublish ? 'active' : 'pending';
+  if (existingStatus === 'sold') {
+    status = 'sold';
+  } else if (!autoPublish && ['active', 'pending'].includes(existingStatus)) {
+    status = existingStatus;
+  }
+
+  let approvalStatus = autoPublish ? 'approved' : 'pending';
+  if (existingApprovalStatus === 'rejected') {
+    approvalStatus = 'rejected';
+  } else if (!autoPublish && ['approved', 'pending'].includes(existingApprovalStatus)) {
+    approvalStatus = existingApprovalStatus;
+  }
+
+  let paymentStatus = autoPublish ? 'paid' : 'pending';
+  if (existingPaymentStatus === 'failed') {
+    paymentStatus = 'failed';
+  } else if (!autoPublish && ['paid', 'pending'].includes(existingPaymentStatus)) {
+    paymentStatus = existingPaymentStatus;
+  }
 
   return {
     sellerUid,
     sellerId: sellerUid,
     title,
     category,
-    subcategory: normalizeNonEmptyString(item?.subcategory, category),
+    subcategory,
     make,
     manufacturer: make,
     model,
     year,
     price,
-    currency: normalizeNonEmptyString(item?.currency, 'USD'),
+    currency: normalizeNonEmptyString(item?.currency || existingListing?.currency, 'USD'),
     hours,
-    condition: normalizeNonEmptyString(item?.condition, 'Used'),
-    description: normalizeNonEmptyString(item?.description, `${title} imported from dealer feed.`),
-    location: normalizeNonEmptyString(item?.location, 'Unknown'),
+    condition: normalizeNonEmptyString(item?.condition || existingListing?.condition, 'Used'),
+    description: normalizeNonEmptyString(item?.description || existingListing?.description, `${title} imported from dealer feed.`),
+    location: normalizeNonEmptyString(item?.location || existingListing?.location, 'Unknown'),
     images,
-    specs: item?.specs && typeof item.specs === 'object' ? item.specs : {},
-    featured: false,
-    views: 0,
-    leads: 0,
-    status: 'pending',
-    approvalStatus: 'pending',
-    paymentStatus: 'pending',
-    marketValueEstimate: null,
-    sellerVerified: true,
-    qualityValidated: true,
+    stockNumber,
+    serialNumber,
+    specs: {
+      ...(isPlainObject(existingListing?.specs) ? existingListing.specs : {}),
+      ...(item?.specs && typeof item.specs === 'object' ? item.specs : {}),
+    },
+    featured: Boolean(existingListing?.featured),
+    views: Number(existingListing?.views || 0),
+    leads: Number(existingListing?.leads || 0),
+    status,
+    approvalStatus,
+    paymentStatus,
+    publishedAt: autoPublish && !existingListing?.publishedAt
+      ? admin.firestore.FieldValue.serverTimestamp()
+      : existingListing?.publishedAt || null,
+    marketValueEstimate: existingListing?.marketValueEstimate ?? null,
+    sellerVerified: existingListing?.sellerVerified !== false,
+    qualityValidated: existingListing?.qualityValidated !== false,
+    dataSource: 'dealer',
+    dealerFeedId: dealerFeedId || null,
     externalSource: {
+      ...existingExternalSource,
       sourceName,
       externalId,
-      importedAt: admin.firestore.FieldValue.serverTimestamp(),
+      dealerFeedId: dealerFeedId || null,
+      dealerSourceUrl,
+      stockNumber,
+      serialNumber,
+      importedAt: existingExternalSource?.importedAt || admin.firestore.FieldValue.serverTimestamp(),
+      lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
@@ -782,13 +1381,14 @@ async function fetchDealerFeedPayloadFromSource({ rawInput, feedUrl, requestedTy
 async function resolveDealerFeedSource(params) {
   const sourceName = normalizeNonEmptyString(params?.sourceName, 'dealer_feed');
   const requestedType = normalizeNonEmptyString(params?.sourceType, 'auto').toLowerCase();
+  const fieldMapping = normalizeDealerFieldMapping(params?.fieldMapping);
   const { payloadText, parseType } = await fetchDealerFeedPayloadFromSource({
     rawInput: params?.rawInput,
     feedUrl: params?.feedUrl,
     requestedType,
   });
 
-  const resolved = parseDealerFeedPayload(payloadText, parseType);
+  const resolved = parseDealerFeedPayload(payloadText, parseType, fieldMapping);
   const limitedItems = resolved.items.slice(0, 1000);
 
   return {
@@ -808,15 +1408,276 @@ async function resolveDealerFeedSource(params) {
   };
 }
 
+async function upsertEquipmentDuplicateRecord({
+  equipmentHash,
+  listingId,
+  listing,
+  dealerFeedId = '',
+  dealerName = '',
+  dealerSourceUrl = '',
+  status = 'active',
+}) {
+  const normalizedHash = normalizeNonEmptyString(equipmentHash);
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  if (!normalizedHash || !normalizedListingId) return;
+
+  const duplicateRef = getDb().collection('equipmentDuplicates').doc(normalizedHash);
+  const duplicateSnap = await duplicateRef.get();
+  const duplicateData = duplicateSnap.data() || {};
+  const existingVariants = Array.isArray(duplicateData.variants) ? duplicateData.variants : [];
+  const variantTimestamp = admin.firestore.Timestamp.now();
+  const nextVariant = {
+    listingId: normalizedListingId,
+    source: 'dealer',
+    price: Math.max(0, normalizeFiniteNumber(listing?.price, 0)),
+    dealerFeedId: normalizeNonEmptyString(dealerFeedId),
+    dealerName: normalizeNonEmptyString(dealerName),
+    dealerSourceUrl: normalizeNonEmptyString(dealerSourceUrl),
+    status: normalizeNonEmptyString(status, 'active'),
+    syncedAt: variantTimestamp,
+  };
+  const variants = [
+    ...existingVariants.filter((variant) => normalizeNonEmptyString(variant?.listingId) !== normalizedListingId),
+    nextVariant,
+  ].slice(-100);
+
+  await duplicateRef.set(
+    {
+      equipmentHash: normalizedHash,
+      make: normalizeNonEmptyString(listing?.make || listing?.manufacturer),
+      model: normalizeNonEmptyString(listing?.model),
+      year: toFiniteNumberOrUndefined(listing?.year) || null,
+      engine: normalizeNonEmptyString(listing?.specs?.engine),
+      horsepower: toFiniteNumberOrUndefined(listing?.specs?.horsepower) || null,
+      transmission: normalizeNonEmptyString(listing?.specs?.transmission),
+      variants,
+      primaryListing: normalizeNonEmptyString(duplicateData.primaryListing, normalizedListingId),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function processDealerListing({
+  item,
+  sellerUid,
+  sourceName,
+  feedId = '',
+  feed = null,
+  dryRun = false,
+}) {
+  const normalizedItem = normalizeResolvedDealerFeedItem(item, feed?.fieldMapping || []);
+  if (!normalizedItem?.externalId) {
+    return {
+      action: 'skip',
+      skipped: true,
+      externalId: '',
+      title: normalizeNonEmptyString(item?.title || normalizedItem?.title, 'Untitled Listing'),
+    };
+  }
+
+  const normalizedFeedId = normalizeNonEmptyString(feedId);
+  const dealerListingId = normalizedFeedId
+    ? buildDealerFeedListingDocId(normalizedFeedId, normalizedItem.externalId)
+    : '';
+  const dealerListingRef = dealerListingId ? getDb().collection('dealerListings').doc(dealerListingId) : null;
+  const dealerListingSnap = dealerListingRef ? await dealerListingRef.get() : null;
+  const dealerListingData = dealerListingSnap?.data() || {};
+  const existingListingId = normalizeNonEmptyString(dealerListingData.timberequipListingId);
+
+  let listingRef = existingListingId ? getDb().collection('listings').doc(existingListingId) : null;
+  let existingListingSnap = listingRef ? await listingRef.get() : null;
+
+  if (!existingListingSnap?.exists) {
+    const existingListingQuery = await getDb()
+      .collection('listings')
+      .where('externalSource.externalId', '==', normalizedItem.externalId)
+      .limit(10)
+      .get();
+    const fallbackDoc = existingListingQuery.docs.find((doc) => {
+      const data = doc.data() || {};
+      const existingSellerUid = normalizeNonEmptyString(data.sellerUid || data.sellerId);
+      const existingFeedId = normalizeNonEmptyString(data?.externalSource?.dealerFeedId || data?.dealerFeedId);
+      return existingSellerUid === sellerUid && (!normalizedFeedId || !existingFeedId || existingFeedId === normalizedFeedId);
+    });
+    if (fallbackDoc) {
+      listingRef = fallbackDoc.ref;
+      existingListingSnap = fallbackDoc;
+    }
+  }
+
+  const existingListing = existingListingSnap?.exists ? existingListingSnap.data() || {} : {};
+  const normalizedListing = normalizeDealerFeedListing(normalizedItem, sellerUid, sourceName, {
+    existingListing,
+    feed,
+    dealerFeedId: normalizedFeedId,
+  });
+  const equipmentHash = computeDealerFeedEquipmentHash(normalizedListing);
+  const nextAction = existingListingSnap?.exists ? 'update' : 'insert';
+
+  if (dryRun) {
+    return {
+      action: nextAction,
+      skipped: false,
+      externalId: normalizedItem.externalId,
+      title: normalizedListing.title,
+      equipmentHash,
+      listingId: listingRef?.id || '',
+      dealerListingId,
+    };
+  }
+
+  if (!listingRef) {
+    listingRef = getDb().collection('listings').doc();
+  }
+
+  const writePayload = {
+    ...normalizedListing,
+    equipmentHash,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(existingListingSnap?.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }),
+  };
+
+  await listingRef.set(writePayload, { merge: true });
+
+  if (dealerListingRef) {
+    await dealerListingRef.set(
+      {
+        dealerFeedId: normalizedFeedId,
+        sellerUid,
+        externalListingId: normalizedItem.externalId,
+        timberequipListingId: listingRef.id,
+        equipmentHash,
+        status: normalizedListing.status === 'active' ? 'active' : 'archived',
+        externalData: isPlainObject(item) ? item : normalizedItem,
+        mappedData: normalizedListing,
+        dealerSourceUrl: normalizeNonEmptyString(normalizedItem.dealerSourceUrl || normalizedListing?.externalSource?.dealerSourceUrl),
+        dataSource: 'dealer',
+        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(dealerListingSnap?.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }),
+      },
+      { merge: true }
+    );
+  }
+
+  await upsertEquipmentDuplicateRecord({
+    equipmentHash,
+    listingId: listingRef.id,
+    listing: normalizedListing,
+    dealerFeedId: normalizedFeedId,
+    dealerName: normalizeNonEmptyString(feed?.dealerName),
+    dealerSourceUrl: normalizeNonEmptyString(normalizedItem.dealerSourceUrl || normalizedListing?.externalSource?.dealerSourceUrl),
+    status: normalizedListing.status === 'active' ? 'active' : 'archived',
+  });
+
+  return {
+    action: nextAction,
+    skipped: false,
+    externalId: normalizedItem.externalId,
+    title: normalizedListing.title,
+    equipmentHash,
+    listingId: listingRef.id,
+    dealerListingId,
+  };
+}
+
+async function archiveMissingDealerFeedListings({
+  feedId,
+  sellerUid,
+  activeExternalIds,
+  dryRun = false,
+}) {
+  const normalizedFeedId = normalizeNonEmptyString(feedId);
+  if (!normalizedFeedId) {
+    return { archived: 0, archivedListingIds: [] };
+  }
+
+  const activeIds = new Set(
+    Array.from(activeExternalIds || [])
+      .map((value) => normalizeNonEmptyString(value))
+      .filter(Boolean)
+  );
+  const archivedListingIds = [];
+  const existingMappingsSnap = await getDb()
+    .collection('dealerListings')
+    .where('dealerFeedId', '==', normalizedFeedId)
+    .get();
+
+  let archived = 0;
+  for (const mappingDoc of existingMappingsSnap.docs) {
+    const mapping = mappingDoc.data() || {};
+    const externalListingId = normalizeNonEmptyString(mapping.externalListingId);
+    const mappingStatus = normalizeNonEmptyString(mapping.status, 'active').toLowerCase();
+    if (!externalListingId || activeIds.has(externalListingId) || ['archived', 'deleted'].includes(mappingStatus)) {
+      continue;
+    }
+
+    archived += 1;
+    const listingId = normalizeNonEmptyString(mapping.timberequipListingId);
+    if (listingId) {
+      archivedListingIds.push(listingId);
+    }
+
+    if (dryRun) {
+      continue;
+    }
+
+    await mappingDoc.ref.set(
+      {
+        status: 'archived',
+        archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    if (listingId) {
+      const listingRef = getDb().collection('listings').doc(listingId);
+      const listingSnap = await listingRef.get();
+      if (listingSnap.exists) {
+        const listingData = listingSnap.data() || {};
+        await listingRef.set(
+          {
+            status: normalizeNonEmptyString(listingData.status).toLowerCase() === 'sold' ? 'sold' : 'pending',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            externalSource: {
+              ...(isPlainObject(listingData.externalSource) ? listingData.externalSource : {}),
+              archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+              lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+          },
+          { merge: true }
+        );
+
+        await upsertEquipmentDuplicateRecord({
+          equipmentHash: normalizeNonEmptyString(mapping.equipmentHash || listingData.equipmentHash),
+          listingId,
+          listing: listingData,
+          dealerFeedId: normalizedFeedId,
+          dealerName: normalizeNonEmptyString(mapping.dealerName),
+          dealerSourceUrl: normalizeNonEmptyString(mapping.dealerSourceUrl || listingData?.externalSource?.dealerSourceUrl),
+          status: 'archived',
+        });
+      }
+    }
+  }
+
+  return { archived, archivedListingIds };
+}
+
 async function ingestDealerFeedItems(params) {
   const actorUid = normalizeNonEmptyString(params?.actorUid, 'dealer-feed-sync');
   const actorRole = normalizeNonEmptyString(params?.actorRole, 'system');
   const sellerUid = normalizeNonEmptyString(params?.sellerUid || params?.dealerId);
   const sourceName = normalizeNonEmptyString(params?.sourceName, 'dealer_feed');
   const dryRun = Boolean(params?.dryRun);
+  const normalizedFeedId = normalizeNonEmptyString(params?.feedId);
+  const fullSync = params?.fullSync !== false;
   const items = Array.isArray(params?.items) ? params.items : [];
   const persistLog = params?.persistLog !== false;
   const syncContext = params?.syncContext && typeof params.syncContext === 'object' ? params.syncContext : null;
+  let feed = params?.feed && typeof params.feed === 'object' ? params.feed : null;
 
   if (!sellerUid) {
     throw new Error('dealerId could not be resolved.');
@@ -828,58 +1689,66 @@ async function ingestDealerFeedItems(params) {
     throw new Error('Maximum 1000 items per ingest request.');
   }
 
+  if (normalizedFeedId && !feed) {
+    const feedSnap = await getDb().collection('dealerFeeds').doc(normalizedFeedId).get();
+    if (!feedSnap.exists) {
+      throw new Error('Dealer feed configuration could not be found.');
+    }
+    feed = { id: feedSnap.id, ...feedSnap.data() };
+  }
+
+  const normalizedItems = items
+    .map((item) => normalizeResolvedDealerFeedItem(item, feed?.fieldMapping || params?.fieldMapping || []))
+    .filter(Boolean);
+
+  if (normalizedItems.length === 0) {
+    throw new Error('No valid dealer feed items were supplied.');
+  }
+
   let created = 0;
   let updated = 0;
   let skipped = 0;
   const errors = [];
   const preview = [];
+  const activeExternalIds = new Set();
 
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
+  for (let index = 0; index < normalizedItems.length; index += 1) {
+    const item = normalizedItems[index];
     try {
-      const normalized = normalizeDealerFeedListing(item, sellerUid, sourceName);
-      if (!normalized.externalSource.externalId) {
+      const result = await processDealerListing({
+        item,
+        sellerUid,
+        sourceName,
+        feedId: normalizedFeedId,
+        feed,
+        dryRun,
+      });
+
+      if (result.skipped || !result.externalId) {
         skipped += 1;
         if (preview.length < 50) {
           preview.push({
-            externalId: '',
-            title: normalized.title,
+            externalId: result.externalId || '',
+            title: result.title,
             action: 'skip',
           });
         }
         continue;
       }
 
-      const existing = await getDb()
-        .collection('listings')
-        .where('sellerUid', '==', sellerUid)
-        .where('externalSource.externalId', '==', normalized.externalSource.externalId)
-        .limit(1)
-        .get();
-
-      const nextAction = existing.empty ? 'insert' : 'update';
+      activeExternalIds.add(result.externalId);
+      const nextAction = result.action === 'update' ? 'update' : 'insert';
       if (preview.length < 50) {
         preview.push({
-          externalId: normalized.externalSource.externalId,
-          title: normalized.title,
+          externalId: result.externalId,
+          title: result.title,
           action: nextAction,
         });
       }
 
-      if (dryRun) {
-        if (existing.empty) created += 1;
-        else updated += 1;
-        continue;
-      }
-
-      if (existing.empty) {
-        await getDb().collection('listings').add({
-          ...normalized,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+      if (nextAction === 'insert') {
         created += 1;
       } else {
-        await existing.docs[0].ref.set(normalized, { merge: true });
         updated += 1;
       }
     } catch (err) {
@@ -887,8 +1756,19 @@ async function ingestDealerFeedItems(params) {
     }
   }
 
+  let archived = 0;
+  if (normalizedFeedId && fullSync) {
+    const archiveResult = await archiveMissingDealerFeedListings({
+      feedId: normalizedFeedId,
+      sellerUid,
+      activeExternalIds,
+      dryRun,
+    });
+    archived = archiveResult.archived;
+  }
+
   const errorMessages = errors.map(({ index, reason }) => `Item ${index + 1}: ${reason}`);
-  const processed = items.length;
+  const processed = normalizedItems.length;
   const upserted = created + updated;
 
   const logPayload = {
@@ -898,12 +1778,14 @@ async function ingestDealerFeedItems(params) {
     dealerId: sellerUid,
     sourceName,
     dryRun,
-    totalReceived: items.length,
+    feedId: normalizedFeedId || null,
+    totalReceived: normalizedItems.length,
     processed,
     created,
     updated,
     upserted,
     skipped,
+    archived,
     errorCount: errors.length,
     errors: errorMessages.slice(0, 100),
     processedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -915,11 +1797,52 @@ async function ingestDealerFeedItems(params) {
     await getDb().collection('dealerFeedIngestLogs').add(logPayload);
   }
 
+  if (normalizedFeedId && !dryRun) {
+    const stats = await getDealerFeedStats(normalizedFeedId);
+    await getDb().collection('dealerFeeds').doc(normalizedFeedId).set(
+      {
+        lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastSyncStatus: errors.length > 0 ? 'partial' : 'success',
+        lastSyncMessage: `Processed ${processed} listings, upserted ${upserted}, archived ${archived}.`,
+        totalListingsActive: stats.totalListingsActive,
+        totalListingsDeleted: stats.totalListingsDeleted,
+        totalListingsSynced: stats.totalListingsSynced,
+        totalListingsCreated: admin.firestore.FieldValue.increment(created),
+        totalListingsUpdated: admin.firestore.FieldValue.increment(updated),
+        nextSyncAt: feed?.status === 'active' && feed?.nightlySyncEnabled
+          ? computeNextDealerFeedSyncAt(feed?.syncFrequency || 'daily')
+          : null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await logDealerFeedAction({
+      dealerFeedId: normalizedFeedId,
+      sellerUid,
+      action: errors.length > 0 ? 'SYNC_PARTIAL' : 'SYNC_SUCCESS',
+      details: `Processed ${processed} listings from ${sourceName}.`,
+      errorMessage: errorMessages[0] || '',
+      itemsProcessed: processed,
+      itemsSucceeded: upserted,
+      itemsFailed: errors.length + skipped,
+      metadata: {
+        sourceName,
+        created,
+        updated,
+        archived,
+        dryRun,
+        ...(syncContext ? { syncContext } : {}),
+      },
+    });
+  }
+
   return {
     ok: true,
     processed,
     upserted,
     skipped,
+    archived,
     errors: errorMessages,
     dryRun,
     preview,
@@ -2144,31 +3067,52 @@ exports.dealerFeedNightlySync = onSchedule(
     region: 'us-central1',
   },
   async () => {
-    const profilesSnap = await getDb()
-      .collection('dealerFeedProfiles')
-      .where('nightlySyncEnabled', '==', true)
-      .get();
+    const [feedSnap, legacySnap] = await Promise.all([
+      getDb()
+        .collection('dealerFeeds')
+        .where('status', '==', 'active')
+        .get(),
+      getDb()
+        .collection('dealerFeedProfiles')
+        .where('nightlySyncEnabled', '==', true)
+        .get(),
+    ]);
 
-    if (profilesSnap.empty) {
-      logger.info('dealerFeedNightlySync: no enabled feed profiles found');
+    for (const legacyDoc of legacySnap.docs) {
+      await ensureDealerFeedFromLegacyProfile(legacyDoc.id, legacyDoc.data() || {});
+    }
+
+    const refreshedFeedSnap = legacySnap.empty
+      ? feedSnap
+      : await getDb()
+        .collection('dealerFeeds')
+        .where('status', '==', 'active')
+        .get();
+
+    const candidateFeeds = refreshedFeedSnap.docs
+      .map((doc) => ({ ref: doc.ref, id: doc.id, data: doc.data() || {} }))
+      .filter(({ data }) => Boolean(data.nightlySyncEnabled) && normalizeDealerFeedStatus(data.status || 'active') === 'active');
+
+    if (candidateFeeds.length === 0) {
+      logger.info('dealerFeedNightlySync: no enabled dealer feeds found');
       return;
     }
 
     let successCount = 0;
     let failureCount = 0;
 
-    for (const profileDoc of profilesSnap.docs) {
-      const profile = profileDoc.data() || {};
-      const sellerUid = normalizeNonEmptyString(profile.sellerUid);
-      const sourceName = normalizeNonEmptyString(profile.sourceName, 'dealer_feed');
+    for (const feedEntry of candidateFeeds) {
+      const feed = feedEntry.data || {};
+      const sellerUid = normalizeNonEmptyString(feed.sellerUid);
+      const sourceName = normalizeNonEmptyString(feed.sourceName, 'dealer_feed');
 
       if (!sellerUid) {
         failureCount += 1;
-        await profileDoc.ref.set(
+        await feedEntry.ref.set(
           {
             lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
             lastSyncStatus: 'failed',
-            lastSyncMessage: 'sellerUid is missing from this saved feed profile.',
+            lastSyncMessage: 'sellerUid is missing from this dealer feed.',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -2179,9 +3123,10 @@ exports.dealerFeedNightlySync = onSchedule(
       try {
         const resolved = await resolveDealerFeedSource({
           sourceName,
-          sourceType: profile.sourceType,
-          rawInput: profile.rawInput,
-          feedUrl: profile.feedUrl,
+          sourceType: feed.sourceType,
+          rawInput: feed.rawInput,
+          feedUrl: feed.feedUrl || feed.apiEndpoint,
+          fieldMapping: feed.fieldMapping,
         });
 
         const result = await ingestDealerFeedItems({
@@ -2189,30 +3134,34 @@ exports.dealerFeedNightlySync = onSchedule(
           actorRole: 'system',
           sellerUid,
           sourceName,
+          feedId: feedEntry.id,
+          feed: { id: feedEntry.id, ...feed },
           dryRun: false,
           items: resolved.items,
+          fullSync: true,
           persistLog: true,
           syncContext: {
             trigger: 'nightly-2am-cst',
-            profileId: profileDoc.id,
+            feedId: feedEntry.id,
           },
         });
 
         successCount += 1;
-        await profileDoc.ref.set(
+        await feedEntry.ref.set(
           {
             lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
             lastSyncStatus: 'success',
-            lastSyncMessage: `Processed ${result.processed} items and upserted ${result.upserted}.`,
+            lastSyncMessage: `Processed ${result.processed} items, upserted ${result.upserted}, archived ${result.archived || 0}.`,
             lastResolvedType: resolved.detectedType,
+            nextSyncAt: computeNextDealerFeedSyncAt(feed.syncFrequency || 'daily'),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
       } catch (error) {
         failureCount += 1;
-        logger.error(`dealerFeedNightlySync failed for profile ${profileDoc.id}`, error);
-        await profileDoc.ref.set(
+        logger.error(`dealerFeedNightlySync failed for feed ${feedEntry.id}`, error);
+        await feedEntry.ref.set(
           {
             lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
             lastSyncStatus: 'failed',
@@ -2221,10 +3170,20 @@ exports.dealerFeedNightlySync = onSchedule(
           },
           { merge: true }
         );
+        await logDealerFeedAction({
+          dealerFeedId: feedEntry.id,
+          sellerUid,
+          action: 'SYNC_FAILED',
+          details: `Nightly sync failed for ${sourceName}.`,
+          errorMessage: error instanceof Error ? error.message : 'Nightly sync failed.',
+          metadata: {
+            trigger: 'nightly-2am-cst',
+          },
+        });
       }
     }
 
-    logger.info(`dealerFeedNightlySync: completed with ${successCount} success and ${failureCount} failure profiles`);
+    logger.info(`dealerFeedNightlySync: completed with ${successCount} success and ${failureCount} failure feeds`);
   }
 );
 
@@ -3265,6 +4224,173 @@ async function getAdminActorContext(req) {
     actorDoc,
     actorRole,
   };
+}
+
+async function getDealerFeedActorContext(req) {
+  const decodedToken = await getDecodedUserFromBearer(req);
+  if (!decodedToken) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  const actorUid = decodedToken.uid;
+  const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+  if (isPrivilegedAdminEmail(actorEmail)) {
+    return {
+      decodedToken,
+      actorUid,
+      actorEmail,
+      actorDoc: {
+        exists: true,
+        data: () => ({
+          uid: actorUid,
+          email: actorEmail,
+          role: 'super_admin',
+          displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
+        }),
+      },
+      actorRole: 'super_admin',
+      actorCanAdminister: true,
+      actorIsDealer: false,
+      ownerUid: actorUid,
+    };
+  }
+
+  const actorDoc = await getDb().collection('users').doc(actorUid).get();
+  const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
+  const actorCanAdminister = canAdministrateAccount(actorRole);
+  const actorIsDealer = isDealerManagedRole(actorRole);
+
+  if (!actorCanAdminister && !actorIsDealer) {
+    return { error: 'Forbidden', status: 403 };
+  }
+
+  return {
+    decodedToken,
+    actorUid,
+    actorEmail,
+    actorDoc,
+    actorRole,
+    actorCanAdminister,
+    actorIsDealer,
+    ownerUid: normalizeNonEmptyString(actorDoc.data()?.parentAccountUid || actorUid),
+  };
+}
+
+function canAccessDealerFeedSellerUid(actorContext, sellerUid) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  if (!normalizedSellerUid || !actorContext) return false;
+  if (actorContext.actorCanAdminister) return true;
+  return normalizedSellerUid === actorContext.ownerUid || normalizedSellerUid === actorContext.actorUid;
+}
+
+async function getAuthorizedDealerFeedContext(req, feedId) {
+  const actorContext = await getDealerFeedActorContext(req);
+  if (actorContext.error) {
+    return actorContext;
+  }
+
+  const normalizedFeedId = normalizeNonEmptyString(feedId);
+  if (!normalizedFeedId) {
+    return { error: 'Dealer feed ID is required.', status: 400 };
+  }
+
+  const feedRef = getDb().collection('dealerFeeds').doc(normalizedFeedId);
+  let feedSnap = await feedRef.get();
+  if (!feedSnap.exists) {
+    const legacySnap = await getDb().collection('dealerFeedProfiles').doc(normalizedFeedId).get();
+    if (legacySnap.exists) {
+      await ensureDealerFeedFromLegacyProfile(legacySnap.id, legacySnap.data() || {});
+      feedSnap = await feedRef.get();
+    }
+  }
+
+  if (!feedSnap.exists) {
+    return { error: 'Dealer feed not found.', status: 404 };
+  }
+
+  const feedData = feedSnap.data() || {};
+  if (!canAccessDealerFeedSellerUid(actorContext, feedData.sellerUid || feedData.dealerId)) {
+    return { error: 'Forbidden', status: 403 };
+  }
+
+  return {
+    ...actorContext,
+    feedRef,
+    feedSnap,
+    feed: { id: feedSnap.id, ...feedData },
+  };
+}
+
+async function getDealerFeedContextFromApiKey(req, explicitFeedId = '') {
+  const apiKey = getDealerFeedApiKeyFromRequest(req);
+  if (!apiKey) {
+    return { error: 'Dealer API key is required.', status: 401 };
+  }
+
+  let feedSnap = null;
+  const normalizedFeedId = normalizeNonEmptyString(explicitFeedId || req.body?.feedId || req.query?.feedId);
+  if (normalizedFeedId) {
+    const candidateSnap = await getDb().collection('dealerFeeds').doc(normalizedFeedId).get();
+    if (candidateSnap.exists && normalizeNonEmptyString(candidateSnap.data()?.apiKey) === apiKey) {
+      feedSnap = candidateSnap;
+    }
+  }
+
+  if (!feedSnap) {
+    const feedQuery = await getDb()
+      .collection('dealerFeeds')
+      .where('apiKey', '==', apiKey)
+      .limit(1)
+      .get();
+    if (!feedQuery.empty) {
+      feedSnap = feedQuery.docs[0];
+    }
+  }
+
+  if (!feedSnap?.exists) {
+    return { error: 'Dealer feed credentials are invalid.', status: 401 };
+  }
+
+  return {
+    feedRef: feedSnap.ref,
+    feedSnap,
+    feed: { id: feedSnap.id, ...feedSnap.data() },
+  };
+}
+
+function verifyDealerWebhookRequest(feed, req) {
+  const webhookSecret = normalizeNonEmptyString(feed?.webhookSecret);
+  if (!webhookSecret) return { ok: true };
+
+  const providedSignature = parseDealerSignatureHeader(req.headers['x-dealer-signature']);
+  if (!providedSignature) {
+    return { ok: false, error: 'Missing dealer webhook signature.', status: 401 };
+  }
+
+  const rawBody = getRawRequestBodyText(req);
+  const timestampHeader = normalizeNonEmptyString(req.headers['x-dealer-timestamp']);
+  if (timestampHeader) {
+    const requestTimestamp = Number(timestampHeader);
+    if (!Number.isFinite(requestTimestamp)) {
+      return { ok: false, error: 'Dealer webhook timestamp is invalid.', status: 401 };
+    }
+    if (Math.abs(Date.now() - requestTimestamp) > DEALER_WEBHOOK_SIGNATURE_WINDOW_MS) {
+      return { ok: false, error: 'Dealer webhook signature is expired.', status: 401 };
+    }
+
+    const computedSignature = buildDealerWebhookSignature(webhookSecret, timestampHeader, rawBody);
+    if (!signaturesMatch(computedSignature, providedSignature)) {
+      return { ok: false, error: 'Dealer webhook signature is invalid.', status: 401 };
+    }
+    return { ok: true };
+  }
+
+  const fallbackSignature = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+  if (!signaturesMatch(fallbackSignature, providedSignature)) {
+    return { ok: false, error: 'Dealer webhook signature is invalid.', status: 401 };
+  }
+
+  return { ok: true };
 }
 
 async function getAuthUserRecordSafe(uid) {
@@ -4535,32 +5661,293 @@ exports.apiProxy = onRequest(
         });
       }
 
-      if (req.method === 'POST' && path === '/admin/dealer-feeds/ingest') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
+      if (req.method === 'GET' && path === '/admin/dealer-feeds/logs') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
         }
 
-        const actorUid = decodedToken.uid;
-        const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-        const actorDoc = await getDb().collection('users').doc(actorUid).get();
-        const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
-        const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
-        const actorIsDealer = isDealerManagedRole(actorRole);
-
-        if (!actorCanAdminister && !actorIsDealer) {
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, requestedSellerUid)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const sourceName = normalizeNonEmptyString(req.body?.sourceName, 'dealer_feed');
-        const explicitDealerId = normalizeNonEmptyString(req.body?.dealerId);
-        const sellerUid = explicitDealerId || String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-        const dryRun = Boolean(req.body?.dryRun);
-        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        const logs = await listDealerFeedIngestLogs({
+          sellerUid: requestedSellerUid,
+          limitCount: Number(req.query?.limit || 20),
+        });
+        return res.status(200).json({ logs });
+      }
 
+      if (req.method === 'GET' && path === '/admin/dealer-feeds') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, requestedSellerUid)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        await migrateLegacyDealerFeedProfilesForSeller(requestedSellerUid);
+        const feedsSnap = await getDb()
+          .collection('dealerFeeds')
+          .where('sellerUid', '==', requestedSellerUid)
+          .get();
+        const feeds = feedsSnap.docs
+          .map((doc) => serializeDealerFeed(doc.id, doc.data() || {}))
+          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+
+        return res.status(200).json({ feeds });
+      }
+
+      if (req.method === 'POST' && path === '/admin/dealer-feeds/register') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const sellerUid = normalizeNonEmptyString(req.body?.sellerUid || req.body?.dealerId, actor.ownerUid);
         if (!sellerUid) {
           return res.status(400).json({ error: 'dealerId could not be resolved.' });
         }
+        if (!canAccessDealerFeedSellerUid(actor, sellerUid)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const writePayload = buildDealerFeedWritePayload({
+          ...req.body,
+          sellerUid,
+          dealerEmail: req.body?.dealerEmail || actor.actorEmail,
+        });
+        const apiKey = generateDealerFeedApiKey();
+        const webhookSecret = generateDealerWebhookSecret();
+        const feedRef = getDb().collection('dealerFeeds').doc();
+
+        await feedRef.set({
+          ...writePayload,
+          apiKey,
+          apiKeyPreview: maskSecret(apiKey),
+          webhookSecret,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSyncAt: null,
+          lastSyncStatus: '',
+          lastSyncMessage: '',
+          lastResolvedType: writePayload.sourceType,
+          nextSyncAt: writePayload.status === 'active' && writePayload.nightlySyncEnabled
+            ? computeNextDealerFeedSyncAt(writePayload.syncFrequency)
+            : null,
+          totalListingsActive: 0,
+          totalListingsDeleted: 0,
+          totalListingsSynced: 0,
+          totalListingsCreated: 0,
+          totalListingsUpdated: 0,
+        });
+
+        const createdSnap = await feedRef.get();
+        return res.status(201).json({
+          message: 'Dealer feed registered.',
+          feed: serializeDealerFeed(createdSnap.id, createdSnap.data() || {}, { includeSecrets: true }),
+        });
+      }
+
+      if (req.method === 'POST' && path === '/dealer/register') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const sellerUid = normalizeNonEmptyString(req.body?.sellerUid || req.body?.dealerId);
+        if (!sellerUid) {
+          return res.status(400).json({ error: 'dealerId is required.' });
+        }
+
+        const writePayload = buildDealerFeedWritePayload({
+          ...req.body,
+          sellerUid,
+          dealerEmail: req.body?.dealerEmail || actor.actorEmail,
+        });
+        const apiKey = generateDealerFeedApiKey();
+        const webhookSecret = generateDealerWebhookSecret();
+        const feedRef = getDb().collection('dealerFeeds').doc();
+
+        await feedRef.set({
+          ...writePayload,
+          apiKey,
+          apiKeyPreview: maskSecret(apiKey),
+          webhookSecret,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSyncAt: null,
+          lastSyncStatus: '',
+          lastSyncMessage: '',
+          lastResolvedType: writePayload.sourceType,
+          nextSyncAt: writePayload.status === 'active' && writePayload.nightlySyncEnabled
+            ? computeNextDealerFeedSyncAt(writePayload.syncFrequency)
+            : null,
+          totalListingsActive: 0,
+          totalListingsDeleted: 0,
+          totalListingsSynced: 0,
+          totalListingsCreated: 0,
+          totalListingsUpdated: 0,
+        });
+
+        const createdSnap = await feedRef.get();
+        return res.status(201).json({
+          message: 'Dealer feed registered.',
+          feed: serializeDealerFeed(createdSnap.id, createdSnap.data() || {}, { includeSecrets: true }),
+        });
+      }
+
+      const adminDealerFeedAuditMatch = path.match(/^\/admin\/dealer-feeds\/([^/]+)\/audit$/i);
+      if (req.method === 'GET' && adminDealerFeedAuditMatch) {
+        const feedContext = await getAuthorizedDealerFeedContext(req, decodeURIComponent(adminDealerFeedAuditMatch[1] || ''));
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        const audit = await listDealerFeedAuditEntries(feedContext.feed.id, Number(req.query?.limit || 20));
+        return res.status(200).json({
+          feed: serializeDealerFeed(feedContext.feed.id, feedContext.feed),
+          audit,
+        });
+      }
+
+      const adminDealerFeedSyncMatch = path.match(/^\/admin\/dealer-feeds\/([^/]+)\/sync$/i);
+      if (req.method === 'POST' && adminDealerFeedSyncMatch) {
+        const feedContext = await getAuthorizedDealerFeedContext(req, decodeURIComponent(adminDealerFeedSyncMatch[1] || ''));
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        try {
+          const resolved = await resolveDealerFeedSource({
+            sourceName: req.body?.sourceName || feedContext.feed.sourceName,
+            sourceType: req.body?.sourceType || feedContext.feed.sourceType,
+            rawInput: Object.prototype.hasOwnProperty.call(req.body || {}, 'rawInput') ? req.body.rawInput : feedContext.feed.rawInput,
+            feedUrl: Object.prototype.hasOwnProperty.call(req.body || {}, 'feedUrl') ? req.body.feedUrl : (feedContext.feed.feedUrl || feedContext.feed.apiEndpoint),
+            fieldMapping: req.body?.fieldMapping || feedContext.feed.fieldMapping,
+          });
+
+          const result = await ingestDealerFeedItems({
+            actorUid: feedContext.actorUid,
+            actorRole: feedContext.actorRole,
+            sellerUid: normalizeNonEmptyString(feedContext.feed.sellerUid),
+            sourceName: normalizeNonEmptyString(feedContext.feed.sourceName, 'dealer_feed'),
+            feedId: feedContext.feed.id,
+            feed: feedContext.feed,
+            dryRun: Boolean(req.body?.dryRun),
+            items: resolved.items,
+            fullSync: req.body?.fullSync !== false,
+            persistLog: true,
+            syncContext: {
+              trigger: 'manual-sync',
+              requestedBy: feedContext.actorUid,
+            },
+          });
+
+          const refreshedFeedSnap = await feedContext.feedRef.get();
+          return res.status(200).json({
+            feed: serializeDealerFeed(refreshedFeedSnap.id, refreshedFeedSnap.data() || {}),
+            detectedType: resolved.detectedType,
+            result,
+          });
+        } catch (error) {
+          return res.status(400).json({
+            error: error instanceof Error ? error.message : 'Unable to sync this dealer feed.',
+          });
+        }
+      }
+
+      const adminDealerFeedDetailMatch = path.match(/^\/admin\/dealer-feeds\/([^/]+)$/i);
+      const adminDealerFeedDetailId = adminDealerFeedDetailMatch ? decodeURIComponent(adminDealerFeedDetailMatch[1] || '') : '';
+      if (adminDealerFeedDetailMatch && !['ingest', 'resolve', 'register', 'logs'].includes(adminDealerFeedDetailId.toLowerCase())) {
+        const feedContext = await getAuthorizedDealerFeedContext(req, adminDealerFeedDetailId);
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        if (req.method === 'GET') {
+          const stats = await getDealerFeedStats(feedContext.feed.id);
+          return res.status(200).json({
+            feed: {
+              ...serializeDealerFeed(feedContext.feed.id, feedContext.feed, {
+                includeSecrets: ['1', 'true', 'yes'].includes(String(req.query?.includeSecrets || '').trim().toLowerCase()) && feedContext.actorCanAdminister,
+              }),
+              ...stats,
+            },
+          });
+        }
+
+        if (req.method === 'PATCH') {
+          const nextSellerUid = normalizeNonEmptyString(req.body?.sellerUid || req.body?.dealerId, feedContext.feed.sellerUid);
+          if (!canAccessDealerFeedSellerUid(feedContext, nextSellerUid)) {
+            return res.status(403).json({ error: 'Forbidden' });
+          }
+
+          const writePayload = buildDealerFeedWritePayload(
+            {
+              ...req.body,
+              sellerUid: nextSellerUid,
+            },
+            feedContext.feed
+          );
+          const rotateCredentials = Boolean(req.body?.rotateCredentials);
+          const nextApiKey = rotateCredentials ? generateDealerFeedApiKey() : normalizeNonEmptyString(feedContext.feed.apiKey);
+          const nextWebhookSecret = rotateCredentials ? generateDealerWebhookSecret() : normalizeNonEmptyString(feedContext.feed.webhookSecret);
+
+          await feedContext.feedRef.set(
+            {
+              ...writePayload,
+              apiKey: nextApiKey,
+              apiKeyPreview: maskSecret(nextApiKey),
+              webhookSecret: nextWebhookSecret,
+              nextSyncAt: writePayload.status === 'active' && writePayload.nightlySyncEnabled
+                ? computeNextDealerFeedSyncAt(writePayload.syncFrequency)
+                : null,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          const refreshedFeedSnap = await feedContext.feedRef.get();
+          return res.status(200).json({
+            message: 'Dealer feed updated.',
+            feed: serializeDealerFeed(refreshedFeedSnap.id, refreshedFeedSnap.data() || {}, { includeSecrets: rotateCredentials }),
+          });
+        }
+
+        if (req.method === 'DELETE') {
+          await feedContext.feedRef.delete();
+          await getDb().collection('dealerFeedProfiles').doc(feedContext.feed.id).delete().catch(() => null);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (req.method === 'POST' && path === '/admin/dealer-feeds/ingest') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const feedId = normalizeNonEmptyString(req.body?.feedId);
+        let feed = null;
+        let sellerUid = normalizeNonEmptyString(req.body?.dealerId || req.body?.sellerUid, actor.ownerUid);
+
+        if (feedId) {
+          const feedContext = await getAuthorizedDealerFeedContext(req, feedId);
+          if (feedContext.error) {
+            return res.status(feedContext.status).json({ error: feedContext.error });
+          }
+          feed = feedContext.feed;
+          sellerUid = normalizeNonEmptyString(feed.sellerUid, sellerUid);
+        } else if (!canAccessDealerFeedSellerUid(actor, sellerUid)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
         if (items.length === 0) {
           return res.status(400).json({ error: 'items[] is required.' });
         }
@@ -4568,49 +5955,49 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'Maximum 1000 items per ingest request.' });
         }
 
-        if (actorIsDealer && !actorCanAdminister) {
-          const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-          if (explicitDealerId && explicitDealerId !== ownerUid && explicitDealerId !== actorUid) {
-            return res.status(403).json({ error: 'Dealers can only ingest to their own account scope.' });
-          }
-        }
-
         const result = await ingestDealerFeedItems({
-          actorUid,
-          actorRole,
+          actorUid: actor.actorUid,
+          actorRole: actor.actorRole,
           sellerUid,
-          sourceName,
-          dryRun,
+          sourceName: normalizeNonEmptyString(req.body?.sourceName || feed?.sourceName, 'dealer_feed'),
+          feedId,
+          feed,
+          dryRun: Boolean(req.body?.dryRun),
           items,
+          fullSync: req.body?.fullSync !== false && Boolean(feedId),
           persistLog: true,
+          syncContext: {
+            trigger: 'manual-ingest',
+            requestedBy: actor.actorUid,
+          },
         });
 
         return res.status(200).json(result);
       }
 
       if (req.method === 'POST' && path === '/admin/dealer-feeds/resolve') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
         }
 
-        const actorUid = decodedToken.uid;
-        const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-        const actorDoc = await getDb().collection('users').doc(actorUid).get();
-        const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
-        const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || canAdministrateAccount(actorRole);
-        const actorIsDealer = isDealerManagedRole(actorRole);
-
-        if (!actorCanAdminister && !actorIsDealer) {
-          return res.status(403).json({ error: 'Forbidden' });
+        let feed = null;
+        const feedId = normalizeNonEmptyString(req.body?.feedId);
+        if (feedId) {
+          const feedContext = await getAuthorizedDealerFeedContext(req, feedId);
+          if (feedContext.error) {
+            return res.status(feedContext.status).json({ error: feedContext.error });
+          }
+          feed = feedContext.feed;
         }
 
         try {
           const payload = await resolveDealerFeedSource({
-            sourceName: req.body?.sourceName,
-            sourceType: req.body?.sourceType,
-            rawInput: req.body?.rawInput,
-            feedUrl: req.body?.feedUrl,
+            sourceName: req.body?.sourceName || feed?.sourceName,
+            sourceType: req.body?.sourceType || feed?.sourceType,
+            rawInput: Object.prototype.hasOwnProperty.call(req.body || {}, 'rawInput') ? req.body.rawInput : feed?.rawInput,
+            feedUrl: Object.prototype.hasOwnProperty.call(req.body || {}, 'feedUrl') ? req.body.feedUrl : (feed?.feedUrl || feed?.apiEndpoint),
+            fieldMapping: req.body?.fieldMapping || feed?.fieldMapping,
           });
 
           return res.status(200).json(payload);
@@ -4619,6 +6006,160 @@ exports.apiProxy = onRequest(
             error: error instanceof Error ? error.message : 'Unable to resolve the dealer feed payload.',
           });
         }
+      }
+
+      if (req.method === 'POST' && path === '/dealer/ingest') {
+        const feedContext = await getDealerFeedContextFromApiKey(req);
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        const rawBodyText = getRawRequestBodyText(req);
+        const providedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+        const resolvedItems = providedItems.length > 0
+          ? providedItems
+          : parseDealerFeedPayload(
+            normalizeNonEmptyString(req.body?.rawInput, rawBodyText),
+            normalizeNonEmptyString(req.body?.sourceType, feedContext.feed.sourceType || 'auto'),
+            feedContext.feed.fieldMapping
+          ).items;
+
+        const result = await ingestDealerFeedItems({
+          actorUid: 'dealer-api',
+          actorRole: 'dealer_api',
+          sellerUid: normalizeNonEmptyString(feedContext.feed.sellerUid),
+          sourceName: normalizeNonEmptyString(feedContext.feed.sourceName, 'dealer_feed'),
+          feedId: feedContext.feed.id,
+          feed: feedContext.feed,
+          dryRun: Boolean(req.body?.dryRun),
+          items: resolvedItems,
+          fullSync: req.body?.fullSync !== false,
+          persistLog: true,
+          syncContext: {
+            trigger: 'dealer-api',
+          },
+        });
+
+        return res.status(200).json(result);
+      }
+
+      const dealerWebhookMatch = path.match(/^\/dealer\/webhook\/([^/]+)$/i);
+      if (req.method === 'POST' && dealerWebhookMatch) {
+        const feedId = decodeURIComponent(dealerWebhookMatch[1] || '');
+        const feedSnap = await getDb().collection('dealerFeeds').doc(feedId).get();
+        if (!feedSnap.exists) {
+          return res.status(404).json({ error: 'Dealer feed not found.' });
+        }
+
+        const feed = { id: feedSnap.id, ...feedSnap.data() };
+        const webhookCheck = verifyDealerWebhookRequest(feed, req);
+        if (!webhookCheck.ok) {
+          return res.status(webhookCheck.status).json({ error: webhookCheck.error });
+        }
+
+        try {
+          const resolved = parseDealerFeedPayload(
+            normalizeNonEmptyString(req.body?.rawInput, getRawRequestBodyText(req)),
+            normalizeNonEmptyString(feed.sourceType, 'auto'),
+            feed.fieldMapping
+          );
+          const result = await ingestDealerFeedItems({
+            actorUid: 'dealer-webhook',
+            actorRole: 'dealer_api',
+            sellerUid: normalizeNonEmptyString(feed.sellerUid),
+            sourceName: normalizeNonEmptyString(feed.sourceName, 'dealer_feed'),
+            feedId: feed.id,
+            feed,
+            dryRun: false,
+            items: resolved.items,
+            fullSync: req.body?.fullSync !== false,
+            persistLog: true,
+            syncContext: {
+              trigger: 'webhook',
+              detectedType: resolved.detectedType,
+            },
+          });
+
+          return res.status(200).json(result);
+        } catch (error) {
+          return res.status(400).json({
+            error: error instanceof Error ? error.message : 'Unable to process dealer webhook payload.',
+          });
+        }
+      }
+
+      const dealerFeedStatusMatch = path.match(/^\/dealer\/feed\/([^/]+)$/i);
+      if (req.method === 'GET' && dealerFeedStatusMatch) {
+        const feedContext = await getAuthorizedDealerFeedContext(req, decodeURIComponent(dealerFeedStatusMatch[1] || ''));
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        const stats = await getDealerFeedStats(feedContext.feed.id);
+        return res.status(200).json({
+          feed: {
+            ...serializeDealerFeed(feedContext.feed.id, feedContext.feed, {
+              includeSecrets: feedContext.actorCanAdminister && ['1', 'true', 'yes'].includes(String(req.query?.includeSecrets || '').trim().toLowerCase()),
+            }),
+            ...stats,
+          },
+        });
+      }
+
+      const dealerSyncMatch = path.match(/^\/dealer\/sync\/([^/]+)$/i);
+      if (req.method === 'POST' && dealerSyncMatch) {
+        const feedContext = await getAuthorizedDealerFeedContext(req, decodeURIComponent(dealerSyncMatch[1] || ''));
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        try {
+          const resolved = await resolveDealerFeedSource({
+            sourceName: feedContext.feed.sourceName,
+            sourceType: feedContext.feed.sourceType,
+            rawInput: feedContext.feed.rawInput,
+            feedUrl: feedContext.feed.feedUrl || feedContext.feed.apiEndpoint,
+            fieldMapping: feedContext.feed.fieldMapping,
+          });
+          const result = await ingestDealerFeedItems({
+            actorUid: feedContext.actorUid,
+            actorRole: feedContext.actorRole,
+            sellerUid: normalizeNonEmptyString(feedContext.feed.sellerUid),
+            sourceName: normalizeNonEmptyString(feedContext.feed.sourceName, 'dealer_feed'),
+            feedId: feedContext.feed.id,
+            feed: feedContext.feed,
+            dryRun: Boolean(req.body?.dryRun),
+            items: resolved.items,
+            fullSync: req.body?.fullSync !== false,
+            persistLog: true,
+            syncContext: {
+              trigger: 'dealer-sync-endpoint',
+              requestedBy: feedContext.actorUid,
+            },
+          });
+
+          return res.status(200).json({
+            detectedType: resolved.detectedType,
+            result,
+          });
+        } catch (error) {
+          return res.status(400).json({
+            error: error instanceof Error ? error.message : 'Unable to sync this dealer feed.',
+          });
+        }
+      }
+
+      const dealerAuditMatch = path.match(/^\/dealer\/audit\/([^/]+)$/i);
+      if (req.method === 'GET' && dealerAuditMatch) {
+        const feedContext = await getAuthorizedDealerFeedContext(req, decodeURIComponent(dealerAuditMatch[1] || ''));
+        if (feedContext.error) {
+          return res.status(feedContext.status).json({ error: feedContext.error });
+        }
+
+        const audit = await listDealerFeedAuditEntries(feedContext.feed.id, Number(req.query?.limit || 20));
+        return res.status(200).json({
+          audit,
+        });
       }
 
       if (req.method === 'POST' && path === '/translate') {

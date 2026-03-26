@@ -1,5 +1,5 @@
 import React from 'react';
-import { List } from 'react-window';
+import { List, type RowComponentProps } from 'react-window';
 import { Edit, Trash2, MapPin } from 'lucide-react';
 import { Listing } from '../../types';
 import { useLocale } from '../LocaleContext';
@@ -11,22 +11,22 @@ interface VirtualizedListingsTableProps {
   openNativeMap: (location: string) => void;
 }
 
-// Memoized row component to prevent unnecessary re-renders
-const ListingRow = React.memo(({ 
-  index, 
-  style, 
-  listings, 
-  onEdit, 
-  onDelete, 
-  openNativeMap 
-}: {
-  index: number;
-  style: React.CSSProperties;
+interface ListingRowData {
   listings: Listing[];
   onEdit: (listing: Listing) => void;
   onDelete: (id: string) => void;
   openNativeMap: (location: string) => void;
-}) => {
+}
+
+function ListingRow({
+  index,
+  style,
+  ariaAttributes,
+  listings,
+  onEdit,
+  onDelete,
+  openNativeMap,
+}: RowComponentProps<ListingRowData>) {
   const listing = listings[index];
   const { formatPrice } = useLocale();
   
@@ -36,6 +36,7 @@ const ListingRow = React.memo(({
 
   return (
     <div 
+      {...ariaAttributes}
       style={style}
       className="flex items-center hover:bg-surface/20 transition-colors border-b border-line px-6 py-4"
     >
@@ -108,9 +109,7 @@ const ListingRow = React.memo(({
       </div>
     </div>
   );
-});
-
-ListingRow.displayName = 'ListingRow';
+}
 
 export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> = React.memo(({
   listings,
@@ -121,18 +120,6 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
   const ROW_HEIGHT = 72; // Approximate height with padding
   const listHeight = Math.min(listings.length * ROW_HEIGHT, 600); // Max height of 600px
   
-  // Create a wrapper row renderer for react-window
-  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => (
-    <ListingRow 
-      index={index} 
-      style={style} 
-      listings={listings} 
-      onEdit={onEdit} 
-      onDelete={onDelete} 
-      openNativeMap={openNativeMap}
-    />
-  );
-
   return (
     <div className="border border-line rounded-sm overflow-hidden">
       {/* Header */}
@@ -151,14 +138,13 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
 
       {/* Virtualized rows */}
       {listings.length > 0 ? (
-        <List
-          height={listHeight}
-          itemCount={listings.length}
-          itemSize={ROW_HEIGHT}
-          width="100%"
-        >
-          {Row}
-        </List>
+        <List<ListingRowData>
+          rowComponent={ListingRow}
+          rowCount={listings.length}
+          rowHeight={ROW_HEIGHT}
+          rowProps={{ listings, onEdit, onDelete, openNativeMap }}
+          style={{ height: listHeight, width: '100%' }}
+        />
       ) : (
         <div className="px-6 py-12 text-center text-[10px] font-black uppercase tracking-widest text-muted">
           No listings match the current filters.

@@ -164,7 +164,7 @@ export function DealerOS() {
   }, [inquiries, selectedInquiryId]);
 
   const activeListings = useMemo(
-    () => listings.filter((listing) => String(listing.status || 'active').toLowerCase() !== 'sold'),
+    () => listings.filter((listing) => String(listing.status || 'active').toLowerCase() === 'active'),
     [listings]
   );
   const featuredListings = useMemo(
@@ -211,7 +211,7 @@ export function DealerOS() {
   const filteredListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     return listings.filter((listing) => {
-      if (inventoryFilter === 'live' && String(listing.status || 'active').toLowerCase() === 'sold') return false;
+      if (inventoryFilter === 'live' && String(listing.status || 'active').toLowerCase() !== 'active') return false;
       if (inventoryFilter === 'featured' && !listing.featured) return false;
       if (inventoryFilter === 'imported' && !isImportedListing(listing)) return false;
       if (inventoryFilter === 'sold' && String(listing.status || 'active').toLowerCase() !== 'sold') return false;

@@ -688,6 +688,26 @@ service cloud.firestore {
         allow update, delete: if isAdmin();
       }
 
+      match /dealerFeeds/{feedId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
+        allow create, update, delete: if false;
+      }
+
+      match /dealerListings/{dealerListingId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
+        allow create, update, delete: if false;
+      }
+
+      match /dealerAuditLogs/{logId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
+        allow create, update, delete: if false;
+      }
+
+      match /equipmentDuplicates/{duplicateId} {
+        allow read: if isAdmin();
+        allow create, update, delete: if false;
+      }
+
       match /dealers/{dealerId} {
         allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(dealerId));
         allow create, update: if isAdmin() && isValidDealer(request.resource.data);

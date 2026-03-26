@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -17,6 +18,15 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
+
+let sharedDealerApiProxy: ((req: express.Request, res: express.Response) => Promise<unknown> | unknown) | null = null;
+try {
+  const functionsModule = require(path.join(__dirname, 'functions', 'index.js')) as { apiProxy?: (req: express.Request, res: express.Response) => Promise<unknown> | unknown };
+  sharedDealerApiProxy = typeof functionsModule.apiProxy === 'function' ? functionsModule.apiProxy : null;
+} catch (error) {
+  console.warn('Unable to load Firebase Functions apiProxy for local dealer feed routes.', error);
+}
 
 // Initialize Firebase Admin
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
@@ -752,6 +762,16 @@ async function startServer() {
   // 5. Standard Middleware
   app.use(express.json());
   app.use(cookieParser());
+
+  if (sharedDealerApiProxy) {
+    app.all(/^\/api\/(admin\/dealer-feeds(?:\/.*)?|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js)$/i, async (req, res, next) => {
+      try {
+        await sharedDealerApiProxy?.(req, res);
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
 
   // 6. CSRF Protection
   /*
