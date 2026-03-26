@@ -135,7 +135,7 @@ async function resolveAuthAccessSnapshot(
   if (!accountAccessSource) {
     if (activeSubscriptionPlanId) {
       accountAccessSource = 'subscription';
-    } else if (current?.parentAccountUid && ['individual_seller', 'dealer', 'pro_dealer'].includes(resolvedRole)) {
+    } else if (current?.parentAccountUid && ['member', 'buyer'].includes(resolvedRole)) {
       accountAccessSource = 'managed_account';
     } else if (resolvedRole === 'member') {
       accountAccessSource = 'free_member';

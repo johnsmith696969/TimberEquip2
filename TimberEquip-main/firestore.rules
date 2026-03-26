@@ -127,16 +127,14 @@ service cloud.firestore {
       return hasSellerRole() &&
         getActiveSubscriptionPlanId() in ['individual_seller', 'dealer', 'fleet_dealer'] &&
         getAccountStatus() == 'active' &&
-        (
-          getAccountAccessSource() == 'subscription' ||
-          getSubscriptionStatus() in ['active', 'trialing', 'past_due']
-        );
+        getAccountAccessSource() == 'subscription' &&
+        (getSubscriptionStatus() == '' || getSubscriptionStatus() in ['active', 'trialing']);
     }
 
     function hasManualSellerAccess() {
       return hasSellerRole() &&
         getAccountStatus() == 'active' &&
-        getAccountAccessSource() in ['managed_account', 'admin_override'];
+        getAccountAccessSource() == 'admin_override';
     }
 
     function hasSellerPostingAccess() {
@@ -210,7 +208,7 @@ service cloud.firestore {
 
     function canManageRole(targetRole) {
           return (isAdmin() && normalizeUserRole(targetRole) in ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member', 'buyer']) ||
-            (isDealer() && normalizeUserRole(targetRole) in ['dealer', 'pro_dealer', 'member', 'buyer']);
+            (isDealer() && normalizeUserRole(targetRole) in ['member', 'buyer']);
     }
 
     function isValidEmail(email) {

@@ -56,7 +56,7 @@ export function getAssignableUserRoleOptions(actorRole?: UserRole | string | nul
   }
 
   if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer' || normalizedActorRole === 'dealer_manager' || normalizedActorRole === 'dealer_staff') {
-    return EDITABLE_USER_ROLE_OPTIONS.filter((option) => ['dealer', 'pro_dealer', 'member', 'buyer'].includes(option.value));
+    return EDITABLE_USER_ROLE_OPTIONS.filter((option) => ['member', 'buyer'].includes(option.value));
   }
 
   return [];

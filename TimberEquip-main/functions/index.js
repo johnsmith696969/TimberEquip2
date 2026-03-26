@@ -154,6 +154,18 @@ function normalizeAccountStatus(status) {
   return '';
 }
 
+function isSubscriptionExemptRole(role) {
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(normalizeUserRole(role));
+}
+
+function isSellerSubscriptionRole(role) {
+  return ['individual_seller', 'dealer', 'pro_dealer'].includes(normalizeUserRole(role));
+}
+
+function hasAdminOverrideSellerAccess(role, accessSource) {
+  return isSellerSubscriptionRole(role) && normalizeAccountAccessSource(accessSource) === 'admin_override';
+}
+
 function buildAccessClaims(existingClaims = {}, overrides = {}) {
   const nextClaims = {
     ...existingClaims,
@@ -237,7 +249,9 @@ function deriveManualAccountAccessSource(actorRole, requestedRole, existingSourc
   const normalizedRequestedRole = normalizeUserRole(requestedRole);
 
   if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer') {
-    return 'managed_account';
+    return normalizedRequestedRole === 'member' || normalizedRequestedRole === 'buyer'
+      ? 'managed_account'
+      : 'admin_override';
   }
 
   if (normalizedRequestedRole === 'member') return 'free_member';
@@ -3941,7 +3955,9 @@ async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
 }
 
 function statusAllowsSellerAccess(status, cancelAtPeriodEnd, hasRemainingPeriod) {
-  return status === 'active' || status === 'trialing' || ((status === 'past_due' || cancelAtPeriodEnd) && hasRemainingPeriod);
+  return status === 'active'
+    || status === 'trialing'
+    || (status === 'canceled' && cancelAtPeriodEnd && hasRemainingPeriod);
 }
 
 function firestoreTimestampToIso(value) {
@@ -3983,23 +3999,40 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     skipFirestore: firestoreQuotaLimited,
   });
   const retainsSellerAccess = !!summary.planId;
-  const nextRole = retainsSellerAccess && summary.planId ? getSellerRoleForPlan(summary.planId) : 'member';
-  const nextAccessSource = retainsSellerAccess ? 'subscription' : (existingAccessSource === 'managed_account' ? 'managed_account' : 'free_member');
+  const retainsAdminOverrideSellerAccess = hasAdminOverrideSellerAccess(existingRole, existingAccessSource);
+  const normalizedIncomingSubscriptionStatus = normalizeStripeSubscriptionStatus(subscriptionStatus);
+  const effectiveSubscriptionStatus = retainsSellerAccess
+    ? summary.subscriptionStatus
+    : normalizedIncomingSubscriptionStatus;
+  const nextRole = isSubscriptionExemptRole(existingRole)
+    ? existingRole
+    : retainsAdminOverrideSellerAccess
+      ? existingRole
+      : retainsSellerAccess && summary.planId
+        ? getSellerRoleForPlan(summary.planId)
+        : 'member';
+  const nextAccessSource = isSubscriptionExemptRole(existingRole)
+    ? normalizeAccountAccessSource(existingAccessSource) || 'admin_override'
+    : retainsAdminOverrideSellerAccess
+      ? 'admin_override'
+      : retainsSellerAccess
+        ? 'subscription'
+        : 'free_member';
 
   const updatePayload = {
     activeSubscriptionPlanId: summary.planId,
-    subscriptionStatus: summary.subscriptionStatus,
+    subscriptionStatus: effectiveSubscriptionStatus,
     listingCap: summary.listingCap,
     managedAccountCap: summary.managedAccountCap,
     currentSubscriptionId: summary.currentSubscriptionId,
     currentPeriodEnd: summary.currentPeriodEndIso,
-    accountStatus: (retainsSellerAccess || nextAccessSource === 'free_member' || nextAccessSource === 'managed_account') ? 'active' : 'pending',
+    accountStatus: nextAccessSource === 'pending_checkout' ? 'pending' : 'active',
     accountAccessSource: nextAccessSource,
     onboardingIntent: normalizedPlanId,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 
-  if (!['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)) {
+  if (!isSubscriptionExemptRole(existingRole)) {
     updatePayload.role = nextRole;
   }
 
@@ -4009,20 +4042,89 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
   if (authUserRecord) {
     const existingClaims = authUserRecord.customClaims || {};
     const nextClaims = buildAccessClaims(existingClaims, {
-      role: ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)
+      role: isSubscriptionExemptRole(existingRole)
         ? normalizeUserRole(String(existingClaims.role || existingRole || 'buyer'))
         : nextRole,
       subscriptionPlanId: summary.planId,
       listingCap: summary.listingCap,
       managedAccountCap: summary.managedAccountCap,
-      subscriptionStatus: summary.subscriptionStatus,
+      subscriptionStatus: effectiveSubscriptionStatus,
       accountStatus: updatePayload.accountStatus,
-      accountAccessSource: ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(existingRole)
+      accountAccessSource: isSubscriptionExemptRole(existingRole)
         ? normalizeAccountAccessSource(existingClaims.accountAccessSource) || 'admin_override'
         : nextAccessSource,
     });
 
     await admin.auth().setCustomUserClaims(normalizedUserUid, nextClaims);
+  }
+
+  const shouldKeepListingsPublic = retainsSellerAccess || retainsAdminOverrideSellerAccess || canAdministrateAccount(existingRole);
+  try {
+    const listingSnapshots = await Promise.all([
+      getDb().collection('listings').where('sellerUid', '==', normalizedUserUid).get(),
+      getDb().collection('listings').where('sellerId', '==', normalizedUserUid).get(),
+    ]);
+    const listingMap = new Map();
+    listingSnapshots.forEach((snapshot) => {
+      snapshot.docs.forEach((docSnap) => {
+        listingMap.set(docSnap.id, docSnap);
+      });
+    });
+
+    if (listingMap.size > 0) {
+      let batch = getDb().batch();
+      let batchOps = 0;
+      let updatedListings = 0;
+
+      for (const listingSnap of listingMap.values()) {
+        const listingData = listingSnap.data() || {};
+        const nextPaymentStatus = shouldKeepListingsPublic ? 'paid' : 'pending';
+        if (String(listingData.paymentStatus || '').trim().toLowerCase() === nextPaymentStatus) {
+          continue;
+        }
+
+        batch.set(
+          listingSnap.ref,
+          {
+            paymentStatus: nextPaymentStatus,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        batchOps += 1;
+        updatedListings += 1;
+
+        if (batchOps >= 400) {
+          await batch.commit();
+          batch = getDb().batch();
+          batchOps = 0;
+        }
+      }
+
+      if (batchOps > 0) {
+        await batch.commit();
+      }
+
+      if (updatedListings > 0) {
+        await getDb().collection('billingAuditLogs').add({
+          action: shouldKeepListingsPublic ? 'ACCOUNT_LISTINGS_RESTORED' : 'ACCOUNT_LISTINGS_HIDDEN',
+          userUid: normalizedUserUid,
+          listingId: null,
+          details: `${shouldKeepListingsPublic ? 'Restored' : 'Suppressed'} public visibility for ${updatedListings} listings after ${normalizedPlanId} subscription sync via ${source}.`,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  } catch (error) {
+    if (isFirestoreQuotaExceeded(error)) {
+      logger.warn('Skipping account listing visibility sync because Firestore quota is exhausted.', {
+        userUid: normalizedUserUid,
+        planId: normalizedPlanId,
+        shouldKeepListingsPublic,
+      });
+    } else {
+      throw error;
+    }
   }
 
   await getDb().collection('billingAuditLogs').add({
@@ -4922,7 +5024,7 @@ function canCreateManagedRole(parentRole, childRole) {
   const normalizedParentRole = normalizeUserRole(parentRole);
   const normalizedChildRole = normalizeUserRole(childRole);
   const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
-  const dealerManagedRoles = ['dealer', 'pro_dealer', 'member', 'buyer'];
+  const dealerManagedRoles = ['member', 'buyer'];
 
   if (normalizedParentRole === 'super_admin') return true;
   if (normalizedParentRole === 'admin' || normalizedParentRole === 'developer') return adminManagedRoles.includes(normalizedChildRole);

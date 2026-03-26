@@ -157,7 +157,7 @@ export const userService = {
 
   canCreateManagedRole(parentRole: UserRole, childRole: UserRole): boolean {
     const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
-    const dealerManagedRoles: UserRole[] = ['dealer', 'pro_dealer', 'member', 'buyer'];
+    const dealerManagedRoles: UserRole[] = ['member', 'buyer'];
 
     if (parentRole === 'super_admin') return true;
     if (parentRole === 'admin') return adminManagedRoles.includes(childRole);

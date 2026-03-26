@@ -3,7 +3,7 @@ import type { UserProfile } from '../types';
 const ADMIN_PUBLISHER_ROLES = new Set(['admin', 'super_admin', 'developer']);
 const SELLER_OVERRIDE_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer']);
 const DEALER_OS_ROLES = new Set(['dealer', 'pro_dealer']);
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
 
 function normalizeRole(role?: string | null): string {
   return String(role || '').trim().toLowerCase();
@@ -36,7 +36,7 @@ export function hasManagedSellerAccess(user: UserProfile | null | undefined): bo
     normalizedRole &&
     SELLER_OVERRIDE_ROLES.has(normalizedRole) &&
     user.accountStatus === 'active' &&
-    (accessSource === 'managed_account' || accessSource === 'admin_override')
+    accessSource === 'admin_override'
   );
 }
 
@@ -46,15 +46,14 @@ export function hasActiveSellerSubscription(user: UserProfile | null | undefined
   const normalizedPlanId = normalizeSubscriptionPlanId(user.activeSubscriptionPlanId);
   const normalizedStatus = normalizeSubscriptionStatus(user.subscriptionStatus);
   const accessSource = normalizeAccountAccessSource(user.accountAccessSource);
+  const hasAllowedBillingStatus = !normalizedStatus || ACTIVE_SUBSCRIPTION_STATUSES.has(normalizedStatus);
 
   return !!(
     normalizedPlanId &&
     ['individual_seller', 'dealer', 'fleet_dealer'].includes(normalizedPlanId) &&
     user.accountStatus === 'active' &&
-    (
-      accessSource === 'subscription' ||
-      ACTIVE_SUBSCRIPTION_STATUSES.has(normalizedStatus)
-    )
+    accessSource === 'subscription' &&
+    hasAllowedBillingStatus
   );
 }
 
