@@ -21,8 +21,20 @@ const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 
 let sharedDealerApiProxy: ((req: express.Request, res: express.Response) => Promise<unknown> | unknown) | null = null;
+let sharedPublicPagesProxy: ((req: express.Request, res: express.Response, next?: express.NextFunction) => Promise<unknown> | unknown) | null = null;
 try {
-  const functionsModule = require(path.join(__dirname, 'functions', 'index.js')) as { apiProxy?: (req: express.Request, res: express.Response) => Promise<unknown> | unknown };
+  const publicPagesModule = require(path.join(__dirname, 'functions', 'public-pages.js')) as {
+    handlePublicPagesRequest?: (req: express.Request, res: express.Response, next?: express.NextFunction) => Promise<unknown> | unknown;
+  };
+  sharedPublicPagesProxy = typeof publicPagesModule.handlePublicPagesRequest === 'function' ? publicPagesModule.handlePublicPagesRequest : null;
+} catch (error) {
+  console.warn('Unable to load hybrid public pages handler for local routes.', error);
+}
+
+try {
+  const functionsModule = require(path.join(__dirname, 'functions', 'index.js')) as {
+    apiProxy?: (req: express.Request, res: express.Response) => Promise<unknown> | unknown;
+  };
   sharedDealerApiProxy = typeof functionsModule.apiProxy === 'function' ? functionsModule.apiProxy : null;
 } catch (error) {
   console.warn('Unable to load Firebase Functions apiProxy for local dealer feed routes.', error);
@@ -771,6 +783,36 @@ async function startServer() {
         next(error);
       }
     });
+  }
+
+  if (sharedPublicPagesProxy) {
+    app.get(
+      [
+        '/sitemap.xml',
+        '/logging-equipment-for-sale',
+        '/forestry-equipment-for-sale',
+        '/categories',
+        '/categories/:categorySlug',
+        '/manufacturers',
+        '/manufacturers/:manufacturerSlug',
+        '/manufacturers/:manufacturerSlug/:categorySaleSlug',
+        '/states',
+        '/states/:stateSlug/logging-equipment-for-sale',
+        '/states/:stateSlug/forestry-equipment-for-sale',
+        '/states/:stateSlug/:categorySaleSlug',
+        '/dealers',
+        '/dealers/:id',
+        '/dealers/:id/inventory',
+        '/dealers/:id/:categorySlug',
+      ],
+      async (req, res, next) => {
+        try {
+          await sharedPublicPagesProxy?.(req, res, next);
+        } catch (error) {
+          next(error);
+        }
+      }
+    );
   }
 
   // 6. CSRF Protection

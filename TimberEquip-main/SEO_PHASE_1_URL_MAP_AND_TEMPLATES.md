@@ -13,11 +13,22 @@ Phase 1 covers:
 - metadata model
 - minimal data contracts
 
-This phase does not turn indexing on.
+This phase originally did not turn indexing on.
+
+Update:
+
+The original Phase 1 plan assumed a non-indexed staging posture.
+
+The current implementation has moved beyond that assumption:
+
+- hybrid server-rendered public SEO routes now exist
+- a dynamic sitemap route now exists
+- public indexing can now be turned on safely for supported route families
+- the React app still remains the deeper UX layer for search, auth, admin, and dealer operations
 
 ## Phase 1 Goal
 
-Build the core public SEO page system while the site remains `noindex`.
+Build the core public SEO page system with a safe path from `noindex` staging to supported public indexing.
 
 The outcome of Phase 1 should be a working architecture for:
 
@@ -27,13 +38,59 @@ The outcome of Phase 1 should be a working architecture for:
 - dealer pages
 - improved listing pages
 
+## Current Architecture Status
+
+The public SEO engine is now a hybrid system:
+
+- server-rendered public routes for primary commercial intents
+- SPA search and application flows for deep UX and account workflows
+- shared slug logic for route families already implemented in code
+- a dynamic `sitemap.xml` route for the current public families
+
+Implemented route families:
+
+- core market hubs
+- machine-type category hubs
+- manufacturer hubs
+- state hubs
+- state plus category hubs
+- manufacturer plus category hubs
+- dealer directory and dealer storefront hubs
+
+Still missing or still needing policy work:
+
+- explicit top-level category cluster pages if we want both category-group and machine-type layers
+- an indexability policy for thin individual seller pages
+
+## Entity Coverage
+
+Current coverage by entity:
+
+- category groups: partial, because the current `/categories/{slug}` family is primarily acting as the machine-type or subcategory layer
+- subcategories or machine types: yes, this is the strongest current category family
+- manufacturers: yes
+- models: yes, through manufacturer-scoped model route families
+- dealers: yes
+- individual sellers: partially, via transitional storefront pages, but they should not all be treated as indexable by default
+
+Current model route family:
+
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
+
+Recommended individual seller policy:
+
+- keep listing pages indexable
+- allow seller/storefront pages to be indexable only when the seller has enough inventory, profile depth, and contact trust signals
+- otherwise keep the seller page as a usable UX route without making it a priority ranking surface
+
 ## Implementation Rules
 
 Phase 1 should ship real route components, not placeholder URL reservations.
 
 Each route family introduced in this phase should:
 
-- resolve inside the current SPA router
+- resolve through the current public routing layer, whether that is the hybrid public handler or the SPA router
 - render a unique H1 and metadata set tied to the route intent
 - render live inventory or live entity data from the current application data layer
 - reuse shared slug and canonical utilities instead of duplicating normalization logic per page
@@ -44,7 +101,7 @@ Search remains the broad UX surface. SEO routes become the clean, stable landing
 
 ## Routing Behavior Requirements
 
-- clean SEO routes should be directly navigable with React Router
+- clean SEO routes should be directly navigable through Hosting rewrites and the public routing layer
 - each clean SEO route should have a deterministic canonical path
 - unsupported or thin query combinations should continue to resolve on `/search`
 - `/seller/:id` must remain reachable during rollout
@@ -52,7 +109,7 @@ Search remains the broad UX surface. SEO routes become the clean, stable landing
 
 ## Current Route State
 
-Current public routes are centered on:
+Current public routes are now centered on:
 
 - `/`
 - `/search`
@@ -60,11 +117,14 @@ Current public routes are centered on:
 - `/seller/:id`
 - `/blog`
 - `/categories`
+- `/manufacturers`
+- `/states`
+- `/dealers`
 - static marketing/legal pages
 
 Current problem:
 
-- these routes do not map cleanly to the highest-value commercial query families
+- the route map now covers the strongest marketplace entities, but individual seller indexing rules and future category-cluster/editorial layers still need to be formalized
 
 ## Phase 1 Route Families
 
@@ -123,6 +183,24 @@ Examples:
 
 - `/manufacturers/tigercat/skidders-for-sale`
 - `/manufacturers/john-deere/harvesters-for-sale`
+
+### Manufacturer plus model hubs
+
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
+
+Examples:
+
+- `/manufacturers/tigercat/models/h855`
+- `/manufacturers/john-deere/models/1270g`
+
+### Manufacturer plus model plus category hubs
+
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
+
+Examples:
+
+- `/manufacturers/tigercat/models/h855/harvesters-for-sale`
+- `/manufacturers/john-deere/models/1270g/harvesters-for-sale`
 
 ### Dealer hubs
 
@@ -188,6 +266,7 @@ Examples:
 
 - `/search?category=Skidders` -> `/categories/skidders`
 - `/search?manufacturer=Tigercat` -> `/manufacturers/tigercat`
+- `/search?manufacturer=Tigercat&model=H855` -> `/manufacturers/tigercat/models/h855`
 - `/search?state=Oregon` -> `/states/oregon/logging-equipment-for-sale`
 - `/search?state=Oregon&category=Skidders` -> `/states/oregon/skidders-for-sale`
 - `/search?manufacturer=Tigercat&category=Skidders` -> `/manufacturers/tigercat/skidders-for-sale`
@@ -473,6 +552,56 @@ Description pattern:
 
 - include year, make, model, category, condition, location, and seller/dealer reference when possible
 
+### 9. Model Template
+
+Recommended for the next phase after the current hybrid foundation.
+
+Used for:
+
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
+
+Sections:
+
+- model hero
+- manufacturer and category context
+- live inventory archive
+- dealer links carrying the model
+- related models
+- FAQ
+
+Metadata requirements:
+
+- title pattern: `{Manufacturer} {Model} For Sale | Forestry Equipment Sales`
+- CollectionPage + ItemList schema
+
+Minimum data contract:
+
+- manufacturer
+- model
+- optional category
+- live inventory collection
+- dealer list
+- related models
+- FAQ array
+
+### 10. Individual Seller Indexing Policy
+
+Recommended policy for `/seller/:id` or future individual storefront routes.
+
+Indexable only when:
+
+- inventory count is strong enough to support a real archive page
+- seller profile has usable branding or trust information
+- contact and location data are present
+- thin or duplicate pages are not being created at scale
+
+Otherwise:
+
+- keep the route usable for buyers
+- keep listing detail pages as the primary SEO surface
+- avoid pushing thin seller pages into the sitemap or canonical graph
+
 ## Shared Modules Needed Across Templates
 
 - metadata generator
@@ -509,7 +638,8 @@ Phase 1 is complete when:
 - templates are specified for all major SEO page types
 - data contracts are documented
 - legacy route handling is defined for `/seller/:id` and any transitional public article URLs
-- noindex remains active during implementation
+- the project can still build successfully with `noindex` mode enabled when needed
+- the public architecture can also run in indexable mode for the supported hybrid route families
 
 The implementation pass should additionally prove the following:
 
@@ -519,10 +649,13 @@ The implementation pass should additionally prove the following:
 - `/states/{state-slug}/logging-equipment-for-sale` and `/states/{state-slug}/forestry-equipment-for-sale` render state-filtered inventory with state-specific metadata
 - `/states/{state-slug}/{category-phrase}-for-sale` renders the combined state-plus-category slice
 - `/manufacturers/{manufacturer-slug}/{category-phrase}-for-sale` renders the combined manufacturer-plus-category slice
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}` renders the combined manufacturer-plus-model slice
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale` renders the exact manufacturer-plus-model-plus-category slice
 - `/dealers` renders a crawlable dealer directory surface
 - dealer detail routes have a canonical preference for the clean dealer/storefront path rather than legacy `/seller/:id` when a dealer slug exists
 - route templates reuse shared slug, breadcrumb, and metadata helpers instead of copying route-specific implementations
 - the project still builds successfully with `noindex` mode enabled
+- the project also builds successfully in indexable mode with sitemap output for the supported hybrid route families
 
 ## Validation Checklist
 

@@ -23,6 +23,8 @@ const LoggingHubPage = lazy(() => import('./pages/SeoLandingPages').then((module
 const ForestryHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ForestryHubPage })));
 const CategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.CategoryLandingPage })));
 const ManufacturerLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerLandingPage })));
+const ManufacturerModelLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelLandingPage })));
+const ManufacturerModelCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelCategoryLandingPage })));
 const StateMarketLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateMarketLandingPage })));
 const StateCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateCategoryLandingPage })));
 const ManufacturerCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerCategoryLandingPage })));
@@ -77,6 +79,8 @@ function App() {
                     <Route path="/compare" element={<Compare />} />
                     <Route path="/categories" element={<Categories />} />
                     <Route path="/categories/:categorySlug" element={<CategoryLandingPage />} />
+                    <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug/:categorySaleSlug" element={<ManufacturerModelCategoryLandingPage />} />
+                    <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug" element={<ManufacturerModelLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/:categorySaleSlug" element={<ManufacturerCategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug" element={<ManufacturerLandingPage />} />
                     <Route path="/states/:stateSlug/logging-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="logging" />} />

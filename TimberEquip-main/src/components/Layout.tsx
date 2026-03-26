@@ -14,13 +14,14 @@ import { useAuth } from './AuthContext';
 import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { userService } from '../services/userService';
-import forestryEquipmentSalesLogo from '../../logos/Forestry_Equipment_Sales_Light_Mode_Logo.svg';
-import forestryEquipmentSalesDuskLogo from '../../logos/Forestry_Equipment_Sales_Dusk_Mode_Logo.svg';
-import logoTransparent from '../../logos/Logo-Transparent.png';
 import { canAccessDealerOs, getListEquipmentPath } from '../utils/sellerAccess';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
 const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
+const BRAND_ASSET_VERSION = '20260326b';
+const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=${BRAND_ASSET_VERSION}`;
+const DARK_HEADER_LOGO = `/TimberEquip-Brand-Logo-Dusk.svg?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO = `/Logo-Transparent.png?v=${BRAND_ASSET_VERSION}`;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -41,7 +42,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, currency, setCurrency, t } = useLocale();
   const { user, logout, isAuthenticated } = useAuth();
-  const headerLogo = theme === 'dark' ? forestryEquipmentSalesDuskLogo : forestryEquipmentSalesLogo;
+  const headerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
+  const headerLogoAlt = theme === 'dark' ? 'TimberEquip' : 'Forestry Equipment Sales';
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -287,7 +289,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Link to="/" className="flex items-center">
           <img
             src={headerLogo}
-            alt="Forestry Equipment Sales"
+            alt={headerLogoAlt}
             className="h-14 md:h-16 w-auto object-contain"
           />
         </Link>
@@ -448,8 +450,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="lg:col-span-2 flex flex-col space-y-8">
               <Link to="/" className="flex items-center">
                 <img
-                  src={logoTransparent}
-                  alt="Forestry Equipment Sales"
+                  src={FOOTER_LOGO}
+                  alt="TimberEquip"
                   className="h-12 w-12 object-contain"
                 />
               </Link>

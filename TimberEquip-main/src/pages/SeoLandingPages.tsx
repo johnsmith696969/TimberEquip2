@@ -12,6 +12,8 @@ import {
   buildCategoryPath,
   buildDealerPath,
   buildManufacturerCategoryPath,
+  buildManufacturerModelCategoryPath,
+  buildManufacturerModelPath,
   buildManufacturerPath,
   buildStateCategoryPath,
   buildStateMarketPath,
@@ -50,7 +52,19 @@ function buildCountLinks(values: string[], pathBuilder: (label: string) => strin
     .map(([label, count]) => ({ label, count, path: pathBuilder(label) }));
 }
 
-function buildCollectionJsonLd(name: string, description: string, canonicalPath: string, listings: Listing[]) {
+function buildBreadcrumbJsonLd(breadcrumbs: BreadcrumbItem[]) {
+  return {
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbs.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.label,
+      item: `https://timberequip.com${item.path || '/'}`,
+    })),
+  };
+}
+
+function buildCollectionJsonLd(name: string, description: string, canonicalPath: string, listings: Listing[], breadcrumbs: BreadcrumbItem[]) {
   return {
     '@context': 'https://schema.org',
     '@graph': [
@@ -60,6 +74,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
         description,
         url: `https://timberequip.com${canonicalPath}`,
       },
+      buildBreadcrumbJsonLd(breadcrumbs),
       {
         '@type': 'ItemList',
         name: `${name} inventory`,
@@ -74,6 +89,8 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
               '@type': 'Brand',
               name: getListingManufacturer(listing) || 'Forestry Equipment Sales',
             },
+            category: getListingCategoryLabel(listing) || 'Equipment',
+            model: listing.model || undefined,
             offers: {
               '@type': 'Offer',
               priceCurrency: listing.currency || 'USD',
@@ -158,6 +175,7 @@ type SeoTemplateProps = {
   listings: Listing[];
   topCategories?: CountLink[];
   topManufacturers?: CountLink[];
+  topModels?: CountLink[];
   topStates?: CountLink[];
   featuredDealers?: SellerSummary[];
   searchPath?: string;
@@ -174,12 +192,16 @@ function SeoInventoryTemplate({
   listings,
   topCategories = [],
   topManufacturers = [],
+  topModels = [],
   topStates = [],
   featuredDealers = [],
   searchPath,
   emptyMessage,
 }: SeoTemplateProps) {
-  const jsonLd = useMemo(() => buildCollectionJsonLd(title, description, canonicalPath, listings), [title, description, canonicalPath, listings]);
+  const jsonLd = useMemo(
+    () => buildCollectionJsonLd(title, description, canonicalPath, listings, breadcrumbs),
+    [title, description, canonicalPath, listings, breadcrumbs]
+  );
   const featuredListings = listings.slice(0, 12);
 
   return (
@@ -227,6 +249,7 @@ function SeoInventoryTemplate({
 
         {topCategories.length > 0 && <SectionLinks title="Top Categories" links={topCategories} />}
         {topManufacturers.length > 0 && <SectionLinks title="Top Manufacturers" links={topManufacturers} />}
+        {topModels.length > 0 && <SectionLinks title="Top Models" links={topModels} />}
         {topStates.length > 0 && <SectionLinks title="Top States" links={topStates} />}
         {featuredDealers.length > 0 && <DealerGrid dealers={featuredDealers} />}
 
@@ -435,9 +458,50 @@ export function ManufacturerLandingPage() {
       ]}
       listings={filteredListings}
       topCategories={buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerCategoryPath(resolvedManufacturer, category))}
+      topModels={buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelPath(resolvedManufacturer, model))}
       topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'))}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}`}
       emptyMessage={`No active ${resolvedManufacturer} listings are available right now.`}
+    />
+  );
+}
+
+export function ManufacturerModelLandingPage() {
+  const { manufacturerSlug = '', modelSlug = '' } = useParams<{ manufacturerSlug: string; modelSlug: string }>();
+  const { listings, loading } = useSeoListings();
+
+  if (loading) return <LoadingState />;
+
+  const filteredListings = listings.filter(
+    (listing) =>
+      normalizeSeoSlug(getListingManufacturer(listing)) === manufacturerSlug &&
+      normalizeSeoSlug(String(listing.model || '')) === modelSlug
+  );
+  const resolvedManufacturer =
+    filteredListings[0] ? getListingManufacturer(filteredListings[0]) : (
+      listings.map(getListingManufacturer).find((manufacturer) => normalizeSeoSlug(manufacturer) === manufacturerSlug) || titleCaseSlug(manufacturerSlug)
+    );
+  const resolvedModel =
+    filteredListings[0]?.model || listings.map((listing) => String(listing.model || '').trim()).find((model) => normalizeSeoSlug(model) === modelSlug) || titleCaseSlug(modelSlug);
+
+  return (
+    <SeoInventoryTemplate
+      eyebrow="Manufacturer + Model Hub"
+      title={`${resolvedManufacturer} ${resolvedModel} For Sale`}
+      description={`Browse ${resolvedManufacturer} ${resolvedModel} listings with live inventory, related machine-type routes, and state-market discovery links.`}
+      canonicalPath={buildManufacturerModelPath(resolvedManufacturer, resolvedModel)}
+      intro={`This model route turns a high-intent make-and-model search into a stable landing page with current marketplace inventory, related category paths, and regional discovery links.`}
+      breadcrumbs={[
+        { label: 'Home', path: '/' },
+        { label: 'Manufacturers', path: '/manufacturers' },
+        { label: resolvedManufacturer, path: buildManufacturerPath(resolvedManufacturer) },
+        { label: resolvedModel, path: buildManufacturerModelPath(resolvedManufacturer, resolvedModel) },
+      ]}
+      listings={filteredListings}
+      topCategories={buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, category))}
+      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'))}
+      searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&model=${encodeURIComponent(resolvedModel)}`}
+      emptyMessage={`No active ${resolvedManufacturer} ${resolvedModel} inventory is available right now.`}
     />
   );
 }
@@ -545,9 +609,53 @@ export function ManufacturerCategoryLandingPage() {
         { label: resolvedCategory, path: buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory) },
       ]}
       listings={filteredListings}
+      topModels={buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelCategoryPath(resolvedManufacturer, model, resolvedCategory))}
       topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory))}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} inventory is available right now.`}
+    />
+  );
+}
+
+export function ManufacturerModelCategoryLandingPage() {
+  const { manufacturerSlug = '', modelSlug = '', categorySaleSlug = '' } = useParams<{ manufacturerSlug: string; modelSlug: string; categorySaleSlug: string }>();
+  const { listings, loading } = useSeoListings();
+
+  if (loading) return <LoadingState />;
+
+  const categorySlug = parseForSaleSlug(categorySaleSlug);
+  const filteredListings = listings.filter(
+    (listing) =>
+      normalizeSeoSlug(getListingManufacturer(listing)) === manufacturerSlug &&
+      normalizeSeoSlug(String(listing.model || '')) === modelSlug &&
+      normalizeSeoSlug(getListingCategoryLabel(listing)) === categorySlug
+  );
+  const resolvedManufacturer =
+    filteredListings[0] ? getListingManufacturer(filteredListings[0]) : (
+      listings.map(getListingManufacturer).find((manufacturer) => normalizeSeoSlug(manufacturer) === manufacturerSlug) || titleCaseSlug(manufacturerSlug)
+    );
+  const resolvedModel =
+    filteredListings[0]?.model || listings.map((listing) => String(listing.model || '').trim()).find((model) => normalizeSeoSlug(model) === modelSlug) || titleCaseSlug(modelSlug);
+  const resolvedCategory = filteredListings[0] ? getListingCategoryLabel(filteredListings[0]) : titleCaseSlug(categorySlug);
+
+  return (
+    <SeoInventoryTemplate
+      eyebrow="Manufacturer + Model + Category Hub"
+      title={`${resolvedManufacturer} ${resolvedModel} ${resolvedCategory} For Sale`}
+      description={`Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} inventory with live listings, dealer storefront links, and related regional routes.`}
+      canonicalPath={buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, resolvedCategory)}
+      intro={`This route captures the tightest commercial search intent in the marketplace architecture by combining make, model, and machine family on a single clean canonical URL.`}
+      breadcrumbs={[
+        { label: 'Home', path: '/' },
+        { label: 'Manufacturers', path: '/manufacturers' },
+        { label: resolvedManufacturer, path: buildManufacturerPath(resolvedManufacturer) },
+        { label: resolvedModel, path: buildManufacturerModelPath(resolvedManufacturer, resolvedModel) },
+        { label: resolvedCategory, path: buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, resolvedCategory) },
+      ]}
+      listings={filteredListings}
+      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory))}
+      searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&model=${encodeURIComponent(resolvedModel)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
+      emptyMessage={`No active ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} inventory is available right now.`}
     />
   );
 }

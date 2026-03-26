@@ -6,15 +6,15 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
-    "build:noindex": "ALLOW_INDEXING=false npm run prepare:seo-mode && VITE_ALLOW_INDEXING=false vite build",
-    "build:indexable": "ALLOW_INDEXING=true npm run prepare:seo-mode && VITE_ALLOW_INDEXING=true vite build",
+    "build:noindex": "node scripts/run-seo-command.mjs noindex vite build",
+    "build:indexable": "node scripts/run-seo-command.mjs indexable vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "prepare:seo-mode": "node scripts/prepare-seo-mode.mjs",
-    "deploy:firebase": "npm run deploy:noindex",
-    "deploy:noindex": "ALLOW_INDEXING=false npm run prepare:seo-mode && VITE_ALLOW_INDEXING=false npm run build && npx firebase-tools deploy --only hosting",
-    "deploy:indexable": "ALLOW_INDEXING=true npm run prepare:seo-mode && VITE_ALLOW_INDEXING=true npm run build && npx firebase-tools deploy --only hosting",
+    "deploy:firebase": "npm run deploy:indexable",
+    "deploy:noindex": "node scripts/run-seo-command.mjs noindex \"npm run build && npx firebase-tools deploy --only hosting\"",
+    "deploy:indexable": "node scripts/run-seo-command.mjs indexable \"npm run build && npx firebase-tools deploy --only hosting\"",
     "hosting:serve": "npx firebase-tools emulators:start --only hosting"
   },
   "dependencies": {

@@ -5,7 +5,9 @@ interface SeoProps {
   description: string;
   canonicalPath?: string;
   robots?: string;
-  jsonLd?: Record<string, unknown>;
+  jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
+  ogType?: 'website' | 'article' | 'product';
+  imagePath?: string;
 }
 
 const BASE_URL = 'https://timberequip.com';
@@ -28,21 +30,35 @@ function setMetaTag(selector: { name?: string; property?: string }, content: str
   tag.setAttribute('content', content);
 }
 
-export function Seo({ title, description, canonicalPath, robots = DEFAULT_ROBOTS, jsonLd }: SeoProps) {
+export function Seo({
+  title,
+  description,
+  canonicalPath,
+  robots = DEFAULT_ROBOTS,
+  jsonLd,
+  ogType = 'website',
+  imagePath = '/android-chrome-512x512.png?v=20260326b',
+}: SeoProps) {
   useEffect(() => {
     document.title = title;
+
+    const canonicalHref = canonicalPath ? `${BASE_URL}${canonicalPath}` : BASE_URL;
+    const imageUrl = imagePath.startsWith('http') ? imagePath : `${BASE_URL}${imagePath}`;
 
     setMetaTag({ name: 'description' }, description);
     setMetaTag({ name: 'robots' }, robots);
     setMetaTag({ name: 'googlebot' }, robots);
     setMetaTag({ property: 'og:title' }, title);
     setMetaTag({ property: 'og:description' }, description);
-    setMetaTag({ property: 'og:type' }, 'website');
+    setMetaTag({ property: 'og:type' }, ogType);
+    setMetaTag({ property: 'og:url' }, canonicalHref);
+    setMetaTag({ property: 'og:site_name' }, 'TimberEquip');
+    setMetaTag({ property: 'og:image' }, imageUrl);
     setMetaTag({ name: 'twitter:card' }, 'summary_large_image');
     setMetaTag({ name: 'twitter:title' }, title);
     setMetaTag({ name: 'twitter:description' }, description);
+    setMetaTag({ name: 'twitter:image' }, imageUrl);
 
-    const canonicalHref = canonicalPath ? `${BASE_URL}${canonicalPath}` : BASE_URL;
     let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
     if (!canonical) {
       canonical = document.createElement('link');
@@ -70,7 +86,7 @@ export function Seo({ title, description, canonicalPath, robots = DEFAULT_ROBOTS
         currentScript.remove();
       }
     };
-  }, [title, description, canonicalPath, robots, jsonLd]);
+  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath]);
 
   return null;
 }

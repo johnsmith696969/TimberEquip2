@@ -75,7 +75,7 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="header">
         <p class="eyebrow">Forestry Equipment Sales Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/logos/Forestry_Equipment_Sales_Email_Logo_on_dark_background.png" alt="Forestry Equipment Sales" />
+          <img class="header-logo-img" src="https://timberequip.com/TimberEquip-Brand-Logo-Dusk-Email.png" alt="TimberEquip" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
         <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the Forestry Equipment Sales network.</p>

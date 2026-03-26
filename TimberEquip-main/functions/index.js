@@ -13,6 +13,7 @@ const Stripe = require('stripe');
 const { XMLParser } = require('fast-xml-parser');
 const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = require('node:crypto');
 const { templates } = require('./email-templates/index.js');
+const { handlePublicPagesRequest } = require('./public-pages.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
@@ -4539,6 +4540,16 @@ function buildTemplateTestPayload(templateKey) {
       return null;
   }
 }
+
+exports.publicPagesProxy = handlePublicPagesRequest;
+
+exports.publicPages = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,
+  },
+  async (req, res) => handlePublicPagesRequest(req, res)
+);
 
 exports.apiProxy = onRequest(
   {

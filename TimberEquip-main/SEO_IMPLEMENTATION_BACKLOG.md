@@ -4,14 +4,34 @@
 
 This file converts the launch SEO blueprint into an implementation backlog.
 
-It is intentionally designed for pre-launch execution while Forestry Equipment Sales remains in `noindex` mode.
+It now serves as the post-foundation backlog after the hybrid SEO layer was added.
+
+## Current State Snapshot
+
+The following foundation work is now in place:
+
+- hybrid public SEO routes for category or machine-type, manufacturer, state, combined routes, and dealer pages
+- manufacturer-scoped model and model-plus-category public SEO routes
+- dynamic sitemap generation
+- indexable and noindex build modes
+- Windows-safe SEO build and deploy scripts
+- public favicon and manifest cleanup
+- richer OG, canonical, and JSON-LD coverage for home, listing, dealer, and collection pages
+
+The highest-value gaps now are:
+
+- explicit individual seller indexing policy
+- schema validation and monitoring in production
+- paginated archives
+- stronger editorial modules, FAQs, and buying guides
+- sitemap splitting and launch governance at scale
 
 ## Operating Rules
 
-- Keep `noindex` on during all work in this backlog
-- Do not submit a sitemap to search engines yet
-- Do not switch default deploys to indexable yet
-- Build public SEO architecture offline before public indexing
+- Keep thin or incomplete route families out of the canonical graph until they meet quality thresholds
+- Keep the `noindex` build path working even if the supported public route families are now indexable
+- Do not push experimental route families into the sitemap until they have enough inventory depth and metadata quality
+- Treat listings and dealer pages as the strongest current public SEO surfaces while the next entity layers are built
 
 ## Delivery Structure
 
@@ -50,7 +70,7 @@ Acceptance criteria:
 
 Priority:
 
-- P0
+- Completed
 
 ### 1.2 Build SEO route inventory
 
@@ -80,7 +100,7 @@ Acceptance criteria:
 
 Priority:
 
-- P0
+- Completed for current route families
 
 ### 1.3 Create slug normalization utility
 
@@ -105,7 +125,7 @@ Acceptance criteria:
 
 Priority:
 
-- P0
+- Completed for the current category, manufacturer, state, and dealer route families
 
 ## Epic 2: Metadata and Canonical Layer
 
@@ -131,7 +151,7 @@ Acceptance criteria:
 
 Priority:
 
-- P0
+- Completed for the current public page families; future editorial and content templates still need to adopt the same model
 
 ### 2.2 Implement canonical strategy
 
@@ -207,7 +227,7 @@ Acceptance criteria:
 
 Priority:
 
-- P0
+- Completed in code for current listing detail pages; external validation in Rich Results Test remains a launch check
 
 ### 3.2 Add page-type schema coverage
 
@@ -218,7 +238,7 @@ Objective:
 Scope:
 
 - Organization
-- WebSite + SearchAction
+- WebSite
 - CollectionPage
 - ItemList
 - Article
@@ -348,6 +368,64 @@ Priority:
 
 - P1
 
+### 4.5 Build model landing page template
+
+Objective:
+
+- make manufacturer plus model queries first-class SEO entities
+
+Scope:
+
+- introduce a canonical model route family
+- define model slug normalization and collision handling
+- build model inventory pages
+- support model plus category combinations when inventory depth justifies them
+
+Dependencies:
+
+- 1.2
+- 1.3
+- 2.1
+- 2.2
+
+Acceptance criteria:
+
+- one reusable model template exists
+- a canonical route pattern exists for manufacturer plus model pages
+- model pages can render live inventory, related dealers, and related categories
+
+Priority:
+
+- Completed for the current manufacturer-scoped model route family
+
+### 4.6 Define individual seller indexing policy
+
+Objective:
+
+- prevent thin seller pages from diluting the canonical graph while still supporting real owner-operator storefronts
+
+Scope:
+
+- define minimum inventory thresholds
+- define profile completeness thresholds
+- define when `/seller/:id` stays UX-only versus becomes indexable
+- define sitemap inclusion rules for individual seller pages
+
+Dependencies:
+
+- 2.2
+- 4.4
+
+Acceptance criteria:
+
+- a written decision exists for dealer versus individual seller indexing
+- thin seller pages do not enter the sitemap or canonical graph by accident
+- high-quality individual seller pages can be promoted intentionally
+
+Priority:
+
+- P0
+
 ## Epic 5: Sitemap and Crawl Management
 
 ### 5.1 Build sitemap generation pipeline
@@ -375,6 +453,11 @@ Acceptance criteria:
 - sitemap generation runs deterministically
 - only indexable pages are included
 - each entry includes `lastmod`
+
+Current status:
+
+- a working dynamic `sitemap.xml` route exists now
+- the next step is splitting large route families into multiple sitemaps with stronger `lastmod` coverage
 
 Priority:
 
@@ -587,22 +670,23 @@ Priority:
 
 The most efficient first implementation slice is:
 
-1. rendering decision
-2. route inventory
-3. slug utility
-4. metadata generator
-5. category template
-6. Product schema on listing pages
-7. sitemap generator
+1. model route inventory and slug rules
+2. canonical policy for individual sellers
+3. Product schema and listing detail related-link upgrades
+4. model template
+5. sitemap splitting with `lastmod`
+6. pagination for deep archives
+7. editorial modules for priority hubs
 
 ## Launch Reminder
 
-Do not remove `noindex` until:
+Do not add new route families to the indexable set until:
 
-- the landing-page architecture exists
-- Product schema is live
-- sitemap generation is live
+- the page family has a stable template
 - canonical handling is correct
-- the first wave of category/manufacturer/state pages exists
+- schema coverage is live
+- sitemap inclusion rules are defined
+- inventory depth is strong enough to avoid thin pages
+- internal linking is intentional
 
-Until then, this backlog should be executed behind the current non-indexed posture.
+The current supported hybrid route families can remain indexable, while future families like model pages or thin seller pages should stay out of the indexable surface until they meet those standards.

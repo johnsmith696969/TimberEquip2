@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   TrendingUp,
@@ -260,6 +260,44 @@ export function Home() {
   const visibleCards = marketCards.length <= 3
     ? marketCards
     : [0, 1, 2].map((offset) => marketCards[(carouselIndex + offset) % marketCards.length]);
+  const homeJsonLd = useMemo(
+    () => ({
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          name: 'TimberEquip',
+          alternateName: 'Forestry Equipment Sales',
+          url: 'https://timberequip.com/',
+          logo: 'https://timberequip.com/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260326b',
+        },
+        {
+          '@type': 'WebSite',
+          name: 'TimberEquip',
+          url: 'https://timberequip.com/',
+          inLanguage: 'en-US',
+        },
+        {
+          '@type': 'CollectionPage',
+          name: 'Logging Equipment For Sale | Forestry Equipment For Sale',
+          description: 'Browse in-stock logging and forestry equipment across categories, manufacturers, models, dealers, and state markets.',
+          url: 'https://timberequip.com/',
+        },
+        {
+          '@type': 'ItemList',
+          name: 'Primary marketplace routes',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Logging Equipment For Sale', url: 'https://timberequip.com/logging-equipment-for-sale' },
+            { '@type': 'ListItem', position: 2, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
+            { '@type': 'ListItem', position: 3, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
+            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
+          ],
+        },
+      ],
+    }),
+    []
+  );
 
   return (
     <div className="flex flex-col">
@@ -267,6 +305,8 @@ export function Home() {
         title="Logging Equipment For Sale | Forestry Equipment For Sale | Forestry Equipment Sales"
         description="Browse in-stock new and used logging equipment listings on Forestry Equipment Sales. Shop by category, make, model, year, hours, and price."
         canonicalPath="/"
+        jsonLd={homeJsonLd}
+        imagePath="/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260326b"
       />
 
       {/* Hero Section */}

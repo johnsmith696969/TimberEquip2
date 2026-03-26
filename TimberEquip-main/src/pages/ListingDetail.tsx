@@ -18,6 +18,19 @@ import { useLocale } from '../components/LocaleContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 import { buildListingPath } from '../utils/listingPath';
+import {
+  buildCategoryPath,
+  buildDealerPath,
+  buildManufacturerCategoryPath,
+  buildManufacturerModelCategoryPath,
+  buildManufacturerModelPath,
+  buildManufacturerPath,
+  buildStateCategoryPath,
+  getListingCategoryLabel,
+  getListingManufacturer,
+  getStateFromLocation,
+  isDealerRole,
+} from '../utils/seoRoutes';
 
 const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
 
@@ -577,44 +590,83 @@ export function ListingDetail() {
   const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
   const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
   const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
+  const routeCategory = getListingCategoryLabel(listing) || safeCategory;
+  const routeManufacturer = getListingManufacturer(listing) || safeMake;
+  const routeModel = formatSpecValue(listing.model).trim();
+  const routeState = getStateFromLocation(listing.location) || safeLocationParts[safeLocationParts.length - 2] || safeLocation;
+  const dealerPath = seller?.id && (seller.storefrontSlug || isDealerRole(seller.role))
+    ? buildDealerPath({ id: seller.id, storefrontSlug: seller.storefrontSlug || seller.id })
+    : '';
+  const routeLinks = [
+    routeCategory ? { label: `${routeCategory} For Sale`, path: buildCategoryPath(routeCategory) } : null,
+    routeManufacturer ? { label: `${routeManufacturer} Inventory`, path: buildManufacturerPath(routeManufacturer) } : null,
+    routeManufacturer && routeCategory ? { label: `${routeManufacturer} ${routeCategory}`, path: buildManufacturerCategoryPath(routeManufacturer, routeCategory) } : null,
+    routeManufacturer && routeModel ? { label: `${routeManufacturer} ${routeModel}`, path: buildManufacturerModelPath(routeManufacturer, routeModel) } : null,
+    routeManufacturer && routeModel && routeCategory
+      ? { label: `${routeManufacturer} ${routeModel} ${routeCategory}`, path: buildManufacturerModelCategoryPath(routeManufacturer, routeModel, routeCategory) }
+      : null,
+    routeState && routeCategory ? { label: `${routeCategory} In ${routeState}`, path: buildStateCategoryPath(routeState, routeCategory) } : null,
+    dealerPath ? { label: `${seller?.storefrontName || safeSellerName} Storefront`, path: dealerPath } : null,
+  ].filter((entry): entry is { label: string; path: string } => Boolean(entry));
+  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 6);
+  const breadcrumbItems = [
+    {
+      '@type': 'ListItem',
+      position: 1,
+      name: 'Home',
+      item: 'https://timberequip.com/',
+    },
+    routeCategory
+      ? {
+          '@type': 'ListItem',
+          position: 2,
+          name: `${routeCategory} For Sale`,
+          item: `https://timberequip.com${buildCategoryPath(routeCategory)}`,
+        }
+      : null,
+    routeManufacturer
+      ? {
+          '@type': 'ListItem',
+          position: routeCategory ? 3 : 2,
+          name: routeManufacturer,
+          item: `https://timberequip.com${buildManufacturerPath(routeManufacturer)}`,
+        }
+      : null,
+    routeManufacturer && routeModel
+      ? {
+          '@type': 'ListItem',
+          position: routeCategory ? 4 : 3,
+          name: `${routeManufacturer} ${routeModel}`,
+          item: `https://timberequip.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
+        }
+      : null,
+    {
+      '@type': 'ListItem',
+      position: routeManufacturer && routeModel ? (routeCategory ? 5 : 4) : routeManufacturer ? (routeCategory ? 4 : 3) : routeCategory ? 3 : 2,
+      name: listing.title || detailSeoTitle,
+      item: `https://timberequip.com${listingPath}`,
+    },
+  ].filter(Boolean);
   const detailJsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
       {
         '@type': 'BreadcrumbList',
-        itemListElement: [
-          {
-            '@type': 'ListItem',
-            position: 1,
-            name: 'Home',
-            item: 'https://timberequip.com/',
-          },
-          {
-            '@type': 'ListItem',
-            position: 2,
-            name: 'Inventory',
-            item: 'https://timberequip.com/search',
-          },
-          {
-            '@type': 'ListItem',
-            position: 3,
-            name: listing.title || detailSeoTitle,
-            item: `https://timberequip.com${listingPath}`,
-          },
-        ],
+        itemListElement: breadcrumbItems,
       },
       {
         '@type': 'Product',
         name: listing.title || detailSeoTitle,
         description: safeDescription,
-        category: safeCategory,
+        category: routeCategory,
+        model: routeModel || undefined,
         sku: listing.stockNumber || listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
         url: `https://timberequip.com${listingPath}`,
         brand: {
           '@type': 'Brand',
-          name: safeMake,
+          name: routeManufacturer,
         },
         itemCondition:
           safeCondition.toLowerCase() === 'new'
@@ -639,10 +691,11 @@ export function ListingDetail() {
             ? 'https://schema.org/SoldOut'
             : 'https://schema.org/InStock',
           ...(safePrice > 0 ? { price: safePrice } : {}),
+          areaServed: routeState || undefined,
           seller: {
             '@type': 'Organization',
-            name: safeSellerName,
-            url: seller?.storefrontSlug ? `https://timberequip.com/seller/${seller.storefrontSlug}` : undefined,
+            name: seller?.storefrontName || safeSellerName,
+            url: dealerPath ? `https://timberequip.com${dealerPath}` : undefined,
           },
         },
       },
@@ -662,7 +715,14 @@ export function ListingDetail() {
 
   return (
     <div className="min-h-screen bg-bg pb-24">
-      <Seo title={`Forestry Equipment Sales | ${detailSeoTitle}`} description={detailSeoDescription} canonicalPath={listingPath} jsonLd={detailJsonLd} />
+      <Seo
+        title={`Forestry Equipment Sales | ${detailSeoTitle}`}
+        description={detailSeoDescription}
+        canonicalPath={listingPath}
+        jsonLd={detailJsonLd}
+        ogType="product"
+        imagePath={galleryImages[0]}
+      />
       {/* Breadcrumbs & Actions */}
       <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
@@ -716,6 +776,19 @@ export function ListingDetail() {
                   <span className="text-xs font-bold uppercase tracking-widest">{formatNumber(safeHours)} {t('listingDetail.hours', 'Hours')}</span>
                 </div>
               </div>
+              {uniqueRouteLinks.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {uniqueRouteLinks.map((route) => (
+                    <Link
+                      key={route.path}
+                      to={route.path}
+                      className="border border-line bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted transition-colors hover:border-accent hover:text-accent"
+                    >
+                      {route.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Gallery */}

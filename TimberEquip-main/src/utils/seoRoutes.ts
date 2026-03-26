@@ -69,6 +69,14 @@ export function buildManufacturerCategoryPath(manufacturer: string, category: st
   return `/manufacturers/${normalizeSeoSlug(manufacturer, 'brand')}/${normalizeSeoSlug(category, 'equipment')}-for-sale`;
 }
 
+export function buildManufacturerModelPath(manufacturer: string, model: string): string {
+  return `/manufacturers/${normalizeSeoSlug(manufacturer, 'brand')}/models/${normalizeSeoSlug(model, 'model')}`;
+}
+
+export function buildManufacturerModelCategoryPath(manufacturer: string, model: string, category: string): string {
+  return `${buildManufacturerModelPath(manufacturer, model)}/${normalizeSeoSlug(category, 'equipment')}-for-sale`;
+}
+
 export function buildDealerPath(seller: Pick<Seller, 'id' | 'storefrontSlug'>): string {
   return `/dealers/${seller.storefrontSlug || seller.id}`;
 }

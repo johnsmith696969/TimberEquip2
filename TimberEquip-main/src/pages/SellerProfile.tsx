@@ -307,14 +307,41 @@ export function SellerProfile() {
 
   const jsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: headline,
-    url: `https://timberequip.com${canonicalPath}`,
-    logo: logoImage,
-    description,
-    email: seller.email || undefined,
-    telephone: seller.phone || undefined,
-    address: seller.location || undefined,
+    '@graph': [
+      {
+        '@type': 'Organization',
+        name: headline,
+        url: `https://timberequip.com${canonicalPath}`,
+        logo: logoImage,
+        description,
+        email: seller.email || undefined,
+        telephone: seller.phone || undefined,
+        address: seller.location || undefined,
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
+          { '@type': 'ListItem', position: 2, name: 'Dealers', item: 'https://timberequip.com/dealers' },
+          { '@type': 'ListItem', position: 3, name: headline, item: `https://timberequip.com${preferredDealerPath}` },
+          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: `https://timberequip.com${canonicalPath}` }] : []),
+        ],
+      },
+      {
+        '@type': 'ItemList',
+        name: `${headline} inventory`,
+        itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          url: `https://timberequip.com/listing/${listing.id}`,
+          item: {
+            '@type': 'Product',
+            name: `${listing.year} ${listing.make || listing.manufacturer || listing.brand || ''} ${listing.model || ''}`.trim(),
+            category: getListingCategoryLabel(listing) || 'Equipment',
+          },
+        })),
+      },
+    ],
   };
 
   const StorefrontRoleIcon = storefrontIcon;
@@ -326,6 +353,7 @@ export function SellerProfile() {
         description={seoDescription}
         canonicalPath={canonicalPath}
         jsonLd={jsonLd}
+        imagePath={logoImage}
       />
 
       <section className="text-white px-4 md:px-8 relative overflow-hidden border-b border-line">
