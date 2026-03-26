@@ -1,8 +1,14 @@
-# Forestry Equipment Sales SEO Phase 1 URL Map And Templates
+# TimberEquip SEO Phase 1 URL Map And Templates
 
 ## Purpose
 
-This document defines Phase 1 of the Forestry Equipment Sales SEO build.
+This document defines Phase 1 of the TimberEquip SEO build.
+
+Companion planning documents:
+
+- `LAUNCH_SEO_BLUEPRINT.md`
+- `SEO_IMPLEMENTATION_BACKLOG.md`
+- `ENTERPRISE_SEO_ARCHITECTURE_PLAN.md`
 
 Phase 1 covers:
 
@@ -13,76 +19,22 @@ Phase 1 covers:
 - metadata model
 - minimal data contracts
 
-This phase originally did not turn indexing on.
-
-Update:
-
-The original Phase 1 plan assumed a non-indexed staging posture.
-
-The current implementation has moved beyond that assumption:
-
-- hybrid server-rendered public SEO routes now exist
-- a dynamic sitemap route now exists
-- public indexing can now be turned on safely for supported route families
-- the React app still remains the deeper UX layer for search, auth, admin, and dealer operations
+This phase does not turn indexing on.
 
 ## Phase 1 Goal
 
-Build the core public SEO page system with a safe path from `noindex` staging to supported public indexing.
+Build the core public SEO page system while the site remains `noindex`.
 
 The outcome of Phase 1 should be a working architecture for:
 
+- one canonical market hub
 - category pages
 - manufacturer pages
+- manufacturer plus model pages
 - state pages
 - dealer pages
 - improved listing pages
-
-## Current Architecture Status
-
-The public SEO engine is now a hybrid system:
-
-- server-rendered public routes for primary commercial intents
-- SPA search and application flows for deep UX and account workflows
-- shared slug logic for route families already implemented in code
-- a dynamic `sitemap.xml` route for the current public families
-
-Implemented route families:
-
-- core market hubs
-- machine-type category hubs
-- manufacturer hubs
-- state hubs
-- state plus category hubs
-- manufacturer plus category hubs
-- dealer directory and dealer storefront hubs
-
-Still missing or still needing policy work:
-
-- explicit top-level category cluster pages if we want both category-group and machine-type layers
-- an indexability policy for thin individual seller pages
-
-## Entity Coverage
-
-Current coverage by entity:
-
-- category groups: partial, because the current `/categories/{slug}` family is primarily acting as the machine-type or subcategory layer
-- subcategories or machine types: yes, this is the strongest current category family
-- manufacturers: yes
-- models: yes, through manufacturer-scoped model route families
-- dealers: yes
-- individual sellers: partially, via transitional storefront pages, but they should not all be treated as indexable by default
-
-Current model route family:
-
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
-
-Recommended individual seller policy:
-
-- keep listing pages indexable
-- allow seller/storefront pages to be indexable only when the seller has enough inventory, profile depth, and contact trust signals
-- otherwise keep the seller page as a usable UX route without making it a priority ranking surface
+- a dynamic sitemap built from canonical route families
 
 ## Implementation Rules
 
@@ -90,7 +42,7 @@ Phase 1 should ship real route components, not placeholder URL reservations.
 
 Each route family introduced in this phase should:
 
-- resolve through the current public routing layer, whether that is the hybrid public handler or the SPA router
+- resolve inside the current SPA router
 - render a unique H1 and metadata set tied to the route intent
 - render live inventory or live entity data from the current application data layer
 - reuse shared slug and canonical utilities instead of duplicating normalization logic per page
@@ -101,7 +53,7 @@ Search remains the broad UX surface. SEO routes become the clean, stable landing
 
 ## Routing Behavior Requirements
 
-- clean SEO routes should be directly navigable through Hosting rewrites and the public routing layer
+- clean SEO routes should be directly navigable with React Router
 - each clean SEO route should have a deterministic canonical path
 - unsupported or thin query combinations should continue to resolve on `/search`
 - `/seller/:id` must remain reachable during rollout
@@ -109,7 +61,7 @@ Search remains the broad UX surface. SEO routes become the clean, stable landing
 
 ## Current Route State
 
-Current public routes are now centered on:
+Current public routes are centered on:
 
 - `/`
 - `/search`
@@ -117,21 +69,34 @@ Current public routes are now centered on:
 - `/seller/:id`
 - `/blog`
 - `/categories`
-- `/manufacturers`
-- `/states`
-- `/dealers`
 - static marketing/legal pages
+
+Current implementation snapshot:
+
+- a hybrid public SSR layer now exists for the major public SEO routes
+- dynamic sitemap output now exists
+- category, manufacturer, dealer, listing, and model-aware route support now exists in code
+- one canonical market-hub family now exists, with the duplicate logging alias redirected to forestry
 
 Current problem:
 
-- the route map now covers the strongest marketplace entities, but individual seller indexing rules and future category-cluster/editorial layers still need to be formalized
+- route-quality thresholds now control sitemap inclusion and thin-route robots behavior
+- the public web, authenticated app, and API surfaces need cleaner architectural boundaries over time
 
 ## Phase 1 Route Families
 
-### Core hubs
+### Canonical market hub
 
-- `/logging-equipment-for-sale`
 - `/forestry-equipment-for-sale`
+
+Default policy:
+
+- treat `/forestry-equipment-for-sale` as the canonical top-level market hub
+- treat `/logging-equipment-for-sale` as either a redirect alias or a future narrower vertical only if its inventory and internal-link structure become materially different
+
+What should not happen:
+
+- both routes remain indexable while serving the same inventory intent
 
 ### Category hubs
 
@@ -156,14 +121,23 @@ Examples:
 - `/manufacturers/john-deere`
 - `/manufacturers/komatsu`
 
+### Manufacturer plus model hubs
+
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
+
+Examples:
+
+- `/manufacturers/tigercat/models/620e`
+- `/manufacturers/caterpillar/models/525d/skidders-for-sale`
+
 ### State hubs
 
-- `/states/{state-slug}/logging-equipment-for-sale`
 - `/states/{state-slug}/forestry-equipment-for-sale`
 
 Examples:
 
-- `/states/oregon/logging-equipment-for-sale`
+- `/states/oregon/forestry-equipment-for-sale`
 - `/states/georgia/forestry-equipment-for-sale`
 
 ### Category plus state hubs
@@ -183,24 +157,6 @@ Examples:
 
 - `/manufacturers/tigercat/skidders-for-sale`
 - `/manufacturers/john-deere/harvesters-for-sale`
-
-### Manufacturer plus model hubs
-
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
-
-Examples:
-
-- `/manufacturers/tigercat/models/h855`
-- `/manufacturers/john-deere/models/1270g`
-
-### Manufacturer plus model plus category hubs
-
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
-
-Examples:
-
-- `/manufacturers/tigercat/models/h855/harvesters-for-sale`
-- `/manufacturers/john-deere/models/1270g/harvesters-for-sale`
 
 ### Dealer hubs
 
@@ -266,8 +222,7 @@ Examples:
 
 - `/search?category=Skidders` -> `/categories/skidders`
 - `/search?manufacturer=Tigercat` -> `/manufacturers/tigercat`
-- `/search?manufacturer=Tigercat&model=H855` -> `/manufacturers/tigercat/models/h855`
-- `/search?state=Oregon` -> `/states/oregon/logging-equipment-for-sale`
+- `/search?state=Oregon` -> `/states/oregon/forestry-equipment-for-sale`
 - `/search?state=Oregon&category=Skidders` -> `/states/oregon/skidders-for-sale`
 - `/search?manufacturer=Tigercat&category=Skidders` -> `/manufacturers/tigercat/skidders-for-sale`
 
@@ -317,8 +272,8 @@ These should remain UX-only and generally not become canonical SEO surfaces:
 
 Used for:
 
-- `/logging-equipment-for-sale`
 - `/forestry-equipment-for-sale`
+- optional temporary redirect handling from `/logging-equipment-for-sale`
 
 Sections:
 
@@ -358,7 +313,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Category} For Sale | Forestry Equipment Sales`
+- title pattern: `{Category} For Sale | TimberEquip`
 - description pattern with marketplace and buyer intent language
 - CollectionPage + ItemList schema
 
@@ -390,7 +345,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Manufacturer} Logging Equipment For Sale | Forestry Equipment Sales`
+- title pattern: `{Manufacturer} Logging Equipment For Sale | TimberEquip`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -403,11 +358,41 @@ Minimum data contract:
 - dealer list
 - listing collection
 
+### Manufacturer + Model Template Addendum
+
+Used for:
+
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
+
+Sections:
+
+- make-model hero
+- model summary copy
+- live inventory archive
+- category links for that model
+- dealer links carrying that model
+- FAQ
+
+Metadata requirements:
+
+- title pattern: `{Manufacturer} {Model} Equipment For Sale | TimberEquip`
+- title pattern: `{Manufacturer} {Model} {Category} For Sale | TimberEquip` for the tighter make-model-category route
+- CollectionPage + ItemList schema
+
+Minimum data contract:
+
+- manufacturer name
+- model name
+- optional category
+- listing collection
+- dealer list
+- state or category distribution
+
 ### 4. State Template
 
 Used for:
 
-- `/states/{state-slug}/logging-equipment-for-sale`
 - `/states/{state-slug}/forestry-equipment-for-sale`
 
 Sections:
@@ -422,8 +407,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `Logging Equipment For Sale In {State} | Forestry Equipment Sales` for logging hubs
-- title pattern: `Forestry Equipment For Sale In {State} | Forestry Equipment Sales` for forestry hubs
+- title pattern: `Forestry Equipment For Sale In {State} | TimberEquip`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -452,7 +436,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Category} For Sale In {State} | Forestry Equipment Sales`
+- title pattern: `{Category} For Sale In {State} | TimberEquip`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -480,7 +464,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Manufacturer} {Category} For Sale | Forestry Equipment Sales`
+- title pattern: `{Manufacturer} {Category} For Sale | TimberEquip`
 - CollectionPage + ItemList schema
 
 Minimum data contract:
@@ -512,7 +496,7 @@ Sections:
 
 Metadata requirements:
 
-- title pattern: `{Dealer Name} Logging Equipment For Sale | Forestry Equipment Sales`
+- title pattern: `{Dealer Name} Logging Equipment For Sale | TimberEquip`
 - Organization or LocalBusiness schema
 - ItemList schema on inventory pages
 - canonical target should prefer the dealer/storefront slug route over `/seller/:id` once both exist
@@ -546,61 +530,11 @@ Required additions:
 
 Title pattern:
 
-- `{Year} {Manufacturer} {Model} For Sale | Forestry Equipment Sales`
+- `{Year} {Manufacturer} {Model} For Sale | TimberEquip`
 
 Description pattern:
 
 - include year, make, model, category, condition, location, and seller/dealer reference when possible
-
-### 9. Model Template
-
-Recommended for the next phase after the current hybrid foundation.
-
-Used for:
-
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}`
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale`
-
-Sections:
-
-- model hero
-- manufacturer and category context
-- live inventory archive
-- dealer links carrying the model
-- related models
-- FAQ
-
-Metadata requirements:
-
-- title pattern: `{Manufacturer} {Model} For Sale | Forestry Equipment Sales`
-- CollectionPage + ItemList schema
-
-Minimum data contract:
-
-- manufacturer
-- model
-- optional category
-- live inventory collection
-- dealer list
-- related models
-- FAQ array
-
-### 10. Individual Seller Indexing Policy
-
-Recommended policy for `/seller/:id` or future individual storefront routes.
-
-Indexable only when:
-
-- inventory count is strong enough to support a real archive page
-- seller profile has usable branding or trust information
-- contact and location data are present
-- thin or duplicate pages are not being created at scale
-
-Otherwise:
-
-- keep the route usable for buyers
-- keep listing detail pages as the primary SEO surface
-- avoid pushing thin seller pages into the sitemap or canonical graph
 
 ## Shared Modules Needed Across Templates
 
@@ -638,24 +572,23 @@ Phase 1 is complete when:
 - templates are specified for all major SEO page types
 - data contracts are documented
 - legacy route handling is defined for `/seller/:id` and any transitional public article URLs
-- the project can still build successfully with `noindex` mode enabled when needed
-- the public architecture can also run in indexable mode for the supported hybrid route families
+- noindex remains active during implementation
 
 The implementation pass should additionally prove the following:
 
-- `/logging-equipment-for-sale` and `/forestry-equipment-for-sale` render live inventory and stable canonicals
+- `/forestry-equipment-for-sale` renders live inventory and a stable self-referencing canonical
+- `/logging-equipment-for-sale` either redirects to the canonical market hub or becomes a materially different vertical with its own inventory and metadata contract
 - `/categories/{category-slug}` resolves from shared category slug logic and renders category-filtered inventory
 - `/manufacturers/{manufacturer-slug}` resolves from shared manufacturer slug logic and renders manufacturer-filtered inventory
-- `/states/{state-slug}/logging-equipment-for-sale` and `/states/{state-slug}/forestry-equipment-for-sale` render state-filtered inventory with state-specific metadata
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}` resolves from shared model slug logic and renders model-filtered inventory
+- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale` renders the combined manufacturer-plus-model-plus-category slice
+- `/states/{state-slug}/forestry-equipment-for-sale` renders state-filtered inventory with state-specific metadata
 - `/states/{state-slug}/{category-phrase}-for-sale` renders the combined state-plus-category slice
 - `/manufacturers/{manufacturer-slug}/{category-phrase}-for-sale` renders the combined manufacturer-plus-category slice
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}` renders the combined manufacturer-plus-model slice
-- `/manufacturers/{manufacturer-slug}/models/{model-slug}/{category-phrase}-for-sale` renders the exact manufacturer-plus-model-plus-category slice
 - `/dealers` renders a crawlable dealer directory surface
 - dealer detail routes have a canonical preference for the clean dealer/storefront path rather than legacy `/seller/:id` when a dealer slug exists
 - route templates reuse shared slug, breadcrumb, and metadata helpers instead of copying route-specific implementations
 - the project still builds successfully with `noindex` mode enabled
-- the project also builds successfully in indexable mode with sitemap output for the supported hybrid route families
 
 ## Validation Checklist
 

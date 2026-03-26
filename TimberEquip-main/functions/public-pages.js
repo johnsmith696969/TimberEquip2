@@ -1,10 +1,18 @@
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
+const { THIN_ROUTE_ROBOTS, evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
+const { PUBLIC_SEO_COLLECTIONS } = require('./public-seo-read-model.js');
 
 const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const PROJECT_ID = 'mobile-app-equipment-sales';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_BASE_URL = 'https://www.timberequip.com';
+const MARKET_ROUTE_LABELS = Object.freeze({
+  logging: 'logging-equipment-for-sale',
+  forestry: 'forestry-equipment-for-sale',
+});
+const CANONICAL_MARKET_KEY = 'forestry';
+const CANONICAL_MARKET_ROUTE = MARKET_ROUTE_LABELS[CANONICAL_MARKET_KEY];
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -159,8 +167,8 @@ function buildManufacturerModelCategoryPath(manufacturer, model, category) {
   return `${buildManufacturerModelPath(manufacturer, model)}/${normalizeSeoSlug(category, 'equipment')}-for-sale`;
 }
 
-function buildStateMarketPath(state, market) {
-  return `/states/${normalizeSeoSlug(state, 'region')}/${market === 'forestry' ? 'forestry-equipment-for-sale' : 'logging-equipment-for-sale'}`;
+function buildStateMarketPath(state, market = CANONICAL_MARKET_KEY) {
+  return `/states/${normalizeSeoSlug(state, 'region')}/${MARKET_ROUTE_LABELS[market]}`;
 }
 
 function buildStateCategoryPath(state, category) {
@@ -184,6 +192,7 @@ function createCountLinks(values, pathBuilder, limit = 12) {
 }
 
 let publicInventoryCache = null;
+let publicRouteIndexCache = null;
 
 async function loadSellerRecords(sellerUids) {
   const normalizedSellerUids = [...new Set(sellerUids.map((sellerUid) => normalizeText(sellerUid)).filter(Boolean))];
@@ -229,6 +238,84 @@ async function loadPublicInventory(forceRefresh = false) {
     return publicInventoryCache;
   }
 
+  const readModelInventory = await loadPublicInventoryFromReadModel();
+  if (readModelInventory) {
+    publicInventoryCache = {
+      fetchedAt: now,
+      ...readModelInventory,
+    };
+    return publicInventoryCache;
+  }
+
+  const rawInventory = await loadPublicInventoryFromRawListings();
+  publicInventoryCache = {
+    fetchedAt: now,
+    ...rawInventory,
+  };
+
+  return publicInventoryCache;
+}
+
+async function loadPublicInventoryFromReadModel() {
+  const db = getDb();
+  const [listingSnapshot, sellerSnapshot] = await Promise.all([
+    db.collection(PUBLIC_SEO_COLLECTIONS.listings).get(),
+    db.collection(PUBLIC_SEO_COLLECTIONS.dealers).get(),
+  ]);
+
+  if (listingSnapshot.empty) {
+    return null;
+  }
+
+  const listings = listingSnapshot.docs
+    .map((docSnap) => {
+      const data = docSnap.data() || {};
+      return {
+        id: docSnap.id,
+        ...data,
+      };
+    })
+    .filter((listing) => normalizeText(listing.sellerUid))
+    .sort((left, right) => {
+      const featuredDelta = Number(Boolean(right.featured)) - Number(Boolean(left.featured));
+      if (featuredDelta !== 0) return featuredDelta;
+      return new Date(right.updatedAtIso || right.createdAtIso || 0).getTime() - new Date(left.updatedAtIso || left.createdAtIso || 0).getTime();
+    });
+
+  const sellerMap = new Map(
+    sellerSnapshot.docs.map((docSnap) => {
+      const data = docSnap.data() || {};
+      return [
+        docSnap.id,
+        {
+          id: docSnap.id,
+          uid: docSnap.id,
+          ...data,
+          storefrontSlug: normalizeText(data.storefrontSlug, docSnap.id),
+          storefrontName: normalizeText(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+        },
+      ];
+    })
+  );
+
+  const missingSellerUids = [...new Set(listings.map((listing) => normalizeText(listing.sellerUid)).filter(Boolean))]
+    .filter((sellerUid) => !sellerMap.has(sellerUid));
+
+  if (missingSellerUids.length) {
+    const hydratedSellers = await loadSellerRecords(missingSellerUids);
+    hydratedSellers.forEach((seller, sellerUid) => {
+      sellerMap.set(sellerUid, seller);
+    });
+  }
+
+  return {
+    listings,
+    sellerMap,
+    source: 'public-read-model',
+  };
+}
+
+async function loadPublicInventoryFromRawListings() {
   const snapshot = await getDb()
     .collection('listings')
     .where('approvalStatus', '==', 'approved')
@@ -273,13 +360,36 @@ async function loadPublicInventory(forceRefresh = false) {
     });
 
   const sellerMap = await loadSellerRecords(listings.map((listing) => listing.sellerUid));
-  publicInventoryCache = {
-    fetchedAt: now,
+  return {
     listings,
     sellerMap,
+    source: 'raw-listings',
+  };
+}
+
+async function loadPublicRouteIndex(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && publicRouteIndexCache && now - publicRouteIndexCache.fetchedAt < CACHE_TTL_MS) {
+    return publicRouteIndexCache;
+  }
+
+  const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.routes).get();
+  if (snapshot.empty) {
+    return null;
+  }
+
+  const docs = snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data(),
+  }));
+
+  publicRouteIndexCache = {
+    fetchedAt: now,
+    docs,
+    byPath: new Map(docs.map((doc) => [normalizeText(doc.path), doc])),
   };
 
-  return publicInventoryCache;
+  return publicRouteIndexCache;
 }
 
 async function resolveDealer(identity) {
@@ -425,13 +535,13 @@ function baseStyles() {
   `;
 }
 
-function renderHead({ title, description, canonicalUrl, jsonLd }) {
+function renderHead({ title, description, canonicalUrl, jsonLd, robots = 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1' }) {
   return `
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
     <meta name="description" content="${escapeHtml(description)}" />
-    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <meta name="robots" content="${escapeHtml(robots)}" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
@@ -452,11 +562,11 @@ function renderHead({ title, description, canonicalUrl, jsonLd }) {
   `;
 }
 
-function renderShell({ title, description, canonicalUrl, body, jsonLd }) {
+function renderShell({ title, description, canonicalUrl, body, jsonLd, robots }) {
   return `<!doctype html>
 <html lang="en">
   <head>
-    ${renderHead({ title, description, canonicalUrl, jsonLd })}
+    ${renderHead({ title, description, canonicalUrl, jsonLd, robots })}
   </head>
   <body>
     <header class="topbar">
@@ -469,8 +579,7 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd }) {
           </span>
         </a>
         <nav class="nav" aria-label="Primary">
-          <a href="/logging-equipment-for-sale">Logging</a>
-          <a href="/forestry-equipment-for-sale">Forestry</a>
+          <a href="/forestry-equipment-for-sale">Market</a>
           <a href="/categories">Categories</a>
           <a href="/manufacturers">Manufacturers</a>
           <a href="/states">States</a>
@@ -746,6 +855,7 @@ function renderInventoryPage({
   eyebrow,
   description,
   canonicalUrl,
+  robots,
   intro,
   breadcrumbs,
   stats,
@@ -761,6 +871,7 @@ function renderInventoryPage({
     description,
     canonicalUrl,
     jsonLd,
+    robots,
     body: `
       <main>
         <section class="shell hero">
@@ -872,10 +983,21 @@ function buildSharedSections(listings, sellerMap, options = {}) {
     sellerCounts.set(listing.sellerUid, (sellerCounts.get(listing.sellerUid) || 0) + 1);
   });
 
-  const topCategories = createCountLinks(listings.map((listing) => listing.subcategory), buildCategoryPath, options.categoryLimit || 12);
-  const topManufacturers = createCountLinks(listings.map((listing) => listing.manufacturer), buildManufacturerPath, options.manufacturerLimit || 12);
-  const topStates = createCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, options.marketKey || 'logging'), options.stateLimit || 12);
-  const topDealers = sortDealersByCount(sellerCounts, sellerMap).slice(0, options.dealerLimit || 9);
+  const topCategories = filterLinksByRouteThreshold(
+    createCountLinks(listings.map((listing) => listing.subcategory), buildCategoryPath, options.categoryLimit || 12),
+    'category'
+  );
+  const topManufacturers = filterLinksByRouteThreshold(
+    createCountLinks(listings.map((listing) => listing.manufacturer), buildManufacturerPath, options.manufacturerLimit || 12),
+    'manufacturer'
+  );
+  const topStates = filterLinksByRouteThreshold(
+    createCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, options.marketKey || CANONICAL_MARKET_KEY), options.stateLimit || 12),
+    'stateMarket'
+  );
+  const topDealers = sortDealersByCount(sellerCounts, sellerMap)
+    .filter((entry) => meetsRouteThreshold('dealer', entry.count))
+    .slice(0, options.dealerLimit || 9);
 
   return {
     topCategories,
@@ -890,6 +1012,7 @@ function renderIndexPage({
   eyebrow,
   description,
   canonicalUrl,
+  robots,
   intro,
   breadcrumbs,
   statValue,
@@ -902,6 +1025,7 @@ function renderIndexPage({
     description,
     canonicalUrl,
     jsonLd,
+    robots,
     body: `
       <main>
         <section class="shell hero">
@@ -944,12 +1068,15 @@ function renderIndexPage({
 }
 
 function renderSitemap(baseUrl, inventory) {
+  return renderSitemapWithDerivedRoutes(baseUrl, inventory);
+}
+
+function renderSitemapWithDerivedRoutes(baseUrl, inventory) {
   const sellers = [...inventory.sellerMap.values()].sort((left, right) => left.storefrontName.localeCompare(right.storefrontName));
   const shared = buildSharedSections(inventory.listings, inventory.sellerMap, { dealerLimit: 999, categoryLimit: 999, manufacturerLimit: 999, stateLimit: 999 });
 
   const urls = new Set([
     `${baseUrl}/`,
-    `${baseUrl}/logging-equipment-for-sale`,
     `${baseUrl}/forestry-equipment-for-sale`,
     `${baseUrl}/categories`,
     `${baseUrl}/manufacturers`,
@@ -962,13 +1089,22 @@ function renderSitemap(baseUrl, inventory) {
   shared.topManufacturers.forEach((item) => {
     urls.add(`${baseUrl}${item.path}`);
     const manufacturerListings = inventory.listings.filter((listing) => listing.manufacturer === item.label);
-    createCountLinks(manufacturerListings.map((listing) => listing.subcategory), (category) => buildManufacturerCategoryPath(item.label, category), 50).forEach((route) => {
+    filterLinksByRouteThreshold(
+      createCountLinks(manufacturerListings.map((listing) => listing.subcategory), (category) => buildManufacturerCategoryPath(item.label, category), 50),
+      'manufacturerCategory'
+    ).forEach((route) => {
       urls.add(`${baseUrl}${route.path}`);
     });
-    createCountLinks(manufacturerListings.map((listing) => listing.model), (model) => buildManufacturerModelPath(item.label, model), 50).forEach((route) => {
+    filterLinksByRouteThreshold(
+      createCountLinks(manufacturerListings.map((listing) => listing.model), (model) => buildManufacturerModelPath(item.label, model), 50),
+      'manufacturerModel'
+    ).forEach((route) => {
       urls.add(`${baseUrl}${route.path}`);
       const modelListings = manufacturerListings.filter((listing) => normalizeSeoSlug(listing.model) === normalizeSeoSlug(route.label));
-      createCountLinks(modelListings.map((listing) => listing.subcategory), (category) => buildManufacturerModelCategoryPath(item.label, route.label, category), 50).forEach((categoryRoute) => {
+      filterLinksByRouteThreshold(
+        createCountLinks(modelListings.map((listing) => listing.subcategory), (category) => buildManufacturerModelCategoryPath(item.label, route.label, category), 50),
+        'manufacturerModelCategory'
+      ).forEach((categoryRoute) => {
         urls.add(`${baseUrl}${categoryRoute.path}`);
       });
     });
@@ -976,12 +1112,17 @@ function renderSitemap(baseUrl, inventory) {
   shared.topStates.forEach((item) => {
     urls.add(`${baseUrl}${item.path}`);
     const stateListings = inventory.listings.filter((listing) => normalizeSeoSlug(getStateFromLocation(listing.location)) === normalizeSeoSlug(item.label));
-    createCountLinks(stateListings.map((listing) => listing.subcategory), (category) => buildStateCategoryPath(item.label, category), 50).forEach((route) => {
+    filterLinksByRouteThreshold(
+      createCountLinks(stateListings.map((listing) => listing.subcategory), (category) => buildStateCategoryPath(item.label, category), 50),
+      'stateCategory'
+    ).forEach((route) => {
       urls.add(`${baseUrl}${route.path}`);
     });
   });
 
-  sellers.forEach((seller) => {
+  sellers
+    .filter((seller) => meetsRouteThreshold('dealer', inventory.listings.filter((listing) => listing.sellerUid === seller.id).length))
+    .forEach((seller) => {
     urls.add(`${baseUrl}${buildDealerPath(seller)}`);
     urls.add(`${baseUrl}${buildDealerPath(seller)}/inventory`);
   });
@@ -995,6 +1136,38 @@ function renderSitemap(baseUrl, inventory) {
 ${[...urls]
   .sort()
   .map((url) => `  <url><loc>${escapeHtml(url)}</loc></url>`)
+  .join('\n')}
+</urlset>`;
+}
+
+function renderSitemapWithRouteIndex(baseUrl, inventory, routeIndex) {
+  const entries = new Map();
+  const addEntry = (path, lastmod) => {
+    const normalizedPath = normalizeText(path);
+    if (!normalizedPath) return;
+    const url = normalizedPath.startsWith('http') ? normalizedPath : `${baseUrl}${normalizedPath}`;
+    const currentLastmod = entries.get(url);
+    if (!currentLastmod || (lastmod && new Date(lastmod).getTime() > new Date(currentLastmod).getTime())) {
+      entries.set(url, lastmod || currentLastmod || '');
+    }
+  };
+
+  addEntry('/', null);
+  addEntry('/sitemap.xml', null);
+
+  routeIndex.docs
+    .filter((doc) => doc.sitemapEligible && normalizeText(doc.path))
+    .forEach((doc) => addEntry(doc.path, normalizeText(doc.lastmod)));
+
+  inventory.listings.slice(0, 5000).forEach((listing) => {
+    addEntry(listing.listingUrl, normalizeText(listing.updatedAtIso || listing.createdAtIso || listing.lastmod));
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${[...entries.entries()]
+  .sort((left, right) => left[0].localeCompare(right[0]))
+  .map(([url, lastmod]) => `  <url><loc>${escapeHtml(url)}</loc>${lastmod ? `<lastmod>${escapeHtml(lastmod)}</lastmod>` : ''}</url>`)
   .join('\n')}
 </urlset>`;
 }
@@ -1025,41 +1198,72 @@ function isHybridPublicPath(pathname) {
 async function renderRoute(req, res) {
   const pathname = decodeURIComponent(req.path || '/');
   const baseUrl = getRequestBaseUrl(req);
+
+  if (/^\/logging-equipment-for-sale$/i.test(pathname)) {
+    res.redirect(301, `${baseUrl}/forestry-equipment-for-sale`);
+    return true;
+  }
+
+  const legacyStateMatch = pathname.match(/^\/states\/([^/]+)\/logging-equipment-for-sale$/i);
+  if (legacyStateMatch) {
+    res.redirect(301, `${baseUrl}/states/${legacyStateMatch[1]}/${CANONICAL_MARKET_ROUTE}`);
+    return true;
+  }
+
   const inventory = await loadPublicInventory();
+  const routeIndex = await loadPublicRouteIndex();
 
   if (/^\/sitemap\.xml$/i.test(pathname)) {
-    res.status(200).type('application/xml').send(renderSitemap(baseUrl, inventory));
+    res
+      .status(200)
+      .type('application/xml')
+      .send(routeIndex ? renderSitemapWithRouteIndex(baseUrl, inventory, routeIndex) : renderSitemap(baseUrl, inventory));
     return true;
   }
 
   const shared = buildSharedSections(inventory.listings, inventory.sellerMap);
   const stats = getInventoryStats(inventory.listings);
+  const marketHubDoc = routeIndex?.byPath.get('/forestry-equipment-for-sale');
+  const categoriesDirectoryDoc = routeIndex?.byPath.get('/categories');
+  const manufacturersDirectoryDoc = routeIndex?.byPath.get('/manufacturers');
+  const statesDirectoryDoc = routeIndex?.byPath.get('/states');
+  const dealersDirectoryDoc = routeIndex?.byPath.get('/dealers');
 
-  if (/^\/logging-equipment-for-sale$/i.test(pathname) || /^\/forestry-equipment-for-sale$/i.test(pathname)) {
-    const marketKey = /^\/forestry-equipment-for-sale$/i.test(pathname) ? 'forestry' : 'logging';
-    const title = marketKey === 'forestry' ? 'Forestry Equipment For Sale' : 'Logging Equipment For Sale';
-    const description =
-      marketKey === 'forestry'
-        ? 'Browse forestry equipment, dealer storefronts, manufacturer routes, and state inventory pages from one crawlable marketplace hub.'
-        : 'Browse logging equipment inventory, dealer storefronts, and clean category or state routes from one crawlable marketplace hub.';
+  if (/^\/forestry-equipment-for-sale$/i.test(pathname)) {
+    const title = 'Forestry Equipment For Sale';
+    const description = 'Browse forestry equipment, dealer storefronts, manufacturer routes, and state inventory pages from one crawlable marketplace hub.';
+    const marketListings = marketHubDoc?.listings?.length ? marketHubDoc.listings : inventory.listings;
+    const marketStats = marketHubDoc?.stats || stats;
+    const marketCategories = marketHubDoc?.topCategories?.length ? marketHubDoc.topCategories : shared.topCategories;
+    const marketManufacturers = marketHubDoc?.topManufacturers?.length ? marketHubDoc.topManufacturers : shared.topManufacturers;
+    const marketStates = marketHubDoc?.topStates?.length ? marketHubDoc.topStates : shared.topStates;
+    const marketDealers = marketHubDoc?.topDealers?.length
+      ? marketHubDoc.topDealers.map((dealer) => ({
+          seller: {
+            id: dealer.id,
+            storefrontName: dealer.label,
+            storefrontSlug: dealer.path.split('/')[2] || dealer.id,
+            location: dealer.subtext || '',
+            logo: dealer.image || '',
+          },
+          count: dealer.count,
+        }))
+      : shared.topDealers;
     const html = renderInventoryPage({
       title,
       eyebrow: 'Hybrid SEO Hub',
       description,
       canonicalUrl: `${baseUrl}${pathname}`,
-      intro:
-        marketKey === 'forestry'
-          ? 'This hybrid landing page pairs live marketplace inventory with cleaner route architecture so buyers can browse inventory, dealers, and related route families without getting dropped into a heavy app flow first.'
-          : 'This hybrid landing page is the lighter, more functional public front door for logging equipment discovery. It keeps the React app for deep workflows while putting live inventory and route context up front.',
+      intro: 'This hybrid landing page is the canonical public front door for equipment discovery. It pairs live marketplace inventory with cleaner route architecture so buyers can browse inventory, dealers, and related route families without getting dropped into a heavy app flow first.',
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: title, path: pathname },
       ],
       stats: [
-        { label: 'Live Listings', value: stats.listingCount },
-        { label: 'Manufacturers', value: stats.manufacturerCount },
-        { label: 'States', value: stats.stateCount },
-        { label: 'Dealers', value: shared.topDealers.length },
+        { label: 'Live Listings', value: marketStats.listingCount },
+        { label: 'Manufacturers', value: marketStats.manufacturerCount },
+        { label: 'States', value: marketStats.stateCount },
+        { label: 'Dealers', value: marketStats.dealerCount || marketDealers.length },
       ],
       featureCards: [
         {
@@ -1083,31 +1287,31 @@ async function renderRoute(req, res) {
           eyebrow: 'Categories',
           title: 'Top Categories',
           description: 'Highest-volume clean routes from the live marketplace inventory.',
-          html: renderLinkCards(shared.topCategories),
+          html: renderLinkCards(marketCategories),
         },
         {
           eyebrow: 'Manufacturers',
           title: 'Top Manufacturers',
           description: 'High-intent make pages that can be used as landing pages or ad destinations.',
-          html: renderLinkCards(shared.topManufacturers),
+          html: renderLinkCards(marketManufacturers),
         },
         {
           eyebrow: 'States',
           title: 'Top States',
           description: 'Regional route entry points built from live listing locations.',
-          html: renderLinkCards(shared.topStates),
+          html: renderLinkCards(marketStates),
         },
         {
           eyebrow: 'Dealer Directory',
           title: 'Featured Dealers',
           description: 'Inventory-rich storefronts surfaced from the marketplace data.',
-          html: renderDealerCards(shared.topDealers),
+          html: renderDealerCards(marketDealers),
         },
       ],
-      listings: inventory.listings,
+      listings: marketListings,
       primaryAction: { href: '/search', label: 'Open Marketplace Search' },
       secondaryAction: { href: '/dealers', label: 'Browse Dealers' },
-      jsonLd: buildCollectionJsonLd(title, description, `${baseUrl}${pathname}`, inventory.listings, [
+      jsonLd: buildCollectionJsonLd(title, description, `${baseUrl}${pathname}`, marketListings, [
         { label: 'Home', path: '/' },
         { label: title, path: pathname },
       ]),
@@ -1121,18 +1325,21 @@ async function renderRoute(req, res) {
       { label: 'Home', path: '/' },
       { label: 'Categories', path: '/categories' },
     ];
+    const items = categoriesDirectoryDoc?.items?.length ? categoriesDirectoryDoc.items : shared.topCategories;
+    const statValue = categoriesDirectoryDoc?.stats?.itemCount ?? items.length;
     res.status(200).type('html').send(
       renderIndexPage({
         title: 'Equipment Categories',
         eyebrow: 'Category Directory',
         description: 'Browse category-specific marketplace routes generated from live approved inventory.',
         canonicalUrl: `${baseUrl}/categories`,
+        robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
         intro: 'This index gives buyers and search engines a stable way to move through the equipment taxonomy without falling back to noisy query strings.',
         breadcrumbs,
-        statValue: shared.topCategories.length,
-        items: shared.topCategories,
+        statValue,
+        items,
         emptyMessage: 'Categories will appear here as soon as live marketplace inventory is published.',
-        jsonLd: buildDirectoryJsonLd('Equipment Categories', 'Browse category-specific marketplace routes generated from live approved inventory.', `${baseUrl}/categories`, breadcrumbs, shared.topCategories),
+        jsonLd: buildDirectoryJsonLd('Equipment Categories', 'Browse category-specific marketplace routes generated from live approved inventory.', `${baseUrl}/categories`, breadcrumbs, items),
       })
     );
     return true;
@@ -1143,18 +1350,21 @@ async function renderRoute(req, res) {
       { label: 'Home', path: '/' },
       { label: 'Manufacturers', path: '/manufacturers' },
     ];
+    const items = manufacturersDirectoryDoc?.items?.length ? manufacturersDirectoryDoc.items : shared.topManufacturers;
+    const statValue = manufacturersDirectoryDoc?.stats?.itemCount ?? items.length;
     res.status(200).type('html').send(
       renderIndexPage({
         title: 'Equipment Manufacturers',
         eyebrow: 'Manufacturer Directory',
         description: 'Browse make-specific route hubs generated from live approved marketplace listings.',
         canonicalUrl: `${baseUrl}/manufacturers`,
+        robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
         intro: 'This is the lighter-weight public manufacturer index designed for crawlability, ad landing pages, and faster buyer discovery.',
         breadcrumbs,
-        statValue: shared.topManufacturers.length,
-        items: shared.topManufacturers,
+        statValue,
+        items,
         emptyMessage: 'Manufacturers will appear here as soon as live marketplace inventory is published.',
-        jsonLd: buildDirectoryJsonLd('Equipment Manufacturers', 'Browse make-specific route hubs generated from live approved marketplace listings.', `${baseUrl}/manufacturers`, breadcrumbs, shared.topManufacturers),
+        jsonLd: buildDirectoryJsonLd('Equipment Manufacturers', 'Browse make-specific route hubs generated from live approved marketplace listings.', `${baseUrl}/manufacturers`, breadcrumbs, items),
       })
     );
     return true;
@@ -1165,18 +1375,21 @@ async function renderRoute(req, res) {
       { label: 'Home', path: '/' },
       { label: 'States', path: '/states' },
     ];
+    const items = statesDirectoryDoc?.items?.length ? statesDirectoryDoc.items : shared.topStates;
+    const statValue = statesDirectoryDoc?.stats?.itemCount ?? items.length;
     res.status(200).type('html').send(
       renderIndexPage({
         title: 'Equipment Markets By State',
         eyebrow: 'Regional Directory',
         description: 'Browse state-level inventory routes generated from live marketplace locations.',
         canonicalUrl: `${baseUrl}/states`,
+        robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
         intro: 'These regional routes give the marketplace cleaner geographic landing pages for buyers, dealers, and organic search.',
         breadcrumbs,
-        statValue: shared.topStates.length,
-        items: shared.topStates,
+        statValue,
+        items,
         emptyMessage: 'State routes will appear here as soon as live marketplace inventory is published.',
-        jsonLd: buildDirectoryJsonLd('Equipment Markets By State', 'Browse state-level inventory routes generated from live marketplace locations.', `${baseUrl}/states`, breadcrumbs, shared.topStates),
+        jsonLd: buildDirectoryJsonLd('Equipment Markets By State', 'Browse state-level inventory routes generated from live marketplace locations.', `${baseUrl}/states`, breadcrumbs, items),
       })
     );
     return true;
@@ -1186,14 +1399,26 @@ async function renderRoute(req, res) {
     const categorySlug = pathname.split('/')[2] || '';
     const matchingListings = inventory.listings.filter((listing) => normalizeSeoSlug(listing.subcategory) === categorySlug);
     const resolvedCategory = matchingListings[0]?.subcategory || titleCaseSlug(categorySlug);
-    const categoryManufacturers = createCountLinks(matchingListings.map((listing) => listing.manufacturer), buildManufacturerPath, 12);
-    const categoryStates = createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory), 12);
+    const quality = evaluateRouteQuality('category', matchingListings.length, { fallbackPath: '/categories' });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const categoryManufacturers = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.manufacturer), buildManufacturerPath, 12),
+      'manufacturer'
+    );
+    const categoryStates = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory), 12),
+      'stateCategory'
+    );
 
     const html = renderInventoryPage({
       title: `${resolvedCategory} For Sale`,
       eyebrow: 'Category Hub',
       description: `Browse ${resolvedCategory.toLowerCase()} inventory, related manufacturers, and regional routes from one crawlable category page.`,
       canonicalUrl: `${baseUrl}${pathname}`,
+      robots: quality.robots,
       intro: `This category hub keeps the public browsing layer focused on the machine type itself while still sending buyers into the full search app when they need deeper filtering.`,
       breadcrumbs: [
         { label: 'Home', path: '/' },
@@ -1255,9 +1480,23 @@ async function renderRoute(req, res) {
     const manufacturerSlug = pathname.split('/')[2] || '';
     const matchingListings = inventory.listings.filter((listing) => normalizeSeoSlug(listing.manufacturer) === manufacturerSlug);
     const resolvedManufacturer = matchingListings[0]?.manufacturer || titleCaseSlug(manufacturerSlug);
-    const manufacturerCategories = createCountLinks(matchingListings.map((listing) => listing.subcategory), (category) => buildManufacturerCategoryPath(resolvedManufacturer, category), 12);
-    const manufacturerModels = createCountLinks(matchingListings.map((listing) => listing.model), (model) => buildManufacturerModelPath(resolvedManufacturer, model), 12);
-    const manufacturerStates = createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'), 12);
+    const quality = evaluateRouteQuality('manufacturer', matchingListings.length, { fallbackPath: '/manufacturers' });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const manufacturerCategories = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.subcategory), (category) => buildManufacturerCategoryPath(resolvedManufacturer, category), 12),
+      'manufacturerCategory'
+    );
+    const manufacturerModels = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.model), (model) => buildManufacturerModelPath(resolvedManufacturer, model), 12),
+      'manufacturerModel'
+    );
+    const manufacturerStates = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_KEY), 12),
+      'stateMarket'
+    );
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1265,6 +1504,7 @@ async function renderRoute(req, res) {
         eyebrow: 'Manufacturer Hub',
         description: `Browse ${resolvedManufacturer} marketplace inventory, category combinations, and state markets from a dedicated make page.`,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro: `This page creates a cleaner manufacturer-specific route for buyers searching for ${resolvedManufacturer} inventory while keeping the heavier React search UI available as a secondary step.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
@@ -1334,8 +1574,21 @@ async function renderRoute(req, res) {
     );
     const resolvedManufacturer = matchingListings[0]?.manufacturer || titleCaseSlug(manufacturerSlug);
     const resolvedModel = matchingListings[0]?.model || titleCaseSlug(modelSlug);
-    const modelCategories = createCountLinks(matchingListings.map((listing) => listing.subcategory), (category) => buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, category), 12);
-    const modelStates = createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'), 12);
+    const quality = evaluateRouteQuality('manufacturerModel', matchingListings.length, {
+      fallbackPath: buildManufacturerPath(resolvedManufacturer),
+    });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const modelCategories = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.subcategory), (category) => buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, category), 12),
+      'manufacturerModelCategory'
+    );
+    const modelStates = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_KEY), 12),
+      'stateMarket'
+    );
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1343,6 +1596,7 @@ async function renderRoute(req, res) {
         eyebrow: 'Manufacturer + Model',
         description: `Browse ${resolvedManufacturer} ${resolvedModel} inventory from one focused, crawlable landing page.`,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro: `This model route captures make-and-model demand directly, then fans buyers into the strongest category and regional routes without dropping them into a generic search state first.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
@@ -1413,7 +1667,17 @@ async function renderRoute(req, res) {
     const resolvedManufacturer = matchingListings[0]?.manufacturer || titleCaseSlug(manufacturerSlug);
     const resolvedModel = matchingListings[0]?.model || titleCaseSlug(modelSlug);
     const resolvedCategory = matchingListings[0]?.subcategory || titleCaseSlug(categorySlug);
-    const relatedStates = createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory), 12);
+    const quality = evaluateRouteQuality('manufacturerModelCategory', matchingListings.length, {
+      fallbackPath: buildManufacturerModelPath(resolvedManufacturer, resolvedModel),
+    });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const relatedStates = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory), 12),
+      'stateCategory'
+    );
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1421,6 +1685,7 @@ async function renderRoute(req, res) {
         eyebrow: 'Manufacturer + Model + Category',
         description: `Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} listings from one tightly focused landing page.`,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro: `This route is the most precise collection surface in the marketplace architecture, built for exact commercial intent across manufacturer, model, and machine family.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
@@ -1483,8 +1748,21 @@ async function renderRoute(req, res) {
     );
     const resolvedManufacturer = matchingListings[0]?.manufacturer || titleCaseSlug(manufacturerSlug);
     const resolvedCategory = matchingListings[0]?.subcategory || titleCaseSlug(categorySlug);
-    const relatedModels = createCountLinks(matchingListings.map((listing) => listing.model), (model) => buildManufacturerModelCategoryPath(resolvedManufacturer, model, resolvedCategory), 12);
-    const relatedStates = createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory), 12);
+    const quality = evaluateRouteQuality('manufacturerCategory', matchingListings.length, {
+      fallbackPath: buildManufacturerPath(resolvedManufacturer),
+    });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const relatedModels = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.model), (model) => buildManufacturerModelCategoryPath(resolvedManufacturer, model, resolvedCategory), 12),
+      'manufacturerModelCategory'
+    );
+    const relatedStates = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory), 12),
+      'stateCategory'
+    );
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1492,6 +1770,7 @@ async function renderRoute(req, res) {
         eyebrow: 'Manufacturer + Category',
         description: `Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} listings from one focused, crawlable landing page.`,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro: `This combination page is built for more precise equipment intent, which makes it useful for SEO, paid traffic, dealer campaigns, and internal linking.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
@@ -1550,15 +1829,25 @@ async function renderRoute(req, res) {
     return true;
   }
 
-  if (/^\/states\/[^/]+\/logging-equipment-for-sale$/i.test(pathname) || /^\/states\/[^/]+\/forestry-equipment-for-sale$/i.test(pathname)) {
+  if (/^\/states\/[^/]+\/forestry-equipment-for-sale$/i.test(pathname)) {
     const parts = pathname.split('/');
     const stateSlug = parts[2] || '';
-    const marketKey = /forestry-equipment-for-sale$/i.test(pathname) ? 'forestry' : 'logging';
     const matchingListings = inventory.listings.filter((listing) => normalizeSeoSlug(getStateFromLocation(listing.location)) === stateSlug);
     const resolvedState = getStateFromLocation(matchingListings[0]?.location) || titleCaseSlug(stateSlug);
-    const stateCategories = createCountLinks(matchingListings.map((listing) => listing.subcategory), (category) => buildStateCategoryPath(resolvedState, category), 12);
-    const stateManufacturers = createCountLinks(matchingListings.map((listing) => listing.manufacturer), buildManufacturerPath, 12);
-    const marketTitle = marketKey === 'forestry' ? 'Forestry Equipment For Sale' : 'Logging Equipment For Sale';
+    const quality = evaluateRouteQuality('stateMarket', matchingListings.length, { fallbackPath: '/states' });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const stateCategories = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.subcategory), (category) => buildStateCategoryPath(resolvedState, category), 12),
+      'stateCategory'
+    );
+    const stateManufacturers = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.manufacturer), buildManufacturerPath, 12),
+      'manufacturer'
+    );
+    const marketTitle = 'Forestry Equipment For Sale';
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1566,6 +1855,7 @@ async function renderRoute(req, res) {
         eyebrow: 'Regional Market',
         description: `Browse ${marketTitle.toLowerCase()} in ${resolvedState} with related category and manufacturer links built from live marketplace data.`,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro: `This regional hub keeps buyers anchored in ${resolvedState} while still surfacing the broader route network around categories, manufacturers, and dealer inventory.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
@@ -1633,7 +1923,17 @@ async function renderRoute(req, res) {
     );
     const resolvedState = getStateFromLocation(matchingListings[0]?.location) || titleCaseSlug(stateSlug);
     const resolvedCategory = matchingListings[0]?.subcategory || titleCaseSlug(categorySlug);
-    const stateCategoryManufacturers = createCountLinks(matchingListings.map((listing) => listing.manufacturer), buildManufacturerPath, 12);
+    const quality = evaluateRouteQuality('stateCategory', matchingListings.length, {
+      fallbackPath: buildStateMarketPath(resolvedState, CANONICAL_MARKET_KEY),
+    });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const stateCategoryManufacturers = filterLinksByRouteThreshold(
+      createCountLinks(matchingListings.map((listing) => listing.manufacturer), buildManufacturerPath, 12),
+      'manufacturer'
+    );
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1641,11 +1941,12 @@ async function renderRoute(req, res) {
         eyebrow: 'Regional Category',
         description: `Browse ${resolvedCategory.toLowerCase()} inventory in ${resolvedState} from one focused regional route.`,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro: `This page is designed for location plus machine-type intent, which makes it a better public destination for search, dealer promotion, and local buying guides.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
           { label: 'States', path: '/states' },
-          { label: resolvedState, path: buildStateMarketPath(resolvedState, 'logging') },
+          { label: resolvedState, path: buildStateMarketPath(resolvedState, CANONICAL_MARKET_KEY) },
           { label: resolvedCategory, path: pathname },
         ],
         stats: [
@@ -1681,11 +1982,11 @@ async function renderRoute(req, res) {
         ],
         listings: matchingListings,
         primaryAction: { href: `/search?state=${encodeURIComponent(resolvedState)}&subcategory=${encodeURIComponent(resolvedCategory)}`, label: 'Search This Market' },
-        secondaryAction: { href: buildStateMarketPath(resolvedState, 'logging'), label: `${resolvedState} Market` },
+        secondaryAction: { href: buildStateMarketPath(resolvedState, CANONICAL_MARKET_KEY), label: `${resolvedState} Market` },
         jsonLd: buildCollectionJsonLd(`${resolvedCategory} For Sale In ${resolvedState}`, `Browse ${resolvedCategory.toLowerCase()} inventory in ${resolvedState}.`, `${baseUrl}${pathname}`, matchingListings, [
           { label: 'Home', path: '/' },
           { label: 'States', path: '/states' },
-          { label: resolvedState, path: buildStateMarketPath(resolvedState, 'logging') },
+          { label: resolvedState, path: buildStateMarketPath(resolvedState, CANONICAL_MARKET_KEY) },
           { label: resolvedCategory, path: pathname },
         ]),
       })
@@ -1698,7 +1999,21 @@ async function renderRoute(req, res) {
     inventory.listings.forEach((listing) => {
       dealerCounts.set(listing.sellerUid, (dealerCounts.get(listing.sellerUid) || 0) + 1);
     });
-    const dealers = sortDealersByCount(dealerCounts, inventory.sellerMap).slice(0, 36);
+    const dealers = dealersDirectoryDoc?.items?.length
+      ? dealersDirectoryDoc.items.slice(0, 36).map((dealer) => ({
+          seller: {
+            id: dealer.id,
+            storefrontName: dealer.label,
+            storefrontSlug: dealer.path.split('/')[2] || dealer.id,
+            location: dealer.subtext || '',
+            logo: dealer.image || '',
+          },
+          count: dealer.count,
+        }))
+      : sortDealersByCount(dealerCounts, inventory.sellerMap)
+          .filter((entry) => meetsRouteThreshold('dealer', entry.count))
+          .slice(0, 36);
+    const dealerDirectoryStats = dealersDirectoryDoc?.stats || {};
 
     res.status(200).type('html').send(
       renderInventoryPage({
@@ -1706,14 +2021,15 @@ async function renderRoute(req, res) {
         eyebrow: 'Dealer Directory',
         description: 'Browse dealer storefronts backed by live marketplace inventory, clean public URLs, and direct paths into inventory or feeds.',
         canonicalUrl: `${baseUrl}/dealers`,
+        robots: dealers.length ? undefined : THIN_ROUTE_ROBOTS,
         intro: 'This directory is the lighter-weight public dealer surface for the marketplace. It gives dealers more usable public URLs and gives buyers a clearer path into real storefront inventory.',
         breadcrumbs: [
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },
         ],
         stats: [
-          { label: 'Dealer Pages', value: dealers.length },
-          { label: 'Live Listings', value: inventory.listings.length },
+          { label: 'Dealer Pages', value: dealerDirectoryStats.itemCount ?? dealers.length },
+          { label: 'Live Listings', value: dealerDirectoryStats.listingCount ?? inventory.listings.length },
           { label: 'Manufacturers', value: shared.topManufacturers.length },
           { label: 'States', value: shared.topStates.length },
         ],
@@ -1774,7 +2090,17 @@ async function renderRoute(req, res) {
       filteredListings = sellerListings.filter((listing) => normalizeSeoSlug(listing.subcategory) === routeCategory);
     }
 
-    const visibleCategoryLinks = createCountLinks(sellerListings.map((listing) => listing.subcategory), (category) => `${buildDealerPath(seller)}/${normalizeSeoSlug(category, 'equipment')}`, 12);
+    const quality = evaluateRouteQuality(routeCategory ? 'dealerCategory' : 'dealer', filteredListings.length, {
+      fallbackPath: routeCategory ? `${buildDealerPath(seller)}/inventory` : '/dealers',
+    });
+    if (quality.redirectPath) {
+      res.redirect(302, `${baseUrl}${quality.redirectPath}`);
+      return true;
+    }
+    const visibleCategoryLinks = filterLinksByRouteThreshold(
+      createCountLinks(sellerListings.map((listing) => listing.subcategory), (category) => `${buildDealerPath(seller)}/${normalizeSeoSlug(category, 'equipment')}`, 12),
+      'dealerCategory'
+    );
     const feedUrl = `${baseUrl}/api/public/dealers/${encodeURIComponent(seller.storefrontSlug || seller.id)}/feed.json`;
     const embedUrl = `${baseUrl}/api/public/dealers/${encodeURIComponent(seller.storefrontSlug || seller.id)}/embed?limit=12`;
     const resolvedCategory = routeCategory ? filteredListings[0]?.subcategory || titleCaseSlug(routeCategory) : '';
@@ -1791,6 +2117,7 @@ async function renderRoute(req, res) {
         eyebrow: 'Dealer Storefront',
         description: pageDescription,
         canonicalUrl: `${baseUrl}${pathname}`,
+        robots: quality.robots,
         intro:
           seller.storefrontDescription ||
           seller.storefrontTagline ||

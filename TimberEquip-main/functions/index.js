@@ -1,5 +1,5 @@
 const { onObjectFinalized } = require('firebase-functions/v2/storage');
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onRequest } = require('firebase-functions/v2/https');
 const { beforeUserCreated } = require('firebase-functions/v2/identity');
@@ -14,6 +14,7 @@ const { XMLParser } = require('fast-xml-parser');
 const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = require('node:crypto');
 const { templates } = require('./email-templates/index.js');
 const { handlePublicPagesRequest } = require('./public-pages.js');
+const { rebuildPublicSeoReadModel, syncPublicSeoForListingChange, syncPublicSeoForSellerChange } = require('./public-seo-read-model.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
@@ -2755,6 +2756,78 @@ exports.onListingCreated = onDocumentCreated(
       } catch (error) {
         logger.error('Failed to send listing submitted email', error);
       }
+    }
+  }
+);
+
+exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
+  {
+    document: 'listings/{listingId}',
+    database: FIRESTORE_DB_ID,
+    region: 'us-central1',
+  },
+  async (event) => {
+    try {
+      await syncPublicSeoForListingChange({
+        listingId: event.params.listingId,
+        before: event.data?.before?.data() || null,
+        after: event.data?.after?.data() || null,
+      });
+    } catch (error) {
+      logger.error('Failed to sync public SEO read model for listing write', {
+        listingId: event.params.listingId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+  }
+);
+
+exports.syncPublicSeoReadModelOnUserWrite = onDocumentWritten(
+  {
+    document: 'users/{uid}',
+    database: FIRESTORE_DB_ID,
+    region: 'us-central1',
+  },
+  async (event) => {
+    try {
+      await syncPublicSeoForSellerChange(event.params.uid);
+    } catch (error) {
+      logger.error('Failed to sync public SEO read model for user write', {
+        uid: event.params.uid,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+  }
+);
+
+exports.syncPublicSeoReadModelOnStorefrontWrite = onDocumentWritten(
+  {
+    document: 'storefronts/{uid}',
+    database: FIRESTORE_DB_ID,
+    region: 'us-central1',
+  },
+  async (event) => {
+    try {
+      await syncPublicSeoForSellerChange(event.params.uid);
+    } catch (error) {
+      logger.error('Failed to sync public SEO read model for storefront write', {
+        uid: event.params.uid,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+  }
+);
+
+exports.rebuildPublicSeoReadModelScheduled = onSchedule(
+  {
+    schedule: 'every 6 hours',
+    region: 'us-central1',
+  },
+  async () => {
+    try {
+      await rebuildPublicSeoReadModel();
+    } catch (error) {
+      logger.error('Failed to rebuild public SEO read model on schedule', error);
     }
   }
 );

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams, Link } from 'react-router-dom';
+import { useLocation, useParams, Link, Navigate } from 'react-router-dom';
 import {
   MapPin,
   Phone,
@@ -27,6 +27,7 @@ import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
+import { evaluateRouteQuality } from '../utils/seoRouteQuality';
 
 const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
@@ -291,6 +292,16 @@ export function SellerProfile() {
   const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
   const description = seller.storefrontDescription || 'This storefront is managed on Forestry Equipment Sales with branded inventory, verified seller controls, and direct lead routing.';
   const preferredDealerPath = buildDealerPath(seller);
+  const dealerRouteQuality = isDealerRoute
+    ? evaluateRouteQuality(categorySlug ? 'dealerCategory' : 'dealer', filteredListings.length, {
+        fallbackPath: categorySlug ? `${preferredDealerPath}/inventory` : '/dealers',
+      })
+    : null;
+
+  if (dealerRouteQuality?.redirectPath) {
+    return <Navigate replace to={dealerRouteQuality.redirectPath} />;
+  }
+
   const canonicalPath = (() => {
     if (isDealerRoute) {
       if (categorySlug) return `${preferredDealerPath}/${categorySlug}`;
@@ -352,6 +363,7 @@ export function SellerProfile() {
         title={seoTitle}
         description={seoDescription}
         canonicalPath={canonicalPath}
+        robots={dealerRouteQuality?.robots}
         jsonLd={jsonLd}
         imagePath={logoImage}
       />

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { ArrowRight, Building2, MapPin, Package2, Tag } from 'lucide-react';
 import { BreadcrumbItem, Breadcrumbs } from '../components/Breadcrumbs';
 import { ListingCard } from '../components/ListingCard';
@@ -8,6 +8,7 @@ import { equipmentService } from '../services/equipmentService';
 import { taxonomyService } from '../services/taxonomyService';
 import { Listing, Seller } from '../types';
 import {
+  CANONICAL_MARKET_ROUTE_KEY,
   MARKET_ROUTE_LABELS,
   buildCategoryPath,
   buildDealerPath,
@@ -23,6 +24,7 @@ import {
   normalizeSeoSlug,
   titleCaseSlug,
 } from '../utils/seoRoutes';
+import { evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } from '../utils/seoRouteQuality';
 
 type CountLink = {
   label: string;
@@ -170,6 +172,7 @@ type SeoTemplateProps = {
   title: string;
   description: string;
   canonicalPath: string;
+  robots?: string;
   intro: string;
   breadcrumbs: BreadcrumbItem[];
   listings: Listing[];
@@ -187,6 +190,7 @@ function SeoInventoryTemplate({
   title,
   description,
   canonicalPath,
+  robots,
   intro,
   breadcrumbs,
   listings,
@@ -206,7 +210,7 @@ function SeoInventoryTemplate({
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={`${title} | Forestry Equipment Sales`} description={description} canonicalPath={canonicalPath} jsonLd={jsonLd} />
+      <Seo title={`${title} | Forestry Equipment Sales`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
       <Breadcrumbs items={breadcrumbs} />
 
       <section className="border-b border-line bg-surface px-4 py-20 md:px-8">
@@ -326,29 +330,7 @@ function LoadingState() {
 }
 
 export function LoggingHubPage() {
-  const { listings, loading } = useSeoListings();
-
-  if (loading) return <LoadingState />;
-
-  return (
-    <SeoInventoryTemplate
-      eyebrow="Phase 1 SEO Hub"
-      title="Logging Equipment For Sale"
-      description="Browse Forestry Equipment Sales logging equipment inventory across core categories, manufacturers, and states using the new clean-route SEO hub structure."
-      canonicalPath={`/${MARKET_ROUTE_LABELS.logging}`}
-      intro="This hub establishes the clean commercial landing page for the marketplace's primary logging equipment intent while the broader search experience remains available for custom filtering."
-      breadcrumbs={[
-        { label: 'Home', path: '/' },
-        { label: 'Logging Equipment For Sale', path: `/${MARKET_ROUTE_LABELS.logging}` },
-      ]}
-      listings={listings}
-      topCategories={buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath)}
-      topManufacturers={buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath)}
-      topStates={buildCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'))}
-      searchPath="/search"
-      emptyMessage="No active logging inventory is available on this route yet."
-    />
-  );
+  return <ForestryHubPage />;
 }
 
 export function ForestryHubPage() {
@@ -362,15 +344,15 @@ export function ForestryHubPage() {
       title="Forestry Equipment For Sale"
       description="Browse Forestry Equipment Sales forestry equipment inventory across core machine types, brands, and regions using the clean Phase 1 route architecture."
       canonicalPath={`/${MARKET_ROUTE_LABELS.forestry}`}
-      intro="This companion hub covers broader forestry equipment demand and gives the site a second high-value landing page family without changing the underlying inventory or search systems."
+      intro="This is the canonical public market hub for the marketplace. It leads with live inventory, linked route families, and lighter browsing flows before buyers ever need the heavier app experience."
       breadcrumbs={[
         { label: 'Home', path: '/' },
         { label: 'Forestry Equipment For Sale', path: `/${MARKET_ROUTE_LABELS.forestry}` },
       ]}
       listings={listings}
-      topCategories={buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath)}
-      topManufacturers={buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath)}
-      topStates={buildCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'forestry'))}
+      topCategories={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath), 'category')}
+      topManufacturers={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       searchPath="/search"
       emptyMessage="No active forestry inventory is available on this route yet."
     />
@@ -411,6 +393,9 @@ export function CategoryLandingPage() {
   if (loading || !resolvedCategory) return <LoadingState />;
 
   const filteredListings = listings.filter((listing) => normalizeSeoSlug(getListingCategoryLabel(listing)) === categorySlug);
+  const quality = evaluateRouteQuality('category', filteredListings.length, { fallbackPath: '/categories' });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
@@ -424,9 +409,10 @@ export function CategoryLandingPage() {
         { label: 'Categories', path: '/categories' },
         { label: resolvedCategory, path: buildCategoryPath(resolvedCategory) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topManufacturers={buildCountLinks(filteredListings.map(getListingManufacturer), buildManufacturerPath)}
-      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory))}
+      topManufacturers={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
       searchPath={`/search?subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedCategory.toLowerCase()} listings are available right now.`}
     />
@@ -443,12 +429,15 @@ export function ManufacturerLandingPage() {
     .map(getListingManufacturer)
     .find((manufacturer) => normalizeSeoSlug(manufacturer) === manufacturerSlug) || titleCaseSlug(manufacturerSlug);
   const filteredListings = listings.filter((listing) => normalizeSeoSlug(getListingManufacturer(listing)) === manufacturerSlug);
+  const quality = evaluateRouteQuality('manufacturer', filteredListings.length, { fallbackPath: '/manufacturers' });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
       eyebrow="Manufacturer Hub"
-      title={`${resolvedManufacturer} Logging Equipment For Sale`}
-      description={`Browse ${resolvedManufacturer} logging equipment for sale on Forestry Equipment Sales with live inventory, top machine categories, and linked state markets.`}
+      title={`${resolvedManufacturer} Equipment For Sale`}
+      description={`Browse ${resolvedManufacturer} equipment for sale on Forestry Equipment Sales with live inventory, top machine categories, and linked state markets.`}
       canonicalPath={buildManufacturerPath(resolvedManufacturer)}
       intro={`This route is the clean manufacturer landing page for ${resolvedManufacturer}. It replaces an equivalent manufacturer query-string view with a stable canonical surface tied to live marketplace inventory.`}
       breadcrumbs={[
@@ -456,10 +445,11 @@ export function ManufacturerLandingPage() {
         { label: 'Manufacturers', path: '/manufacturers' },
         { label: resolvedManufacturer, path: buildManufacturerPath(resolvedManufacturer) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topCategories={buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerCategoryPath(resolvedManufacturer, category))}
-      topModels={buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelPath(resolvedManufacturer, model))}
-      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'))}
+      topCategories={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerCategoryPath(resolvedManufacturer, category)), 'manufacturerCategory')}
+      topModels={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelPath(resolvedManufacturer, model)), 'manufacturerModel')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}`}
       emptyMessage={`No active ${resolvedManufacturer} listings are available right now.`}
     />
@@ -483,6 +473,9 @@ export function ManufacturerModelLandingPage() {
     );
   const resolvedModel =
     filteredListings[0]?.model || listings.map((listing) => String(listing.model || '').trim()).find((model) => normalizeSeoSlug(model) === modelSlug) || titleCaseSlug(modelSlug);
+  const quality = evaluateRouteQuality('manufacturerModel', filteredListings.length, { fallbackPath: buildManufacturerPath(resolvedManufacturer) });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
@@ -497,9 +490,10 @@ export function ManufacturerModelLandingPage() {
         { label: resolvedManufacturer, path: buildManufacturerPath(resolvedManufacturer) },
         { label: resolvedModel, path: buildManufacturerModelPath(resolvedManufacturer, resolvedModel) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topCategories={buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, category))}
-      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, 'logging'))}
+      topCategories={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, category)), 'manufacturerModelCategory')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&model=${encodeURIComponent(resolvedModel)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedModel} inventory is available right now.`}
     />
@@ -515,9 +509,12 @@ export function StateMarketLandingPage({ marketKeyOverride }: { marketKeyOverrid
   const resolvedState = listings
     .map((listing) => getStateFromLocation(listing.location))
     .find((state) => normalizeSeoSlug(state) === stateSlug) || titleCaseSlug(stateSlug);
-  const marketKey = marketKeyOverride || (marketSlug === MARKET_ROUTE_LABELS.forestry ? 'forestry' : 'logging');
+  const marketKey = marketKeyOverride || (marketSlug === MARKET_ROUTE_LABELS.logging ? 'logging' : CANONICAL_MARKET_ROUTE_KEY);
   const marketTitle = marketKey === 'forestry' ? 'Forestry Equipment For Sale' : 'Logging Equipment For Sale';
   const filteredListings = listings.filter((listing) => normalizeSeoSlug(getStateFromLocation(listing.location)) === stateSlug);
+  const quality = evaluateRouteQuality('stateMarket', filteredListings.length, { fallbackPath: '/states' });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
@@ -531,9 +528,10 @@ export function StateMarketLandingPage({ marketKeyOverride }: { marketKeyOverrid
         { label: 'States', path: '/states' },
         { label: resolvedState, path: buildStateMarketPath(resolvedState, marketKey) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topCategories={buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildStateCategoryPath(resolvedState, category))}
-      topManufacturers={buildCountLinks(filteredListings.map(getListingManufacturer), buildManufacturerPath)}
+      topCategories={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildStateCategoryPath(resolvedState, category)), 'stateCategory')}
+      topManufacturers={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
       searchPath={`/search?state=${encodeURIComponent(resolvedState)}`}
       emptyMessage={`No active inventory is available in ${resolvedState} right now.`}
     />
@@ -557,6 +555,11 @@ export function StateCategoryLandingPage() {
       normalizeSeoSlug(getStateFromLocation(listing.location)) === stateSlug &&
       normalizeSeoSlug(getListingCategoryLabel(listing)) === categorySlug
   );
+  const quality = evaluateRouteQuality('stateCategory', filteredListings.length, {
+    fallbackPath: buildStateMarketPath(resolvedState, CANONICAL_MARKET_ROUTE_KEY),
+  });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
@@ -567,11 +570,12 @@ export function StateCategoryLandingPage() {
       intro={`This combined route is the Phase 1 template for a regional category intent. It narrows inventory to ${resolvedState} ${resolvedCategory.toLowerCase()} demand and links back into the broader route family.`}
       breadcrumbs={[
         { label: 'Home', path: '/' },
-        { label: resolvedState, path: buildStateMarketPath(resolvedState, 'logging') },
+        { label: resolvedState, path: buildStateMarketPath(resolvedState, CANONICAL_MARKET_ROUTE_KEY) },
         { label: resolvedCategory, path: buildStateCategoryPath(resolvedState, resolvedCategory) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topManufacturers={buildCountLinks(filteredListings.map(getListingManufacturer), (manufacturer) => buildManufacturerCategoryPath(manufacturer, resolvedCategory))}
+      topManufacturers={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingManufacturer), (manufacturer) => buildManufacturerCategoryPath(manufacturer, resolvedCategory)), 'manufacturerCategory')}
       searchPath={`/search?state=${encodeURIComponent(resolvedState)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedCategory.toLowerCase()} inventory is available in ${resolvedState} right now.`}
     />
@@ -595,6 +599,11 @@ export function ManufacturerCategoryLandingPage() {
       normalizeSeoSlug(getListingManufacturer(listing)) === manufacturerSlug &&
       normalizeSeoSlug(getListingCategoryLabel(listing)) === categorySlug
   );
+  const quality = evaluateRouteQuality('manufacturerCategory', filteredListings.length, {
+    fallbackPath: buildManufacturerPath(resolvedManufacturer),
+  });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
@@ -608,9 +617,10 @@ export function ManufacturerCategoryLandingPage() {
         { label: resolvedManufacturer, path: buildManufacturerPath(resolvedManufacturer) },
         { label: resolvedCategory, path: buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topModels={buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelCategoryPath(resolvedManufacturer, model, resolvedCategory))}
-      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory))}
+      topModels={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelCategoryPath(resolvedManufacturer, model, resolvedCategory)), 'manufacturerModelCategory')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} inventory is available right now.`}
     />
@@ -637,6 +647,11 @@ export function ManufacturerModelCategoryLandingPage() {
   const resolvedModel =
     filteredListings[0]?.model || listings.map((listing) => String(listing.model || '').trim()).find((model) => normalizeSeoSlug(model) === modelSlug) || titleCaseSlug(modelSlug);
   const resolvedCategory = filteredListings[0] ? getListingCategoryLabel(filteredListings[0]) : titleCaseSlug(categorySlug);
+  const quality = evaluateRouteQuality('manufacturerModelCategory', filteredListings.length, {
+    fallbackPath: buildManufacturerModelPath(resolvedManufacturer, resolvedModel),
+  });
+
+  if (quality.redirectPath) return <Navigate replace to={quality.redirectPath} />;
 
   return (
     <SeoInventoryTemplate
@@ -652,8 +667,9 @@ export function ManufacturerModelCategoryLandingPage() {
         { label: resolvedModel, path: buildManufacturerModelPath(resolvedManufacturer, resolvedModel) },
         { label: resolvedCategory, path: buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, resolvedCategory) },
       ]}
+      robots={quality.robots}
       listings={filteredListings}
-      topStates={buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory))}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&model=${encodeURIComponent(resolvedModel)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} inventory is available right now.`}
     />
@@ -689,6 +705,7 @@ export function DealerDirectoryPage() {
           setDealers(
             loadedDealers
               .filter((entry): entry is SellerSummary => Boolean(entry))
+              .filter((entry) => meetsRouteThreshold('dealer', entry.count))
               .sort((left, right) => right.count - left.count)
           );
         }
@@ -725,8 +742,8 @@ export function DealerDirectoryPage() {
         { label: 'Dealers', path: '/dealers' },
       ]}
       listings={listings.slice(0, 9)}
-      topCategories={buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath)}
-      topManufacturers={buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath)}
+      topCategories={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath), 'category')}
+      topManufacturers={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
       featuredDealers={dealers}
       searchPath="/search"
       emptyMessage="No dealer storefronts are available for this directory yet."

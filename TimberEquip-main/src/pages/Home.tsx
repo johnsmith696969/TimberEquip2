@@ -279,19 +279,18 @@ export function Home() {
         },
         {
           '@type': 'CollectionPage',
-          name: 'Logging Equipment For Sale | Forestry Equipment For Sale',
-          description: 'Browse in-stock logging and forestry equipment across categories, manufacturers, models, dealers, and state markets.',
+          name: 'Forestry Equipment For Sale | Equipment Marketplace',
+          description: 'Browse in-stock forestry equipment across categories, manufacturers, models, dealers, and state markets.',
           url: 'https://timberequip.com/',
         },
         {
           '@type': 'ItemList',
           name: 'Primary marketplace routes',
           itemListElement: [
-            { '@type': 'ListItem', position: 1, name: 'Logging Equipment For Sale', url: 'https://timberequip.com/logging-equipment-for-sale' },
-            { '@type': 'ListItem', position: 2, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
-            { '@type': 'ListItem', position: 3, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
-            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
+            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
+            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
+            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
           ],
         },
       ],
@@ -302,7 +301,7 @@ export function Home() {
   return (
     <div className="flex flex-col">
       <Seo
-        title="Logging Equipment For Sale | Forestry Equipment For Sale | Forestry Equipment Sales"
+        title="Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales"
         description="Browse in-stock new and used logging equipment listings on Forestry Equipment Sales. Shop by category, make, model, year, hours, and price."
         canonicalPath="/"
         jsonLd={homeJsonLd}

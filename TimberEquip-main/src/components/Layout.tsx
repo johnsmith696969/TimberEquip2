@@ -62,7 +62,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const pageTitles: Record<string, string> = {
-      '/': 'Logging Equipment For Sale | Forestry Equipment For Sale | Forestry Equipment Sales',
+      '/': 'Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales',
       '/search': `Forestry Equipment Sales | ${t('layout.inventory', 'Inventory')}`,
       '/sell': `Forestry Equipment Sales | ${t('layout.sellEquipment', 'Sell Equipment')}`,
       '/categories': `Forestry Equipment Sales | ${t('layout.categories', 'Categories')}`,

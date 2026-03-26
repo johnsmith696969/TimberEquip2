@@ -1,24 +1,26 @@
-# Forestry Equipment Sales Launch SEO Blueprint
+# TimberEquip Launch SEO Blueprint
 
 ## Purpose
 
-This document is the launch SEO blueprint for Forestry Equipment Sales.
+This document is the launch SEO blueprint for TimberEquip.
 
 Companion execution documents:
 
 - `SEO_IMPLEMENTATION_BACKLOG.md`
 - `SEO_PHASE_1_URL_MAP_AND_TEMPLATES.md`
+- `ENTERPRISE_SEO_ARCHITECTURE_PLAN.md`
 
-It is designed for a future public launch when Forestry Equipment Sales is ready to be indexable and compete for commercial search demand across:
+It is designed for a future public launch when TimberEquip is ready to be indexable and compete for commercial search demand across:
 
 - forestry equipment
 - logging equipment
-- logging equipment for sale
 - forestry equipment for sale
+- logging equipment for sale when it is a distinct vertical rather than a duplicate alias
 - logging equipment for sale by state
 - logging equipment for sale by manufacturer
-- logging equipment for sale by dealer
+- logging equipment for sale by dealer/storefront
 - category + state + manufacturer combinations
+- manufacturer + model combinations
 
 This blueprint assumes the current repo remains in noindex mode until launch readiness is complete.
 
@@ -30,23 +32,23 @@ This blueprint assumes the current repo remains in noindex mode until launch rea
 - Clean listing URL support via `/listing/:id/:slug`
 - Existing SEO component in `src/components/Seo.tsx`
 - Existing breadcrumb schema in `src/components/Breadcrumbs.tsx`
-- Existing CollectionPage and ItemList JSON-LD patterns in search/category surfaces
+- Existing CollectionPage, ItemList, and dealer/listing JSON-LD patterns in public surfaces
 - Existing seller/storefront page foundation at `/seller/:id`
+- Hybrid public SSR layer already exists for major route families
+- Dynamic sitemap generation already exists
 
 ### Current launch blockers
 
 - Noindex defaults are active by design
-- The site is a client-rendered SPA, not SSR/ISR
-- Search intent is concentrated in `/search` query params instead of dedicated landing pages
-- No sitemap generation
-- No Product schema on listing detail pages
-- No landing-page system for state, manufacturer, or dealer SEO
-- Incomplete metadata coverage across public pages
-- Weak canonical strategy for faceted search
+- The public site and authenticated app are still too intertwined
+- The public read-model foundation now exists, but rollout still depends on keeping the denormalized collections healthy and monitored in production
+- Sitemap generation is not yet split and governed like an enterprise program
+- Public pages still rely too heavily on raw route-time reads instead of read-optimized public models
+- Metadata coverage still needs to be standardized across all public page families
 
 ## Strategic Goal
 
-Forestry Equipment Sales should launch as a category-dominant industrial marketplace, not just a searchable inventory app.
+TimberEquip should launch as a category-dominant industrial marketplace, not just a searchable inventory app.
 
 The SEO target is to build a crawlable, indexable page system for:
 
@@ -54,7 +56,7 @@ The SEO target is to build a crawlable, indexable page system for:
 2. Category terms
 3. Manufacturer terms
 4. State/location terms
-5. Dealer terms
+5. Dealer/storefront terms
 6. Commercial long-tail combinations
 7. Editorial support content that reinforces transactional pages
 
@@ -79,13 +81,16 @@ You cannot be both hidden from Google and dominant in Google at the same time.
 
 Current stack:
 
-- React + Vite SPA
-- client-side SEO tag injection
+- React + Vite application
+- Firebase Hosting
+- Firebase Functions SSR layer
+- client and server metadata generation
 
 Recommended launch stack direction:
 
-- Next.js with ISR for high-value pages
-- or Remix SSR if the team strongly prefers route-based loaders
+- near term: harden the current hybrid Firebase SSR architecture
+- medium term: separate public web, authenticated app, and API surfaces
+- long term: evaluate framework-native public rendering such as Next.js on Firebase App Hosting if it clearly improves maintainability and rollout safety
 
 ### Minimum acceptable search architecture
 
@@ -128,8 +133,12 @@ At launch, these page types should render indexable HTML on first response for m
 
 #### Core search hubs
 
-- `/logging-equipment-for-sale`
 - `/forestry-equipment-for-sale`
+
+Policy:
+
+- only one canonical top-level market-hub family should exist
+- `/logging-equipment-for-sale` should be a redirect alias unless it becomes a truly narrower logging-only vertical
 
 #### Category pages
 
@@ -148,10 +157,16 @@ At launch, these page types should render indexable HTML on first response for m
 - `/manufacturers/komatsu`
 - `/manufacturers/ponsse`
 
+#### Manufacturer + model pages
+
+- `/manufacturers/tigercat/models/620e`
+- `/manufacturers/caterpillar/models/525d`
+- `/manufacturers/ponsse/models/ergo/harvesters-for-sale`
+
 #### State pages
 
-- `/states/oregon/logging-equipment-for-sale`
 - `/states/georgia/forestry-equipment-for-sale`
+- `/states/oregon/forestry-equipment-for-sale`
 - `/states/washington/skidders-for-sale`
 
 #### Category + state pages
@@ -375,6 +390,8 @@ If possible also include:
 ### Rule set
 
 - Each indexable landing page gets a self-referencing canonical
+- Only one top-level market-hub family can be canonical at a time
+- Retired aliases should redirect rather than coexist as equal SEO surfaces
 - Query-param search pages should generally canonicalize to the matching clean landing page when one exists
 - Sort parameters must not create canonical variants
 - Tracking parameters must be stripped from canonical URLs
@@ -394,6 +411,7 @@ If possible also include:
 - `/sitemaps/listings.xml`
 - `/sitemaps/categories.xml`
 - `/sitemaps/manufacturers.xml`
+- `/sitemaps/models.xml`
 - `/sitemaps/states.xml`
 - `/sitemaps/dealers.xml`
 - `/sitemaps/blog.xml`
@@ -532,6 +550,7 @@ Before public SEO launch, publish at minimum:
 
 ### Phase 1: launch-ready foundation
 
+- choose and enforce one canonical market-hub family
 - migrate key routes to SSR/ISR
 - create clean landing-page routes
 - implement dynamic metadata generator
@@ -540,6 +559,7 @@ Before public SEO launch, publish at minimum:
 - implement canonical strategy
 - implement pagination strategy
 - add `og:image` and `og:url`
+- define public-web versus app versus API ownership
 
 ### Phase 2: public launch
 
@@ -587,9 +607,10 @@ Before public SEO launch, publish at minimum:
 
 ### Sprint 1: architecture and foundations
 
-- decide SSR/ISR framework approach
+- decide and enforce the canonical market hub
+- define the public-web versus app versus API boundary
 - define slug system
-- create route map for categories, manufacturers, states, and dealers
+- create route map for categories, manufacturers, models, states, and dealers
 - define canonical rules
 - define sitemap generation rules
 
@@ -597,6 +618,7 @@ Before public SEO launch, publish at minimum:
 
 - implement category pages
 - implement manufacturer pages
+- implement manufacturer plus model pages
 - implement state pages
 - implement dealer pages
 - add crawlable HTML intro content
@@ -622,9 +644,9 @@ Before public SEO launch, publish at minimum:
 - submit Search Console properties
 - begin rank tracking
 
-## What Forestry Equipment Sales Must Do To Beat Large Marketplaces
+## What TimberEquip Must Do To Beat Large Marketplaces
 
-Forestry Equipment Sales should not try to win by looking like a smaller generic marketplace.
+TimberEquip should not try to win by looking like a smaller generic marketplace.
 
 It should win by being:
 
@@ -650,11 +672,12 @@ The moat is the combination of:
 If implementation starts now, the best order is:
 
 1. preserve private noindex state
-2. build indexable architecture offline
-3. create category/manufacturer/state/dealer page system
-4. add schema and sitemaps
-5. launch with a critical mass of public content
-6. only then remove noindex
+2. settle the canonical market hub
+3. build indexable architecture offline
+4. create category/manufacturer/model/state/dealer page system
+5. add schema and sitemaps
+6. launch with a critical mass of public content
+7. only then remove noindex
 
 ## Final Recommendation
 
@@ -667,6 +690,6 @@ Do not open indexing until these are complete:
 - canonical strategy for filters
 - minimum viable content library
 
-If Forestry Equipment Sales goes public before that, Google will likely see it as a thinner faceted inventory app instead of a category authority marketplace.
+If TimberEquip goes public before that, Google will likely see it as a thinner faceted inventory app instead of a category authority marketplace.
 
-If Forestry Equipment Sales launches after that work, it can compete much more seriously for forestry and logging equipment search demand.
+If TimberEquip launches after that work, it can compete much more seriously for forestry and logging equipment search demand.
