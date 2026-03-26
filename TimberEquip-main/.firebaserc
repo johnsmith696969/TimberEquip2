@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "mobile-app-equipment-sales"
+    "default": "mobile-app-equipment-sales",
+    "production": "mobile-app-equipment-sales"
   }
 }

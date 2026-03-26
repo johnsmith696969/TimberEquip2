@@ -19,12 +19,19 @@ Prerequisites: Node.js
 
 ## Deploy
 
-Deploy with Firebase:
+Safer deploys now use explicit environments:
 
-`npx firebase-tools deploy --only firestore,functions,hosting`
+- preview channel:
+  `FIREBASE_PREVIEW_CHANNEL=pr-123 npm run deploy:preview`
+- staging:
+  `npm run deploy:staging`
+- production:
+  `ALLOW_PRODUCTION_DEPLOY=true npm run deploy:production`
 
 Notes:
 
+- `npm run deploy:firebase` now requires an explicit `--env` argument and is meant for scripted use.
+- See `DEPLOYMENT_ENVIRONMENTS.md` for GitHub Environments, preview channels, and staging/production setup.
 - Firestore deploys must target the named database configured in `firebase.json`.
 - Stripe and SendGrid production credentials are supplied through Firebase Functions secrets, not `.env.local`.
 - The inspection dealer matcher uses the Firebase Functions secret `GOOGLE_MAPS_API_KEY` for geocoding. Keep that key server-side only and make sure the Geocoding API is enabled for it.

@@ -3,6 +3,7 @@
 Last updated: 2026-03-25
 
 Reference audit: [../TimberEquip_Full_Audit_And_Firestore_Plan.md](../TimberEquip_Full_Audit_And_Firestore_Plan.md)
+Reference platform plan: [./ENTERPRISE_DATA_PLATFORM_PLAN.md](./ENTERPRISE_DATA_PLATFORM_PLAN.md)
 
 ## Owner Lanes
 
@@ -29,6 +30,10 @@ Goal: remove current production blockers before expanding the data model.
 - [ ] Re-test contact request email delivery
 - [ ] Re-test media kit request email delivery
 - [ ] Re-test billing and admin email side effects
+- [ ] Create GitHub `preview`, `staging`, and `production` environments
+- [ ] Add environment-specific Firebase deployment credentials
+- [ ] Add required reviewers to the `production` environment
+- [ ] Create the staging Firebase project and assign its project ID to GitHub vars
 
 ### Frontend
 
@@ -73,21 +78,28 @@ Goal: enforce one canonical listing lifecycle end-to-end.
 
 ### Data
 
-- [ ] Define canonical listing schema document
-- [ ] Define allowed state transitions for `status`, `approvalStatus`, `paymentStatus`
-- [ ] Document publish prerequisites and expiration rules
+- [ ] Define canonical PostgreSQL listing governance tables: `listings`, `listing_versions`, `listing_state_transitions`, `listing_anomalies`, `listing_visibility_snapshots`, `listing_media_audits`
+- [ ] Define canonical states: `draft`, `submitted`, `approved_unpaid`, `live`, `expired`, `sold`, `rejected`, `archived`
+- [ ] Define supporting states: `review_state`, `payment_state`, `inventory_state`, `visibility_state`
+- [ ] Map current Firestore fields `status`, `approvalStatus`, `paymentStatus`, `publishedAt`, `expiresAt`, and `soldAt` to the new source of truth
+- [ ] Use `database/postgres/listing_governance_firestore_mapping.md` as the canonical field and cutover map for dual-write implementation
+- [ ] Use `functions/listing-governance-rules.js` for shadow lifecycle derivation and anomaly comparison during dual-write
+- [ ] Document publish prerequisites, sold visibility policy, and expiration rules
 
 ### Platform
 
-- [ ] Add anomaly reporting collection for invalid listing states
-- [ ] Add state-transition logging for publish, payment, relist, expire, sold
-- [ ] Verify scheduled expiration behavior against public search visibility
+- [ ] Add server-owned transition actions for submit, approve, reject, payment confirm, publish, expire, relist, sold, and archive
+- [ ] Add append-only transition logging for publish, payment, relist, expire, sold, and archive
+- [ ] Add anomaly reporting for invalid listing state combinations and visibility mismatches
+- [ ] Add the first Data Connect contract for listing governance reads and mutations
+- [ ] Add Cloud Run worker responsibilities for expiration enforcement, anomaly detection, and lifecycle shadow sync
+- [ ] Verify scheduled expiration behavior against public search visibility and transition audit output
 
 ### Frontend
 
-- [ ] Validate seller create/edit/relist flows
-- [ ] Validate admin approve/reject flows
-- [ ] Validate public search/detail visibility for paid, unpaid, pending, expired, sold listings
+- [ ] Validate seller create, edit, submit, and relist flows against the new server-owned lifecycle actions
+- [ ] Validate admin approve and reject flows against the new transition service
+- [ ] Validate public search and detail visibility for `live`, `approved_unpaid`, `expired`, `sold`, `rejected`, and `archived` outcomes
 
 Exit criteria:
 
@@ -160,4 +172,4 @@ Exit criteria:
 
 1. Validate the just-deployed Stripe fix in production checkout.
 2. Finish canonical `blogPosts` news behavior and verify it with a full CMS publish smoke test.
-3. Land the first Firestore scaffolding patch for missing collections and indexes.
+3. Turn on the new staged deploy workflow and run one preview plus staging release through it.
