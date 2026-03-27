@@ -93,7 +93,7 @@ function isListingVisible(listing) {
 
   if (approvalStatus !== 'approved') return false;
   if (paymentStatus !== 'paid') return false;
-  if (status === 'sold') return false;
+  if (['sold', 'expired', 'archived', 'pending'].includes(status)) return false;
 
   const expiresAt = timestampToDate(listing?.expiresAt);
   return !expiresAt || expiresAt.getTime() > Date.now();

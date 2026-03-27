@@ -28,6 +28,9 @@ export function hasAdminPublishingAccess(user: UserProfile | null | undefined): 
 
 export function hasManagedSellerAccess(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
+  if (user.entitlement) {
+    return user.entitlement.sellerAccessMode === 'admin_override';
+  }
 
   const normalizedRole = normalizeRole(user.role);
   const accessSource = normalizeAccountAccessSource(user.accountAccessSource);
@@ -42,6 +45,9 @@ export function hasManagedSellerAccess(user: UserProfile | null | undefined): bo
 
 export function hasActiveSellerSubscription(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
+  if (user.entitlement) {
+    return user.entitlement.sellerAccessMode === 'subscription';
+  }
 
   const normalizedPlanId = normalizeSubscriptionPlanId(user.activeSubscriptionPlanId);
   const normalizedStatus = normalizeSubscriptionStatus(user.subscriptionStatus);
@@ -58,6 +64,9 @@ export function hasActiveSellerSubscription(user: UserProfile | null | undefined
 }
 
 export function hasSellerWorkspaceAccess(user: UserProfile | null | undefined): boolean {
+  if (user?.entitlement) {
+    return user.entitlement.sellerWorkspaceAccess;
+  }
   return hasAdminPublishingAccess(user) || hasActiveSellerSubscription(user) || hasManagedSellerAccess(user);
 }
 
@@ -67,6 +76,9 @@ export function canUserPostListings(user: UserProfile | null | undefined): boole
 
 export function canAccessDealerOs(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
+  if (user.entitlement) {
+    return user.entitlement.dealerOsAccess;
+  }
   const normalizedRole = normalizeRole(user.role);
 
   if (hasAdminPublishingAccess(user)) return true;

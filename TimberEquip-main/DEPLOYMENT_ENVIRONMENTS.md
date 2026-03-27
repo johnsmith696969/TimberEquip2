@@ -146,6 +146,10 @@ SMOKE_BASE_URL=https://staging.example.com node scripts/validate-deploy-config.m
 - `/states`
 - `/dealers`
 
+Those routes are now defined centrally in:
+
+- `ops/release/release-contract.json`
+
 Example:
 
 ```bash
@@ -172,3 +176,16 @@ Recommended path:
 3. staging smoke tests pass
 4. manual approved dispatch deploys to `production`
 5. production smoke tests pass
+
+## Runbooks And Release Assets
+
+Operational assets added for this Tier 2 slice:
+
+- release contract: `ops/release/release-contract.json`
+- release notes generator: `npm run release:notes`
+- alert policy renderer: `npm run ops:alerts:render -- --project <gcp-project-id> --env production`
+- billing webhook failure: `ops/runbooks/BILLING_WEBHOOK_FAILURE.md`
+- listing visibility mismatch: `ops/runbooks/LISTING_VISIBILITY_MISMATCH.md`
+- dealer feed sync failure: `ops/runbooks/DEALER_FEED_SYNC_FAILURE.md`
+- production rollback: `ops/runbooks/PRODUCTION_ROLLBACK.md`
+- Firestore quota degradation: `ops/runbooks/FIRESTORE_QUOTA_DEGRADATION.md`

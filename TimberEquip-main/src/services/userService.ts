@@ -114,6 +114,7 @@ function sanitizeAccountAccessSource(value: unknown): UserProfile['accountAccess
 
 function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<UserProfile> {
   const sanitized: Partial<UserProfile> = { ...payload };
+  delete sanitized.entitlement;
 
   if ('displayName' in payload) sanitized.displayName = sanitizeOptionalString(payload.displayName, 100) || '';
   if ('email' in payload) sanitized.email = sanitizeOptionalString(payload.email, 320)?.toLowerCase() || '';

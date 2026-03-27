@@ -1,6 +1,6 @@
 import React from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { Edit, Trash2, MapPin } from 'lucide-react';
+import { Edit, Trash2, MapPin, ShieldAlert } from 'lucide-react';
 import { Listing } from '../../types';
 import { useLocale } from '../LocaleContext';
 
@@ -8,6 +8,7 @@ interface VirtualizedListingsTableProps {
   listings: Listing[];
   onEdit: (listing: Listing) => void;
   onDelete: (id: string) => void;
+  onInspect: (listing: Listing) => void;
   openNativeMap: (location: string) => void;
 }
 
@@ -15,6 +16,7 @@ interface ListingRowData {
   listings: Listing[];
   onEdit: (listing: Listing) => void;
   onDelete: (id: string) => void;
+  onInspect: (listing: Listing) => void;
   openNativeMap: (location: string) => void;
 }
 
@@ -25,6 +27,7 @@ function ListingRow({
   listings,
   onEdit,
   onDelete,
+  onInspect,
   openNativeMap,
 }: RowComponentProps<ListingRowData>) {
   const listing = listings[index];
@@ -90,8 +93,27 @@ function ListingRow({
         {listing.leads || 0}
       </div>
 
+      {/* Lifecycle */}
+      <div className="w-36 px-2">
+        <div className="flex flex-col items-start gap-1">
+          <span className="rounded-sm bg-surface px-2 py-1 text-[9px] font-black uppercase tracking-widest text-ink">
+            {listing.status || 'pending'}
+          </span>
+          <span className="text-[8px] font-bold uppercase tracking-widest text-muted">
+            {listing.approvalStatus || 'pending'} / {listing.paymentStatus || 'pending'}
+          </span>
+        </div>
+      </div>
+
       {/* Actions */}
-      <div className="w-20 px-2 flex justify-end space-x-2 shrink-0">
+      <div className="w-28 px-2 flex justify-end space-x-1 shrink-0">
+        <button
+          onClick={() => onInspect(listing)}
+          className="p-2 text-muted hover:text-secondary"
+          title="Lifecycle"
+        >
+          <ShieldAlert size={14} />
+        </button>
         <button 
           onClick={() => onEdit(listing)}
           className="p-2 text-muted hover:text-ink"
@@ -115,6 +137,7 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
   listings,
   onEdit,
   onDelete,
+  onInspect,
   openNativeMap,
 }) => {
   const ROW_HEIGHT = 72; // Approximate height with padding
@@ -133,7 +156,8 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
         <div className="w-20 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Hours</div>
         <div className="w-32 text-[10px] font-black uppercase tracking-widest text-muted px-2">Location</div>
         <div className="w-16 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Leads</div>
-        <div className="w-20 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Actions</div>
+        <div className="w-36 text-[10px] font-black uppercase tracking-widest text-muted px-2">Lifecycle</div>
+        <div className="w-28 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Actions</div>
       </div>
 
       {/* Virtualized rows */}
@@ -142,7 +166,7 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
           rowComponent={ListingRow}
           rowCount={listings.length}
           rowHeight={ROW_HEIGHT}
-          rowProps={{ listings, onEdit, onDelete, openNativeMap }}
+          rowProps={{ listings, onEdit, onDelete, onInspect, openNativeMap }}
           style={{ height: listHeight, width: '100%' }}
         />
       ) : (

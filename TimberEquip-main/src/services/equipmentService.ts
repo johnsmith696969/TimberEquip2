@@ -19,7 +19,7 @@ import {
   getDocFromServer,
   type QueryDocumentSnapshot
 } from 'firebase/firestore';
-import { Listing, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
+import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
@@ -177,7 +177,7 @@ const wasActiveAt = (listing: Listing, snapshotMs: number): boolean => {
   if (createdMs === undefined || createdMs > snapshotMs) return false;
 
   const status = normalize(listing.status || 'active');
-  if (status !== 'sold') return true;
+  if (!['sold', 'archived', 'expired'].includes(status)) return true;
 
   const soldAtMs = toMillis(listing.updatedAt);
   if (soldAtMs === undefined) return false;
@@ -530,6 +530,40 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Unauthorized');
+  }
+
+  const idToken = await currentUser.getIdToken();
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const rawBody = await response.text().catch(() => '');
+  let payload: Record<string, unknown> = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+  }
+
+  if (!response.ok) {
+    const fallbackMessage = rawBody.trim() || `Equipment request failed (${response.status}).`;
+    throw new Error(String(payload?.error || fallbackMessage));
+  }
+
+  return payload as T;
+}
+
 export const equipmentService = {
   async getListings(filters?: ListingFilters): Promise<Listing[]> {
     const path = 'listings';
@@ -553,6 +587,7 @@ export const equipmentService = {
         listings = listings.filter((listing) => {
           const status = normalize(listing.status || 'active');
           if (status === 'sold') return true;
+          if (status === 'archived' || status === 'expired' || status === 'pending') return false;
 
           const expiresAtMs = toMillis((listing as Listing & { expiresAt?: unknown }).expiresAt);
           if (expiresAtMs === undefined) return true;
@@ -973,10 +1008,10 @@ export const equipmentService = {
         sellerRole = 'super_admin';
       }
 
-      const adminPublisher = isAdminPublisherRole(sellerRole);
-      const nextApprovalStatus: Listing['approvalStatus'] = adminPublisher ? 'approved' : 'pending';
-      const nextStatus: Listing['status'] = adminPublisher ? 'active' : (listing.status || 'pending');
-      const nextPaymentStatus: Listing['paymentStatus'] = adminPublisher ? 'paid' : (listing.paymentStatus || 'pending');
+      const nextApprovalStatus: Listing['approvalStatus'] = 'pending';
+      const nextStatus: Listing['status'] = 'pending';
+      const requestedPaymentStatus = normalize(String(listing.paymentStatus || 'pending'));
+      const nextPaymentStatus: Listing['paymentStatus'] = requestedPaymentStatus === 'paid' ? 'paid' : 'pending';
 
       const docRef = listing.id ? doc(db, path, listing.id) : doc(collection(db, path));
       await setDoc(docRef, {
@@ -987,9 +1022,14 @@ export const equipmentService = {
         sellerVerified,
         qualityValidated: true,
         approvalStatus: nextApprovalStatus,
-        approvedBy: adminPublisher ? sellerScopeUid || auth.currentUser?.uid || null : null,
+        approvedBy: null,
         status: nextStatus,
         paymentStatus: nextPaymentStatus,
+        publishedAt: null,
+        approvedAt: null,
+        rejectedAt: null,
+        rejectedBy: null,
+        rejectionReason: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -1039,6 +1079,49 @@ export const equipmentService = {
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
+  },
+
+  async transitionListingLifecycle(
+    id: string,
+    action: ListingLifecycleAction,
+    options: { reason?: string; metadata?: Record<string, unknown> } = {}
+  ): Promise<Partial<Listing> & { id: string }> {
+    const payload = await getAuthorizedJson<{
+      listing?: Partial<Listing> & { id: string };
+    }>(`/api/listings/${encodeURIComponent(id)}/lifecycle`, {
+      method: 'POST',
+      body: JSON.stringify({
+        action,
+        reason: options.reason || '',
+        metadata: options.metadata || {},
+      }),
+    });
+
+    if (!payload.listing) {
+      throw new Error('Lifecycle update response did not include listing data.');
+    }
+
+    return payload.listing;
+  },
+
+  async getListingLifecycleAudit(id: string): Promise<ListingLifecycleAuditView> {
+    const payload = await getAuthorizedJson<ListingLifecycleAuditView>(
+      `/api/admin/listings/${encodeURIComponent(id)}/lifecycle-audit`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    return {
+      listingId: payload.listingId || id,
+      listing: payload.listing,
+      report: payload.report || null,
+      mediaAudit: payload.mediaAudit || null,
+      transitions: Array.isArray(payload.transitions) ? payload.transitions : [],
+    };
   },
 
   subscribeToInquiries(callback: (inquiries: Inquiry[]) => void): () => void {

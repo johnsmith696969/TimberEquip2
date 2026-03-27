@@ -189,7 +189,7 @@ export interface Listing {
   conditionChecklist?: ListingConditionChecklist;
   sellerVerified?: boolean;
   qualityValidated?: boolean;
-  status?: 'active' | 'sold' | 'pending';
+  status?: 'active' | 'sold' | 'pending' | 'expired' | 'archived';
   approvalStatus?: 'pending' | 'approved' | 'rejected';
   approvedBy?: string;
   paymentStatus?: 'pending' | 'paid' | 'failed';
@@ -198,6 +198,13 @@ export interface Listing {
   publishedAt?: string;
   expiresAt?: string;
   soldAt?: string;
+  archivedAt?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+  rejectionReason?: string;
+  lastLifecycleAction?: ListingLifecycleAction;
+  lastLifecycleAt?: string;
   marketValueEstimate: number | null;
   featured: boolean;
   views: number;
@@ -398,6 +405,85 @@ export interface Account {
   totalListings: number;
   totalLeads: number;
   parentAccountUid?: string;
+  accountAccessSource?: 'free_member' | 'pending_checkout' | 'subscription' | 'admin_override' | 'managed_account' | null;
+  activeSubscriptionPlanId?: 'individual_seller' | 'dealer' | 'fleet_dealer' | null;
+  subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'pending' | null;
+  listingCap?: number | null;
+  managedAccountCap?: number | null;
+  currentSubscriptionId?: string | null;
+  currentPeriodEnd?: string | null;
+  entitlement?: AccountEntitlement | null;
+}
+
+export type ListingLifecycleAction =
+  | 'submit'
+  | 'approve'
+  | 'reject'
+  | 'payment_confirmed'
+  | 'publish'
+  | 'expire'
+  | 'relist'
+  | 'mark_sold'
+  | 'archive';
+
+export interface ListingLifecycleStateSnapshot {
+  lifecycleState?: string;
+  reviewState?: string;
+  paymentState?: string;
+  inventoryState?: string;
+  visibilityState?: string;
+  isPublic?: boolean;
+  publishedAt?: string | null;
+  expiresAt?: string | null;
+  soldAt?: string | null;
+  rawStatus?: string;
+  rawApprovalStatus?: string;
+  rawPaymentStatus?: string;
+}
+
+export interface ListingLifecycleAuditReport {
+  listingId: string;
+  status: string;
+  summary: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  actorUid?: string;
+  anomalyCodes: string[];
+  anomalyCount?: number;
+  shadowState?: ListingLifecycleStateSnapshot | null;
+  rawState?: Record<string, unknown> | null;
+  governanceSnapshot?: Record<string, unknown> | null;
+}
+
+export interface ListingMediaAuditRecord {
+  listingId: string;
+  status: string;
+  summary: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  imageCount?: number;
+  primaryImagePresent?: boolean;
+  validationErrors: string[];
+}
+
+export interface ListingLifecycleTransitionRecord {
+  id: string;
+  listingId: string;
+  transitionType: string;
+  actorUid?: string;
+  createdAt?: string | null;
+  artifactSource?: string;
+  anomalyCodes: string[];
+  fromState?: ListingLifecycleStateSnapshot | null;
+  toState?: ListingLifecycleStateSnapshot | null;
+}
+
+export interface ListingLifecycleAuditView {
+  listingId: string;
+  listing?: Partial<Listing> & { id: string };
+  report: ListingLifecycleAuditReport | null;
+  mediaAudit: ListingMediaAuditRecord | null;
+  transitions: ListingLifecycleTransitionRecord[];
 }
 
 export interface Auction {
@@ -445,6 +531,7 @@ export interface UserProfile {
   managedAccountCap?: number | null;
   currentSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
+  entitlement?: AccountEntitlement | null;
   stripeCustomerId?: string;
   mfaEnabled?: boolean;
   mfaMethod?: 'sms' | null;
@@ -454,6 +541,19 @@ export interface UserProfile {
   favorites?: string[];
   emailVerified: boolean;
   createdAt: string;
+}
+
+export interface AccountEntitlement {
+  subscriptionState: 'active' | 'canceled' | 'past_due' | 'trialing' | 'pending' | 'none';
+  effectiveSellerCapability: 'none' | 'owner_operator' | 'dealer' | 'pro_dealer' | 'admin';
+  sellerAccessMode: 'none' | 'subscription' | 'admin_override' | 'admin';
+  sellerWorkspaceAccess: boolean;
+  canPostListings: boolean;
+  dealerOsAccess: boolean;
+  publicListingVisibility: 'publicly_eligible' | 'hidden_due_to_billing' | 'admin_override' | 'not_applicable';
+  visibilityReason: 'active_subscription' | 'inactive_subscription' | 'admin_override' | 'admin_role' | 'non_seller_role' | 'suspended_account';
+  billingLabel: string;
+  overrideSource?: 'admin_override' | 'admin_role' | null;
 }
 
 export interface ManagedSubAccountInput {

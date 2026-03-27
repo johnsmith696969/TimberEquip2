@@ -1,11 +1,31 @@
-const DEFAULT_ROUTES = [
-  { path: '/sitemap.xml', type: 'xml' },
-  { path: '/forestry-equipment-for-sale', type: 'html' },
-  { path: '/categories', type: 'html' },
-  { path: '/manufacturers', type: 'html' },
-  { path: '/states', type: 'html' },
-  { path: '/dealers', type: 'html' },
-];
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const RELEASE_CONTRACT_PATH = path.resolve(__dirname, '../ops/release/release-contract.json');
+
+function loadRoutesFromReleaseContract() {
+  try {
+    const raw = readFileSync(RELEASE_CONTRACT_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.smokeRoutes) && parsed.smokeRoutes.length > 0) {
+      return parsed.smokeRoutes;
+    }
+  } catch (error) {
+    console.warn(`Smoke route contract unavailable at ${RELEASE_CONTRACT_PATH}: ${error.message}`);
+  }
+
+  return [
+    { path: '/sitemap.xml', type: 'xml' },
+    { path: '/forestry-equipment-for-sale', type: 'html' },
+    { path: '/categories', type: 'html' },
+    { path: '/manufacturers', type: 'html' },
+    { path: '/states', type: 'html' },
+    { path: '/dealers', type: 'html' },
+  ];
+}
 
 function parseArgs(argv) {
   const parsed = {
@@ -50,6 +70,7 @@ const positionalBaseUrl = args._[0];
 const positionalMode = args._[1];
 const baseUrl = normalizeBaseUrl(String(args['base-url'] || positionalBaseUrl || process.env.SMOKE_BASE_URL || '').trim());
 const mode = String(args.mode || positionalMode || process.env.SMOKE_EXPECT_MODE || 'indexable').trim();
+const routes = loadRoutesFromReleaseContract();
 
 if (!baseUrl) {
   console.error('Usage: node scripts/http-smoke-check.mjs --base-url https://example.com [--mode indexable|noindex]');
@@ -58,7 +79,7 @@ if (!baseUrl) {
 
 let failures = 0;
 
-for (const route of DEFAULT_ROUTES) {
+for (const route of routes) {
   const response = await fetch(`${baseUrl}${route.path}`);
 
   const body = await response.text();

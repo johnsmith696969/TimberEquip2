@@ -110,12 +110,25 @@ export const adminService = {
     const path = `listings/${listingId}`;
     if (!auth.currentUser) return;
     try {
-      const docRef = doc(db, 'listings', listingId);
-      await updateDoc(docRef, {
-        approvalStatus: 'approved',
-        approvedBy: auth.currentUser.uid,
-        updatedAt: serverTimestamp()
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/lifecycle`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'approve',
+          metadata: {
+            triggeredFrom: 'admin_service',
+          },
+        }),
       });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(String(payload?.error || `Unable to approve listing (${response.status}).`));
+      }
       await this.logAction('APPROVE_LISTING', listingId, 'listing', 'Listing approved by admin');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
@@ -126,11 +139,26 @@ export const adminService = {
     const path = `listings/${listingId}`;
     if (!auth.currentUser) return;
     try {
-      const docRef = doc(db, 'listings', listingId);
-      await updateDoc(docRef, {
-        approvalStatus: 'rejected',
-        updatedAt: serverTimestamp()
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/lifecycle`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'reject',
+          reason,
+          metadata: {
+            triggeredFrom: 'admin_service',
+          },
+        }),
       });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(String(payload?.error || `Unable to reject listing (${response.status}).`));
+      }
       await this.logAction('REJECT_LISTING', listingId, 'listing', `Listing rejected: ${reason}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);

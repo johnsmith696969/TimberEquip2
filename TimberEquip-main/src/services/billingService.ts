@@ -1,4 +1,5 @@
 import { auth } from '../firebase';
+import type { AccountEntitlement } from '../types';
 
 export type ListingPlanId = 'individual_seller' | 'dealer' | 'fleet_dealer';
 export type AccountOnboardingChoice = 'free_member' | ListingPlanId;
@@ -103,6 +104,7 @@ export interface RefreshedAccountAccessSummary {
   role: string | null;
   accountAccessSource: string | null;
   accountStatus: 'active' | 'pending' | 'suspended' | null;
+  entitlement?: AccountEntitlement | null;
 }
 
 function getBillingApiBaseUrls(): string[] {

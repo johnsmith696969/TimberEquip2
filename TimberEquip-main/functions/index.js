@@ -16,6 +16,8 @@ const { templates } = require('./email-templates/index.js');
 const { handlePublicPagesRequest } = require('./public-pages.js');
 const { rebuildPublicSeoReadModel, syncPublicSeoForListingChange, syncPublicSeoForSellerChange } = require('./public-seo-read-model.js');
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
+const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
+const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
@@ -914,7 +916,7 @@ function buildDealerFeedWritePayload(input = {}, defaults = {}) {
       ? Boolean(input.autoPublish)
       : Object.prototype.hasOwnProperty.call(defaults, 'autoPublish')
         ? Boolean(defaults.autoPublish)
-        : true,
+        : false,
     fieldMapping: normalizeDealerFieldMapping(input.fieldMapping || defaults.fieldMapping),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
@@ -938,7 +940,7 @@ function serializeDealerFeed(feedId, rawFeed, options = {}) {
     syncMode: normalizeDealerFeedSyncMode(feed.syncMode || 'pull', 'pull'),
     syncFrequency: normalizeDealerFeedSyncFrequency(feed.syncFrequency || 'manual', 'manual'),
     nightlySyncEnabled: Boolean(feed.nightlySyncEnabled),
-    autoPublish: feed.autoPublish !== false,
+    autoPublish: Boolean(feed.autoPublish),
     fieldMapping: normalizeDealerFieldMapping(feed.fieldMapping),
     totalListingsSynced: Number(feed.totalListingsSynced || 0),
     totalListingsActive: Number(feed.totalListingsActive || 0),
@@ -1413,9 +1415,9 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
   const dealerSourceUrl = normalizeNonEmptyString(
     item?.dealerSourceUrl || item?.sourceUrl || existingListing?.externalSource?.dealerSourceUrl
   );
-  const autoPublish = Object.prototype.hasOwnProperty.call(options, 'autoPublish')
-    ? Boolean(options.autoPublish)
-    : feed.autoPublish !== false;
+  // New dealer inventory must always enter review before it becomes public.
+  // Existing approved listings can retain their approved/paid state on later syncs.
+  const autoPublish = false;
   const existingStatus = normalizeNonEmptyString(existingListing?.status).toLowerCase();
   const existingApprovalStatus = normalizeNonEmptyString(existingListing?.approvalStatus).toLowerCase();
   const existingPaymentStatus = normalizeNonEmptyString(existingListing?.paymentStatus).toLowerCase();
@@ -1786,10 +1788,17 @@ async function archiveMissingDealerFeedListings({
       const listingSnap = await listingRef.get();
       if (listingSnap.exists) {
         const listingData = listingSnap.data() || {};
+        await applyListingLifecycleAction({
+          listingRef,
+          listingId,
+          listing: listingData,
+          action: 'archive',
+          actorUid: 'dealer-feed-sync',
+          actorRole: 'system',
+          reason: `Dealer feed ${normalizedFeedId} no longer included this listing`,
+        });
         await listingRef.set(
           {
-            status: normalizeNonEmptyString(listingData.status).toLowerCase() === 'sold' ? 'sold' : 'pending',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             externalSource: {
               ...(isPlainObject(listingData.externalSource) ? listingData.externalSource : {}),
               archivedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2045,7 +2054,7 @@ function isPublicDealerListingVisible(listing) {
 
   if (approvalStatus !== 'approved') return false;
   if (paymentStatus !== 'paid') return false;
-  if (status === 'sold') return false;
+  if (['sold', 'expired', 'archived', 'pending'].includes(status)) return false;
 
   const expiresAt = listing?.expiresAt;
   const expiresAtMs = typeof expiresAt?.toMillis === 'function'
@@ -3283,20 +3292,17 @@ exports.expireListingsByDate = onSchedule(
       return;
     }
 
-    const batch = getDb().batch();
-    snap.docs.forEach((docSnap) => {
-      batch.set(
-        docSnap.ref,
-        {
-          status: 'pending',
-          paymentStatus: 'pending',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    });
-
-    await batch.commit();
+    for (const docSnap of snap.docs) {
+      await applyListingLifecycleAction({
+        listingRef: docSnap.ref,
+        listingId: docSnap.id,
+        listing: docSnap.data() || {},
+        action: 'expire',
+        actorUid: 'system',
+        actorRole: 'system',
+        reason: 'Automatic expiration window reached',
+      });
+    }
     logger.info(`expireListingsByDate: expired ${snap.size} listings`);
   }
 );
@@ -3914,6 +3920,31 @@ async function recordSellerProgramCheckoutIntent({
         stripeCheckoutSessionId: session.id,
         createdAt: now,
       }),
+      upsertSellerProgramAgreementAcceptance({
+        agreementId: session.id,
+        userUid,
+        actorUid: userUid,
+        planId,
+        statementLabel: enrollment.statementLabel,
+        legalScope: enrollment.scope,
+        agreementVersion: enrollment.legalTermsVersion,
+        checkoutSessionId: session.id,
+        stripeCustomerId: customerId || null,
+        source: enrollment.source || 'ad_programs_form',
+        acceptedAtIso: enrollment.acceptedAtIso,
+        status: 'checkout_started',
+        checkoutState: 'started',
+        acceptedTerms: true,
+        acceptedPrivacy: true,
+        acceptedRecurringBilling: true,
+        acceptedVisibilityPolicy: true,
+        acceptedAuthority: true,
+        metadata: {
+          subscriptionQuantity,
+          billingEmail: enrollment.billingEmail,
+          country: enrollment.country,
+        },
+      }),
       userRef.set(
         {
           sellerProgramAgreementVersion: enrollment.legalTermsVersion,
@@ -3992,6 +4023,31 @@ async function finalizeSellerProgramCheckoutArtifacts({
         },
         { merge: true }
       ),
+      upsertSellerProgramAgreementAcceptance({
+        agreementId: session.id,
+        userUid,
+        actorUid: userUid,
+        planId,
+        statementLabel,
+        legalScope,
+        agreementVersion,
+        checkoutSessionId: session.id,
+        stripeCustomerId: typeof session.customer === 'string' ? session.customer : '',
+        stripeSubscriptionId: subscriptionId || null,
+        source,
+        acceptedAtIso: legalAcceptedAtIso || null,
+        status: stripeConsentAccepted ? 'checkout_confirmed' : 'checkout_processing',
+        checkoutState: stripeConsentAccepted ? 'confirmed' : 'processing',
+        acceptedTerms: stripeConsentAccepted,
+        acceptedPrivacy: stripeConsentAccepted,
+        acceptedRecurringBilling: stripeConsentAccepted,
+        acceptedVisibilityPolicy: stripeConsentAccepted,
+        acceptedAuthority: stripeConsentAccepted,
+        metadata: {
+          stripeConsentAccepted,
+        },
+        finalized: true,
+      }),
     ]),
     'Seller program checkout finalization persistence',
     {
@@ -4273,6 +4329,219 @@ async function runFirestoreTaskWithQuotaTolerance(task, description, context = {
   }
 }
 
+function buildAccountStateFromSources(userData = {}, authRecord = null, overrides = {}) {
+  const authClaims = authRecord?.customClaims || {};
+  const role = normalizeUserRole(
+    overrides.role
+    ?? userData.role
+    ?? authClaims.role
+    ?? 'buyer'
+  );
+  const accountStatus = normalizeAccountStatus(
+    overrides.accountStatus
+    ?? userData.accountStatus
+    ?? authClaims.accountStatus
+    ?? 'active'
+  ) || 'active';
+  const accountAccessSource = normalizeAccountAccessSource(
+    overrides.accountAccessSource
+    ?? userData.accountAccessSource
+    ?? authClaims.accountAccessSource
+  ) || null;
+  const activeSubscriptionPlanId = String(
+    overrides.activeSubscriptionPlanId
+    ?? userData.activeSubscriptionPlanId
+    ?? authClaims.subscriptionPlanId
+    ?? ''
+  ).trim() || null;
+  const subscriptionStatus = String(
+    overrides.subscriptionStatus
+    ?? userData.subscriptionStatus
+    ?? authClaims.subscriptionStatus
+    ?? ''
+  ).trim() || null;
+  const listingCap = Number.isFinite(Number(
+    overrides.listingCap
+    ?? userData.listingCap
+    ?? authClaims.listingCap
+  ))
+    ? Number(
+      overrides.listingCap
+      ?? userData.listingCap
+      ?? authClaims.listingCap
+    )
+    : 0;
+  const managedAccountCap = Number.isFinite(Number(
+    overrides.managedAccountCap
+    ?? userData.managedAccountCap
+    ?? authClaims.managedAccountCap
+  ))
+    ? Number(
+      overrides.managedAccountCap
+      ?? userData.managedAccountCap
+      ?? authClaims.managedAccountCap
+    )
+    : 0;
+  const currentSubscriptionId = String(
+    overrides.currentSubscriptionId
+    ?? userData.currentSubscriptionId
+    ?? ''
+  ).trim() || null;
+  const rawCurrentPeriodEnd = overrides.currentPeriodEnd ?? userData.currentPeriodEnd ?? '';
+  const currentPeriodEnd = typeof rawCurrentPeriodEnd?.toDate === 'function'
+    ? rawCurrentPeriodEnd.toDate().toISOString()
+    : (String(rawCurrentPeriodEnd || '').trim() || null);
+
+  return {
+    role,
+    accountStatus,
+    accountAccessSource,
+    activeSubscriptionPlanId,
+    subscriptionStatus,
+    listingCap,
+    managedAccountCap,
+    currentSubscriptionId,
+    currentPeriodEnd,
+  };
+}
+
+async function writeAccountAuditLog({
+  eventType,
+  actorUid = '',
+  targetUid = '',
+  source = '',
+  reason = '',
+  previousState = null,
+  nextState = null,
+  metadata = {},
+}) {
+  const normalizedEventType = String(eventType || '').trim();
+  const normalizedTargetUid = String(targetUid || '').trim();
+  if (!normalizedEventType || !normalizedTargetUid) return;
+
+  const payload = {
+    eventType: normalizedEventType,
+    actorUid: String(actorUid || '').trim() || null,
+    targetUid: normalizedTargetUid,
+    source: String(source || '').trim() || null,
+    reason: String(reason || '').trim() || null,
+    previousState: previousState || null,
+    nextState: nextState || null,
+    metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  await runFirestoreTaskWithQuotaTolerance(
+    () => getDb().collection('accountAuditLogs').add(payload),
+    'Account audit log write',
+    {
+      eventType: normalizedEventType,
+      actorUid: payload.actorUid,
+      targetUid: normalizedTargetUid,
+      source: payload.source,
+    }
+  );
+}
+
+async function applyListingLifecycleAction({
+  listingRef,
+  listingId,
+  listing,
+  action,
+  actorUid = '',
+  actorRole = '',
+  reason = '',
+  metadata = {},
+}) {
+  const normalizedListingId = String(listingId || listingRef?.id || '').trim();
+  if (!listingRef || !normalizedListingId || !listing) {
+    throw new Error('Listing lifecycle action requires an existing listing reference and data.');
+  }
+
+  const { patch, currentLifecycleState } = buildLifecyclePatch({
+    listingId: normalizedListingId,
+    listing,
+    action,
+    actorUid,
+    actorRole,
+    reason,
+    metadata,
+  });
+
+  await listingRef.set(patch, { merge: true });
+  return { patch, currentLifecycleState };
+}
+
+async function upsertSellerProgramAgreementAcceptance({
+  agreementId,
+  userUid,
+  actorUid = '',
+  planId,
+  statementLabel = '',
+  legalScope = '',
+  agreementVersion = '',
+  checkoutSessionId = '',
+  stripeCustomerId = '',
+  stripeSubscriptionId = '',
+  source = '',
+  acceptedAtIso = '',
+  status = '',
+  checkoutState = '',
+  acceptedTerms = false,
+  acceptedPrivacy = false,
+  acceptedRecurringBilling = false,
+  acceptedVisibilityPolicy = false,
+  acceptedAuthority = false,
+  metadata = {},
+  finalized = false,
+}) {
+  const normalizedAgreementId = String(agreementId || '').trim();
+  const normalizedUserUid = String(userUid || '').trim();
+  const normalizedPlanId = String(planId || '').trim();
+  if (!normalizedAgreementId || !normalizedUserUid || !normalizedPlanId) return;
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const payload = {
+    userUid: normalizedUserUid,
+    actorUid: String(actorUid || normalizedUserUid).trim() || normalizedUserUid,
+    planId: normalizedPlanId,
+    statementLabel: String(statementLabel || '').trim() || null,
+    legalScope: String(legalScope || '').trim() || null,
+    agreementVersion: String(agreementVersion || '').trim() || null,
+    checkoutSessionId: String(checkoutSessionId || normalizedAgreementId).trim() || normalizedAgreementId,
+    stripeCustomerId: String(stripeCustomerId || '').trim() || null,
+    stripeSubscriptionId: String(stripeSubscriptionId || '').trim() || null,
+    source: String(source || '').trim() || null,
+    acceptedAtIso: String(acceptedAtIso || '').trim() || null,
+    acceptedTerms: Boolean(acceptedTerms),
+    acceptedPrivacy: Boolean(acceptedPrivacy),
+    acceptedRecurringBilling: Boolean(acceptedRecurringBilling),
+    acceptedVisibilityPolicy: Boolean(acceptedVisibilityPolicy),
+    acceptedAuthority: Boolean(acceptedAuthority),
+    status: String(status || '').trim() || null,
+    checkoutState: String(checkoutState || '').trim() || null,
+    metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    updatedAt: now,
+  };
+
+  if (finalized) {
+    payload.finalizedAt = now;
+  } else {
+    payload.createdAt = now;
+  }
+
+  await runFirestoreTaskWithQuotaTolerance(
+    () => getDb().collection('sellerProgramAgreementAcceptances').doc(normalizedAgreementId).set(payload, { merge: true }),
+    'Seller program agreement acceptance persistence',
+    {
+      agreementId: normalizedAgreementId,
+      userUid: normalizedUserUid,
+      planId: normalizedPlanId,
+      source: payload.source,
+    }
+  );
+}
+
 async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
   const normalizedUserUid = String(userUid || '').trim();
   if (!normalizedUserUid) {
@@ -4353,6 +4622,11 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     existingAccessSource = normalizeAccountAccessSource(authUserRecord?.customClaims?.accountAccessSource);
   }
 
+  const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
+  const previousCompactState = buildCompactAccountState(
+    buildAccountStateFromSources(existingUser, authUserRecord)
+  );
+
   const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid, {
     stripe,
     customerId: resolvedStripeCustomerId,
@@ -4403,7 +4677,6 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     );
   }
 
-  const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
   if (authUserRecord) {
     const existingClaims = authUserRecord.customClaims || {};
     const nextClaims = buildAccessClaims(existingClaims, {
@@ -4419,8 +4692,41 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
         ? normalizeAccountAccessSource(existingClaims.accountAccessSource) || 'admin_override'
         : nextAccessSource,
     });
+    const nextCompactState = buildCompactAccountState(
+      buildAccountStateFromSources(existingUser, authUserRecord, {
+        role: nextClaims.role,
+        accountStatus: nextClaims.accountStatus || updatePayload.accountStatus,
+        accountAccessSource: nextClaims.accountAccessSource || nextAccessSource,
+        activeSubscriptionPlanId: summary.planId,
+        subscriptionStatus: effectiveSubscriptionStatus,
+        listingCap: summary.listingCap,
+        managedAccountCap: summary.managedAccountCap,
+        currentSubscriptionId: summary.currentSubscriptionId,
+        currentPeriodEnd: summary.currentPeriodEndIso,
+      })
+    );
 
     await admin.auth().setCustomUserClaims(normalizedUserUid, nextClaims);
+
+    if (JSON.stringify(previousCompactState) !== JSON.stringify(nextCompactState)) {
+      await writeAccountAuditLog({
+        eventType: 'SELLER_ENTITLEMENT_SYNC',
+        actorUid: null,
+        targetUid: normalizedUserUid,
+        source,
+        reason: `Applied ${normalizedPlanId || 'seller'} subscription sync`,
+        previousState: previousCompactState,
+        nextState: nextCompactState,
+        metadata: {
+          requestedPlanId: normalizedPlanId,
+          effectivePlanId: summary.planId || null,
+          requestedSubscriptionStatus: normalizedIncomingSubscriptionStatus || null,
+          effectiveSubscriptionStatus: effectiveSubscriptionStatus || null,
+          cancelAtPeriodEnd: Boolean(cancelAtPeriodEnd),
+          firestoreQuotaLimited,
+        },
+      });
+    }
   }
 
   if (!skipFirestore) {
@@ -4584,6 +4890,50 @@ async function getDecodedUserFromBearer(req) {
   const idToken = req.headers.authorization?.split('Bearer ')[1];
   if (!idToken) return null;
   return admin.auth().verifyIdToken(idToken);
+}
+
+async function getListingLifecycleActorContext(req, listing = null) {
+  const decodedToken = await getDecodedUserFromBearer(req);
+  if (!decodedToken) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  const actorUid = String(decodedToken.uid || '').trim();
+  const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+  const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+  const isAdminActor = canAdministrateAccount(tokenRole);
+  const tokenParentAccountUid = String(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid || '').trim();
+  const ownerScopeUid = tokenParentAccountUid || actorUid;
+
+  if (!listing) {
+    return {
+      decodedToken,
+      actorUid,
+      actorEmail,
+      actorRole: tokenRole,
+      isAdminActor,
+      ownerScopeUid,
+    };
+  }
+
+  const listingOwnerUid = normalizeNonEmptyString(listing?.sellerUid || listing?.sellerId);
+  if (!listingOwnerUid) {
+    return { error: 'Listing owner is missing.', status: 409 };
+  }
+
+  if (isAdminActor || listingOwnerUid === actorUid || listingOwnerUid === ownerScopeUid) {
+    return {
+      decodedToken,
+      actorUid,
+      actorEmail,
+      actorRole: tokenRole,
+      isAdminActor,
+      ownerScopeUid,
+      listingOwnerUid,
+    };
+  }
+
+  return { error: 'Forbidden', status: 403 };
 }
 
 async function resolveStripePriceIdForPlan(stripe, plan) {
@@ -4777,19 +5127,24 @@ async function finalizeListingPaymentFromCheckoutSession(session, source) {
     );
   }
 
-  await getDb().collection('listings').doc(listingId).set(
-    {
-      paymentStatus: 'paid',
-      subscriptionPlanId: planId,
-      subscriptionAmount: amountUsd,
-      listingCap: plan?.listingCap || null,
-      status: 'active',
-      publishedAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: listingExpiresAt,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const listingRef = getDb().collection('listings').doc(listingId);
+  const listingSnap = await listingRef.get();
+  if (listingSnap.exists) {
+    await applyListingLifecycleAction({
+      listingRef,
+      listingId,
+      listing: listingSnap.data() || {},
+      action: 'payment_confirmed',
+      actorUid: userUid,
+      actorRole: 'system',
+      reason: `Listing checkout paid via ${source}`,
+      metadata: {
+        planId,
+        amountUsd,
+        currentPeriodEnd: listingExpiresAt,
+      },
+    });
+  }
 
   await getDb().collection('billingAuditLogs').add({
     action: 'CHECKOUT_SESSION_PAID',
@@ -5061,23 +5416,38 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
         }
 
         const listingData = listingSnap.data() || {};
-        const listingStatus = String(listingData.status || '').toLowerCase();
-        const listingUpdate = {
-          subscriptionPlanId: planId || null,
-          paymentStatus: shouldRetainListingAccess ? 'paid' : 'pending',
-          expiresAt: currentPeriodEnd || null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        if (listingStatus !== 'sold') {
-          listingUpdate.status = shouldRetainListingAccess ? 'active' : 'pending';
+        if (shouldRetainListingAccess) {
+          await applyListingLifecycleAction({
+            listingRef,
+            listingId,
+            listing: listingData,
+            action: 'payment_confirmed',
+            actorUid: userUid || 'system',
+            actorRole: 'system',
+            reason: `Stripe subscription sync retained listing visibility via ${source}`,
+            metadata: {
+              planId,
+              currentPeriodEnd,
+            },
+          });
+        } else {
+          await listingRef.set(
+            {
+              paymentStatus: 'pending',
+              status: ['sold', 'archived'].includes(String(listingData.status || '').toLowerCase())
+                ? String(listingData.status || '').toLowerCase()
+                : 'pending',
+              expiresAt: currentPeriodEnd || null,
+              lastLifecycleAction: 'billing_visibility_suppressed',
+              lastLifecycleActorUid: userUid || 'system',
+              lastLifecycleActorRole: 'system',
+              lastLifecycleReason: `Subscription access inactive via ${source}`,
+              lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
         }
-
-        if (shouldRetainListingAccess && !listingData.publishedAt) {
-          listingUpdate.publishedAt = admin.firestore.FieldValue.serverTimestamp();
-        }
-
-        await listingRef.set(listingUpdate, { merge: true });
       },
       'Listing subscription visibility sync',
       {
@@ -5209,6 +5579,94 @@ function timestampValueToIso(value) {
 
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function serializeLifecycleStateSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return null;
+  }
+
+  return {
+    lifecycleState: normalizeNonEmptyString(snapshot.lifecycleState),
+    reviewState: normalizeNonEmptyString(snapshot.reviewState),
+    paymentState: normalizeNonEmptyString(snapshot.paymentState),
+    inventoryState: normalizeNonEmptyString(snapshot.inventoryState),
+    visibilityState: normalizeNonEmptyString(snapshot.visibilityState),
+    isPublic: Boolean(snapshot.isPublic),
+    publishedAt: timestampValueToIso(snapshot.publishedAt) || null,
+    expiresAt: timestampValueToIso(snapshot.expiresAt) || null,
+    soldAt: timestampValueToIso(snapshot.soldAt) || null,
+    rawStatus: normalizeNonEmptyString(snapshot.rawStatus),
+    rawApprovalStatus: normalizeNonEmptyString(snapshot.rawApprovalStatus),
+    rawPaymentStatus: normalizeNonEmptyString(snapshot.rawPaymentStatus),
+  };
+}
+
+function serializeListingLifecycleAuditReport(docSnapshot) {
+  if (!docSnapshot?.exists) return null;
+  const data = docSnapshot.data() || {};
+
+  return {
+    listingId: docSnapshot.id,
+    status: normalizeNonEmptyString(data.status, 'pending'),
+    summary: normalizeNonEmptyString(data.summary),
+    createdAt: timestampValueToIso(data.createdAt) || null,
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+    actorUid: normalizeNonEmptyString(data.actorUid || data.createdByUid),
+    anomalyCodes: Array.isArray(data.anomalyCodes) ? data.anomalyCodes.map((code) => normalizeNonEmptyString(code)).filter(Boolean) : [],
+    anomalyCount: normalizeFiniteNumber(data.anomalyCount, 0),
+    shadowState: serializeLifecycleStateSnapshot(data.shadowState),
+    rawState: data.rawState && typeof data.rawState === 'object'
+      ? {
+          ...data.rawState,
+          publishedAt: timestampValueToIso(data.rawState.publishedAt) || null,
+          expiresAt: timestampValueToIso(data.rawState.expiresAt) || null,
+          soldAt: timestampValueToIso(data.rawState.soldAt) || null,
+        }
+      : null,
+    governanceSnapshot: data.governanceSnapshot && typeof data.governanceSnapshot === 'object'
+      ? {
+          ...data.governanceSnapshot,
+          publishedAt: timestampValueToIso(data.governanceSnapshot.publishedAt) || null,
+          expiresAt: timestampValueToIso(data.governanceSnapshot.expiresAt) || null,
+          soldAt: timestampValueToIso(data.governanceSnapshot.soldAt) || null,
+        }
+      : null,
+  };
+}
+
+function serializeListingMediaAuditRecord(docSnapshot) {
+  if (!docSnapshot?.exists) return null;
+  const data = docSnapshot.data() || {};
+
+  return {
+    listingId: docSnapshot.id,
+    status: normalizeNonEmptyString(data.status, 'pending'),
+    summary: normalizeNonEmptyString(data.summary),
+    createdAt: timestampValueToIso(data.createdAt) || null,
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+    imageCount: normalizeFiniteNumber(data.imageCount, 0),
+    primaryImagePresent: Boolean(data.primaryImagePresent),
+    validationErrors: Array.isArray(data.validationErrors)
+      ? data.validationErrors.map((code) => normalizeNonEmptyString(code)).filter(Boolean)
+      : [],
+  };
+}
+
+function serializeListingLifecycleTransitionRecord(docSnapshot) {
+  const data = docSnapshot.data() || {};
+
+  return {
+    id: docSnapshot.id,
+    listingId: normalizeNonEmptyString(data.listingId),
+    transitionType: normalizeNonEmptyString(data.transitionType, 'governance_shadow_sync'),
+    actorUid: normalizeNonEmptyString(data.actorUid, 'system'),
+    createdAt: timestampValueToIso(data.createdAt) || null,
+    artifactSource: normalizeNonEmptyString(data.artifactSource),
+    anomalyCodes: Array.isArray(data.anomalyCodes) ? data.anomalyCodes.map((code) => normalizeNonEmptyString(code)).filter(Boolean) : [],
+    fromState: serializeLifecycleStateSnapshot(data.fromState),
+    toState: serializeLifecycleStateSnapshot(data.toState),
+  };
 }
 
 function toAccountStatusLabel(accountStatus, authDisabled) {
@@ -5468,6 +5926,10 @@ function serializeAdminUserData(uid, data = {}, authRecord = null) {
     timestampValueToIso(data.lastLogin) ||
     updatedAt ||
     createdAt;
+  const accountState = buildAccountStateFromSources(data, authRecord, {
+    accountStatus,
+  });
+  const entitlement = buildAccountEntitlementSnapshot(accountState);
 
   return {
     id: uid,
@@ -5491,6 +5953,14 @@ function serializeAdminUserData(uid, data = {}, authRecord = null) {
     totalListings: Number(data.totalListings || 0),
     totalLeads: Number(data.totalLeads || 0),
     parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+    accountAccessSource: accountState.accountAccessSource,
+    activeSubscriptionPlanId: accountState.activeSubscriptionPlanId,
+    subscriptionStatus: accountState.subscriptionStatus,
+    listingCap: accountState.listingCap,
+    managedAccountCap: accountState.managedAccountCap,
+    currentSubscriptionId: accountState.currentSubscriptionId,
+    currentPeriodEnd: accountState.currentPeriodEnd,
+    entitlement,
   };
 }
 
@@ -6308,10 +6778,11 @@ exports.apiProxy = onRequest(
             : rawClaimedSubscriptionStatus
               ? normalizeStripeSubscriptionStatus(rawClaimedSubscriptionStatus)
               : null;
-
-        return res.status(200).json({
-          stripeCustomerId: customerId || null,
-          planId: claimedPlanId || summary.planId || null,
+        const responseState = buildAccountStateFromSources({}, authUserRecord, {
+          role: claimedRole || null,
+          accountAccessSource: claimedAccessSource || (summary.planId ? 'subscription' : null),
+          accountStatus: claimedAccountStatus || 'active',
+          activeSubscriptionPlanId: claimedPlanId || summary.planId || null,
           subscriptionStatus: claimedSubscriptionStatus || summary.subscriptionStatus || null,
           listingCap: Number.isFinite(Number(claims.listingCap))
             ? Number(claims.listingCap)
@@ -6321,16 +6792,164 @@ exports.apiProxy = onRequest(
             : summary.managedAccountCap,
           currentSubscriptionId: summary.currentSubscriptionId || null,
           currentPeriodEnd: summary.currentPeriodEndIso || null,
-          role: claimedRole || null,
-          accountAccessSource: claimedAccessSource || (summary.planId ? 'subscription' : null),
-          accountStatus: claimedAccountStatus || 'active',
         });
+
+        return res.status(200).json({
+          stripeCustomerId: customerId || null,
+          planId: responseState.activeSubscriptionPlanId,
+          subscriptionStatus: responseState.subscriptionStatus,
+          listingCap: responseState.listingCap,
+          managedAccountCap: responseState.managedAccountCap,
+          currentSubscriptionId: responseState.currentSubscriptionId,
+          currentPeriodEnd: responseState.currentPeriodEnd,
+          role: responseState.role || null,
+          accountAccessSource: responseState.accountAccessSource,
+          accountStatus: responseState.accountStatus,
+          entitlement: buildAccountEntitlementSnapshot(responseState),
+        });
+      }
+
+      const listingLifecycleMatch = path.match(/^\/listings\/([^/]+)\/lifecycle$/i);
+      if (req.method === 'POST' && listingLifecycleMatch) {
+        const listingId = decodeURIComponent(listingLifecycleMatch[1] || '').trim();
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const listingRef = getDb().collection('listings').doc(listingId);
+        const listingSnap = await listingRef.get();
+        if (!listingSnap.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+
+        const listing = listingSnap.data() || {};
+        const actorContext = await getListingLifecycleActorContext(req, listing);
+        if (actorContext.error) {
+          return res.status(actorContext.status).json({ error: actorContext.error });
+        }
+
+        const action = normalizeNonEmptyString(req.body?.action).toLowerCase();
+        const reason = normalizeNonEmptyString(req.body?.reason);
+        const metadata = req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {};
+        const sellerAllowedActions = new Set(['submit', 'relist', 'mark_sold', 'archive']);
+
+        if (!actorContext.isAdminActor && !sellerAllowedActions.has(action)) {
+          return res.status(403).json({ error: 'This account cannot perform that listing action.' });
+        }
+
+        try {
+          const result = await applyListingLifecycleAction({
+            listingRef,
+            listingId,
+            listing,
+            action,
+            actorUid: actorContext.actorUid,
+            actorRole: actorContext.actorRole,
+            reason,
+            metadata,
+          });
+
+          return res.status(200).json({
+            message: `Listing ${action.replace(/_/g, ' ')} completed.`,
+            lifecycleAction: action,
+            previousLifecycleState: result.currentLifecycleState,
+            listing: {
+              id: listingId,
+              status: result.patch.status ?? listing.status ?? null,
+              approvalStatus: result.patch.approvalStatus ?? listing.approvalStatus ?? null,
+              paymentStatus: result.patch.paymentStatus ?? listing.paymentStatus ?? null,
+              publishedAt: timestampValueToIso(result.patch.publishedAt) || timestampValueToIso(listing.publishedAt) || null,
+              expiresAt: timestampValueToIso(result.patch.expiresAt) || timestampValueToIso(listing.expiresAt) || null,
+              soldAt: timestampValueToIso(result.patch.soldAt) || timestampValueToIso(listing.soldAt) || null,
+              archivedAt: timestampValueToIso(result.patch.archivedAt) || timestampValueToIso(listing.archivedAt) || null,
+              rejectionReason: result.patch.rejectionReason ?? listing.rejectionReason ?? null,
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        } catch (error) {
+          if (error?.code === 'invalid-lifecycle-transition') {
+            return res.status(409).json({
+              error: error.message,
+              details: error.details || {},
+            });
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/market-rates') {
         const payload = await getMarketRatesPayload();
         res.set('Cache-Control', 'public, max-age=900');
         return res.status(200).json(payload);
+      }
+
+      const adminListingAuditMatch = path.match(/^\/admin\/listings\/([^/]+)\/lifecycle-audit$/i);
+      if (req.method === 'GET' && adminListingAuditMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const listingId = decodeURIComponent(adminListingAuditMatch[1] || '').trim();
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        try {
+          const db = getDb();
+          const listingRef = db.collection('listings').doc(listingId);
+          const reportRef = db.collection('listingAuditReports').doc(listingId);
+          const mediaAuditRef = db.collection('listingMediaAudit').doc(listingId);
+
+          const [listingSnap, reportSnap, mediaAuditSnap, transitionsSnap] = await Promise.all([
+            listingRef.get(),
+            reportRef.get(),
+            mediaAuditRef.get(),
+            db.collection('listingStateTransitions').where('listingId', '==', listingId).limit(50).get(),
+          ]);
+
+          if (!listingSnap.exists) {
+            return res.status(404).json({ error: 'Listing not found.' });
+          }
+
+          const listing = listingSnap.data() || {};
+          const transitions = transitionsSnap.docs
+            .map((docSnapshot) => serializeListingLifecycleTransitionRecord(docSnapshot))
+            .sort((left, right) => {
+              const leftTime = new Date(left.createdAt || 0).getTime() || 0;
+              const rightTime = new Date(right.createdAt || 0).getTime() || 0;
+              return rightTime - leftTime;
+            })
+            .slice(0, 25);
+
+          return res.status(200).json({
+            listingId,
+            listing: {
+              id: listingId,
+              title: normalizeNonEmptyString(listing.title, '(Untitled Listing)'),
+              manufacturer: normalizeNonEmptyString(listing.manufacturer || listing.make),
+              make: normalizeNonEmptyString(listing.make),
+              model: normalizeNonEmptyString(listing.model),
+              status: normalizeNonEmptyString(listing.status, 'pending'),
+              approvalStatus: normalizeNonEmptyString(listing.approvalStatus, 'pending'),
+              paymentStatus: normalizeNonEmptyString(listing.paymentStatus, 'pending'),
+              rejectionReason: normalizeNonEmptyString(listing.rejectionReason),
+              lastLifecycleAction: normalizeNonEmptyString(listing.lastLifecycleAction),
+              lastLifecycleAt: timestampValueToIso(listing.lastLifecycleAt) || null,
+              updatedAt: timestampValueToIso(listing.updatedAt) || null,
+            },
+            report: serializeListingLifecycleAuditReport(reportSnap),
+            mediaAudit: serializeListingMediaAuditRecord(mediaAuditSnap),
+            transitions,
+          });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Listing lifecycle audit is temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/marketplace-stats') {
@@ -6984,6 +7603,13 @@ exports.apiProxy = onRequest(
         const nextAccessSource = requestedRole === currentRole && currentAccessSource
           ? currentAccessSource
           : deriveManualAccountAccessSource(actor.actorRole, requestedRole, currentAccessSource);
+        const previousCompactState = buildCompactAccountState(
+          buildAccountStateFromSources(currentData, authUserRecord, {
+            role: currentRole,
+            accountStatus: currentAccountStatus,
+            accountAccessSource: currentAccessSource || null,
+          })
+        );
 
         if (authEmailChanged) {
           try {
@@ -7035,6 +7661,36 @@ exports.apiProxy = onRequest(
           });
           if (JSON.stringify(existingClaims) !== JSON.stringify(nextClaims)) {
             await admin.auth().setCustomUserClaims(targetUid, nextClaims);
+          }
+          const nextCompactState = buildCompactAccountState(
+            buildAccountStateFromSources(currentData, authUserRecord, {
+              role: nextClaims.role || requestedRole,
+              accountStatus: nextClaims.accountStatus || currentAccountStatus,
+              accountAccessSource: nextClaims.accountAccessSource || nextAccessSource,
+              activeSubscriptionPlanId: nextClaims.subscriptionPlanId || null,
+              subscriptionStatus: nextClaims.subscriptionStatus || null,
+              listingCap: nextClaims.listingCap || 0,
+              managedAccountCap: nextClaims.managedAccountCap || 0,
+            })
+          );
+          if (JSON.stringify(previousCompactState) !== JSON.stringify(nextCompactState)) {
+            await writeAccountAuditLog({
+              eventType: requestedRole !== currentRole ? 'ADMIN_ROLE_CHANGED' : 'ADMIN_USER_UPDATED',
+              actorUid: actor.actorUid || null,
+              targetUid,
+              source: 'admin_users_patch',
+              reason: requestedRole !== currentRole
+                ? `Admin changed role from ${currentRole} to ${requestedRole}`
+                : 'Admin updated account profile details',
+              previousState: previousCompactState,
+              nextState: nextCompactState,
+              metadata: {
+                actorRole: actor.actorRole,
+                firestoreQuotaLimited,
+                emailChanged: authEmailChanged,
+                displayNameChanged: authDisplayNameChanged,
+              },
+            });
           }
         } catch (error) {
           logger.error(`Failed to update auth role claims for ${targetUid}`, error);

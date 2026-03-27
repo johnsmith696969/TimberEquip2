@@ -15,6 +15,7 @@ import { auth } from '../firebase';
 import { UserProfile } from '../types';
 import { userService } from '../services/userService';
 import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
+import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../utils/accountEntitlement';
 
 const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
@@ -135,6 +136,18 @@ function applyBillingRefreshToProfile(
       refreshedPlanId,
       baseProfile.onboardingIntent
     ),
+    entitlement: refresh.entitlement ?? resolveAccountEntitlement({
+      ...baseProfile,
+      role: refreshedRole,
+      activeSubscriptionPlanId: refreshedPlanId,
+      subscriptionStatus: normalizeSubscriptionStatus(refresh.subscriptionStatus) ?? baseProfile.subscriptionStatus ?? null,
+      listingCap: typeof refresh.listingCap === 'number' ? refresh.listingCap : baseProfile.listingCap,
+      managedAccountCap: typeof refresh.managedAccountCap === 'number' ? refresh.managedAccountCap : baseProfile.managedAccountCap,
+      currentSubscriptionId: refresh.currentSubscriptionId ?? baseProfile.currentSubscriptionId ?? null,
+      currentPeriodEnd: refresh.currentPeriodEnd ?? baseProfile.currentPeriodEnd ?? null,
+      accountAccessSource: refreshedAccessSource,
+      accountStatus: refreshedAccountStatus,
+    }),
   };
 }
 
@@ -239,6 +252,18 @@ async function buildFallbackProfile(
     favorites: Array.isArray(current?.favorites) ? current.favorites : [],
     emailVerified: firebaseUser.emailVerified,
     createdAt: current?.createdAt || new Date().toISOString(),
+    entitlement: resolveAccountEntitlement({
+      ...(current || {}),
+      role,
+      accountStatus,
+      accountAccessSource,
+      activeSubscriptionPlanId,
+      subscriptionStatus,
+      listingCap,
+      managedAccountCap,
+      currentSubscriptionId: current?.currentSubscriptionId || null,
+      currentPeriodEnd: current?.currentPeriodEnd || null,
+    }),
   };
 }
 
@@ -271,7 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const billingRefreshAttemptsRef = useRef<Set<string>>(new Set());
 
-  const normalizeProfile = (profile: UserProfile): UserProfile => ({
+  const normalizeProfile = (profile: UserProfile): UserProfile => withResolvedAccountEntitlement({
     ...profile,
     favorites: Array.isArray(profile.favorites) ? profile.favorites : [],
   });

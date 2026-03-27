@@ -36,6 +36,10 @@ Target state:
 Status:
 
 - in progress in this slice
+- release contract now lives in `ops/release/release-contract.json`
+- smoke tests now read from the shared release contract
+- runbooks now live under `ops/runbooks/`
+- alert-policy rendering scaffold now lives in `scripts/render-alert-policies.mjs`
 
 ### 2. Release observability and rollback discipline
 
@@ -163,3 +167,4 @@ Target state:
 2. Configure `preview`, `staging`, and `production` GitHub Environments with environment-specific secrets.
 3. Add required reviewers to the `production` environment.
 4. Run one preview deploy, one staging deploy, and one production dry run through the new workflows.
+5. Render environment-specific alert policies and create the matching Cloud Monitoring policies in GCP.

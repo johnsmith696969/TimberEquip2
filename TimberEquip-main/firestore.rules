@@ -289,7 +289,7 @@ service cloud.firestore {
                (('manufacturer' in data) && data.manufacturer is string && data.manufacturer.size() > 0)
              ) &&
              data.price is number && data.price >= 0 &&
-             data.status in ['active', 'sold', 'pending'] &&
+             data.status in ['active', 'sold', 'pending', 'expired', 'archived'] &&
              data.approvalStatus in ['pending', 'approved', 'rejected'] &&
              data.createdAt is timestamp;
     }
@@ -675,6 +675,16 @@ service cloud.firestore {
 
     match /sellerProgramApplications/{applicationId} {
       allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
+      allow create, update, delete: if false;
+    }
+
+    match /sellerProgramAgreementAcceptances/{acceptanceId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
+      allow create, update, delete: if false;
+    }
+
+    match /accountAuditLogs/{logId} {
+      allow read: if isAdmin();
       allow create, update, delete: if false;
     }
 

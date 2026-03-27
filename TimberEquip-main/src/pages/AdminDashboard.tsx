@@ -25,6 +25,7 @@ import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
 import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
+import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
 type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
 
@@ -63,6 +64,12 @@ export function AdminDashboard() {
   const [nextListingCursor, setNextListingCursor] = useState<AdminListingsCursor>(null);
   const [listingCursorHistory, setListingCursorHistory] = useState<AdminListingsCursor[]>([null]);
   const [listingsLoadError, setListingsLoadError] = useState('');
+  const [selectedListingAuditId, setSelectedListingAuditId] = useState('');
+  const [selectedListingForAudit, setSelectedListingForAudit] = useState<Listing | null>(null);
+  const [listingAuditData, setListingAuditData] = useState<ListingLifecycleAuditView | null>(null);
+  const [listingAuditLoading, setListingAuditLoading] = useState(false);
+  const [listingAuditError, setListingAuditError] = useState('');
+  const [pendingListingLifecycleKey, setPendingListingLifecycleKey] = useState('');
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -351,6 +358,53 @@ export function AdminDashboard() {
     }
   };
 
+  const mergeListingPatch = (listingId: string, updates: Partial<Listing>) => {
+    const applyPatch = (listing: Listing): Listing =>
+      listing.id === listingId ? { ...listing, ...updates } : listing;
+
+    setListings((previous) => previous.map(applyPatch));
+    setEditingListing((previous) => (previous?.id === listingId ? { ...previous, ...updates } : previous));
+    setSelectedListingForAudit((previous) => (previous?.id === listingId ? { ...previous, ...updates } : previous));
+    setListingAuditData((previous) => (
+      previous && previous.listingId === listingId
+        ? {
+            ...previous,
+            listing: {
+              ...(previous.listing || { id: listingId }),
+              ...updates,
+            },
+          }
+        : previous
+    ));
+  };
+
+  const loadListingLifecycleAudit = async (listing: Listing, options?: { silent?: boolean }) => {
+    setSelectedListingAuditId(listing.id);
+    setSelectedListingForAudit(listing);
+    setListingAuditError('');
+    if (!options?.silent) {
+      setListingAuditLoading(true);
+    }
+
+    try {
+      const audit = await equipmentService.getListingLifecycleAudit(listing.id);
+      setListingAuditData(audit);
+      if (audit.listing) {
+        mergeListingPatch(listing.id, audit.listing);
+      }
+    } catch (error) {
+      console.error('Error loading listing lifecycle audit:', error);
+      setListingAuditError(error instanceof Error ? error.message : 'Unable to load lifecycle audit right now.');
+      if (!options?.silent) {
+        setListingAuditData(null);
+      }
+    } finally {
+      if (!options?.silent) {
+        setListingAuditLoading(false);
+      }
+    }
+  };
+
   const fetchData = async () => {
     if (!authUser?.uid) {
       listingsInitializedRef.current = false;
@@ -442,9 +496,17 @@ export function AdminDashboard() {
       }
       setIsModalOpen(false);
       setEditingListing(null);
+      setUserFeedback({
+        tone: 'success',
+        message: editingListing ? 'Listing details updated successfully.' : 'New machine listing created successfully.',
+      });
       fetchData();
     } catch (error) {
       console.error('Error saving listing:', error);
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to save this listing right now.',
+      });
     }
   };
 
@@ -452,10 +514,79 @@ export function AdminDashboard() {
     if (window.confirm('Are you sure you want to delete this listing? This action cannot be undone.')) {
       try {
         await equipmentService.deleteListing(id);
+        if (selectedListingAuditId === id) {
+          setSelectedListingAuditId('');
+          setSelectedListingForAudit(null);
+          setListingAuditData(null);
+          setListingAuditError('');
+        }
+        setUserFeedback({
+          tone: 'success',
+          message: 'Listing deleted successfully.',
+        });
         fetchData();
       } catch (error) {
         console.error('Error deleting listing:', error);
+        setUserFeedback({
+          tone: 'error',
+          message: error instanceof Error ? error.message : 'Unable to delete this listing right now.',
+        });
       }
+    }
+  };
+
+  const handleAdminListingLifecycleAction = async (
+    listing: Listing,
+    action: ListingLifecycleAction
+  ) => {
+    const pendingKey = `${listing.id}:${action}`;
+    setPendingListingLifecycleKey(pendingKey);
+
+    let reason = '';
+    if (action === 'reject') {
+      const promptValue = window.prompt('Enter a rejection reason for this listing:', listing.rejectionReason || '');
+      if (promptValue === null) {
+        setPendingListingLifecycleKey('');
+        return;
+      }
+      reason = promptValue.trim();
+      if (!reason) {
+        setUserFeedback({
+          tone: 'warning',
+          message: 'A rejection reason is required before rejecting a listing.',
+        });
+        setPendingListingLifecycleKey('');
+        return;
+      }
+    }
+
+    try {
+      const nextListing = await equipmentService.transitionListingLifecycle(listing.id, action, {
+        reason,
+        metadata: {
+          triggeredFrom: 'admin_dashboard',
+          actorSurface: 'admin_listings',
+        },
+      });
+
+      mergeListingPatch(listing.id, nextListing);
+      const auditListing = {
+        ...listing,
+        ...nextListing,
+      } as Listing;
+      await loadListingLifecycleAudit(auditListing, { silent: true });
+      setUserFeedback({
+        tone: 'success',
+        message: `Listing ${action.replace(/_/g, ' ')} completed successfully.`,
+      });
+    } catch (error) {
+      console.error(`Error running lifecycle action ${action} for listing ${listing.id}:`, error);
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to complete that lifecycle action.',
+      });
+    } finally {
+      setPendingListingLifecycleKey('');
     }
   };
 
@@ -734,6 +865,92 @@ export function AdminDashboard() {
     l.model.toLowerCase().includes(searchQuery.toLowerCase())
   ), [listings, searchQuery]);
   const recentOverviewListings = listings.slice(0, 5);
+  const pendingReviewCount = listings.filter((listing) => String(listing.approvalStatus || 'pending').trim().toLowerCase() === 'pending').length;
+  const rejectedListingCount = listings.filter((listing) => String(listing.approvalStatus || '').trim().toLowerCase() === 'rejected').length;
+  const liveListingCount = listings.filter((listing) => (
+    String(listing.status || '').trim().toLowerCase() === 'active' &&
+    String(listing.approvalStatus || '').trim().toLowerCase() === 'approved' &&
+    String(listing.paymentStatus || '').trim().toLowerCase() === 'paid'
+  )).length;
+
+  const selectedListingAudit = selectedListingAuditId
+    ? filteredListings.find((entry) => entry.id === selectedListingAuditId) ||
+      listings.find((entry) => entry.id === selectedListingAuditId) ||
+      selectedListingForAudit
+    : null;
+
+  const formatLifecycleLabel = (value: string) =>
+    String(value || '')
+      .replace(/_/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (character) => character.toUpperCase()) || 'Unknown';
+
+  const getListingBadgeClasses = (value: string, type: 'status' | 'approval' | 'payment' | 'visibility') => {
+    const normalized = String(value || '').trim().toLowerCase();
+
+    if (type === 'payment') {
+      if (normalized === 'paid') return 'bg-data/10 border border-data/30 text-data';
+      if (normalized === 'failed') return 'bg-red-50 border border-red-200 text-red-700';
+      return 'bg-amber-50 border border-amber-200 text-amber-800';
+    }
+
+    if (type === 'approval') {
+      if (normalized === 'approved') return 'bg-data/10 border border-data/30 text-data';
+      if (normalized === 'rejected') return 'bg-red-50 border border-red-200 text-red-700';
+      return 'bg-amber-50 border border-amber-200 text-amber-800';
+    }
+
+    if (type === 'visibility') {
+      if (normalized === 'public' || normalized === 'live') return 'bg-data/10 border border-data/30 text-data';
+      if (normalized === 'private' || normalized === 'archived') return 'bg-surface border border-line text-muted';
+      return 'bg-amber-50 border border-amber-200 text-amber-800';
+    }
+
+    if (normalized === 'active') return 'bg-data/10 border border-data/30 text-data';
+    if (normalized === 'sold') return 'bg-secondary/10 border border-secondary/30 text-secondary';
+    if (normalized === 'archived' || normalized === 'expired') return 'bg-surface border border-line text-muted';
+    return 'bg-amber-50 border border-amber-200 text-amber-800';
+  };
+
+  const getAdminLifecycleActions = (listing: Listing): Array<{ action: ListingLifecycleAction; label: string; tone: 'primary' | 'secondary' | 'danger' }> => {
+    const status = String(listing.status || 'pending').trim().toLowerCase();
+    const approvalStatus = String(listing.approvalStatus || 'pending').trim().toLowerCase();
+    const paymentStatus = String(listing.paymentStatus || 'pending').trim().toLowerCase();
+    const actions: Array<{ action: ListingLifecycleAction; label: string; tone: 'primary' | 'secondary' | 'danger' }> = [];
+
+    if (approvalStatus === 'pending' || approvalStatus === 'rejected') {
+      actions.push({ action: 'approve', label: 'Approve', tone: 'primary' });
+    }
+    if (approvalStatus !== 'rejected' && status !== 'archived' && status !== 'sold') {
+      actions.push({ action: 'reject', label: 'Reject', tone: 'danger' });
+    }
+    if (approvalStatus === 'approved' && paymentStatus !== 'paid' && status !== 'archived') {
+      actions.push({ action: 'payment_confirmed', label: 'Confirm Payment', tone: 'secondary' });
+    }
+    if (approvalStatus === 'approved' && paymentStatus === 'paid' && status !== 'active' && status !== 'archived') {
+      actions.push({ action: 'publish', label: 'Publish', tone: 'primary' });
+    }
+    if (status === 'rejected' || approvalStatus === 'rejected') {
+      actions.push({ action: 'submit', label: 'Resubmit', tone: 'secondary' });
+    }
+    if (status === 'active') {
+      actions.push({ action: 'expire', label: 'Expire', tone: 'secondary' });
+    }
+    if (['expired', 'sold', 'archived'].includes(status)) {
+      actions.push({ action: 'relist', label: 'Relist', tone: 'primary' });
+    }
+    if (!['sold', 'archived'].includes(status)) {
+      actions.push({ action: 'mark_sold', label: 'Mark Sold', tone: 'secondary' });
+    }
+    if (status !== 'archived') {
+      actions.push({ action: 'archive', label: 'Archive', tone: 'secondary' });
+    }
+
+    return actions;
+  };
+
+  const isListingLifecyclePending = (listingId: string, action: ListingLifecycleAction) =>
+    pendingListingLifecycleKey === `${listingId}:${action}`;
 
   const filteredAccounts = accounts.filter(account => {
     const haystack = [
@@ -1363,12 +1580,287 @@ export function AdminDashboard() {
         </span>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-4">
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-800">Pending Review</p>
+          <p className="mt-2 text-2xl font-black tracking-tight text-amber-900">{pendingReviewCount}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-amber-800">Needs admin or super admin decision</p>
+        </div>
+        <div className="rounded-sm border border-data/30 bg-data/10 px-4 py-4">
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-data">Live Listings</p>
+          <p className="mt-2 text-2xl font-black tracking-tight text-ink">{liveListingCount}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-data">Approved, paid, and publicly visible</p>
+        </div>
+        <div className="rounded-sm border border-red-200 bg-red-50 px-4 py-4">
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-red-700">Rejected Listings</p>
+          <p className="mt-2 text-2xl font-black tracking-tight text-red-900">{rejectedListingCount}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-red-700">Require correction before resubmission</p>
+        </div>
+      </div>
+
       <VirtualizedListingsTable
         listings={filteredListings}
         onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
         onDelete={handleDeleteListing}
+        onInspect={(listing) => { void loadListingLifecycleAudit(listing); }}
         openNativeMap={openNativeMap}
       />
+
+      {selectedListingAudit && (
+        <div className="rounded-sm border border-line bg-surface shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-line px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={16} className="text-accent" />
+                <span className="text-[10px] font-black uppercase tracking-[0.22em] text-accent">Lifecycle Control Panel</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-tight text-ink">
+                  {selectedListingAudit.title || '(Untitled Listing)'}
+                </h3>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                  {selectedListingAudit.manufacturer || selectedListingAudit.make || 'Unknown Manufacturer'} · {selectedListingAudit.model || 'Unknown Model'} · ID {selectedListingAudit.id}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className={`rounded-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getListingBadgeClasses(String(selectedListingAudit.status || 'pending'), 'status')}`}>
+                  Status: {formatLifecycleLabel(String(selectedListingAudit.status || 'pending'))}
+                </span>
+                <span className={`rounded-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getListingBadgeClasses(String(selectedListingAudit.approvalStatus || 'pending'), 'approval')}`}>
+                  Review: {formatLifecycleLabel(String(selectedListingAudit.approvalStatus || 'pending'))}
+                </span>
+                <span className={`rounded-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getListingBadgeClasses(String(selectedListingAudit.paymentStatus || 'pending'), 'payment')}`}>
+                  Payment: {formatLifecycleLabel(String(selectedListingAudit.paymentStatus || 'pending'))}
+                </span>
+                {listingAuditData?.report?.shadowState?.visibilityState && (
+                  <span className={`rounded-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getListingBadgeClasses(String(listingAuditData.report.shadowState.visibilityState), 'visibility')}`}>
+                    Visibility: {formatLifecycleLabel(String(listingAuditData.report.shadowState.visibilityState))}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void loadListingLifecycleAudit(selectedListingAudit)}
+                disabled={listingAuditLoading}
+                className="btn-industrial py-2 px-4 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={`mr-1.5 ${listingAuditLoading ? 'animate-spin' : ''}`} />
+                Refresh Audit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedListingAuditId('');
+                  setSelectedListingForAudit(null);
+                  setListingAuditData(null);
+                  setListingAuditError('');
+                }}
+                className="btn-industrial py-2 px-4"
+              >
+                Close Panel
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-6 px-6 py-5">
+            <div className="flex flex-wrap gap-2">
+              {getAdminLifecycleActions(selectedListingAudit).map((option) => (
+                <button
+                  key={`${selectedListingAudit.id}:${option.action}`}
+                  type="button"
+                  onClick={() => void handleAdminListingLifecycleAction(selectedListingAudit, option.action)}
+                  disabled={isListingLifecyclePending(selectedListingAudit.id, option.action)}
+                  className={`rounded-sm px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    option.tone === 'danger'
+                      ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                      : option.tone === 'primary'
+                        ? 'border border-accent bg-accent text-white hover:bg-accent/90'
+                        : 'border border-line bg-bg text-ink hover:border-accent'
+                  }`}
+                >
+                  {isListingLifecyclePending(selectedListingAudit.id, option.action) ? 'Working...' : option.label}
+                </button>
+              ))}
+            </div>
+
+            {listingAuditError && (
+              <div className="flex items-start gap-3 rounded-sm border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em]">Audit Unavailable</p>
+                  <p className="text-xs font-semibold leading-5">{listingAuditError}</p>
+                </div>
+              </div>
+            )}
+
+            {listingAuditLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="rounded-sm border border-line bg-bg p-4">
+                    <div className="flex items-center gap-2">
+                      <Activity size={14} className="text-accent" />
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">Governance Snapshot</h4>
+                    </div>
+                    {listingAuditData?.report ? (
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Lifecycle</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{formatLifecycleLabel(String(listingAuditData.report.shadowState?.lifecycleState || 'unknown'))}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Review</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{formatLifecycleLabel(String(listingAuditData.report.shadowState?.reviewState || 'unknown'))}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Payment</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{formatLifecycleLabel(String(listingAuditData.report.shadowState?.paymentState || 'unknown'))}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Inventory</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{formatLifecycleLabel(String(listingAuditData.report.shadowState?.inventoryState || 'unknown'))}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Visibility</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{formatLifecycleLabel(String(listingAuditData.report.shadowState?.visibilityState || 'unknown'))}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Public</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{listingAuditData.report.shadowState?.isPublic ? 'Yes' : 'No'}</p>
+                          </div>
+                        </div>
+                        <div className="rounded-sm border border-line bg-surface px-4 py-4">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-muted">Summary</p>
+                          <p className="mt-2 text-sm font-semibold leading-6 text-ink">{listingAuditData.report.summary}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(listingAuditData.report.anomalyCodes || []).length > 0 ? (
+                            listingAuditData.report.anomalyCodes.map((code) => (
+                              <span key={code} className="rounded-sm border border-red-200 bg-red-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-700">
+                                {formatLifecycleLabel(code)}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="rounded-sm border border-data/30 bg-data/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-data">
+                              No anomalies detected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-xs font-semibold text-muted">No governance snapshot is available for this listing yet.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-sm border border-line bg-bg p-4">
+                    <div className="flex items-center gap-2">
+                      <Image size={14} className="text-accent" />
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">Media Audit</h4>
+                    </div>
+                    {listingAuditData?.mediaAudit ? (
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Audit Status</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{formatLifecycleLabel(String(listingAuditData.mediaAudit.status || 'unknown'))}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Images</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{listingAuditData.mediaAudit.imageCount ?? 0}</p>
+                          </div>
+                          <div className="rounded-sm border border-line bg-surface px-3 py-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted">Primary Image</p>
+                            <p className="mt-1 text-xs font-black uppercase text-ink">{listingAuditData.mediaAudit.primaryImagePresent ? 'Present' : 'Missing'}</p>
+                          </div>
+                        </div>
+                        <div className="rounded-sm border border-line bg-surface px-4 py-4">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-muted">Summary</p>
+                          <p className="mt-2 text-sm font-semibold leading-6 text-ink">{listingAuditData.mediaAudit.summary}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(listingAuditData.mediaAudit.validationErrors || []).length > 0 ? (
+                            listingAuditData.mediaAudit.validationErrors.map((errorCode) => (
+                              <span key={errorCode} className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-800">
+                                {formatLifecycleLabel(errorCode)}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="rounded-sm border border-data/30 bg-data/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-data">
+                              Media passed current checks
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-xs font-semibold text-muted">No media audit has been written for this listing yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-sm border border-line bg-bg p-4">
+                  <div className="flex items-center gap-2">
+                    <FileText size={14} className="text-accent" />
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">Transition Log</h4>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {listingAuditData?.transitions?.length ? (
+                      listingAuditData.transitions.map((transition) => (
+                        <div key={transition.id} className="rounded-sm border border-line bg-surface px-4 py-3">
+                          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-ink">
+                                {formatLifecycleLabel(transition.transitionType)}
+                              </p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                                Actor {transition.actorUid || 'system'} · {transition.artifactSource || 'unknown source'}
+                              </p>
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                              {transition.createdAt ? formatTimestamp(transition.createdAt) : 'Unknown time'}
+                            </p>
+                          </div>
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            <div className="rounded-sm border border-line bg-bg px-3 py-3">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-muted">From</p>
+                              <p className="mt-1 text-xs font-semibold text-ink">
+                                {formatLifecycleLabel(String(transition.fromState?.lifecycleState || 'unknown'))} / {formatLifecycleLabel(String(transition.fromState?.visibilityState || 'unknown'))}
+                              </p>
+                            </div>
+                            <div className="rounded-sm border border-line bg-bg px-3 py-3">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-muted">To</p>
+                              <p className="mt-1 text-xs font-semibold text-ink">
+                                {formatLifecycleLabel(String(transition.toState?.lifecycleState || 'unknown'))} / {formatLifecycleLabel(String(transition.toState?.visibilityState || 'unknown'))}
+                              </p>
+                            </div>
+                          </div>
+                          {(transition.anomalyCodes || []).length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {transition.anomalyCodes.map((code) => (
+                                <span key={code} className="rounded-sm border border-red-200 bg-red-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-700">
+                                  {formatLifecycleLabel(code)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs font-semibold text-muted">No lifecycle transitions have been recorded yet for this listing.</p>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {listingPage > 1 || listingHasMore ? (
         <div className="flex items-center justify-between rounded-sm border border-line bg-surface px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted">

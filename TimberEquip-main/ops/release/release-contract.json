@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "smokeRoutes": [
+    {
+      "path": "/sitemap.xml",
+      "type": "xml"
+    },
+    {
+      "path": "/forestry-equipment-for-sale",
+      "type": "html"
+    },
+    {
+      "path": "/categories",
+      "type": "html"
+    },
+    {
+      "path": "/manufacturers",
+      "type": "html"
+    },
+    {
+      "path": "/states",
+      "type": "html"
+    },
+    {
+      "path": "/dealers",
+      "type": "html"
+    }
+  ],
+  "environments": {
+    "preview": {
+      "indexing": "noindex",
+      "approval": "none",
+      "requiredSecrets": [
+        "FIREBASE_SERVICE_ACCOUNT",
+        "FIREBASE_PROJECT_ID"
+      ],
+      "requiredVariables": [
+        "FIREBASE_PROJECT_ID"
+      ],
+      "smokeMode": "noindex"
+    },
+    "staging": {
+      "indexing": "noindex",
+      "approval": "none",
+      "requiredSecrets": [
+        "FIREBASE_SERVICE_ACCOUNT",
+        "FIREBASE_PROJECT_ID"
+      ],
+      "requiredVariables": [
+        "FIREBASE_PROJECT_ID",
+        "SMOKE_BASE_URL"
+      ],
+      "smokeMode": "noindex"
+    },
+    "production": {
+      "indexing": "indexable",
+      "approval": "required",
+      "requiredSecrets": [
+        "FIREBASE_SERVICE_ACCOUNT",
+        "FIREBASE_PROJECT_ID"
+      ],
+      "requiredVariables": [
+        "FIREBASE_PROJECT_ID",
+        "SMOKE_BASE_URL"
+      ],
+      "smokeMode": "indexable"
+    }
+  },
+  "rollback": {
+    "hostingCommand": "firebase hosting:clone SOURCE_SITE_ID:SOURCE_VERSION TARGET_SITE_ID",
+    "functionsCommand": "firebase deploy --only functions:functionName --project TARGET_PROJECT_ID",
+    "runbook": "ops/runbooks/PRODUCTION_ROLLBACK.md"
+  }
+}

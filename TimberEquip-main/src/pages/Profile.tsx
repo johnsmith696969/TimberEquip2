@@ -23,7 +23,8 @@ import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile, type RecaptchaVerifier } from 'firebase/auth';
 import { getUserRoleDisplayLabel } from '../utils/userRoles';
-import { canAccessDealerOs, canUserPostListings, hasActiveSellerSubscription } from '../utils/sellerAccess';
+import { canAccessDealerOs, canUserPostListings } from '../utils/sellerAccess';
+import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import {
@@ -66,6 +67,7 @@ export function Profile() {
   const { user, logout, toggleFavorite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasUser = Boolean(user);
+  const entitlement = useMemo(() => resolveAccountEntitlement(user), [user]);
   const normalizedRole = hasUser ? userService.normalizeRole(user?.role) : '';
   const hasSellerWorkspaceAccess = hasUser && canUserPostListings(user);
   const hasDealerWorkspaceAccess = hasUser && canAccessDealerOs(user);
@@ -89,7 +91,7 @@ export function Profile() {
   const canViewInspectionRequests = hasUser;
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
   const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
-  const hasPaidSellerSubscription = hasActiveSellerSubscription(user);
+  const hasPaidSellerSubscription = entitlement.sellerAccessMode === 'subscription';
   const subscriptionPlanLabel = hasPaidSellerSubscription
     ? getSellerPlanMarketingLabel(user?.activeSubscriptionPlanId)
     : normalizedRole === 'member'
@@ -98,17 +100,23 @@ export function Profile() {
         ? 'Buyer'
         : 'No active seller plan';
   const subscriptionStatusLabel = String(
-    user?.subscriptionStatus ||
+    entitlement.subscriptionState !== 'none'
+      ? entitlement.subscriptionState
+      : user?.subscriptionStatus ||
     (hasPaidSellerSubscription ? 'active' : normalizedRole === 'member' ? 'free' : 'none')
   ).trim().toLowerCase();
-  const billingLabel = hasPaidSellerSubscription && user?.activeSubscriptionPlanId
-    ? getSellerProgramStatementLabel(user.activeSubscriptionPlanId)
-    : 'n/a';
-  const listingVisibilityLabel = hasPaidSellerSubscription
+  const billingLabel = entitlement.billingLabel || (
+    hasPaidSellerSubscription && user?.activeSubscriptionPlanId
+      ? getSellerProgramStatementLabel(user.activeSubscriptionPlanId)
+      : 'n/a'
+  );
+  const listingVisibilityLabel = entitlement.publicListingVisibility === 'publicly_eligible'
     ? 'publicly eligible'
-    : hasSellerWorkspaceAccess
-      ? 'hidden until billing is restored'
-      : 'not applicable';
+    : entitlement.publicListingVisibility === 'admin_override'
+      ? 'admin override'
+      : entitlement.publicListingVisibility === 'hidden_due_to_billing'
+        ? 'hidden until billing is restored'
+        : 'not applicable';
   const profileTabs = useMemo(() => {
     const tabs = ['Overview'];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
@@ -172,6 +180,9 @@ export function Profile() {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState('');
   const [settingsNotice, setSettingsNotice] = useState('');
+  const [listingActionId, setListingActionId] = useState('');
+  const [listingActionError, setListingActionError] = useState('');
+  const [listingActionNotice, setListingActionNotice] = useState('');
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [profileDataLoading, setProfileDataLoading] = useState(false);
@@ -932,6 +943,57 @@ export function Profile() {
     setIsListingModalOpen(true);
   };
 
+  const getLifecycleActionKey = (listingId: string, action: string) => `${listingId}:${action}`;
+
+  const getListingLifecycleActions = (listing: Listing) => {
+    const status = String(listing.status || 'pending').trim().toLowerCase();
+    const actions: Array<{ action: 'submit' | 'relist' | 'mark_sold' | 'archive'; label: string; tone: 'default' | 'accent' }> = [];
+
+    if (status === 'active') {
+      actions.push({ action: 'mark_sold', label: 'Mark Sold', tone: 'accent' });
+      actions.push({ action: 'archive', label: 'Archive', tone: 'default' });
+      return actions;
+    }
+
+    if (status === 'sold' || status === 'expired' || status === 'archived') {
+      actions.push({ action: 'relist', label: 'Relist', tone: 'accent' });
+    }
+
+    if (String(listing.approvalStatus || '').trim().toLowerCase() === 'rejected') {
+      actions.push({ action: 'submit', label: 'Resubmit', tone: 'accent' });
+    }
+
+    if (status !== 'archived') {
+      actions.push({ action: 'archive', label: 'Archive', tone: 'default' });
+    }
+
+    return actions;
+  };
+
+  const handleListingLifecycleAction = async (
+    listing: Listing,
+    action: 'submit' | 'relist' | 'mark_sold' | 'archive'
+  ) => {
+    const actionKey = getLifecycleActionKey(listing.id, action);
+    setListingActionError('');
+    setListingActionNotice('');
+    setListingActionId(actionKey);
+
+    try {
+      const updatedListing = await equipmentService.transitionListingLifecycle(listing.id, action);
+      setMyListings((prev) => prev.map((entry) => (
+        entry.id === listing.id
+          ? { ...entry, ...updatedListing }
+          : entry
+      )));
+      setListingActionNotice(`Listing ${action.replace(/_/g, ' ')} completed.`);
+    } catch (error) {
+      setListingActionError(error instanceof Error ? error.message : 'Unable to update the listing lifecycle right now.');
+    } finally {
+      setListingActionId('');
+    }
+  };
+
   const handleDeleteListing = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this listing?')) {
       return;
@@ -1105,7 +1167,7 @@ export function Profile() {
   const renderMyListings = () => (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h3 className="text-sm font-black uppercase tracking-widest">My Active Inventory</h3>
+        <h3 className="text-sm font-black uppercase tracking-widest">My Inventory</h3>
         <button 
           onClick={() => { setSelectedListing(null); setIsListingModalOpen(true); }}
           className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
@@ -1114,6 +1176,16 @@ export function Profile() {
           Add Machine
         </button>
       </div>
+      {listingActionError && (
+        <div className="rounded-sm border border-accent/30 bg-accent/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent">
+          {listingActionError}
+        </div>
+      )}
+      {listingActionNotice && (
+        <div className="rounded-sm border border-data/30 bg-data/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-data">
+          {listingActionNotice}
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4">
         {myListings.map((listing) => (
            <div key={listing.id} className="bg-surface border border-line p-4 flex flex-col sm:flex-row gap-4 shadow-sm hover:border-accent/50 transition-colors">
@@ -1125,6 +1197,17 @@ export function Profile() {
                  <div className="min-w-0">
                    <span className="label-micro text-accent">{listing.category}</span>
                    <h4 className="text-base md:text-lg font-black uppercase tracking-tighter leading-tight">{listing.title}</h4>
+                   <div className="mt-2 flex flex-wrap items-center gap-2">
+                     <span className="rounded-sm bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted">
+                       {String(listing.status || 'pending')}
+                     </span>
+                     <span className="rounded-sm bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted">
+                       {String(listing.approvalStatus || 'pending')}
+                     </span>
+                     <span className="rounded-sm bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted">
+                       {String(listing.paymentStatus || 'pending')}
+                     </span>
+                   </div>
                  </div>
                  <div className="flex items-center gap-2 flex-shrink-0">
                    <span className="text-base md:text-xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
@@ -1141,6 +1224,27 @@ export function Profile() {
                <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
                 <span className="flex items-center"><Clock size={12} className="mr-1" /> {listing.hours} HRS</span>
                 <span className="flex items-center"><MapPin size={12} className="mr-1" /> {listing.location}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {getListingLifecycleActions(listing).map(({ action, label, tone }) => {
+                  const actionKey = getLifecycleActionKey(listing.id, action);
+                  const isPending = listingActionId === actionKey;
+                  return (
+                    <button
+                      key={action}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => void handleListingLifecycleAction(listing, action)}
+                      className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-60 ${
+                        tone === 'accent'
+                          ? 'border-accent/40 bg-accent/10 text-accent hover:border-accent'
+                          : 'border-line bg-bg text-muted hover:border-accent hover:text-accent'
+                      }`}
+                    >
+                      {isPending ? 'Working...' : label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
              <div className="hidden sm:flex sm:flex-col gap-2 flex-shrink-0">
