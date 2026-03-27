@@ -2435,6 +2435,32 @@ function buildFirebaseDownloadUrl(bucket, path, token) {
   return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
 }
 
+function resolveStorageBucketName() {
+  const explicitBucket = normalizeNonEmptyString(
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    process.env.STORAGE_BUCKET
+  );
+  if (explicitBucket) return explicitBucket;
+
+  const rawFirebaseConfig = normalizeNonEmptyString(process.env.FIREBASE_CONFIG);
+  if (rawFirebaseConfig) {
+    try {
+      const parsed = JSON.parse(rawFirebaseConfig);
+      const configuredBucket = normalizeNonEmptyString(parsed?.storageBucket);
+      if (configuredBucket) return configuredBucket;
+    } catch (error) {
+      logger.warn(`Unable to parse FIREBASE_CONFIG for storage bucket resolution: ${error.message}`);
+    }
+  }
+
+  const projectId = normalizeNonEmptyString(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID);
+  if (projectId) {
+    return `${projectId}.firebasestorage.app`;
+  }
+
+  return 'mobile-app-equipment-sales.firebasestorage.app';
+}
+
 async function compressToAvifTarget(inputBuffer, width, targetBytes) {
   const widthSteps = [width, Math.round(width * 0.85), Math.round(width * 0.72), Math.round(width * 0.6), Math.round(width * 0.5), Math.round(width * 0.4)]
     .filter((candidate, index, array) => candidate > 0 && array.indexOf(candidate) === index);
@@ -2467,6 +2493,7 @@ exports.generateListingImageVariants = onObjectFinalized(
     region: 'us-central1',
     memory: '1GiB',
     timeoutSeconds: 120,
+    bucket: resolveStorageBucketName(),
   },
   async (event) => {
     const object = event.data;
