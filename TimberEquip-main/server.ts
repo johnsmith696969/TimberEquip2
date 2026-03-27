@@ -42,10 +42,11 @@ try {
 
 // Initialize Firebase Admin
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+const firebaseProjectId = String(process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || firebaseConfig.projectId || '').trim() || firebaseConfig.projectId;
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    projectId: firebaseConfig.projectId,
+    projectId: firebaseProjectId,
   });
 }
 

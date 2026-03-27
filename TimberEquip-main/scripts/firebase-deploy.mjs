@@ -71,7 +71,17 @@ const scope = String(args.scope || process.env.FIREBASE_DEPLOY_SCOPE || 'hosting
 const seoMode = environment === 'production' ? 'indexable' : 'noindex';
 
 console.log(`Preparing ${environment} deploy for Firebase project ${projectId}`);
-await runCommand(process.execPath, [path.join(rootDir, 'scripts', 'run-seo-command.mjs'), seoMode, 'npm', 'run', 'build'], { cwd: rootDir });
+await runCommand(
+  process.execPath,
+  [path.join(rootDir, 'scripts', 'run-seo-command.mjs'), seoMode, 'npm', 'run', 'build'],
+  {
+    cwd: rootDir,
+    env: {
+      ...process.env,
+      FIREBASE_ENVIRONMENT: environment,
+    },
+  },
+);
 
 if (environment === 'preview') {
   const channelId = String(args.channel || process.env.FIREBASE_PREVIEW_CHANNEL || '').trim();

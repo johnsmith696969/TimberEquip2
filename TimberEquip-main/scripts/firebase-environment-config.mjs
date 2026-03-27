@@ -2,6 +2,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const VALID_ENVIRONMENTS = new Set(['preview', 'staging', 'production']);
+export const DEFAULT_FIRESTORE_DATABASE_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
+
+const FIREBASE_CLIENT_CONFIGS = Object.freeze({
+  production: Object.freeze({
+    apiKey: '',
+    projectId: 'mobile-app-equipment-sales',
+    appId: '1:547811102681:web:3065d1745c6b8dac4993c8',
+    authDomain: 'mobile-app-equipment-sales.firebaseapp.com',
+    firestoreDatabaseId: DEFAULT_FIRESTORE_DATABASE_ID,
+    storageBucket: 'mobile-app-equipment-sales.firebasestorage.app',
+    messagingSenderId: '547811102681',
+    measurementId: '',
+  }),
+  staging: Object.freeze({
+    apiKey: '',
+    projectId: 'timberequip-staging',
+    appId: '1:252674789146:web:7ef151827eb55ef90aa6a3',
+    authDomain: 'timberequip-staging.firebaseapp.com',
+    firestoreDatabaseId: '(default)',
+    storageBucket: 'timberequip-staging.firebasestorage.app',
+    messagingSenderId: '252674789146',
+    measurementId: '',
+  }),
+});
 
 export function parseArgs(argv) {
   const parsed = {
@@ -39,6 +63,23 @@ export function parseArgs(argv) {
 
 export function normalizeEnvironment(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+export function resolveFirebaseClientEnvironment(environment) {
+  return environment === 'preview' ? 'staging' : environment;
+}
+
+export function resolveFirebaseClientConfig(environment) {
+  const normalizedEnvironment = resolveFirebaseClientEnvironment(normalizeEnvironment(environment));
+  const config = FIREBASE_CLIENT_CONFIGS[normalizedEnvironment];
+
+  if (!config) {
+    throw new Error(`No Firebase client config is defined for "${environment}".`);
+  }
+
+  return {
+    ...config,
+  };
 }
 
 export function readFirebaseRc(rootDir) {
