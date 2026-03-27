@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   normalizeEnvironment,
   resolveFirebaseClientConfig,
+  resolveFirebaseWebApiKey,
 } from './firebase-environment-config.mjs';
 
 const [, , mode, ...commandParts] = process.argv;
@@ -24,11 +25,12 @@ const rootDir = path.resolve(__dirname, '..');
 const allowIndexing = mode === 'indexable' ? 'true' : 'false';
 const firebaseEnvironment = normalizeEnvironment(process.env.FIREBASE_ENVIRONMENT || '') || (mode === 'indexable' ? 'production' : 'staging');
 const firebaseClientConfig = resolveFirebaseClientConfig(firebaseEnvironment);
+const { apiKey: firebaseApiKey } = resolveFirebaseWebApiKey(firebaseEnvironment, rootDir);
 
 process.env.ALLOW_INDEXING = allowIndexing;
 process.env.VITE_ALLOW_INDEXING = allowIndexing;
 process.env.FIREBASE_ENVIRONMENT = firebaseEnvironment;
-process.env.VITE_FIREBASE_API_KEY = firebaseClientConfig.apiKey;
+process.env.VITE_FIREBASE_API_KEY = firebaseApiKey;
 process.env.VITE_FIREBASE_PROJECT_ID = firebaseClientConfig.projectId;
 process.env.VITE_FIREBASE_APP_ID = firebaseClientConfig.appId;
 process.env.VITE_FIREBASE_AUTH_DOMAIN = firebaseClientConfig.authDomain;

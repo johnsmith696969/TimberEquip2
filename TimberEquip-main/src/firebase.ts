@@ -10,7 +10,7 @@ function resolveFirebaseConfigValue(value: unknown, fallback = ''): string {
 }
 
 const resolvedFirebaseConfig = {
-  apiKey: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_API_KEY, firebaseConfig.apiKey),
+  apiKey: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_API_KEY, ''),
   projectId: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_PROJECT_ID, firebaseConfig.projectId),
   appId: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_APP_ID, firebaseConfig.appId),
   authDomain: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, firebaseConfig.authDomain),
@@ -21,7 +21,7 @@ const resolvedFirebaseConfig = {
 };
 
 if (!resolvedFirebaseConfig.apiKey) {
-  throw new Error('Missing Firebase web API key. Provide VITE_FIREBASE_API_KEY or add apiKey to firebase-applet-config.json.');
+  throw new Error('Missing Firebase web API key. Provide VITE_FIREBASE_API_KEY or configure a local .firebase-web-config.local.json for environment-aware builds.');
 }
 
 const app = initializeApp({

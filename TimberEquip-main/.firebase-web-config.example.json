@@ -1,0 +1,8 @@
+{
+  "production": {
+    "apiKey": "your_production_firebase_web_api_key"
+  },
+  "staging": {
+    "apiKey": "your_staging_firebase_web_api_key"
+  }
+}

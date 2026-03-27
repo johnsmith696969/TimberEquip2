@@ -6,7 +6,6 @@ export const DEFAULT_FIRESTORE_DATABASE_ID = 'ai-studio-206e8e62-feaa-4921-875f-
 
 const FIREBASE_CLIENT_CONFIGS = Object.freeze({
   production: Object.freeze({
-    apiKey: '',
     projectId: 'mobile-app-equipment-sales',
     appId: '1:547811102681:web:3065d1745c6b8dac4993c8',
     authDomain: 'mobile-app-equipment-sales.firebaseapp.com',
@@ -16,7 +15,6 @@ const FIREBASE_CLIENT_CONFIGS = Object.freeze({
     measurementId: '',
   }),
   staging: Object.freeze({
-    apiKey: '',
     projectId: 'timberequip-staging',
     appId: '1:252674789146:web:7ef151827eb55ef90aa6a3',
     authDomain: 'timberequip-staging.firebaseapp.com',
@@ -80,6 +78,54 @@ export function resolveFirebaseClientConfig(environment) {
   return {
     ...config,
   };
+}
+
+function readFirebaseWebConfigLocal(rootDir) {
+  const localConfigPath = path.join(rootDir, '.firebase-web-config.local.json');
+
+  if (!fs.existsSync(localConfigPath)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(localConfigPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`Unable to read .firebase-web-config.local.json: ${error.message}`);
+  }
+}
+
+export function resolveFirebaseWebApiKey(environment, rootDir) {
+  const normalizedEnvironment = resolveFirebaseClientEnvironment(normalizeEnvironment(environment));
+  const upperEnvironment = normalizedEnvironment.toUpperCase();
+  const envKeys = [
+    `FIREBASE_WEB_API_KEY_${upperEnvironment}`,
+    `VITE_FIREBASE_API_KEY_${upperEnvironment}`,
+    'FIREBASE_WEB_API_KEY',
+    'VITE_FIREBASE_API_KEY',
+  ];
+
+  for (const envKey of envKeys) {
+    const value = process.env[envKey];
+    if (value && value.trim()) {
+      return {
+        apiKey: value.trim(),
+        source: `env:${envKey}`,
+      };
+    }
+  }
+
+  const localConfig = readFirebaseWebConfigLocal(rootDir);
+  const localValue = String(localConfig?.[normalizedEnvironment]?.apiKey || '').trim();
+  if (localValue) {
+    return {
+      apiKey: localValue,
+      source: `.firebase-web-config.local.json:${normalizedEnvironment}`,
+    };
+  }
+
+  throw new Error(
+    `No Firebase web API key configured for "${environment}". Set FIREBASE_WEB_API_KEY_${upperEnvironment}, VITE_FIREBASE_API_KEY_${upperEnvironment}, FIREBASE_WEB_API_KEY, VITE_FIREBASE_API_KEY, or add ${normalizedEnvironment}.apiKey to .firebase-web-config.local.json.`,
+  );
 }
 
 export function readFirebaseRc(rootDir) {
