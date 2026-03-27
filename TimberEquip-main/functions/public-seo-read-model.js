@@ -3,8 +3,8 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 
-const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
-const PROJECT_ID = 'mobile-app-equipment-sales';
+const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
+const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
 const PUBLIC_SEO_COLLECTIONS = Object.freeze({
   listings: 'publicListings',
   dealers: 'publicDealers',
@@ -18,6 +18,31 @@ const CANONICAL_MARKET_KEY = 'forestry';
 const MAX_ROUTE_LISTINGS = 24;
 const MAX_ROUTE_LINKS = 18;
 const MAX_DIRECTORY_ITEMS = 150;
+
+function normalizeNonEmptyString(value, fallback = '') {
+  const normalized = String(value || '').trim();
+  return normalized || fallback;
+}
+
+function resolveProjectId() {
+  return normalizeNonEmptyString(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID, DEFAULT_PROJECT_ID);
+}
+
+function resolveFirestoreDatabaseId() {
+  const configuredDatabaseId = normalizeNonEmptyString(
+    process.env.FIRESTORE_DATABASE_ID || process.env.FIREBASE_FIRESTORE_DATABASE_ID,
+    '',
+  );
+
+  if (configuredDatabaseId) {
+    return configuredDatabaseId;
+  }
+
+  return resolveProjectId() === 'timberequip-staging' ? '(default)' : DEFAULT_FIRESTORE_DB_ID;
+}
+
+const PROJECT_ID = resolveProjectId();
+const FIRESTORE_DB_ID = resolveFirestoreDatabaseId();
 
 if (!admin.apps.length) {
   admin.initializeApp({

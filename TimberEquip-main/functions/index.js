@@ -27,8 +27,27 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
-function getDb() { return getFirestore(FIRESTORE_DB_ID); }
+const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
+
+function resolveProjectId() {
+  return normalizeNonEmptyString(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID, 'mobile-app-equipment-sales');
+}
+
+function resolveFirestoreDatabaseId() {
+  const configuredDatabaseId = normalizeNonEmptyString(
+    process.env.FIRESTORE_DATABASE_ID || process.env.FIREBASE_FIRESTORE_DATABASE_ID,
+    '',
+  );
+
+  if (configuredDatabaseId) {
+    return configuredDatabaseId;
+  }
+
+  return resolveProjectId() === 'timberequip-staging' ? '(default)' : DEFAULT_FIRESTORE_DB_ID;
+}
+
+const FIRESTORE_DB_ID = resolveFirestoreDatabaseId();
+function getDb() { return getFirestore(resolveFirestoreDatabaseId()); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SendGrid configuration via Firebase secrets.

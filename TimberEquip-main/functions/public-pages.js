@@ -3,8 +3,8 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { THIN_ROUTE_ROBOTS, evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { PUBLIC_SEO_COLLECTIONS } = require('./public-seo-read-model.js');
 
-const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
-const PROJECT_ID = 'mobile-app-equipment-sales';
+const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
+const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_BASE_URL = 'https://www.timberequip.com';
 const MARKET_ROUTE_LABELS = Object.freeze({
@@ -13,6 +13,31 @@ const MARKET_ROUTE_LABELS = Object.freeze({
 });
 const CANONICAL_MARKET_KEY = 'forestry';
 const CANONICAL_MARKET_ROUTE = MARKET_ROUTE_LABELS[CANONICAL_MARKET_KEY];
+
+function normalizeNonEmptyString(value, fallback = '') {
+  const normalized = String(value || '').trim();
+  return normalized || fallback;
+}
+
+function resolveProjectId() {
+  return normalizeNonEmptyString(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID, DEFAULT_PROJECT_ID);
+}
+
+function resolveFirestoreDatabaseId() {
+  const configuredDatabaseId = normalizeNonEmptyString(
+    process.env.FIRESTORE_DATABASE_ID || process.env.FIREBASE_FIRESTORE_DATABASE_ID,
+    '',
+  );
+
+  if (configuredDatabaseId) {
+    return configuredDatabaseId;
+  }
+
+  return resolveProjectId() === 'timberequip-staging' ? '(default)' : DEFAULT_FIRESTORE_DB_ID;
+}
+
+const PROJECT_ID = resolveProjectId();
+const FIRESTORE_DB_ID = resolveFirestoreDatabaseId();
 
 if (!admin.apps.length) {
   admin.initializeApp({
