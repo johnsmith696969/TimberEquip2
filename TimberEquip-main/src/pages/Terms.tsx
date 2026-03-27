@@ -49,8 +49,9 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Marketplace Usage</h2>
               <p>
-                The Forestry Equipment Sales network is designed for professional logging operations. 
-                Users must provide accurate information and maintain professional conduct.
+                The Forestry Equipment Sales network is designed for professional equipment buyers, sellers, dealers,
+                and service partners operating in a global marketplace. Users must provide accurate information,
+                maintain professional conduct, and use the platform only for lawful commercial purposes.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
                 <div className="flex items-start space-x-4">
@@ -61,6 +62,7 @@ export function Terms() {
                       <li>Listing verified logging equipment.</li>
                       <li>Inquiring about available assets.</li>
                       <li>Applying for institutional financing.</li>
+                      <li>Operating an approved seller subscription or dealer storefront.</li>
                     </ul>
                   </div>
                 </div>
@@ -72,6 +74,7 @@ export function Terms() {
                       <li>Listing fraudulent or non-existent assets.</li>
                       <li>Circumventing the inquiry system.</li>
                       <li>Spamming sellers or buyers.</li>
+                      <li>Using the platform in violation of sanctions, export, tax, or consumer protection laws.</li>
                     </ul>
                   </div>
                 </div>
@@ -83,24 +86,55 @@ export function Terms() {
               <p>
                 Sellers are responsible for the accuracy of their listings. 
                 All specifications, including hours, year, and condition, must be verified. 
-                Forestry Equipment Sales reserves the right to remove any listing that fails our verification process.
+                Sellers must also have the legal right to market the equipment, related media, and any branded business assets uploaded to the platform.
+                Forestry Equipment Sales reserves the right to reject, unpublish, suspend, or remove any listing that fails our verification process or violates marketplace policy.
               </p>
             </section>
 
             <section className="space-y-6">
-              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">3. Billing and Invoices</h2>
+              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">3. Seller Subscriptions, Billing, and Invoices</h2>
               <p>
-                Ad programs and listing fees are billed through our secure payment system. 
-                Invoices are generated automatically and must be paid within the specified timeframe. 
-                Failure to pay may result in suspension of listing privileges.
+                Paid seller programs, including Owner-Operator, Dealer, and Pro Dealer subscriptions, are billed through our secure payment system.
+                Unless otherwise stated in writing, subscriptions renew automatically on a recurring monthly basis until canceled.
+                Invoices, receipts, and subscription records may be issued through Stripe or other approved payment processors.
+                Failure to pay, chargeback activity, suspected fraud, or material billing disputes may result in suspension of seller access and public listing visibility.
+                Listings are not necessarily deleted when billing lapses, but Forestry Equipment Sales may hide them from public display until the account is restored to good standing.
               </p>
             </section>
 
             <section className="space-y-6">
-              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">4. Dispute Resolution</h2>
+              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">4. Dealer Services and Seller Operations</h2>
               <p>
-                Any disputes between buyers and sellers must be resolved through our established arbitration process. 
-                Forestry Equipment Sales provides the platform for communication but does not guarantee the outcome of any transaction.
+                DealerOS, dealer storefronts, managed seats, advertising programs, lead routing, inspection routing, and related workflow tools are platform services
+                provided to approved accounts. Access to these services depends on active entitlement, compliance with platform rules, and availability of supporting systems.
+                Forestry Equipment Sales may limit, suspend, or modify these services to protect the marketplace, comply with law, or maintain platform performance.
+              </p>
+            </section>
+
+            <section className="space-y-6">
+              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">5. Data, Leads, and Platform Records</h2>
+              <p>
+                By using the platform, you authorize Forestry Equipment Sales to store operational records related to account setup, consent, billing status, leads,
+                inspection requests, listing lifecycle actions, fraud prevention, and support activity. These records may be used to maintain the platform, investigate abuse,
+                support audits, and verify account entitlement or legal acceptance.
+              </p>
+            </section>
+
+            <section className="space-y-6">
+              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">6. Global Compliance</h2>
+              <p>
+                Users are responsible for complying with all laws that apply to their activity, including sanctions, export controls, tax obligations, privacy law,
+                consumer protection, and advertising rules in the jurisdictions where they operate. Forestry Equipment Sales may refuse service, block transactions,
+                or restrict access where compliance risk exists.
+              </p>
+            </section>
+
+            <section className="space-y-6">
+              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">7. Dispute Resolution and Liability</h2>
+              <p>
+                Any disputes between buyers and sellers must be resolved through the parties directly unless otherwise required by law. Forestry Equipment Sales provides
+                the platform for communication and billing infrastructure, but does not guarantee the outcome of any transaction, inspection, financing outcome, transport result,
+                or equipment condition. To the fullest extent permitted by law, platform liability is limited to fees actually paid for the affected service during the immediately prior billing period.
               </p>
             </section>
 
@@ -111,7 +145,7 @@ export function Terms() {
                 Legal Department:
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight text-ink">
-                <span>legal@timberequip.run.app</span>
+                <span>legal@timberequip.com</span>
                 <span>+1 (800) 846-2373</span>
               </div>
             </section>

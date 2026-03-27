@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Target,
@@ -8,7 +8,11 @@ import {
   Building2,
   User,
   Crown,
-  X
+  X,
+  ShieldCheck,
+  FileText,
+  BadgeCheck,
+  Globe2
 } from 'lucide-react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -17,6 +21,41 @@ import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService
 import { billingService, type ListingPlanId } from '../services/billingService';
 import { MetaAdProgramBreakdown } from '../components/MetaAdProgramBreakdown';
 import { useAuth } from '../components/AuthContext';
+import {
+  createDefaultSellerProgramEnrollmentForm,
+  getSellerProgramScopeLabel,
+  getSellerProgramStatementLabel,
+  SELLER_PROGRAM_AGREEMENT_VERSION,
+  SELLER_PROGRAM_PRIVACY_PATH,
+  SELLER_PROGRAM_TERMS_PATH,
+  type SellerProgramEnrollmentFormData,
+} from '../utils/sellerProgramAgreement';
+
+const ENROLLMENT_STORAGE_KEY = 'timber_seller_program_enrollment_v1';
+
+function isListingPlanId(value: string): value is ListingPlanId {
+  return value === 'individual_seller' || value === 'dealer' || value === 'fleet_dealer';
+}
+
+function clampOwnerOperatorQuantity(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.min(10, Math.floor(value)));
+}
+
+function parseStoredEnrollment(): Partial<SellerProgramEnrollmentFormData> | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.sessionStorage.getItem(ENROLLMENT_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object'
+      ? parsed as Partial<SellerProgramEnrollmentFormData>
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 type AdProgram = {
   title: string;
@@ -41,8 +80,9 @@ type SellerTier = {
 export function AdPrograms() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { formatNumber, formatPrice } = useLocale();
+  const enrollmentRef = useRef<HTMLElement | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<AdProgram | null>(null);
   const [showMediaKitModal, setShowMediaKitModal] = useState(false);
   const [sendingMediaKit, setSendingMediaKit] = useState(false);
@@ -62,14 +102,40 @@ export function AdPrograms() {
     phone: '',
     notes: '',
   });
-
+  const planParam = String(searchParams.get('plan') || '').trim();
+  const selectedPlanFromQuery = isListingPlanId(planParam) ? planParam : null;
   const [pendingPlanCheckout, setPendingPlanCheckout] = useState<ListingPlanId | null>(null);
+  const [selectedSellerPlan, setSelectedSellerPlan] = useState<ListingPlanId | ''>(selectedPlanFromQuery || '');
+  const [ownerOperatorQuantity, setOwnerOperatorQuantity] = useState(1);
+  const [checkoutNotice, setCheckoutNotice] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
+  const [enrollmentForm, setEnrollmentForm] = useState<SellerProgramEnrollmentFormData>(() => {
+    const stored = parseStoredEnrollment();
+    return {
+      ...createDefaultSellerProgramEnrollmentForm({
+        planId: selectedPlanFromQuery || '',
+        displayName: user?.displayName,
+        company: user?.company,
+        email: user?.email,
+        phoneNumber: user?.phoneNumber,
+        website: user?.website,
+      }),
+      ...stored,
+      planId: selectedPlanFromQuery || (stored?.planId || ''),
+    };
+  });
   const flowIntent = String(searchParams.get('intent') || '').trim().toLowerCase();
 
   const openLeadForm = (type: 'media-kit' | 'support') => {
     setRequestType(type);
     setMediaKitSent(false);
     setShowMediaKitModal(true);
+  };
+
+  const focusEnrollmentSection = () => {
+    window.requestAnimationFrame(() => {
+      enrollmentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   useEffect(() => {
@@ -154,53 +220,167 @@ export function AdPrograms() {
     },
   ];
 
-  const startPlanCheckout = async (planId: ListingPlanId) => {
-    const nextParams = new URLSearchParams();
-    if (flowIntent === 'list-equipment') {
-      nextParams.set('intent', 'list-equipment');
+  const selectedTier = useMemo(
+    () => sellerTiers.find((tier) => tier.planId === selectedSellerPlan) || null,
+    [selectedSellerPlan, sellerTiers]
+  );
+  const statementLabel = getSellerProgramStatementLabel(selectedSellerPlan);
+  const scopeLabel = getSellerProgramScopeLabel(selectedSellerPlan);
+  const companyRequired = selectedSellerPlan === 'dealer' || selectedSellerPlan === 'fleet_dealer';
+  const ownerOperatorMonthlyTotal = clampOwnerOperatorQuantity(ownerOperatorQuantity) * 39;
+  const canSubmitEnrollment = Boolean(
+    selectedSellerPlan &&
+    enrollmentForm.legalFullName.trim() &&
+    enrollmentForm.legalTitle.trim() &&
+    enrollmentForm.billingEmail.trim() &&
+    enrollmentForm.phoneNumber.trim() &&
+    enrollmentForm.country.trim() &&
+    (!companyRequired || enrollmentForm.companyName.trim()) &&
+    enrollmentForm.acceptedTerms &&
+    enrollmentForm.acceptedPrivacy &&
+    enrollmentForm.acceptedRecurringBilling &&
+    enrollmentForm.acceptedVisibilityPolicy &&
+    enrollmentForm.acceptedAuthority
+  );
+
+  useEffect(() => {
+    if (!selectedPlanFromQuery) return;
+    setSelectedSellerPlan(selectedPlanFromQuery);
+    setEnrollmentForm((prev) => ({ ...prev, planId: selectedPlanFromQuery }));
+  }, [selectedPlanFromQuery]);
+
+  useEffect(() => {
+    if (!selectedSellerPlan) return;
+    setEnrollmentForm((prev) => ({ ...prev, planId: selectedSellerPlan }));
+  }, [selectedSellerPlan]);
+
+  useEffect(() => {
+    if (!user) return;
+    setEnrollmentForm((prev) => ({
+      ...prev,
+      legalFullName: prev.legalFullName || user.displayName || '',
+      companyName: prev.companyName || user.company || '',
+      billingEmail: prev.billingEmail || user.email || '',
+      phoneNumber: prev.phoneNumber || user.phoneNumber || '',
+      website: prev.website || user.website || '',
+    }));
+  }, [user]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(ENROLLMENT_STORAGE_KEY, JSON.stringify(enrollmentForm));
+  }, [enrollmentForm]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    let shouldReplace = false;
+
+    if (searchParams.get('startCheckout') === '1' || searchParams.get('resumeEnrollment') === '1') {
+      setCheckoutNotice('Review your business details and legal acknowledgements, then continue to Stripe checkout.');
+      focusEnrollmentSection();
+      nextParams.delete('startCheckout');
+      nextParams.delete('resumeEnrollment');
+      shouldReplace = true;
     }
+
+    if (shouldReplace) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleSelectSellerPlan = (planId: ListingPlanId) => {
+    setSelectedSellerPlan(planId);
+    setCheckoutError('');
+    setCheckoutNotice('');
+    setEnrollmentForm((prev) => ({ ...prev, planId }));
+    const nextParams = new URLSearchParams(searchParams);
     nextParams.set('plan', planId);
+    setSearchParams(nextParams, { replace: true });
+    focusEnrollmentSection();
+  };
+
+  const handleEnrollmentFieldChange = (
+    key: keyof SellerProgramEnrollmentFormData,
+    value: string | boolean
+  ) => {
+    setEnrollmentForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const startPlanCheckout = async () => {
+    if (!selectedSellerPlan) {
+      setCheckoutError('Choose a seller plan before continuing.');
+      focusEnrollmentSection();
+      return;
+    }
+
+    if (!canSubmitEnrollment) {
+      setCheckoutError('Complete the enrollment form and legal acknowledgements before continuing.');
+      focusEnrollmentSection();
+      return;
+    }
 
     if (!isAuthenticated) {
+      const nextParams = new URLSearchParams();
+      nextParams.set('plan', selectedSellerPlan);
+      nextParams.set('resumeEnrollment', '1');
+      if (flowIntent === 'list-equipment') {
+        nextParams.set('intent', 'list-equipment');
+      }
       navigate('/login', {
         state: {
-          from: `/ad-programs?${nextParams.toString()}&startCheckout=1`,
+          from: `/ad-programs?${nextParams.toString()}`,
         },
       });
       return;
     }
 
-    const returnPath = flowIntent === 'list-equipment'
-      ? `/sell?plan=${encodeURIComponent(planId)}`
-      : '/profile?source=ad-programs';
+    setPendingPlanCheckout(selectedSellerPlan);
+    setCheckoutError('');
+    setCheckoutNotice('');
 
-    setPendingPlanCheckout(planId);
     try {
+      const returnParams = new URLSearchParams({
+        source: 'ad-programs',
+        plan: selectedSellerPlan,
+      });
+      if (flowIntent === 'list-equipment') {
+        returnParams.set('intent', 'list-equipment');
+      }
+
+      const quantity = selectedSellerPlan === 'individual_seller'
+        ? clampOwnerOperatorQuantity(ownerOperatorQuantity)
+        : 1;
+
       const { url } = await billingService.createAccountCheckoutSession(
-        planId,
-        returnPath
+        selectedSellerPlan,
+        `/subscription-success?${returnParams.toString()}`,
+        quantity,
+        {
+          legalFullName: enrollmentForm.legalFullName.trim(),
+          legalTitle: enrollmentForm.legalTitle.trim(),
+          companyName: enrollmentForm.companyName.trim(),
+          billingEmail: enrollmentForm.billingEmail.trim(),
+          phoneNumber: enrollmentForm.phoneNumber.trim(),
+          website: enrollmentForm.website.trim(),
+          country: enrollmentForm.country.trim(),
+          taxIdOrVat: enrollmentForm.taxIdOrVat.trim(),
+          notes: enrollmentForm.notes.trim(),
+          acceptedTerms: enrollmentForm.acceptedTerms,
+          acceptedPrivacy: enrollmentForm.acceptedPrivacy,
+          acceptedRecurringBilling: enrollmentForm.acceptedRecurringBilling,
+          acceptedVisibilityPolicy: enrollmentForm.acceptedVisibilityPolicy,
+          acceptedAuthority: enrollmentForm.acceptedAuthority,
+          legalTermsVersion: SELLER_PROGRAM_AGREEMENT_VERSION,
+          source: 'ad-programs',
+        }
       );
       window.location.assign(url);
     } catch (error) {
       console.error('Failed to start account checkout from ad programs:', error);
-      alert(error instanceof Error ? error.message : 'Unable to start Stripe checkout right now.');
+      setCheckoutError(error instanceof Error ? error.message : 'Unable to start Stripe checkout right now.');
       setPendingPlanCheckout(null);
     }
   };
-
-  useEffect(() => {
-    const plan = String(searchParams.get('plan') || '').trim() as ListingPlanId;
-    const startCheckout = searchParams.get('startCheckout') === '1';
-    if (!startCheckout || !isAuthenticated) return;
-    if (plan !== 'individual_seller' && plan !== 'dealer' && plan !== 'fleet_dealer') return;
-    if (pendingPlanCheckout) return;
-
-    void startPlanCheckout(plan);
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('startCheckout');
-    setSearchParams(nextParams, { replace: true });
-  }, [flowIntent, isAuthenticated, navigate, pendingPlanCheckout, searchParams, setSearchParams]);
 
   const submitMediaKitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,12 +432,12 @@ export function AdPrograms() {
               <span className="text-accent">AND VISIBILITY</span>
             </h1>
             <p className="text-lg text-muted leading-relaxed mb-10 max-w-2xl">
-              Pair your Forestry Equipment Sales seller plan with Featured Inventory to move key equipment higher in the marketplace.
-              Built for owner-operators, dealers, and high-volume dealer groups.
+              Choose your Forestry Equipment Sales seller plan, complete the on-site enrollment form,
+              agree to the seller legal terms, and continue into branded Stripe checkout.
             </p>
             <div className="flex flex-wrap gap-4">
-              <button onClick={() => openLeadForm('media-kit')} className="btn-industrial btn-accent">
-                Download Media Kit (Coming Soon) <ArrowRight size={16} className="ml-2" />
+              <button onClick={focusEnrollmentSection} className="btn-industrial btn-accent">
+                Start Seller Enrollment <ArrowRight size={16} className="ml-2" />
               </button>
               <button onClick={() => openLeadForm('support')} className="btn-industrial">
                 Connect with Support Team
@@ -296,22 +476,23 @@ export function AdPrograms() {
           <div className="mb-16">
             <span className="label-micro text-accent mb-4 block">Seller Types</span>
             <h2 className="text-3xl font-black tracking-tighter uppercase mb-4">Ad Program Selections</h2>
-            <p className="text-muted max-w-2xl">Choose your subscription, complete checkout in Stripe, then return to your account dashboard with your posting limits enabled.</p>
+            <p className="text-muted max-w-2xl">Choose your subscription, complete the enrollment form below, agree to the legal terms on-site, and then continue into Stripe checkout.</p>
             <p className="text-[10px] font-black uppercase tracking-widest text-accent mt-4">
-              Flow: select plan -&gt; login if needed -&gt; Stripe checkout -&gt; account dashboard with posting limits.
+              Flow: select plan -&gt; complete enrollment -&gt; legal acknowledgement -&gt; Stripe checkout -&gt; subscription success.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {sellerTiers.map((tier, index) => {
               const Icon = tier.icon;
+              const isSelected = selectedSellerPlan === tier.planId;
               return (
                 <motion.div
                   key={tier.title}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.08 }}
-                  className={`border p-8 rounded-sm transition-colors ${tier.highlight ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(249,115,22,0.12)]' : 'bg-bg border-line'}`}
+                  className={`border p-8 rounded-sm transition-colors ${tier.highlight ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(249,115,22,0.12)]' : 'bg-bg border-line'} ${isSelected ? 'ring-1 ring-accent/60' : ''}`}
                 >
                   <div className="flex items-center justify-between mb-6">
                     <div className={`w-12 h-12 flex items-center justify-center rounded-sm border ${tier.highlight ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface text-muted'}`}>
@@ -333,16 +514,334 @@ export function AdPrograms() {
 
                   <div className="mt-8">
                     <button
-                      onClick={() => startPlanCheckout(tier.planId)}
-                      disabled={pendingPlanCheckout === tier.planId}
-                      className={`btn-industrial w-full py-3 text-center disabled:opacity-60 disabled:cursor-not-allowed ${tier.highlight ? 'btn-accent' : ''}`}
+                      onClick={() => handleSelectSellerPlan(tier.planId)}
+                      className={`btn-industrial w-full py-3 text-center ${isSelected || tier.highlight ? 'btn-accent' : ''}`}
                     >
-                      {pendingPlanCheckout === tier.planId ? 'Redirecting to Stripe...' : `Choose ${tier.title}`}
+                      {isSelected ? 'Selected for Enrollment' : `Select ${tier.title}`}
                     </button>
                   </div>
                 </motion.div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      <section ref={enrollmentRef} className="py-24 px-4 md:px-8 border-b border-line">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1.25fr_0.75fr] gap-10">
+          <div className="bg-surface border border-line p-8 md:p-10 rounded-sm">
+            <div className="mb-8">
+              <span className="label-micro text-accent mb-3 block">Enrollment Form</span>
+              <h2 className="text-3xl font-black tracking-tighter uppercase mb-3">Seller Program Signup</h2>
+              <p className="text-sm text-muted leading-relaxed max-w-2xl">
+                Capture billing and legal details on-site before redirecting to Stripe. This creates an auditable acceptance record in your database and keeps the subscription tied to the right account.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="label-micro block mb-2">Selected Plan</label>
+                <div className="input-industrial w-full py-3 px-4 min-h-[52px] flex items-center">
+                  {selectedTier?.title || 'Choose a seller plan above'}
+                </div>
+              </div>
+              <div>
+                <label className="label-micro block mb-2">Statement Label</label>
+                <div className="input-industrial w-full py-3 px-4 min-h-[52px] flex items-center">
+                  {statementLabel}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="label-micro block mb-2">Legal Contact Name</label>
+                <input
+                  type="text"
+                  value={enrollmentForm.legalFullName}
+                  onChange={(e) => handleEnrollmentFieldChange('legalFullName', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="AUTHORIZED SIGNER"
+                />
+              </div>
+              <div>
+                <label className="label-micro block mb-2">Legal Contact Title</label>
+                <input
+                  type="text"
+                  value={enrollmentForm.legalTitle}
+                  onChange={(e) => handleEnrollmentFieldChange('legalTitle', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="OWNER, GM, OR AUTHORIZED REPRESENTATIVE"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="label-micro block mb-2">
+                  Business or Dealer Name {companyRequired ? '(Required)' : '(Optional)'}
+                </label>
+                <input
+                  type="text"
+                  value={enrollmentForm.companyName}
+                  onChange={(e) => handleEnrollmentFieldChange('companyName', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder={companyRequired ? 'DEALERSHIP ENTITY NAME' : 'COMPANY OR DBA'}
+                />
+              </div>
+              <div>
+                <label className="label-micro block mb-2">Billing Email</label>
+                <input
+                  type="email"
+                  value={enrollmentForm.billingEmail}
+                  onChange={(e) => handleEnrollmentFieldChange('billingEmail', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="BILLING@YOURCOMPANY.COM"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="label-micro block mb-2">Phone Number</label>
+                <input
+                  type="tel"
+                  value={enrollmentForm.phoneNumber}
+                  onChange={(e) => handleEnrollmentFieldChange('phoneNumber', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="+1 (555) 555-5555"
+                />
+              </div>
+              <div>
+                <label className="label-micro block mb-2">Website</label>
+                <input
+                  type="url"
+                  value={enrollmentForm.website}
+                  onChange={(e) => handleEnrollmentFieldChange('website', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="https://"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="label-micro block mb-2">Billing Country</label>
+                <input
+                  type="text"
+                  value={enrollmentForm.country}
+                  onChange={(e) => handleEnrollmentFieldChange('country', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="UNITED STATES"
+                />
+              </div>
+              <div>
+                <label className="label-micro block mb-2">Tax ID / VAT ID (Optional)</label>
+                <input
+                  type="text"
+                  value={enrollmentForm.taxIdOrVat}
+                  onChange={(e) => handleEnrollmentFieldChange('taxIdOrVat', e.target.value)}
+                  className="input-industrial w-full py-3"
+                  placeholder="EIN OR VAT ID"
+                />
+              </div>
+            </div>
+
+            {selectedSellerPlan === 'individual_seller' && (
+              <div className="border border-line rounded-sm p-4 bg-bg space-y-3 mb-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-ink">Owner-Operator Quantity</p>
+                    <p className="text-xs text-muted">Set the number of active listing slots from 1 to 10.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOwnerOperatorQuantity((prev) => clampOwnerOperatorQuantity(prev - 1))}
+                      className="btn-industrial py-1.5 px-3 text-xs"
+                      disabled={pendingPlanCheckout === 'individual_seller' || ownerOperatorQuantity <= 1}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={clampOwnerOperatorQuantity(ownerOperatorQuantity)}
+                      onChange={(e) => setOwnerOperatorQuantity(clampOwnerOperatorQuantity(Number(e.target.value)))}
+                      className="input-industrial w-20 text-center"
+                      disabled={pendingPlanCheckout === 'individual_seller'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setOwnerOperatorQuantity((prev) => clampOwnerOperatorQuantity(prev + 1))}
+                      className="btn-industrial py-1.5 px-3 text-xs"
+                      disabled={pendingPlanCheckout === 'individual_seller' || ownerOperatorQuantity >= 10}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-accent">
+                  Total: ${ownerOperatorMonthlyTotal}/month for {clampOwnerOperatorQuantity(ownerOperatorQuantity)} active {clampOwnerOperatorQuantity(ownerOperatorQuantity) === 1 ? 'listing slot' : 'listing slots'}
+                </p>
+              </div>
+            )}
+
+            <div className="mb-6">
+              <label className="label-micro block mb-2">Enrollment Notes (Optional)</label>
+              <textarea
+                value={enrollmentForm.notes}
+                onChange={(e) => handleEnrollmentFieldChange('notes', e.target.value)}
+                className="input-industrial w-full min-h-28 resize-y py-3"
+                placeholder="Anything we should know about your storefront, billing workflow, or launch timing?"
+              />
+            </div>
+
+            <div className="border border-line bg-bg rounded-sm p-5 space-y-4 mb-6">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="text-accent shrink-0" size={18} />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-accent">Required Legal Acknowledgements</p>
+                  <p className="text-xs text-muted">These approvals are recorded in your database and copied into the Stripe subscription metadata.</p>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={enrollmentForm.acceptedTerms}
+                  onChange={(e) => handleEnrollmentFieldChange('acceptedTerms', e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  I agree to the <Link to={SELLER_PROGRAM_TERMS_PATH} className="text-accent font-black uppercase tracking-wide">Terms of Service</Link>, including marketplace conduct, listing accuracy, recurring subscription billing, and platform enforcement rights.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={enrollmentForm.acceptedPrivacy}
+                  onChange={(e) => handleEnrollmentFieldChange('acceptedPrivacy', e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  I agree to the <Link to={SELLER_PROGRAM_PRIVACY_PATH} className="text-accent font-black uppercase tracking-wide">Privacy Policy</Link> and consent to storage of billing, profile, and operational data needed to run this seller account globally.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={enrollmentForm.acceptedRecurringBilling}
+                  onChange={(e) => handleEnrollmentFieldChange('acceptedRecurringBilling', e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  I understand this is a recurring monthly subscription. If billing lapses, listings remain stored but are hidden from the public site until billing is restored.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={enrollmentForm.acceptedVisibilityPolicy}
+                  onChange={(e) => handleEnrollmentFieldChange('acceptedVisibilityPolicy', e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  I understand that listing visibility depends on an active, paid seller subscription, compliance review, and platform governance checks.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={enrollmentForm.acceptedAuthority}
+                  onChange={(e) => handleEnrollmentFieldChange('acceptedAuthority', e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  I confirm that I am authorized to bind this account or business entity to the selected seller subscription and related legal terms.
+                </span>
+              </label>
+            </div>
+
+            {checkoutNotice && (
+              <p className="text-[10px] font-black uppercase tracking-widest text-data mb-4">{checkoutNotice}</p>
+            )}
+
+            {checkoutError && (
+              <p className="text-[10px] font-black uppercase tracking-widest text-accent mb-4">{checkoutError}</p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                void startPlanCheckout();
+              }}
+              disabled={!selectedSellerPlan || pendingPlanCheckout !== null}
+              className="btn-industrial btn-accent w-full py-4 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {pendingPlanCheckout
+                ? 'Redirecting to Stripe...'
+                : isAuthenticated
+                  ? 'Continue to Stripe Checkout'
+                  : 'Sign In and Continue'}
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-bg border border-line p-8 rounded-sm">
+              <span className="label-micro text-accent mb-3 block">Enrollment Summary</span>
+              <h3 className="text-2xl font-black uppercase tracking-tight mb-3">
+                {selectedTier?.title || 'Choose a Plan'}
+              </h3>
+              <p className="text-sm text-muted leading-relaxed mb-6">
+                {selectedTier?.summary || 'Select an Owner-Operator, Dealer, or Pro Dealer plan to continue.'}
+              </p>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide">
+                  <BadgeCheck size={14} className="text-data" />
+                  <span>Billing label: {statementLabel}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide">
+                  <FileText size={14} className="text-data" />
+                  <span>Agreement version: {SELLER_PROGRAM_AGREEMENT_VERSION}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide">
+                  <Globe2 size={14} className="text-data" />
+                  <span>Operational scope: {scopeLabel}</span>
+                </div>
+              </div>
+
+              <div className="border border-line bg-surface p-4 rounded-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-3">Enterprise Billing Logic</p>
+                <ul className="space-y-2 text-sm text-muted leading-relaxed">
+                  <li>The subscription is tied to this logged-in account, not just the visible role string.</li>
+                  <li>Dealer and Pro Dealer subscriptions map to FES-DealerOS billing labels and invoice records.</li>
+                  <li>If billing lapses, listings stay stored in the database but public visibility is suspended until billing is restored.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-bg border border-line p-8 rounded-sm">
+              <span className="label-micro text-accent mb-3 block">Need Help?</span>
+              <h3 className="text-2xl font-black uppercase tracking-tight mb-3">Support Before Checkout</h3>
+              <p className="text-sm text-muted leading-relaxed mb-6">
+                If you need help choosing the right plan, setting up DealerOS, or aligning the right ad coverage, contact support before starting the subscription.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button onClick={() => openLeadForm('support')} className="btn-industrial btn-accent">
+                  Connect with Support Team
+                </button>
+                <button onClick={() => openLeadForm('media-kit')} className="btn-industrial">
+                  Download Media Kit (Coming Soon)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -423,8 +922,8 @@ export function AdPrograms() {
               </p>
             </div>
             <div className="flex flex-col space-y-4 w-full md:w-auto">
-              <button onClick={() => openLeadForm('support')} className="btn-industrial btn-accent w-full">
-                Connect with Support Team
+              <button onClick={focusEnrollmentSection} className="btn-industrial btn-accent w-full">
+                Complete Enrollment
               </button>
               <button onClick={() => openLeadForm('media-kit')} className="btn-industrial border-white/20 hover:bg-white hover:text-ink w-full">
                 Download Media Kit (Coming Soon)

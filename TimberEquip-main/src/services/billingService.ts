@@ -3,6 +3,25 @@ import { auth } from '../firebase';
 export type ListingPlanId = 'individual_seller' | 'dealer' | 'fleet_dealer';
 export type AccountOnboardingChoice = 'free_member' | ListingPlanId;
 
+export interface SellerProgramCheckoutEnrollment {
+  legalFullName: string;
+  legalTitle: string;
+  companyName: string;
+  billingEmail: string;
+  phoneNumber: string;
+  website?: string;
+  country: string;
+  taxIdOrVat?: string;
+  notes?: string;
+  acceptedTerms: boolean;
+  acceptedPrivacy: boolean;
+  acceptedRecurringBilling: boolean;
+  acceptedVisibilityPolicy: boolean;
+  acceptedAuthority: boolean;
+  legalTermsVersion: string;
+  source?: string;
+}
+
 export interface SellerPlanDefinition {
   id: ListingPlanId;
   name: string;
@@ -77,7 +96,8 @@ export const billingService = {
   async createAccountCheckoutSession(
     planId: ListingPlanId,
     returnPath = '/sell',
-    quantity = 1
+    quantity = 1,
+    enrollment?: SellerProgramCheckoutEnrollment | null
   ): Promise<{ url: string; sessionId: string }> {
     const user = auth.currentUser;
     if (!user) throw new Error('Unauthorized');
@@ -89,7 +109,7 @@ export const billingService = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ planId, returnPath, quantity }),
+      body: JSON.stringify({ planId, returnPath, quantity, enrollment }),
     });
 
     const payload = await response.json().catch(() => ({}));

@@ -668,6 +668,11 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /sellerProgramApplications/{applicationId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
+      allow create, update, delete: if false;
+    }
+
     match /subscriptions/{subscriptionId} {
       allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
       allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid && request.resource.data.status == 'pending_payment';

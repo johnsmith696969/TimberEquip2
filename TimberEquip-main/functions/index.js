@@ -3728,6 +3728,238 @@ const LISTING_CHECKOUT_PLANS = {
 const DEALER_MANAGED_ACCOUNT_LIMIT = 3;
 const MANAGED_ACCOUNT_PLAN_IDS = ['dealer', 'fleet_dealer'];
 const MAX_OWNER_OPERATOR_LISTINGS = 10;
+const SELLER_PROGRAM_AGREEMENT_VERSION = 'seller-program-global-v2026-03-26';
+const SELLER_PROGRAM_TERMS_PATH = '/terms';
+const SELLER_PROGRAM_PRIVACY_PATH = '/privacy';
+
+function getSellerProgramStatementLabel(planId) {
+  return planId === 'dealer' || planId === 'fleet_dealer'
+    ? 'FES-DealerOS'
+    : 'Forestry Equipment Sales';
+}
+
+function getPlanInvoiceDisplayName(planId) {
+  if (planId === 'dealer') return 'FES-DealerOS Dealer Subscription';
+  if (planId === 'fleet_dealer') return 'FES-DealerOS Pro Dealer Subscription';
+  return 'Owner-Operator Ad Program';
+}
+
+function getCheckoutStatementDescriptorSuffix(planId) {
+  if (planId === 'dealer' || planId === 'fleet_dealer') {
+    return 'DEALEROS';
+  }
+  return 'OWNER OPS';
+}
+
+function getSellerProgramScope(planId) {
+  return planId === 'dealer' || planId === 'fleet_dealer'
+    ? 'dealeros'
+    : 'owner_operator';
+}
+
+function sanitizeEnrollmentString(value, maxLength = 255) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function normalizeConsentFlag(value) {
+  return value === true || value === 'true';
+}
+
+function validateSellerProgramEnrollment(rawEnrollment, planId) {
+  const enrollment = rawEnrollment && typeof rawEnrollment === 'object' ? rawEnrollment : null;
+  if (!enrollment) {
+    return { error: 'Seller enrollment details are required before checkout.' };
+  }
+
+  const legalFullName = sanitizeEnrollmentString(enrollment.legalFullName, 120);
+  const legalTitle = sanitizeEnrollmentString(enrollment.legalTitle, 120);
+  const companyName = sanitizeEnrollmentString(enrollment.companyName, 200);
+  const billingEmail = sanitizeEnrollmentString(enrollment.billingEmail, 320).toLowerCase();
+  const phoneNumber = sanitizeEnrollmentString(enrollment.phoneNumber, 80);
+  const website = sanitizeEnrollmentString(enrollment.website, 240);
+  const country = sanitizeEnrollmentString(enrollment.country, 100);
+  const taxIdOrVat = sanitizeEnrollmentString(enrollment.taxIdOrVat, 120);
+  const notes = sanitizeEnrollmentString(enrollment.notes, 1000);
+  const legalTermsVersion = sanitizeEnrollmentString(enrollment.legalTermsVersion, 80) || SELLER_PROGRAM_AGREEMENT_VERSION;
+  const acceptedTerms = normalizeConsentFlag(enrollment.acceptedTerms);
+  const acceptedPrivacy = normalizeConsentFlag(enrollment.acceptedPrivacy);
+  const acceptedRecurringBilling = normalizeConsentFlag(enrollment.acceptedRecurringBilling);
+  const acceptedVisibilityPolicy = normalizeConsentFlag(enrollment.acceptedVisibilityPolicy);
+  const acceptedAuthority = normalizeConsentFlag(enrollment.acceptedAuthority);
+
+  if (!legalFullName || !legalTitle || !billingEmail || !phoneNumber || !country) {
+    return { error: 'Legal contact name, title, billing email, phone number, and billing country are required.' };
+  }
+
+  if ((planId === 'dealer' || planId === 'fleet_dealer') && !companyName) {
+    return { error: 'Dealer and Pro Dealer enrollments require the dealership or business entity name.' };
+  }
+
+  if (!acceptedTerms || !acceptedPrivacy || !acceptedRecurringBilling || !acceptedVisibilityPolicy || !acceptedAuthority) {
+    return { error: 'All seller legal acknowledgements must be accepted before checkout.' };
+  }
+
+  return {
+    value: {
+      legalFullName,
+      legalTitle,
+      companyName,
+      billingEmail,
+      phoneNumber,
+      website,
+      country,
+      taxIdOrVat,
+      notes,
+      legalTermsVersion,
+      acceptedTerms,
+      acceptedPrivacy,
+      acceptedRecurringBilling,
+      acceptedVisibilityPolicy,
+      acceptedAuthority,
+      acceptedAtIso: new Date().toISOString(),
+      scope: getSellerProgramScope(planId),
+      statementLabel: getSellerProgramStatementLabel(planId),
+    },
+  };
+}
+
+async function recordSellerProgramCheckoutIntent({
+  userUid,
+  planId,
+  customerId,
+  subscriptionQuantity,
+  session,
+  enrollment,
+}) {
+  if (!userUid || !planId || !session?.id || !enrollment) return;
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const applicationRef = getDb().collection('sellerProgramApplications').doc(session.id);
+  const consentRef = getDb().collection('consentLogs').doc();
+  const userRef = getDb().collection('users').doc(userUid);
+
+  await Promise.all([
+    applicationRef.set(
+      {
+        userUid,
+        planId,
+        stripeCustomerId: customerId || null,
+        stripeCheckoutSessionId: session.id,
+        stripeSubscriptionId: null,
+        checkoutUrl: session.url || null,
+        statementLabel: enrollment.statementLabel,
+        legalScope: enrollment.scope,
+        legalTermsVersion: enrollment.legalTermsVersion,
+        legalAcceptedAtIso: enrollment.acceptedAtIso,
+        legalContactName: enrollment.legalFullName,
+        legalContactTitle: enrollment.legalTitle,
+        companyName: enrollment.companyName || null,
+        billingEmail: enrollment.billingEmail,
+        phoneNumber: enrollment.phoneNumber,
+        website: enrollment.website || null,
+        country: enrollment.country,
+        taxIdOrVat: enrollment.taxIdOrVat || null,
+        notes: enrollment.notes || null,
+        acceptedTerms: true,
+        acceptedPrivacy: true,
+        acceptedRecurringBilling: true,
+        acceptedVisibilityPolicy: true,
+        acceptedAuthority: true,
+        subscriptionQuantity,
+        status: 'checkout_started',
+        createdAt: now,
+        updatedAt: now,
+      },
+      { merge: true }
+    ),
+    consentRef.set({
+      userUid,
+      consentType: 'seller_program_checkout',
+      planId,
+      statementLabel: enrollment.statementLabel,
+      legalScope: enrollment.scope,
+      legalTermsVersion: enrollment.legalTermsVersion,
+      acceptedAtIso: enrollment.acceptedAtIso,
+      acceptedTerms: true,
+      acceptedPrivacy: true,
+      acceptedRecurringBilling: true,
+      acceptedVisibilityPolicy: true,
+      acceptedAuthority: true,
+      stripeCheckoutSessionId: session.id,
+      createdAt: now,
+    }),
+    userRef.set(
+      {
+        sellerProgramAgreementVersion: enrollment.legalTermsVersion,
+        sellerProgramAgreementAcceptedAt: now,
+        sellerProgramAgreementPlanId: planId,
+        sellerProgramAgreementScope: enrollment.scope,
+        sellerProgramAgreementStatementLabel: enrollment.statementLabel,
+        sellerProgramAgreementAcceptedTerms: true,
+        sellerProgramAgreementAcceptedPrivacy: true,
+        sellerProgramAgreementAcceptedRecurringBilling: true,
+        sellerProgramAgreementAcceptedVisibilityPolicy: true,
+        sellerProgramAgreementAcceptedAuthority: true,
+        sellerProgramBillingCountry: enrollment.country,
+        billingEmail: enrollment.billingEmail,
+        legalContactName: enrollment.legalFullName,
+        legalContactTitle: enrollment.legalTitle,
+        updatedAt: now,
+        ...(enrollment.companyName ? { company: enrollment.companyName } : {}),
+        ...(enrollment.phoneNumber ? { phoneNumber: enrollment.phoneNumber } : {}),
+        ...(enrollment.website ? { website: enrollment.website } : {}),
+      },
+      { merge: true }
+    ),
+  ]);
+}
+
+async function finalizeSellerProgramCheckoutArtifacts({
+  userUid,
+  planId,
+  session,
+  subscriptionId,
+  source,
+}) {
+  if (!userUid || !planId || !session?.id) return;
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const agreementVersion = sanitizeEnrollmentString(session.metadata?.legalTermsVersion, 80) || null;
+  const legalAcceptedAtIso = sanitizeEnrollmentString(session.metadata?.legalTermsAcceptedAt, 80) || null;
+  const statementLabel = getSellerProgramStatementLabel(planId);
+  const legalScope = getSellerProgramScope(planId);
+  const stripeConsentAccepted = session.consent?.terms_of_service === 'accepted' || normalizeConsentFlag(session.metadata?.legalTermsAccepted);
+
+  await Promise.all([
+    getDb().collection('sellerProgramApplications').doc(session.id).set(
+      {
+        status: stripeConsentAccepted ? 'checkout_confirmed' : 'checkout_processing',
+        stripeSubscriptionId: subscriptionId || null,
+        statementLabel,
+        legalScope,
+        legalTermsVersion: agreementVersion,
+        legalAcceptedAtIso: legalAcceptedAtIso || null,
+        stripeConsentAccepted,
+        finalizedAt: now,
+        updatedAt: now,
+        finalizedVia: source,
+      },
+      { merge: true }
+    ),
+    getDb().collection('users').doc(userUid).set(
+      {
+        sellerProgramAgreementVersion: agreementVersion,
+        sellerProgramAgreementAcceptedAt: now,
+        sellerProgramAgreementPlanId: planId,
+        sellerProgramAgreementScope: legalScope,
+        sellerProgramAgreementStatementLabel: statementLabel,
+        sellerProgramStripeConsentAccepted: stripeConsentAccepted,
+        updatedAt: now,
+      },
+      { merge: true }
+    ),
+  ]);
+}
 
 function getListingCheckoutPlan(rawPlanId) {
   const planId = String(rawPlanId || '').trim();
@@ -4451,6 +4683,7 @@ async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source
   const currentPeriodEnd = typeof subscriptionObject?.current_period_end === 'number'
     ? admin.firestore.Timestamp.fromMillis(subscriptionObject.current_period_end * 1000)
     : null;
+  const statementLabel = getSellerProgramStatementLabel(planId);
 
   await getDb().collection('invoices').doc(String(session.invoice || session.id)).set(
     {
@@ -4461,7 +4694,8 @@ async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source
       amount: amountUsd,
       currency: session.currency || 'usd',
       status: 'paid',
-      items: [`${plan?.name || planId} seller account subscription x${subscriptionQuantity}`],
+      statementLabel,
+      items: [`${getPlanInvoiceDisplayName(planId)} x${subscriptionQuantity}`],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       paidAt: admin.firestore.FieldValue.serverTimestamp(),
       source,
@@ -4482,6 +4716,9 @@ async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source
         checkoutScope: 'account',
         subscriptionQuantity,
         listingCap,
+        statementLabel,
+        legalTermsVersion: sanitizeEnrollmentString(session.metadata?.legalTermsVersion, 80) || null,
+        legalAcceptedAtIso: sanitizeEnrollmentString(session.metadata?.legalTermsAcceptedAt, 80) || null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -4496,6 +4733,13 @@ async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source
     subscriptionStatus: 'active',
     subscriptionId,
     currentPeriodEnd,
+    source,
+  });
+  await finalizeSellerProgramCheckoutArtifacts({
+    userUid,
+    planId,
+    session,
+    subscriptionId,
     source,
   });
 
@@ -4573,6 +4817,7 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
   const listingCap = plan?.id === 'individual_seller'
     ? subscriptionQuantity * (plan?.listingCap || 1)
     : plan?.listingCap || 0;
+  const statementLabel = getSellerProgramStatementLabel(planId);
 
   await getDb().collection('subscriptions').doc(stripeSubscriptionId).set(
     {
@@ -4586,6 +4831,10 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
       currentPeriodEnd,
       subscriptionQuantity,
       listingCap,
+      statementLabel,
+      legalTermsVersion: sanitizeEnrollmentString(metadata.legalTermsVersion, 80) || null,
+      legalAcceptedAtIso: sanitizeEnrollmentString(metadata.legalTermsAcceptedAt, 80) || null,
+      legalScope: sanitizeEnrollmentString(metadata.legalScope, 60) || getSellerProgramScope(planId),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       source,
     },
@@ -5256,6 +5505,7 @@ exports.apiProxy = onRequest(
             const userUid = String(metadata.userUid || '').trim() || await resolveUserUidFromStripeCustomerId(invoiceObject.customer);
             const invoiceDocId = String(invoiceObject.id || '').trim();
             const planName = getPlanDisplayName(metadata.planId);
+            const statementLabel = sanitizeEnrollmentString(metadata.statementLabel, 80) || getSellerProgramStatementLabel(metadata.planId);
 
             if (invoiceDocId && userUid) {
               await getDb().collection('invoices').doc(invoiceDocId).set(
@@ -5269,6 +5519,7 @@ exports.apiProxy = onRequest(
                       ? invoiceObject.amount_due / 100
                       : 0,
                   currency: invoiceObject.currency || 'usd',
+                  statementLabel,
                   status: event.type === 'invoice.payment_succeeded' ? 'paid' : 'failed',
                   items: Array.isArray(invoiceObject.lines?.data)
                     ? invoiceObject.lines.data.map((line) => line.description).filter(Boolean)
@@ -5569,6 +5820,12 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'Only Owner-Operator supports adjustable quantity.' });
         }
 
+        const enrollmentResult = validateSellerProgramEnrollment(req.body?.enrollment, plan.id);
+        if (enrollmentResult.error) {
+          return res.status(400).json({ error: enrollmentResult.error });
+        }
+        const enrollment = enrollmentResult.value;
+
         const userRef = getDb().collection('users').doc(uid);
         let existingUser = {};
         let firestoreQuotaLimited = false;
@@ -5583,6 +5840,17 @@ exports.apiProxy = onRequest(
         }
 
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
+        await stripe.customers.update(customerId, {
+          name: enrollment.companyName || enrollment.legalFullName,
+          email: enrollment.billingEmail || decodedToken.email || undefined,
+          phone: enrollment.phoneNumber || undefined,
+          metadata: {
+            userUid: uid,
+            latestPlanId: plan.id,
+            billingCountry: enrollment.country,
+            statementLabel: enrollment.statementLabel,
+          },
+        });
         logger.info('create-account-checkout-session: resolved Stripe customer', {
           uid,
           planId: plan.id,
@@ -5666,6 +5934,7 @@ exports.apiProxy = onRequest(
           priceId,
           quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
         });
+        const statementDescriptorSuffix = getCheckoutStatementDescriptorSuffix(plan.id);
         const session = await stripe.checkout.sessions.create({
           mode: 'subscription',
           customer: customerId,
@@ -5676,20 +5945,44 @@ exports.apiProxy = onRequest(
             quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
           }],
           allow_promotion_codes: true,
+          consent_collection: {
+            terms_of_service: 'required',
+          },
+          custom_text: {
+            submit: {
+              message: `By continuing, you agree to the Forestry Equipment Sales Terms and Privacy Policy. Dealer and Pro Dealer subscriptions bill under ${getSellerProgramStatementLabel(plan.id)}.`,
+            },
+          },
+          payment_intent_data: {
+            statement_descriptor_suffix: statementDescriptorSuffix,
+          },
           metadata: {
             userUid: uid,
             planId: plan.id,
             checkoutScope: 'account',
             subscriptionQuantity: String(plan.id === 'individual_seller' ? requestedQuantity : 1),
             listingCap: String(plan.id === 'individual_seller' ? requestedQuantity : plan.listingCap),
+            statementLabel: enrollment.statementLabel,
+            legalTermsVersion: enrollment.legalTermsVersion,
+            legalTermsAccepted: 'true',
+            legalTermsAcceptedAt: enrollment.acceptedAtIso,
+            legalScope: enrollment.scope,
+            billingCountry: enrollment.country,
           },
           subscription_data: {
+            description: getPlanInvoiceDisplayName(plan.id),
             metadata: {
               userUid: uid,
               planId: plan.id,
               checkoutScope: 'account',
               subscriptionQuantity: String(plan.id === 'individual_seller' ? requestedQuantity : 1),
               listingCap: String(plan.id === 'individual_seller' ? requestedQuantity : plan.listingCap),
+              statementLabel: enrollment.statementLabel,
+              legalTermsVersion: enrollment.legalTermsVersion,
+              legalTermsAccepted: 'true',
+              legalTermsAcceptedAt: enrollment.acceptedAtIso,
+              legalScope: enrollment.scope,
+              billingCountry: enrollment.country,
             },
           },
         });
@@ -5697,6 +5990,15 @@ exports.apiProxy = onRequest(
         if (!session.url) {
           return res.status(500).json({ error: 'Stripe checkout URL was not returned.' });
         }
+
+        await recordSellerProgramCheckoutIntent({
+          userUid: uid,
+          planId: plan.id,
+          customerId,
+          subscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
+          session,
+          enrollment,
+        });
 
         logger.info('create-account-checkout-session: Stripe checkout session created', {
           uid,

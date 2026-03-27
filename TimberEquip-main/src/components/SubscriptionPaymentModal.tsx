@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle2, Loader2, User, Building2, AlertCircle, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
 import { billingService, type ListingPlanId } from '../services/billingService';
@@ -95,6 +96,7 @@ export function SubscriptionPaymentModal({
 }: SubscriptionPaymentModalProps) {
   const { user } = useAuth();
   const { t } = useLocale();
+  const navigate = useNavigate();
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('dealer');
   const [subscriptionQuantity, setSubscriptionQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -119,6 +121,15 @@ export function SubscriptionPaymentModal({
   const handleStartCheckout = async () => {
     if (!user) {
       setError('Sign in is required before checkout.');
+      return;
+    }
+    if (isAccountCheckout) {
+      const intentParams = new URLSearchParams({
+        plan: selectedPlan,
+        intent: returnPath.includes('/sell') ? 'list-equipment' : 'account-settings',
+      });
+      onClose();
+      navigate(`/ad-programs?${intentParams.toString()}`);
       return;
     }
     if (!isAccountCheckout && !listingId) {
@@ -180,7 +191,7 @@ export function SubscriptionPaymentModal({
               <div className="space-y-4">
                 <p className="text-sm text-muted font-medium mb-6">
                   {isAccountCheckout
-                    ? t('checkout.selectSellerPlan', 'Pick the seller plan for this account, then continue to secure Stripe checkout.')
+                    ? t('checkout.selectSellerPlan', 'Pick the seller plan for this account, then continue to the ad-program enrollment form with legal and billing confirmation.')
                     : t('checkout.selectPlan', 'Pick the ad package, then continue to secure Stripe checkout.')}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -289,7 +300,7 @@ export function SubscriptionPaymentModal({
 
                 <p className="text-[10px] text-muted font-medium">
                   {isAccountCheckout
-                    ? 'You will finish payment on Stripe and return with this seller account activated.'
+                    ? 'You will confirm legal terms on the ad-program enrollment form, finish payment on Stripe, and return with this seller account activated.'
                     : 'You will finish payment on Stripe and return here when checkout is complete.'}
                 </p>
 
