@@ -5934,7 +5934,6 @@ exports.apiProxy = onRequest(
           priceId,
           quantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
         });
-        const statementDescriptorSuffix = getCheckoutStatementDescriptorSuffix(plan.id);
         const session = await stripe.checkout.sessions.create({
           mode: 'subscription',
           customer: customerId,
@@ -5952,9 +5951,6 @@ exports.apiProxy = onRequest(
             submit: {
               message: `By continuing, you agree to the Forestry Equipment Sales Terms and Privacy Policy. Dealer and Pro Dealer subscriptions bill under ${getSellerProgramStatementLabel(plan.id)}.`,
             },
-          },
-          payment_intent_data: {
-            statement_descriptor_suffix: statementDescriptorSuffix,
           },
           metadata: {
             userUid: uid,
@@ -5983,6 +5979,7 @@ exports.apiProxy = onRequest(
               legalTermsAcceptedAt: enrollment.acceptedAtIso,
               legalScope: enrollment.scope,
               billingCountry: enrollment.country,
+              statementDescriptorSuffix: getCheckoutStatementDescriptorSuffix(plan.id),
             },
           },
         });
