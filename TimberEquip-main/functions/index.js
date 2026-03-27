@@ -5988,14 +5988,47 @@ exports.apiProxy = onRequest(
           return res.status(500).json({ error: 'Stripe checkout URL was not returned.' });
         }
 
-        await recordSellerProgramCheckoutIntent({
-          userUid: uid,
-          planId: plan.id,
-          customerId,
-          subscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
-          session,
-          enrollment,
-        });
+        if (firestoreQuotaLimited) {
+          logger.warn('Skipping seller program checkout intent write because Firestore is already quota limited for this request.', {
+            uid,
+            planId: plan.id,
+            sessionId: session.id,
+          });
+        } else {
+          const checkoutIntentPersistPromise = recordSellerProgramCheckoutIntent({
+            userUid: uid,
+            planId: plan.id,
+            customerId,
+            subscriptionQuantity: plan.id === 'individual_seller' ? requestedQuantity : 1,
+            session,
+            enrollment,
+          })
+            .then(() => ({ status: 'persisted' }))
+            .catch((error) => ({ status: 'error', error }));
+
+          const checkoutIntentResult = await Promise.race([
+            checkoutIntentPersistPromise,
+            new Promise((resolve) => setTimeout(() => resolve({ status: 'timeout' }), 4000)),
+          ]);
+
+          if (checkoutIntentResult.status === 'error') {
+            if (!isFirestoreQuotaExceeded(checkoutIntentResult.error)) {
+              throw checkoutIntentResult.error;
+            }
+
+            logger.warn('Skipping seller program checkout intent write because Firestore quota is exhausted.', {
+              uid,
+              planId: plan.id,
+              sessionId: session.id,
+            });
+          } else if (checkoutIntentResult.status === 'timeout') {
+            logger.warn('Continuing checkout response before seller program checkout intent write completed.', {
+              uid,
+              planId: plan.id,
+              sessionId: session.id,
+            });
+          }
+        }
 
         logger.info('create-account-checkout-session: Stripe checkout session created', {
           uid,
