@@ -37,7 +37,7 @@ export function Seo({
   robots = DEFAULT_ROBOTS,
   jsonLd,
   ogType = 'website',
-  imagePath = '/android-chrome-512x512.png?v=20260326b',
+  imagePath = '/android-chrome-512x512.png?v=20260327a',
 }: SeoProps) {
   useEffect(() => {
     document.title = title;
@@ -52,7 +52,7 @@ export function Seo({
     setMetaTag({ property: 'og:description' }, description);
     setMetaTag({ property: 'og:type' }, ogType);
     setMetaTag({ property: 'og:url' }, canonicalHref);
-    setMetaTag({ property: 'og:site_name' }, 'TimberEquip');
+    setMetaTag({ property: 'og:site_name' }, 'Forestry Equipment Sales');
     setMetaTag({ property: 'og:image' }, imageUrl);
     setMetaTag({ name: 'twitter:card' }, 'summary_large_image');
     setMetaTag({ name: 'twitter:title' }, title);

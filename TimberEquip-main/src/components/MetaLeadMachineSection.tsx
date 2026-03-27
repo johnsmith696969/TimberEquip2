@@ -8,15 +8,15 @@ import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { getListEquipmentPath } from '../utils/sellerAccess';
 
-const BRAND_ASSET_VERSION = '20260326b';
-const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=${BRAND_ASSET_VERSION}`;
-const DARK_HEADER_LOGO = `/TimberEquip-Brand-Logo-Dusk.svg?v=${BRAND_ASSET_VERSION}`;
+const BRAND_ASSET_VERSION = '20260327a';
+const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
+const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
 
 export function MetaLeadMachineSection() {
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const brandLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
-  const brandLogoAlt = theme === 'dark' ? 'TimberEquip' : 'Forestry Equipment Sales';
+  const brandLogoAlt = 'Forestry Equipment Sales';
   const headingClass = theme === 'light' ? 'text-ink' : 'text-white';
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
 

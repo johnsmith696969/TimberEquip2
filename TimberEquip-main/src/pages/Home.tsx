@@ -266,14 +266,14 @@ export function Home() {
       '@graph': [
         {
           '@type': 'Organization',
-          name: 'TimberEquip',
-          alternateName: 'Forestry Equipment Sales',
+          name: 'Forestry Equipment Sales',
+          alternateName: 'TimberEquip',
           url: 'https://timberequip.com/',
-          logo: 'https://timberequip.com/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260326b',
+          logo: 'https://timberequip.com/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327a',
         },
         {
           '@type': 'WebSite',
-          name: 'TimberEquip',
+          name: 'Forestry Equipment Sales',
           url: 'https://timberequip.com/',
           inLanguage: 'en-US',
         },
@@ -305,7 +305,7 @@ export function Home() {
         description="Browse in-stock new and used logging equipment listings on Forestry Equipment Sales. Shop by category, make, model, year, hours, and price."
         canonicalPath="/"
         jsonLd={homeJsonLd}
-        imagePath="/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260326b"
+        imagePath="/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327a"
       />
 
       {/* Hero Section */}

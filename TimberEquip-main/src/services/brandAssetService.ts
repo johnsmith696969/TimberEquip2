@@ -11,14 +11,14 @@ export interface BrandAssetUrls {
   manifest: string;
 }
 
-const PUBLIC_ASSET_VERSION = '20260326b';
+const PUBLIC_ASSET_VERSION = '20260327a';
 const versionedAsset = (path: string) => `${path}?v=${PUBLIC_ASSET_VERSION}`;
 
 const DEFAULT_BRAND_ASSET_URLS: BrandAssetUrls = {
-  brandLogo: versionedAsset('/Forestry_Equipment_Sales_Light_Mode_Logo.svg'),
-  footerIcon: versionedAsset('/Logo-Transparent.png'),
+  brandLogo: versionedAsset('/Forestry_Equipment_Sales_Logo.svg'),
+  footerIcon: versionedAsset('/Forestry_Equipment_Sales_Favicon_512x512.png'),
   appleTouchIcon: versionedAsset('/apple-touch-icon.png'),
-  faviconSvg: versionedAsset('/Forestry_Equipment_Sales_Favicon.svg'),
+  faviconSvg: versionedAsset('/favicon.ico'),
   favicon32: versionedAsset('/favicon-32x32.png'),
   favicon16: versionedAsset('/favicon-16x16.png'),
   faviconIco: versionedAsset('/favicon.ico'),

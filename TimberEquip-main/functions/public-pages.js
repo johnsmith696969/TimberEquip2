@@ -562,12 +562,11 @@ function renderHead({ title, description, canonicalUrl, jsonLd, robots = 'index,
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260326b" />
-    <link rel="icon" type="image/svg+xml" href="/Forestry_Equipment_Sales_Favicon.svg?v=20260326b" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260326b" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260326b" />
-    <link rel="shortcut icon" href="/favicon.ico?v=20260326b" />
-    <link rel="manifest" href="/site.webmanifest?v=20260326b" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260327a" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260327a" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260327a" />
+    <link rel="shortcut icon" href="/favicon.ico?v=20260327a" />
+    <link rel="manifest" href="/site.webmanifest?v=20260327a" />
     <style>${baseStyles()}</style>
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ''}
   `;
@@ -583,7 +582,7 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
     <header class="topbar">
       <div class="shell topbar-inner">
         <a class="brand" href="/">
-          <img src="/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=20260326b" alt="Forestry Equipment Sales" />
+          <img src="/Forestry_Equipment_Sales_Logo.svg?v=20260327a" alt="Forestry Equipment Sales" />
           <span class="brand-copy">
             <strong>Hybrid Marketplace</strong>
             <span>Dealer hub, clean routes, and crawlable equipment inventory.</span>
@@ -604,9 +603,9 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
       <div class="shell">
         <div class="footer-card">
           <div class="footer-brand">
-            <img src="/Logo-Transparent.png?v=20260326b" alt="TimberEquip footer logo" />
+            <img src="/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327a" alt="Forestry Equipment Sales logo" />
             <span class="footer-copy">
-              <strong>TimberEquip Marketplace</strong>
+              <strong>Forestry Equipment Sales Marketplace</strong>
               <span>Dealer storefronts, live inventory, embeds, and lead-ready public pages.</span>
             </span>
           </div>
@@ -820,7 +819,7 @@ function buildCollectionJsonLd(name, description, canonicalUrl, listings, breadc
         url: canonicalUrl,
         isPartOf: {
           '@type': 'WebSite',
-          name: 'TimberEquip',
+          name: 'Forestry Equipment Sales',
           url: DEFAULT_BASE_URL,
         },
       },
@@ -841,7 +840,7 @@ function buildDirectoryJsonLd(name, description, canonicalUrl, breadcrumbs, item
         url: canonicalUrl,
         isPartOf: {
           '@type': 'WebSite',
-          name: 'TimberEquip',
+          name: 'Forestry Equipment Sales',
           url: DEFAULT_BASE_URL,
         },
       },
@@ -2428,7 +2427,7 @@ async function renderRoute(req, res) {
       ? `${seller.storefrontName} ${resolvedCategory} Inventory`
       : `${seller.storefrontName} Equipment Inventory`;
     const pageDescription = resolvedCategory
-      ? `Browse ${resolvedCategory.toLowerCase()} inventory from ${seller.storefrontName} on TimberEquip.`
+      ? `Browse ${resolvedCategory.toLowerCase()} inventory from ${seller.storefrontName} on Forestry Equipment Sales.`
       : `Browse live equipment inventory, contact details, and dealer storefront information for ${seller.storefrontName}.`;
 
     res.status(200).type('html').send(

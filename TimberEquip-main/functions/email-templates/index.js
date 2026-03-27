@@ -36,6 +36,8 @@ const BASE_STYLES = `
   .info-value { color: #111827 !important; font-size: 11px; font-weight: 600; }
   .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
   .footer { background: #ffffff !important; padding: 24px 40px 32px; border-top: 1px solid #e5e7eb; }
+  .footer-logo-wrap { margin: 0 0 18px; }
+  .footer-logo-img { display: block; width: 240px; max-width: 100%; height: auto; }
   .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; }
   .footer-title { color: #111827; font-size: 11px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 8px; }
   .footer p { color: #6b7280 !important; font-size: 11px; margin: 0; line-height: 1.5; }
@@ -75,7 +77,7 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="header">
         <p class="eyebrow">Forestry Equipment Sales Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/TimberEquip-Brand-Logo-Dusk-Email.png" alt="TimberEquip" />
+          <img class="header-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Header.png?v=20260327a" alt="Forestry Equipment Sales" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
         <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the Forestry Equipment Sales network.</p>
@@ -86,6 +88,9 @@ function baseLayout(title, headerSubtitle, content) {
         ${content}
       </div>
       <div class="footer">
+        <div class="footer-logo-wrap">
+          <img class="footer-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Footer.png?v=20260327a" alt="Forestry Equipment Sales" />
+        </div>
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>
           <p>Forestry Equipment Sales connects buyers, sellers, and partners across used and new logging equipment, financing workflows, and industrial inventory marketing.</p>
