@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const DEFAULT_TOKEN_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+const FIREBASE_CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com';
+const FIREBASE_CLIENT_SECRET = 'j9iVZfS8kkCEFUPaAeJV0sAi';
 
 function encodeBase64Url(value) {
   return Buffer.from(value)
@@ -34,15 +36,33 @@ function resolveFirebaseToolsConfigPath() {
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null;
 }
 
-function getFirebaseCliAccessToken() {
+function getFirebaseCliTokens() {
   const configPath = resolveFirebaseToolsConfigPath();
   if (!configPath) {
     return null;
   }
 
   const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  const accessToken = parsed?.tokens?.access_token;
-  const expiresAt = Number(parsed?.tokens?.expires_at || 0);
+  const tokens = parsed?.tokens;
+  if (!tokens) {
+    return null;
+  }
+
+  return {
+    configPath,
+    parsed,
+    tokens,
+  };
+}
+
+function getValidFirebaseCliAccessToken() {
+  const state = getFirebaseCliTokens();
+  if (!state) {
+    return null;
+  }
+
+  const accessToken = state.tokens.access_token;
+  const expiresAt = Number(state.tokens.expires_at || 0);
 
   if (!accessToken || !expiresAt) {
     return null;
@@ -54,6 +74,46 @@ function getFirebaseCliAccessToken() {
   }
 
   return accessToken;
+}
+
+async function refreshFirebaseCliAccessToken(scope) {
+  const state = getFirebaseCliTokens();
+  const refreshToken = state?.tokens?.refresh_token;
+
+  if (!state || !refreshToken) {
+    return null;
+  }
+
+  const response = await requestJson('https://www.googleapis.com/oauth2/v3/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: process.env.FIREBASE_CLIENT_ID || FIREBASE_CLIENT_ID,
+      client_secret: process.env.FIREBASE_CLIENT_SECRET || FIREBASE_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+      scope,
+    }),
+  });
+
+  const expiresIn = Number(response.expires_in || 3600);
+  const refreshedTokens = {
+    ...state.tokens,
+    ...response,
+    refresh_token: refreshToken,
+    expires_at: Date.now() + expiresIn * 1000,
+    scopes: scope.split(' '),
+  };
+
+  const nextParsed = {
+    ...state.parsed,
+    tokens: refreshedTokens,
+  };
+
+  fs.writeFileSync(state.configPath, `${JSON.stringify(nextParsed, null, 2)}\n`, 'utf8');
+  return refreshedTokens.access_token || null;
 }
 
 async function getServiceAccountAccessToken(scope) {
@@ -107,11 +167,19 @@ export async function getGoogleAccessToken(scope = DEFAULT_TOKEN_SCOPE) {
     };
   }
 
-  const firebaseCliToken = getFirebaseCliAccessToken();
+  const firebaseCliToken = getValidFirebaseCliAccessToken();
   if (firebaseCliToken) {
     return {
       accessToken: firebaseCliToken,
       source: 'firebase-cli',
+    };
+  }
+
+  const refreshedFirebaseCliToken = await refreshFirebaseCliAccessToken(scope);
+  if (refreshedFirebaseCliToken) {
+    return {
+      accessToken: refreshedFirebaseCliToken,
+      source: 'firebase-cli-refresh',
     };
   }
 
