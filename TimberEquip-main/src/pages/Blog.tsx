@@ -163,7 +163,7 @@ export function Blog() {
                 <div className="space-y-8">
                   {[
                     { label: 'Skidder Index', value: '$285.4K', change: '+12.4%', up: true },
-                    { label: 'Harvester Supply', value: '1,242 Units', change: '-4.2%', up: false },
+                    { label: 'Harvesters Supply', value: '1,242 Units', change: '-4.2%', up: false },
                     { label: 'Financing APR', value: '6.25%', change: 'Stable', up: null }
                   ].map((pulse, i) => (
                     <div key={i} className="flex justify-between items-end border-b border-white/10 pb-6">

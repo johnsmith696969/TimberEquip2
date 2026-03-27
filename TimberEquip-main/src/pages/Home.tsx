@@ -221,11 +221,15 @@ export function Home() {
       const singularCat = toSingularCategoryLabel(cat);
       const hasWeeklyChange = typeof metric?.weeklyChangePercent === 'number' && Number.isFinite(metric.weeklyChangePercent);
       const wow = metric && hasWeeklyChange ? `${formatChange(metric.weeklyChangePercent)} WoW` : 'No Data Yet';
-      const shortCat = cat.replace(' Bunchers', '').replace(' Processors', ' Proc.').replace('Log ', '');
+      const shortPluralCat = cat.replace(' Bunchers', '').replace(' Processors', ' Proc.').replace('Log ', '');
+      const shortSingularCat = toSingularCategoryLabel(cat)
+        .replace(' Buncher', '')
+        .replace(' Processor', ' Proc.')
+        .replace('Log ', '');
       return [
         {
           key: `${cat}-index`,
-          title: `${shortCat} Index`,
+          title: `${shortSingularCat} Index`,
           description: `Average asking price across all active ${singularCat} listings on the platform.`,
           icon: meta.indexIcon,
           iconClass: meta.indexColor,
@@ -239,8 +243,8 @@ export function Home() {
         },
         {
           key: `${cat}-supply`,
-          title: `${shortCat} Supply`,
-          description: `Live active inventory count for ${singularCat}. Updates as listings are added or sold.`,
+          title: `${shortPluralCat} Supply`,
+          description: `Live active inventory count for ${cat}. Updates as listings are added or sold.`,
           icon: meta.supplyIcon,
           iconClass: meta.supplyColor,
           badge: wow,
