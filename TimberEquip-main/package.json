@@ -23,6 +23,8 @@
     "release:notes": "node scripts/generate-release-notes.mjs",
     "smoke:routes": "node scripts/http-smoke-check.mjs",
     "ops:alerts:render": "node scripts/render-alert-policies.mjs",
+    "ops:alerts:apply": "node scripts/apply-alert-policies.mjs",
+    "ops:staging:setup": "node scripts/setup-staging-project.mjs",
     "prepare:seo-mode": "node scripts/prepare-seo-mode.mjs",
     "deploy:firebase": "node scripts/firebase-deploy.mjs",
     "deploy:preview": "node scripts/firebase-deploy.mjs --env preview",

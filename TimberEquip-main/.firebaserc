@@ -1,6 +1,8 @@
 {
   "projects": {
     "default": "mobile-app-equipment-sales",
-    "production": "mobile-app-equipment-sales"
+    "production": "mobile-app-equipment-sales",
+    "staging": "timberequip-staging",
+    "preview": "timberequip-staging"
   }
 }

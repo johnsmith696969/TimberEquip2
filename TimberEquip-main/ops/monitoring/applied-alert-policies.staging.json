@@ -1,0 +1,31 @@
+{
+  "projectId": "timberequip-staging",
+  "environment": "staging",
+  "authSource": "firebase-cli",
+  "created": [
+    {
+      "displayName": "[staging] API error rate",
+      "name": "projects/timberequip-staging/alertPolicies/3314104204140741447"
+    },
+    {
+      "displayName": "[staging] Public SSR route failures",
+      "name": "projects/timberequip-staging/alertPolicies/2233350343976157361"
+    },
+    {
+      "displayName": "[staging] Billing webhook failures",
+      "name": "projects/timberequip-staging/alertPolicies/9193724860103869055"
+    },
+    {
+      "displayName": "[staging] Admin mutation failures",
+      "name": "projects/timberequip-staging/alertPolicies/999230802117723018"
+    },
+    {
+      "displayName": "[staging] Firestore quota degradation",
+      "name": "projects/timberequip-staging/alertPolicies/4265892290542672013"
+    }
+  ],
+  "replaced": [
+    "[staging] API error rate",
+    "[staging] Public SSR route failures"
+  ]
+}

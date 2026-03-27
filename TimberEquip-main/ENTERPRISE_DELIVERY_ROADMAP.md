@@ -40,6 +40,10 @@ Status:
 - smoke tests now read from the shared release contract
 - runbooks now live under `ops/runbooks/`
 - alert-policy rendering scaffold now lives in `scripts/render-alert-policies.mjs`
+- alert-policy application now lives in `scripts/apply-alert-policies.mjs`
+- shared staging aliases now point at `timberequip-staging`
+- `timberequip-staging` now has Hosting, Monitoring, and Firestore bootstrap complete
+- remaining blocker for full SSR/API staging parity: upgrade `timberequip-staging` to Blaze so Cloud Functions v2 dependencies can be enabled
 
 ### 2. Release observability and rollback discipline
 

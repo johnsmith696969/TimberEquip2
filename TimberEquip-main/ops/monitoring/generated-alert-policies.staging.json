@@ -1,0 +1,162 @@
+{
+  "policies": [
+    {
+      "displayName": "[staging] API error rate",
+      "documentation": {
+        "content": "Triggers when the production API proxy starts returning server errors. Start with `ops/runbooks/FIRESTORE_QUOTA_DEGRADATION.md` and `ops/runbooks/PRODUCTION_ROLLBACK.md`.",
+        "mimeType": "text/markdown"
+      },
+      "conditions": [
+        {
+          "displayName": "API error rate condition",
+          "conditionThreshold": {
+            "filter": "resource.type=\"cloud_run_revision\" resource.labels.service_name=\"apiproxy\" metric.type=\"run.googleapis.com/request_count\" metric.labels.response_code_class=\"5xx\"",
+            "comparison": "COMPARISON_GT",
+            "duration": "300s",
+            "aggregations": [
+              {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_RATE"
+              }
+            ],
+            "thresholdValue": 0.02,
+            "trigger": {
+              "count": 1
+            }
+          }
+        }
+      ],
+      "combiner": "OR",
+      "enabled": true,
+      "notificationChannels": [],
+      "alertStrategy": {
+        "autoClose": "1800s"
+      },
+      "userLabels": {
+        "environment": "staging",
+        "service": "timberequip"
+      }
+    },
+    {
+      "displayName": "[staging] Public SSR route failures",
+      "documentation": {
+        "content": "Triggers when the public SSR surface begins failing. Check the public route smoke test and the production rollback runbook.",
+        "mimeType": "text/markdown"
+      },
+      "conditions": [
+        {
+          "displayName": "Public SSR route failures condition",
+          "conditionThreshold": {
+            "filter": "resource.type=\"cloud_run_revision\" resource.labels.service_name=\"publicpages\" metric.type=\"run.googleapis.com/request_count\" metric.labels.response_code_class=\"5xx\"",
+            "comparison": "COMPARISON_GT",
+            "duration": "300s",
+            "aggregations": [
+              {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_RATE"
+              }
+            ],
+            "thresholdValue": 0.02,
+            "trigger": {
+              "count": 1
+            }
+          }
+        }
+      ],
+      "combiner": "OR",
+      "enabled": true,
+      "notificationChannels": [],
+      "alertStrategy": {
+        "autoClose": "1800s"
+      },
+      "userLabels": {
+        "environment": "staging",
+        "service": "timberequip"
+      }
+    },
+    {
+      "displayName": "[staging] Billing webhook failures",
+      "documentation": {
+        "content": "Triggers when billing webhook processing begins erroring. Start with `ops/runbooks/BILLING_WEBHOOK_FAILURE.md`.",
+        "mimeType": "text/markdown"
+      },
+      "conditions": [
+        {
+          "displayName": "Billing webhook failures log condition",
+          "conditionMatchedLog": {
+            "filter": "resource.type=\"cloud_run_revision\" resource.labels.service_name=\"apiproxy\" logName=\"projects/timberequip-staging/logs/run.googleapis.com%2Fstderr\" textPayload:\"Stripe webhook\" severity>=ERROR"
+          }
+        }
+      ],
+      "combiner": "OR",
+      "enabled": true,
+      "notificationChannels": [],
+      "alertStrategy": {
+        "autoClose": "1800s",
+        "notificationRateLimit": {
+          "period": "300s"
+        }
+      },
+      "userLabels": {
+        "environment": "staging",
+        "service": "timberequip"
+      }
+    },
+    {
+      "displayName": "[staging] Admin mutation failures",
+      "documentation": {
+        "content": "Triggers when admin account mutations start failing. Validate the admin API and recent entitlement changes before rolling back.",
+        "mimeType": "text/markdown"
+      },
+      "conditions": [
+        {
+          "displayName": "Admin mutation failures log condition",
+          "conditionMatchedLog": {
+            "filter": "resource.type=\"cloud_run_revision\" resource.labels.service_name=\"apiproxy\" logName=\"projects/timberequip-staging/logs/run.googleapis.com%2Fstderr\" textPayload:\"Admin user request failed\" severity>=ERROR"
+          }
+        }
+      ],
+      "combiner": "OR",
+      "enabled": true,
+      "notificationChannels": [],
+      "alertStrategy": {
+        "autoClose": "1800s",
+        "notificationRateLimit": {
+          "period": "300s"
+        }
+      },
+      "userLabels": {
+        "environment": "staging",
+        "service": "timberequip"
+      }
+    },
+    {
+      "displayName": "[staging] Firestore quota degradation",
+      "documentation": {
+        "content": "Triggers when Firestore quota exhaustion or degraded fallback behavior appears in the runtime logs. Use `ops/runbooks/FIRESTORE_QUOTA_DEGRADATION.md`.",
+        "mimeType": "text/markdown"
+      },
+      "conditions": [
+        {
+          "displayName": "Firestore quota degradation log condition",
+          "conditionMatchedLog": {
+            "filter": "resource.type=\"cloud_run_revision\" logName=\"projects/timberequip-staging/logs/run.googleapis.com%2Fstderr\" textPayload:\"quota\" severity>=WARNING"
+          }
+        }
+      ],
+      "combiner": "OR",
+      "enabled": true,
+      "notificationChannels": [],
+      "alertStrategy": {
+        "autoClose": "1800s",
+        "notificationRateLimit": {
+          "period": "300s"
+        }
+      },
+      "userLabels": {
+        "environment": "staging",
+        "service": "timberequip"
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "projectId": "mobile-app-equipment-sales",
+  "environment": "production",
+  "authSource": "firebase-cli",
+  "created": [
+    {
+      "displayName": "[production] API error rate",
+      "name": "projects/mobile-app-equipment-sales/alertPolicies/15600873698798397541"
+    },
+    {
+      "displayName": "[production] Public SSR route failures",
+      "name": "projects/mobile-app-equipment-sales/alertPolicies/15046878581433537224"
+    },
+    {
+      "displayName": "[production] Billing webhook failures",
+      "name": "projects/mobile-app-equipment-sales/alertPolicies/2961546542321339655"
+    },
+    {
+      "displayName": "[production] Admin mutation failures",
+      "name": "projects/mobile-app-equipment-sales/alertPolicies/11509046484487862580"
+    },
+    {
+      "displayName": "[production] Firestore quota degradation",
+      "name": "projects/mobile-app-equipment-sales/alertPolicies/11519880842774152310"
+    }
+  ],
+  "replaced": [
+    "[production] API error rate",
+    "[production] Public SSR route failures"
+  ]
+}

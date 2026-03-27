@@ -79,7 +79,13 @@ Recommended project mapping:
 - `staging`: separate Firebase project used for noindex shared testing
 - `preview`: usually the same Firebase project as staging, using preview channels
 
-The repo keeps the current production project in `.firebaserc` and ships a `.firebaserc.example` for local multi-project setup.
+The repo now wires the current shared staging project directly:
+
+- `production`: `mobile-app-equipment-sales`
+- `staging`: `timberequip-staging`
+- `preview`: `timberequip-staging`
+
+The repo keeps those aliases in `.firebaserc` and ships the same mapping in `.firebaserc.example` for local multi-project setup.
 
 ## Local Commands
 
@@ -189,3 +195,40 @@ Operational assets added for this Tier 2 slice:
 - dealer feed sync failure: `ops/runbooks/DEALER_FEED_SYNC_FAILURE.md`
 - production rollback: `ops/runbooks/PRODUCTION_ROLLBACK.md`
 - Firestore quota degradation: `ops/runbooks/FIRESTORE_QUOTA_DEGRADATION.md`
+- alert policy applier: `npm run ops:alerts:apply -- --project <gcp-project-id> --env production`
+- staging setup bootstrap: `npm run ops:staging:setup`
+
+## Staging Bootstrap
+
+The repo can now bootstrap the shared staging project with the minimum APIs and Firestore database needed for deploy validation:
+
+```bash
+npm run ops:staging:setup
+```
+
+Defaults:
+
+- project: `timberequip-staging`
+- Firestore location: `nam5`
+
+Requirements:
+
+- either `GOOGLE_APPLICATION_CREDENTIALS` points at a service account with rights on the target project
+- or the local Firebase CLI login has a still-valid cloud-platform access token
+
+Current status:
+
+- `timberequip-staging` now has Hosting, Monitoring, and a default Firestore database in `nam5`
+- baseline Hosting plus Firestore Rules deploys succeed
+- full SSR/API parity is still blocked until the staging project is upgraded to Blaze so `cloudbuild.googleapis.com`, `artifactregistry.googleapis.com`, and the Cloud Functions v2 stack can be enabled
+
+## Monitoring Policy Application
+
+Render and apply the environment-specific policies:
+
+```bash
+npm run ops:alerts:render -- --project mobile-app-equipment-sales --env production
+npm run ops:alerts:apply -- --project mobile-app-equipment-sales --env production
+```
+
+The apply step replaces any existing alert policy with the same display name so the repo stays the source of truth for the baseline policy set.

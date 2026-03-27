@@ -13,9 +13,23 @@ function getBinaryName(name) {
   return process.platform === 'win32' ? `${name}.cmd` : name;
 }
 
+function quoteWindowsArg(value) {
+  const stringValue = String(value);
+
+  if (!/[ \t"&()<>^|]/u.test(stringValue)) {
+    return stringValue;
+  }
+
+  return `"${stringValue.replace(/"/gu, '""')}"`;
+}
+
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const useCmdShim = process.platform === 'win32' && /\.cmd$/iu.test(command);
+    const spawnCommand = useCmdShim ? (process.env.ComSpec || 'cmd.exe') : command;
+    const spawnArgs = useCmdShim ? ['/d', '/s', '/c', [command, ...args].map(quoteWindowsArg).join(' ')] : args;
+
+    const child = spawn(spawnCommand, spawnArgs, {
       cwd: options.cwd,
       env: options.env || process.env,
       stdio: 'inherit',

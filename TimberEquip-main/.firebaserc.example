@@ -2,7 +2,7 @@
   "projects": {
     "default": "mobile-app-equipment-sales",
     "production": "mobile-app-equipment-sales",
-    "staging": "your-staging-firebase-project-id",
-    "preview": "your-staging-firebase-project-id"
+    "staging": "timberequip-staging",
+    "preview": "timberequip-staging"
   }
 }

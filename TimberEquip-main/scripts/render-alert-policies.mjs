@@ -101,6 +101,9 @@ const buildLogPolicy = (displayName, filter, documentationContent) => ({
   notificationChannels: notificationChannel ? [notificationChannel] : [],
   alertStrategy: {
     autoClose: '1800s',
+    notificationRateLimit: {
+      period: '300s',
+    },
   },
   userLabels: {
     environment,
