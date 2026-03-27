@@ -21,6 +21,7 @@ import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService
 import { billingService, type ListingPlanId } from '../services/billingService';
 import { MetaAdProgramBreakdown } from '../components/MetaAdProgramBreakdown';
 import { useAuth } from '../components/AuthContext';
+import { hasActiveSellerSubscription } from '../utils/sellerAccess';
 import {
   createDefaultSellerProgramEnrollmentForm,
   getSellerProgramScopeLabel,
@@ -30,6 +31,11 @@ import {
   SELLER_PROGRAM_TERMS_PATH,
   type SellerProgramEnrollmentFormData,
 } from '../utils/sellerProgramAgreement';
+import {
+  getSellerPlanChangeDirection,
+  getSellerPlanMarketingLabel,
+  getSellerPlanPurchaseLabel,
+} from '../utils/sellerPlans';
 
 const ENROLLMENT_STORAGE_KEY = 'timber_seller_program_enrollment_v1';
 
@@ -226,6 +232,20 @@ export function AdPrograms() {
   );
   const statementLabel = getSellerProgramStatementLabel(selectedSellerPlan);
   const scopeLabel = getSellerProgramScopeLabel(selectedSellerPlan);
+  const hasCurrentSellerSubscription = hasActiveSellerSubscription(user);
+  const currentSellerPlanId = hasCurrentSellerSubscription ? user?.activeSubscriptionPlanId || null : null;
+  const currentSellerPlanLabel = getSellerPlanMarketingLabel(currentSellerPlanId);
+  const currentSellerPlanPurchaseLabel = getSellerPlanPurchaseLabel(currentSellerPlanId);
+  const currentSellerBillingLabel = currentSellerPlanId ? getSellerProgramStatementLabel(currentSellerPlanId) : 'Free Member';
+  const selectedPlanChangeDirection = getSellerPlanChangeDirection(currentSellerPlanId, selectedSellerPlan || null);
+  const isCurrentSelectedPlan = Boolean(currentSellerPlanId && selectedSellerPlan === currentSellerPlanId);
+  const canExpandOwnerOperatorPlan = selectedSellerPlan === 'individual_seller' && currentSellerPlanId === 'individual_seller';
+  const requiresSupportPlanChange = Boolean(
+    hasCurrentSellerSubscription &&
+    currentSellerPlanId &&
+    selectedSellerPlan &&
+    selectedSellerPlan !== currentSellerPlanId
+  );
   const companyRequired = selectedSellerPlan === 'dealer' || selectedSellerPlan === 'fleet_dealer';
   const ownerOperatorMonthlyTotal = clampOwnerOperatorQuantity(ownerOperatorQuantity) * 39;
   const canSubmitEnrollment = Boolean(
@@ -242,6 +262,40 @@ export function AdPrograms() {
     enrollmentForm.acceptedVisibilityPolicy &&
     enrollmentForm.acceptedAuthority
   );
+  const enrollmentStateTitle = !selectedSellerPlan
+    ? 'Select a Seller Plan'
+    : !hasCurrentSellerSubscription
+      ? 'New Seller Subscription'
+      : canExpandOwnerOperatorPlan
+        ? 'Owner-Operator Expansion'
+        : isCurrentSelectedPlan
+          ? 'Current Active Seller Plan'
+          : selectedPlanChangeDirection === 'upgrade'
+            ? 'Plan Change Requires Support'
+            : 'Tier Change Requires Support';
+  const enrollmentStateMessage = !selectedSellerPlan
+    ? 'Choose the plan you want this account to use, then complete the enrollment form below.'
+    : !hasCurrentSellerSubscription
+      ? 'This account does not have an active seller subscription yet. Completing checkout will activate the selected plan for this logged-in account.'
+      : canExpandOwnerOperatorPlan
+        ? 'This account already has an active Owner-Operator subscription. You can add more listing slots here up to the supported cap.'
+        : isCurrentSelectedPlan
+          ? `This account is already on ${currentSellerPlanPurchaseLabel}. Use support if you need billing help or a managed account change.`
+          : selectedPlanChangeDirection === 'upgrade'
+            ? `This account is currently on ${currentSellerPlanLabel}. Moving to ${getSellerPlanMarketingLabel(selectedSellerPlan)} should be handled as a managed support change so billing and listing visibility stay consistent.`
+            : `This account is currently on ${currentSellerPlanLabel}. Changing down to ${getSellerPlanMarketingLabel(selectedSellerPlan)} should be handled by support so billing history and public listing visibility stay clean.`;
+  const primaryEnrollmentCtaLabel = pendingPlanCheckout
+    ? 'Redirecting to Stripe...'
+    : !isAuthenticated
+      ? 'Sign In and Continue'
+      : canExpandOwnerOperatorPlan
+        ? 'Add Owner-Operator Slots in Stripe'
+        : isCurrentSelectedPlan
+          ? 'Current Active Plan'
+          : requiresSupportPlanChange
+            ? 'Contact Support to Change Plan'
+            : 'Continue to Stripe Checkout';
+  const disablePrimaryEnrollmentCta = !selectedSellerPlan || pendingPlanCheckout !== null || (isCurrentSelectedPlan && !canExpandOwnerOperatorPlan);
 
   useEffect(() => {
     if (!selectedPlanFromQuery) return;
@@ -337,6 +391,20 @@ export function AdPrograms() {
     setPendingPlanCheckout(selectedSellerPlan);
     setCheckoutError('');
     setCheckoutNotice('');
+
+    if (isCurrentSelectedPlan && !canExpandOwnerOperatorPlan) {
+      setCheckoutNotice(`This account is already on ${currentSellerPlanPurchaseLabel}. If you need help with billing or a plan change, contact support.`);
+      setPendingPlanCheckout(null);
+      focusEnrollmentSection();
+      return;
+    }
+
+    if (requiresSupportPlanChange) {
+      setCheckoutNotice(`This account is currently on ${currentSellerPlanLabel}. Dealer-tier changes are handled by support so billing, invoicing, and listing visibility stay consistent.`);
+      setPendingPlanCheckout(null);
+      focusEnrollmentSection();
+      return;
+    }
 
     try {
       const returnParams = new URLSearchParams({
@@ -537,6 +605,18 @@ export function AdPrograms() {
                 Capture billing and legal details on-site before redirecting to Stripe. This creates an auditable acceptance record in your database and keeps the subscription tied to the right account.
               </p>
             </div>
+
+            {selectedSellerPlan && (
+              <div className="border border-line bg-bg rounded-sm p-5 space-y-2 mb-6">
+                <p className="text-[10px] font-black uppercase tracking-widest text-accent">{enrollmentStateTitle}</p>
+                <p className="text-sm text-muted leading-relaxed">{enrollmentStateMessage}</p>
+                {hasCurrentSellerSubscription && currentSellerPlanId && (
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted">
+                    Current account plan: {currentSellerPlanLabel} | Billing label: {currentSellerBillingLabel}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div>
@@ -779,16 +859,16 @@ export function AdPrograms() {
             <button
               type="button"
               onClick={() => {
+                if (requiresSupportPlanChange) {
+                  openLeadForm('support');
+                  return;
+                }
                 void startPlanCheckout();
               }}
-              disabled={!selectedSellerPlan || pendingPlanCheckout !== null}
+              disabled={disablePrimaryEnrollmentCta}
               className="btn-industrial btn-accent w-full py-4 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {pendingPlanCheckout
-                ? 'Redirecting to Stripe...'
-                : isAuthenticated
-                  ? 'Continue to Stripe Checkout'
-                  : 'Sign In and Continue'}
+              {primaryEnrollmentCtaLabel}
             </button>
           </div>
 
@@ -825,6 +905,17 @@ export function AdPrograms() {
                   <li>If billing lapses, listings stay stored in the database but public visibility is suspended until billing is restored.</li>
                 </ul>
               </div>
+
+              {hasCurrentSellerSubscription && currentSellerPlanId && (
+                <div className="border border-line bg-surface p-4 rounded-sm mt-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-3">Current Account Plan</p>
+                  <ul className="space-y-2 text-sm text-muted leading-relaxed">
+                    <li>Current plan: {currentSellerPlanPurchaseLabel}</li>
+                    <li>Billing label: {currentSellerBillingLabel}</li>
+                    <li>Seller status: {String(user?.subscriptionStatus || 'active').trim() || 'active'}</li>
+                  </ul>
+                </div>
+              )}
             </div>
 
             <div className="bg-bg border border-line p-8 rounded-sm">

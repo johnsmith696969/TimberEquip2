@@ -23,7 +23,9 @@ import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile } from 'firebase/auth';
 import { getUserRoleDisplayLabel } from '../utils/userRoles';
-import { canAccessDealerOs, canUserPostListings } from '../utils/sellerAccess';
+import { canAccessDealerOs, canUserPostListings, hasActiveSellerSubscription } from '../utils/sellerAccess';
+import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
+import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 
 const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
@@ -78,6 +80,26 @@ export function Profile() {
   const canViewInspectionRequests = hasUser;
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
   const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
+  const hasPaidSellerSubscription = hasActiveSellerSubscription(user);
+  const subscriptionPlanLabel = hasPaidSellerSubscription
+    ? getSellerPlanMarketingLabel(user?.activeSubscriptionPlanId)
+    : normalizedRole === 'member'
+      ? 'Free Member'
+      : normalizedRole === 'buyer'
+        ? 'Buyer'
+        : 'No active seller plan';
+  const subscriptionStatusLabel = String(
+    user?.subscriptionStatus ||
+    (hasPaidSellerSubscription ? 'active' : normalizedRole === 'member' ? 'free' : 'none')
+  ).trim().toLowerCase();
+  const billingLabel = hasPaidSellerSubscription && user?.activeSubscriptionPlanId
+    ? getSellerProgramStatementLabel(user.activeSubscriptionPlanId)
+    : 'n/a';
+  const listingVisibilityLabel = hasPaidSellerSubscription
+    ? 'publicly eligible'
+    : hasSellerWorkspaceAccess
+      ? 'hidden until billing is restored'
+      : 'not applicable';
   const profileTabs = useMemo(() => {
     const tabs = ['Overview'];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
@@ -1749,10 +1771,13 @@ export function Profile() {
           {[
             { label: 'Role', value: roleDisplayLabel },
             { label: 'Account Status', value: user?.accountStatus || 'active' },
-            { label: 'Email Verified', value: user?.emailVerified ? 'verified' : 'unverified' },
-            { label: 'Subscription', value: user?.activeSubscriptionPlanId || 'none' },
+            { label: 'Subscription Plan', value: subscriptionPlanLabel },
+            { label: 'Subscription Status', value: subscriptionStatusLabel },
+            { label: 'Billing Label', value: billingLabel },
+            { label: 'Listing Visibility', value: listingVisibilityLabel },
             { label: 'Listing Capacity', value: typeof user?.listingCap === 'number' ? String(user.listingCap) : '0' },
             { label: 'Managed Seats', value: typeof user?.managedAccountCap === 'number' ? String(user.managedAccountCap) : '0' },
+            { label: 'Email Verified', value: user?.emailVerified ? 'verified' : 'unverified' },
             { label: 'Storefront Access', value: hasStorefrontAccess ? 'enabled' : 'not available' },
             { label: 'Member Since', value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'n/a' },
           ].map((item) => (
