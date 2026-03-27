@@ -304,6 +304,14 @@ export function AdPrograms() {
   }, [selectedPlanFromQuery]);
 
   useEffect(() => {
+    if (selectedPlanFromQuery || selectedSellerPlan || !currentSellerPlanId) return;
+    if (!isListingPlanId(currentSellerPlanId)) return;
+
+    setSelectedSellerPlan(currentSellerPlanId);
+    setEnrollmentForm((prev) => ({ ...prev, planId: currentSellerPlanId }));
+  }, [currentSellerPlanId, selectedPlanFromQuery, selectedSellerPlan]);
+
+  useEffect(() => {
     if (!selectedSellerPlan) return;
     setEnrollmentForm((prev) => ({ ...prev, planId: selectedSellerPlan }));
   }, [selectedSellerPlan]);
@@ -548,25 +556,59 @@ export function AdPrograms() {
             <p className="text-[10px] font-black uppercase tracking-widest text-accent mt-4">
               Flow: select plan -&gt; complete enrollment -&gt; legal acknowledgement -&gt; Stripe checkout -&gt; subscription success.
             </p>
+            {hasCurrentSellerSubscription && currentSellerPlanId && (
+              <div className="mt-6 border border-line bg-bg rounded-sm p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-accent">Current Seller Subscription</p>
+                <p className="text-sm text-muted mt-2">
+                  This account is currently on <span className="font-black text-foreground">{currentSellerPlanLabel}</span> with
+                  {' '}<span className="font-black text-foreground">{currentSellerBillingLabel}</span> billing.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {sellerTiers.map((tier, index) => {
               const Icon = tier.icon;
               const isSelected = selectedSellerPlan === tier.planId;
+              const isCurrentPlan = hasCurrentSellerSubscription && currentSellerPlanId === tier.planId;
+              const cardClassName = isCurrentPlan
+                ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(34,197,94,0.12)]'
+                : tier.highlight
+                  ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(249,115,22,0.12)]'
+                  : 'bg-bg border-line';
+              const ctaLabel = isCurrentPlan
+                ? isSelected
+                  ? 'Current Active Plan'
+                  : 'View Current Plan'
+                : isSelected
+                  ? 'Selected for Enrollment'
+                  : `Select ${tier.title}`;
+
               return (
                 <motion.div
                   key={tier.title}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.08 }}
-                  className={`border p-8 rounded-sm transition-colors ${tier.highlight ? 'bg-bg border-accent shadow-[0_18px_60px_rgba(249,115,22,0.12)]' : 'bg-bg border-line'} ${isSelected ? 'ring-1 ring-accent/60' : ''}`}
+                  className={`border p-8 rounded-sm transition-colors ${cardClassName} ${isSelected ? 'ring-1 ring-accent/60' : ''}`}
                 >
                   <div className="flex items-center justify-between mb-6">
-                    <div className={`w-12 h-12 flex items-center justify-center rounded-sm border ${tier.highlight ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface text-muted'}`}>
+                    <div className={`w-12 h-12 flex items-center justify-center rounded-sm border ${
+                      isCurrentPlan
+                        ? 'border-data/30 bg-data/10 text-data'
+                        : tier.highlight
+                          ? 'border-accent/30 bg-accent/10 text-accent'
+                          : 'border-line bg-surface text-muted'
+                    }`}>
                       <Icon size={22} />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.24em] text-muted">{tier.roleLabel}</span>
+                    <div className="flex flex-col items-end gap-2">
+                      {isCurrentPlan && (
+                        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-data">Current Plan</span>
+                      )}
+                      <span className="text-[10px] font-black uppercase tracking-[0.24em] text-muted">{tier.roleLabel}</span>
+                    </div>
                   </div>
                   <h3 className="text-2xl font-black tracking-tight uppercase mb-2">{tier.title}</h3>
                   <div className="text-3xl font-black tracking-tighter mb-4">{tier.price}</div>
@@ -585,7 +627,7 @@ export function AdPrograms() {
                       onClick={() => handleSelectSellerPlan(tier.planId)}
                       className={`btn-industrial w-full py-3 text-center ${isSelected || tier.highlight ? 'btn-accent' : ''}`}
                     >
-                      {isSelected ? 'Selected for Enrollment' : `Select ${tier.title}`}
+                      {ctaLabel}
                     </button>
                   </div>
                 </motion.div>

@@ -126,9 +126,34 @@ function getAdminRecipients() {
 }
 
 const APP_URL = 'https://timberequip.com';
+const STRIPE_WEBHOOK_DEDUPE_WINDOW_MS = 30 * 60 * 1000;
+const recentStripeWebhookEvents = new Map();
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function pruneRecentStripeWebhookEvents(now = Date.now()) {
+  for (const [eventId, expiresAt] of recentStripeWebhookEvents.entries()) {
+    if (expiresAt <= now) {
+      recentStripeWebhookEvents.delete(eventId);
+    }
+  }
+}
+
+function markRecentStripeWebhookEvent(eventId) {
+  const normalizedEventId = String(eventId || '').trim();
+  if (!normalizedEventId) return false;
+
+  const now = Date.now();
+  pruneRecentStripeWebhookEvents(now);
+  const existingExpiry = recentStripeWebhookEvents.get(normalizedEventId);
+  if (existingExpiry && existingExpiry > now) {
+    return true;
+  }
+
+  recentStripeWebhookEvents.set(normalizedEventId, now + STRIPE_WEBHOOK_DEDUPE_WINDOW_MS);
+  return false;
 }
 
 function normalizeUserRole(role) {
@@ -3838,80 +3863,88 @@ async function recordSellerProgramCheckoutIntent({
   const consentRef = getDb().collection('consentLogs').doc();
   const userRef = getDb().collection('users').doc(userUid);
 
-  await Promise.all([
-    applicationRef.set(
-      {
+  await runFirestoreTaskWithQuotaTolerance(
+    () => Promise.all([
+      applicationRef.set(
+        {
+          userUid,
+          planId,
+          stripeCustomerId: customerId || null,
+          stripeCheckoutSessionId: session.id,
+          stripeSubscriptionId: null,
+          checkoutUrl: session.url || null,
+          statementLabel: enrollment.statementLabel,
+          legalScope: enrollment.scope,
+          legalTermsVersion: enrollment.legalTermsVersion,
+          legalAcceptedAtIso: enrollment.acceptedAtIso,
+          legalContactName: enrollment.legalFullName,
+          legalContactTitle: enrollment.legalTitle,
+          companyName: enrollment.companyName || null,
+          billingEmail: enrollment.billingEmail,
+          phoneNumber: enrollment.phoneNumber,
+          website: enrollment.website || null,
+          country: enrollment.country,
+          taxIdOrVat: enrollment.taxIdOrVat || null,
+          notes: enrollment.notes || null,
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+          acceptedRecurringBilling: true,
+          acceptedVisibilityPolicy: true,
+          acceptedAuthority: true,
+          subscriptionQuantity,
+          status: 'checkout_started',
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      ),
+      consentRef.set({
         userUid,
+        consentType: 'seller_program_checkout',
         planId,
-        stripeCustomerId: customerId || null,
-        stripeCheckoutSessionId: session.id,
-        stripeSubscriptionId: null,
-        checkoutUrl: session.url || null,
         statementLabel: enrollment.statementLabel,
         legalScope: enrollment.scope,
         legalTermsVersion: enrollment.legalTermsVersion,
-        legalAcceptedAtIso: enrollment.acceptedAtIso,
-        legalContactName: enrollment.legalFullName,
-        legalContactTitle: enrollment.legalTitle,
-        companyName: enrollment.companyName || null,
-        billingEmail: enrollment.billingEmail,
-        phoneNumber: enrollment.phoneNumber,
-        website: enrollment.website || null,
-        country: enrollment.country,
-        taxIdOrVat: enrollment.taxIdOrVat || null,
-        notes: enrollment.notes || null,
+        acceptedAtIso: enrollment.acceptedAtIso,
         acceptedTerms: true,
         acceptedPrivacy: true,
         acceptedRecurringBilling: true,
         acceptedVisibilityPolicy: true,
         acceptedAuthority: true,
-        subscriptionQuantity,
-        status: 'checkout_started',
+        stripeCheckoutSessionId: session.id,
         createdAt: now,
-        updatedAt: now,
-      },
-      { merge: true }
-    ),
-    consentRef.set({
+      }),
+      userRef.set(
+        {
+          sellerProgramAgreementVersion: enrollment.legalTermsVersion,
+          sellerProgramAgreementAcceptedAt: now,
+          sellerProgramAgreementPlanId: planId,
+          sellerProgramAgreementScope: enrollment.scope,
+          sellerProgramAgreementStatementLabel: enrollment.statementLabel,
+          sellerProgramAgreementAcceptedTerms: true,
+          sellerProgramAgreementAcceptedPrivacy: true,
+          sellerProgramAgreementAcceptedRecurringBilling: true,
+          sellerProgramAgreementAcceptedVisibilityPolicy: true,
+          sellerProgramAgreementAcceptedAuthority: true,
+          sellerProgramBillingCountry: enrollment.country,
+          billingEmail: enrollment.billingEmail,
+          legalContactName: enrollment.legalFullName,
+          legalContactTitle: enrollment.legalTitle,
+          updatedAt: now,
+          ...(enrollment.companyName ? { company: enrollment.companyName } : {}),
+          ...(enrollment.phoneNumber ? { phoneNumber: enrollment.phoneNumber } : {}),
+          ...(enrollment.website ? { website: enrollment.website } : {}),
+        },
+        { merge: true }
+      ),
+    ]),
+    'Seller program checkout enrollment persistence',
+    {
       userUid,
-      consentType: 'seller_program_checkout',
       planId,
-      statementLabel: enrollment.statementLabel,
-      legalScope: enrollment.scope,
-      legalTermsVersion: enrollment.legalTermsVersion,
-      acceptedAtIso: enrollment.acceptedAtIso,
-      acceptedTerms: true,
-      acceptedPrivacy: true,
-      acceptedRecurringBilling: true,
-      acceptedVisibilityPolicy: true,
-      acceptedAuthority: true,
-      stripeCheckoutSessionId: session.id,
-      createdAt: now,
-    }),
-    userRef.set(
-      {
-        sellerProgramAgreementVersion: enrollment.legalTermsVersion,
-        sellerProgramAgreementAcceptedAt: now,
-        sellerProgramAgreementPlanId: planId,
-        sellerProgramAgreementScope: enrollment.scope,
-        sellerProgramAgreementStatementLabel: enrollment.statementLabel,
-        sellerProgramAgreementAcceptedTerms: true,
-        sellerProgramAgreementAcceptedPrivacy: true,
-        sellerProgramAgreementAcceptedRecurringBilling: true,
-        sellerProgramAgreementAcceptedVisibilityPolicy: true,
-        sellerProgramAgreementAcceptedAuthority: true,
-        sellerProgramBillingCountry: enrollment.country,
-        billingEmail: enrollment.billingEmail,
-        legalContactName: enrollment.legalFullName,
-        legalContactTitle: enrollment.legalTitle,
-        updatedAt: now,
-        ...(enrollment.companyName ? { company: enrollment.companyName } : {}),
-        ...(enrollment.phoneNumber ? { phoneNumber: enrollment.phoneNumber } : {}),
-        ...(enrollment.website ? { website: enrollment.website } : {}),
-      },
-      { merge: true }
-    ),
-  ]);
+      sessionId: session.id,
+    }
+  );
 }
 
 async function finalizeSellerProgramCheckoutArtifacts({
@@ -3930,35 +3963,45 @@ async function finalizeSellerProgramCheckoutArtifacts({
   const legalScope = getSellerProgramScope(planId);
   const stripeConsentAccepted = session.consent?.terms_of_service === 'accepted' || normalizeConsentFlag(session.metadata?.legalTermsAccepted);
 
-  await Promise.all([
-    getDb().collection('sellerProgramApplications').doc(session.id).set(
-      {
-        status: stripeConsentAccepted ? 'checkout_confirmed' : 'checkout_processing',
-        stripeSubscriptionId: subscriptionId || null,
-        statementLabel,
-        legalScope,
-        legalTermsVersion: agreementVersion,
-        legalAcceptedAtIso: legalAcceptedAtIso || null,
-        stripeConsentAccepted,
-        finalizedAt: now,
-        updatedAt: now,
-        finalizedVia: source,
-      },
-      { merge: true }
-    ),
-    getDb().collection('users').doc(userUid).set(
-      {
-        sellerProgramAgreementVersion: agreementVersion,
-        sellerProgramAgreementAcceptedAt: now,
-        sellerProgramAgreementPlanId: planId,
-        sellerProgramAgreementScope: legalScope,
-        sellerProgramAgreementStatementLabel: statementLabel,
-        sellerProgramStripeConsentAccepted: stripeConsentAccepted,
-        updatedAt: now,
-      },
-      { merge: true }
-    ),
-  ]);
+  await runFirestoreTaskWithQuotaTolerance(
+    () => Promise.all([
+      getDb().collection('sellerProgramApplications').doc(session.id).set(
+        {
+          status: stripeConsentAccepted ? 'checkout_confirmed' : 'checkout_processing',
+          stripeSubscriptionId: subscriptionId || null,
+          statementLabel,
+          legalScope,
+          legalTermsVersion: agreementVersion,
+          legalAcceptedAtIso: legalAcceptedAtIso || null,
+          stripeConsentAccepted,
+          finalizedAt: now,
+          updatedAt: now,
+          finalizedVia: source,
+        },
+        { merge: true }
+      ),
+      getDb().collection('users').doc(userUid).set(
+        {
+          sellerProgramAgreementVersion: agreementVersion,
+          sellerProgramAgreementAcceptedAt: now,
+          sellerProgramAgreementPlanId: planId,
+          sellerProgramAgreementScope: legalScope,
+          sellerProgramAgreementStatementLabel: statementLabel,
+          sellerProgramStripeConsentAccepted: stripeConsentAccepted,
+          updatedAt: now,
+        },
+        { merge: true }
+      ),
+    ]),
+    'Seller program checkout finalization persistence',
+    {
+      userUid,
+      planId,
+      sessionId: session.id,
+      subscriptionId: subscriptionId || null,
+      source,
+    }
+  );
 }
 
 function getListingCheckoutPlan(rawPlanId) {
@@ -3973,6 +4016,37 @@ function getSellerRoleForPlan(planId) {
   if (planId === 'individual_seller') return 'individual_seller';
   if (planId === 'fleet_dealer') return 'pro_dealer';
   return 'dealer';
+}
+
+function inferPlanIdFromStripeIdentifiers({ productId = '', priceId = '' } = {}) {
+  const normalizedProductId = String(productId || '').trim();
+  const normalizedPriceId = String(priceId || '').trim();
+
+  for (const [candidatePlanId, plan] of Object.entries(LISTING_CHECKOUT_PLANS)) {
+    if (normalizedPriceId && String(plan?.priceId || '').trim() === normalizedPriceId) {
+      return candidatePlanId;
+    }
+    if (normalizedProductId && String(plan?.productId || '').trim() === normalizedProductId) {
+      return candidatePlanId;
+    }
+  }
+
+  return '';
+}
+
+function inferPlanIdFromStripeSubscription(rawSubscription) {
+  const metadataPlanId = String(rawSubscription?.metadata?.planId || '').trim();
+  if (metadataPlanId && getListingCheckoutPlan(metadataPlanId)) {
+    return metadataPlanId;
+  }
+
+  const firstItem = rawSubscription?.items?.data?.[0] || null;
+  const priceId = String(firstItem?.price?.id || firstItem?.plan?.id || '').trim();
+  const productId = typeof firstItem?.price?.product === 'string'
+    ? firstItem.price.product
+    : String(firstItem?.price?.product?.id || firstItem?.plan?.product || '').trim();
+
+  return inferPlanIdFromStripeIdentifiers({ productId, priceId });
 }
 
 function getPlanDisplayName(planId) {
@@ -4020,6 +4094,9 @@ function buildAccountSubscriptionAccessSummary(entries = []) {
   let dealerSubId = null;
   let fleetSubId = null;
   let ownerSubId = null;
+  let dealerStatus = null;
+  let fleetStatus = null;
+  let ownerStatus = null;
   let maxPeriodEndMillis = 0;
 
   entries.forEach((entry) => {
@@ -4049,17 +4126,20 @@ function buildAccountSubscriptionAccessSummary(entries = []) {
     if (planId === 'fleet_dealer') {
       hasFleetDealer = true;
       fleetSubId = fleetSubId || String(entry?.subscriptionId || '').trim() || null;
+      fleetStatus = fleetStatus || status;
       return;
     }
 
     if (planId === 'dealer') {
       hasDealer = true;
       dealerSubId = dealerSubId || String(entry?.subscriptionId || '').trim() || null;
+      dealerStatus = dealerStatus || status;
       return;
     }
 
     if (planId === 'individual_seller') {
       ownerSubId = ownerSubId || String(entry?.subscriptionId || '').trim() || null;
+      ownerStatus = ownerStatus || status;
       const quantity = resolveSubscriptionQuantityForPlan(planId, entry?.subscriptionQuantity, entry?.listingCap);
       ownerOperatorQuantity += quantity;
     }
@@ -4073,7 +4153,7 @@ function buildAccountSubscriptionAccessSummary(entries = []) {
       planId: 'fleet_dealer',
       listingCap: LISTING_CHECKOUT_PLANS.fleet_dealer.listingCap,
       managedAccountCap: DEALER_MANAGED_ACCOUNT_LIMIT,
-      subscriptionStatus: 'active',
+      subscriptionStatus: fleetStatus || 'active',
       currentSubscriptionId: fleetSubId,
       currentPeriodEndIso,
       ownerOperatorQuantity,
@@ -4085,7 +4165,7 @@ function buildAccountSubscriptionAccessSummary(entries = []) {
       planId: 'dealer',
       listingCap: LISTING_CHECKOUT_PLANS.dealer.listingCap,
       managedAccountCap: DEALER_MANAGED_ACCOUNT_LIMIT,
-      subscriptionStatus: 'active',
+      subscriptionStatus: dealerStatus || 'active',
       currentSubscriptionId: dealerSubId,
       currentPeriodEndIso,
       ownerOperatorQuantity,
@@ -4097,7 +4177,7 @@ function buildAccountSubscriptionAccessSummary(entries = []) {
       planId: 'individual_seller',
       listingCap: ownerOperatorQuantity,
       managedAccountCap: 0,
-      subscriptionStatus: 'active',
+      subscriptionStatus: ownerStatus || 'active',
       currentSubscriptionId: ownerSubId,
       currentPeriodEndIso,
       ownerOperatorQuantity,
@@ -4113,6 +4193,22 @@ function buildAccountSubscriptionAccessSummary(entries = []) {
     currentPeriodEndIso,
     ownerOperatorQuantity,
   };
+}
+
+function getMostRelevantStripeAccountSubscriptionEntry(entries = []) {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+
+  return entries
+    .filter((entry) => {
+      const checkoutScope = String(entry?.checkoutScope || '').trim();
+      const listingId = String(entry?.listingId || '').trim();
+      return checkoutScope === 'account' || (checkoutScope === '' && !listingId);
+    })
+    .sort((left, right) => {
+      const leftPeriodEnd = Number(left?.currentPeriodEndMillis || 0);
+      const rightPeriodEnd = Number(right?.currentPeriodEndMillis || 0);
+      return rightPeriodEnd - leftPeriodEnd;
+    })[0] || null;
 }
 
 async function listStripeAccountSubscriptionEntries(stripe, customerId) {
@@ -4132,9 +4228,10 @@ async function listStripeAccountSubscriptionEntries(stripe, customerId) {
 
     page.data.forEach((subscription) => {
       const metadata = subscription?.metadata || {};
+      const inferredPlanId = inferPlanIdFromStripeSubscription(subscription);
       entries.push({
         subscriptionId: String(subscription?.id || '').trim(),
-        planId: String(metadata.planId || '').trim(),
+        planId: inferredPlanId || String(metadata.planId || '').trim(),
         checkoutScope: String(metadata.checkoutScope || '').trim(),
         listingId: String(metadata.listingId || '').trim(),
         status: normalizeStripeSubscriptionStatus(subscription?.status),
@@ -4153,6 +4250,27 @@ async function listStripeAccountSubscriptionEntries(stripe, customerId) {
   } while (startingAfter);
 
   return entries;
+}
+
+async function runFirestoreTaskWithQuotaTolerance(task, description, context = {}) {
+  try {
+    return {
+      ok: true,
+      skipped: false,
+      value: await task(),
+    };
+  } catch (error) {
+    if (isFirestoreQuotaExceeded(error)) {
+      logger.warn(`${description} skipped because Firestore quota is exhausted.`, context);
+      return {
+        ok: false,
+        skipped: true,
+        value: null,
+        error,
+      };
+    }
+    throw error;
+  }
 }
 
 async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
@@ -4186,6 +4304,10 @@ async function resolveAccountSubscriptionAccessSummary(userUid, options = {}) {
   }
 }
 
+function shouldBypassFirestoreForStripeSync(source = '') {
+  return String(source || '').trim().toLowerCase().startsWith('webhook:');
+}
+
 function statusAllowsSellerAccess(status, cancelAtPeriodEnd, hasRemainingPeriod) {
   return status === 'active'
     || status === 'trialing'
@@ -4197,7 +4319,7 @@ function firestoreTimestampToIso(value) {
   return value.toDate().toISOString();
 }
 
-async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCustomerId = '', userUid, planId, subscriptionStatus, subscriptionId, currentPeriodEnd, cancelAtPeriodEnd = false, source }) {
+async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCustomerId = '', userUid, planId, subscriptionStatus, subscriptionId, currentPeriodEnd, cancelAtPeriodEnd = false, source, skipFirestore = false }) {
   const normalizedUserUid = String(userUid || '').trim();
   const normalizedPlanId = String(planId || '').trim();
   if (!normalizedUserUid || !normalizedPlanId) return;
@@ -4209,17 +4331,23 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
   let resolvedStripeCustomerId = String(stripeCustomerId || '').trim();
   let firestoreQuotaLimited = false;
 
-  try {
-    const userSnap = await userRef.get();
-    existingUser = userSnap.data() || {};
-    existingRole = normalizeUserRole(existingUser.role);
-    existingAccessSource = normalizeAccountAccessSource(existingUser.accountAccessSource);
-    resolvedStripeCustomerId = resolvedStripeCustomerId || String(existingUser.stripeCustomerId || '').trim();
-  } catch (error) {
-    if (!isFirestoreQuotaExceeded(error)) {
-      throw error;
+  if (!skipFirestore) {
+    try {
+      const userSnap = await userRef.get();
+      existingUser = userSnap.data() || {};
+      existingRole = normalizeUserRole(existingUser.role);
+      existingAccessSource = normalizeAccountAccessSource(existingUser.accountAccessSource);
+      resolvedStripeCustomerId = resolvedStripeCustomerId || String(existingUser.stripeCustomerId || '').trim();
+    } catch (error) {
+      if (!isFirestoreQuotaExceeded(error)) {
+        throw error;
+      }
+      firestoreQuotaLimited = true;
+      const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
+      existingRole = normalizeUserRole(String(authUserRecord?.customClaims?.role || ''));
+      existingAccessSource = normalizeAccountAccessSource(authUserRecord?.customClaims?.accountAccessSource);
     }
-    firestoreQuotaLimited = true;
+  } else {
     const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
     existingRole = normalizeUserRole(String(authUserRecord?.customClaims?.role || ''));
     existingAccessSource = normalizeAccountAccessSource(authUserRecord?.customClaims?.accountAccessSource);
@@ -4228,28 +4356,23 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
   const summary = await resolveAccountSubscriptionAccessSummary(normalizedUserUid, {
     stripe,
     customerId: resolvedStripeCustomerId,
-    skipFirestore: firestoreQuotaLimited,
+    skipFirestore: skipFirestore || firestoreQuotaLimited,
   });
   const retainsSellerAccess = !!summary.planId;
-  const retainsAdminOverrideSellerAccess = hasAdminOverrideSellerAccess(existingRole, existingAccessSource);
   const normalizedIncomingSubscriptionStatus = normalizeStripeSubscriptionStatus(subscriptionStatus);
   const effectiveSubscriptionStatus = retainsSellerAccess
     ? summary.subscriptionStatus
     : normalizedIncomingSubscriptionStatus;
   const nextRole = isSubscriptionExemptRole(existingRole)
     ? existingRole
-    : retainsAdminOverrideSellerAccess
-      ? existingRole
-      : retainsSellerAccess && summary.planId
-        ? getSellerRoleForPlan(summary.planId)
-        : 'member';
+    : retainsSellerAccess && summary.planId
+      ? getSellerRoleForPlan(summary.planId)
+      : 'member';
   const nextAccessSource = isSubscriptionExemptRole(existingRole)
     ? normalizeAccountAccessSource(existingAccessSource) || 'admin_override'
-    : retainsAdminOverrideSellerAccess
-      ? 'admin_override'
-      : retainsSellerAccess
-        ? 'subscription'
-        : 'free_member';
+    : retainsSellerAccess
+      ? 'subscription'
+      : 'free_member';
 
   const updatePayload = {
     activeSubscriptionPlanId: summary.planId,
@@ -4268,7 +4391,17 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     updatePayload.role = nextRole;
   }
 
-  await userRef.set(updatePayload, { merge: true });
+  if (!skipFirestore) {
+    await runFirestoreTaskWithQuotaTolerance(
+      () => userRef.set(updatePayload, { merge: true }),
+      'Account subscription profile sync',
+      {
+        userUid: normalizedUserUid,
+        planId: normalizedPlanId,
+        source,
+      }
+    );
+  }
 
   const authUserRecord = await getAuthUserRecordSafe(normalizedUserUid);
   if (authUserRecord) {
@@ -4290,82 +4423,92 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     await admin.auth().setCustomUserClaims(normalizedUserUid, nextClaims);
   }
 
-  const shouldKeepListingsPublic = retainsSellerAccess || retainsAdminOverrideSellerAccess || canAdministrateAccount(existingRole);
-  try {
-    const listingSnapshots = await Promise.all([
-      getDb().collection('listings').where('sellerUid', '==', normalizedUserUid).get(),
-      getDb().collection('listings').where('sellerId', '==', normalizedUserUid).get(),
-    ]);
-    const listingMap = new Map();
-    listingSnapshots.forEach((snapshot) => {
-      snapshot.docs.forEach((docSnap) => {
-        listingMap.set(docSnap.id, docSnap);
-      });
-    });
-
-    if (listingMap.size > 0) {
-      let batch = getDb().batch();
-      let batchOps = 0;
-      let updatedListings = 0;
-
-      for (const listingSnap of listingMap.values()) {
-        const listingData = listingSnap.data() || {};
-        const nextPaymentStatus = shouldKeepListingsPublic ? 'paid' : 'pending';
-        if (String(listingData.paymentStatus || '').trim().toLowerCase() === nextPaymentStatus) {
-          continue;
-        }
-
-        batch.set(
-          listingSnap.ref,
-          {
-            paymentStatus: nextPaymentStatus,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-        batchOps += 1;
-        updatedListings += 1;
-
-        if (batchOps >= 400) {
-          await batch.commit();
-          batch = getDb().batch();
-          batchOps = 0;
-        }
-      }
-
-      if (batchOps > 0) {
-        await batch.commit();
-      }
-
-      if (updatedListings > 0) {
-        await getDb().collection('billingAuditLogs').add({
-          action: shouldKeepListingsPublic ? 'ACCOUNT_LISTINGS_RESTORED' : 'ACCOUNT_LISTINGS_HIDDEN',
-          userUid: normalizedUserUid,
-          listingId: null,
-          details: `${shouldKeepListingsPublic ? 'Restored' : 'Suppressed'} public visibility for ${updatedListings} listings after ${normalizedPlanId} subscription sync via ${source}.`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  if (!skipFirestore) {
+    const shouldKeepListingsPublic = retainsSellerAccess || canAdministrateAccount(existingRole);
+    try {
+      const listingSnapshots = await Promise.all([
+        getDb().collection('listings').where('sellerUid', '==', normalizedUserUid).get(),
+        getDb().collection('listings').where('sellerId', '==', normalizedUserUid).get(),
+      ]);
+      const listingMap = new Map();
+      listingSnapshots.forEach((snapshot) => {
+        snapshot.docs.forEach((docSnap) => {
+          listingMap.set(docSnap.id, docSnap);
         });
+      });
+
+      if (listingMap.size > 0) {
+        let batch = getDb().batch();
+        let batchOps = 0;
+        let updatedListings = 0;
+
+        for (const listingSnap of listingMap.values()) {
+          const listingData = listingSnap.data() || {};
+          const nextPaymentStatus = shouldKeepListingsPublic ? 'paid' : 'pending';
+          if (String(listingData.paymentStatus || '').trim().toLowerCase() === nextPaymentStatus) {
+            continue;
+          }
+
+          batch.set(
+            listingSnap.ref,
+            {
+              paymentStatus: nextPaymentStatus,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          batchOps += 1;
+          updatedListings += 1;
+
+          if (batchOps >= 400) {
+            await batch.commit();
+            batch = getDb().batch();
+            batchOps = 0;
+          }
+        }
+
+        if (batchOps > 0) {
+          await batch.commit();
+        }
+
+        if (updatedListings > 0) {
+          await getDb().collection('billingAuditLogs').add({
+            action: shouldKeepListingsPublic ? 'ACCOUNT_LISTINGS_RESTORED' : 'ACCOUNT_LISTINGS_HIDDEN',
+            userUid: normalizedUserUid,
+            listingId: null,
+            details: `${shouldKeepListingsPublic ? 'Restored' : 'Suppressed'} public visibility for ${updatedListings} listings after ${normalizedPlanId} subscription sync via ${source}.`,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    } catch (error) {
+      if (isFirestoreQuotaExceeded(error)) {
+        logger.warn('Skipping account listing visibility sync because Firestore quota is exhausted.', {
+          userUid: normalizedUserUid,
+          planId: normalizedPlanId,
+          shouldKeepListingsPublic,
+        });
+      } else {
+        throw error;
       }
     }
-  } catch (error) {
-    if (isFirestoreQuotaExceeded(error)) {
-      logger.warn('Skipping account listing visibility sync because Firestore quota is exhausted.', {
+
+    await runFirestoreTaskWithQuotaTolerance(
+      () => getDb().collection('billingAuditLogs').add({
+        action: 'ACCOUNT_SUBSCRIPTION_SYNC',
+        userUid: normalizedUserUid,
+        listingId: null,
+        details: `Applied ${normalizedPlanId} subscription access as ${subscriptionStatus} via ${source}. Effective plan: ${summary.planId || 'none'}, listing cap: ${summary.listingCap}.`,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      }),
+      'Account subscription billing audit log write',
+      {
         userUid: normalizedUserUid,
         planId: normalizedPlanId,
-        shouldKeepListingsPublic,
-      });
-    } else {
-      throw error;
-    }
+        source,
+      }
+    );
   }
-
-  await getDb().collection('billingAuditLogs').add({
-    action: 'ACCOUNT_SUBSCRIPTION_SYNC',
-    userUid: normalizedUserUid,
-    listingId: null,
-    details: `Applied ${normalizedPlanId} subscription access as ${subscriptionStatus} via ${source}. Effective plan: ${summary.planId || 'none'}, listing cap: ${summary.listingCap}.`,
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
-  });
 }
 
 async function getManagedAccountSeatContext(ownerUid) {
@@ -4684,45 +4827,67 @@ async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source
     ? admin.firestore.Timestamp.fromMillis(subscriptionObject.current_period_end * 1000)
     : null;
   const statementLabel = getSellerProgramStatementLabel(planId);
+  const bypassFirestore = shouldBypassFirestoreForStripeSync(source);
 
-  await getDb().collection('invoices').doc(String(session.invoice || session.id)).set(
-    {
-      userUid,
-      listingId: null,
-      stripeInvoiceId: session.invoice || null,
-      stripeCheckoutSessionId: session.id,
-      amount: amountUsd,
-      currency: session.currency || 'usd',
-      status: 'paid',
-      statementLabel,
-      items: [`${getPlanInvoiceDisplayName(planId)} x${subscriptionQuantity}`],
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      paidAt: admin.firestore.FieldValue.serverTimestamp(),
-      source,
-    },
-    { merge: true }
-  );
-
-  if (subscriptionId) {
-    await getDb().collection('subscriptions').doc(subscriptionId).set(
+  if (!bypassFirestore) {
+    await runFirestoreTaskWithQuotaTolerance(
+      () => getDb().collection('invoices').doc(String(session.invoice || session.id)).set(
+        {
+          userUid,
+          listingId: null,
+          stripeInvoiceId: session.invoice || null,
+          stripeCheckoutSessionId: session.id,
+          amount: amountUsd,
+          currency: session.currency || 'usd',
+          status: 'paid',
+          statementLabel,
+          items: [`${getPlanInvoiceDisplayName(planId)} x${subscriptionQuantity}`],
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          source,
+        },
+        { merge: true }
+      ),
+      'Account checkout invoice persistence',
       {
+        sessionId: session.id,
         userUid,
-        listingId: null,
         planId,
-        stripeSubscriptionId: subscriptionId,
-        status: 'active',
-        cancelAtPeriodEnd: false,
-        currentPeriodEnd,
-        checkoutScope: 'account',
-        subscriptionQuantity,
-        listingCap,
-        statementLabel,
-        legalTermsVersion: sanitizeEnrollmentString(session.metadata?.legalTermsVersion, 80) || null,
-        legalAcceptedAtIso: sanitizeEnrollmentString(session.metadata?.legalTermsAcceptedAt, 80) || null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
+        source,
+      }
     );
+
+    if (subscriptionId) {
+      await runFirestoreTaskWithQuotaTolerance(
+        () => getDb().collection('subscriptions').doc(subscriptionId).set(
+          {
+            userUid,
+            listingId: null,
+            planId,
+            stripeSubscriptionId: subscriptionId,
+            status: 'active',
+            cancelAtPeriodEnd: false,
+            currentPeriodEnd,
+            checkoutScope: 'account',
+            subscriptionQuantity,
+            listingCap,
+            statementLabel,
+            legalTermsVersion: sanitizeEnrollmentString(session.metadata?.legalTermsVersion, 80) || null,
+            legalAcceptedAtIso: sanitizeEnrollmentString(session.metadata?.legalTermsAcceptedAt, 80) || null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        'Account checkout subscription persistence',
+        {
+          sessionId: session.id,
+          subscriptionId,
+          userUid,
+          planId,
+          source,
+        }
+      );
+    }
   }
 
   await applyAccountSubscriptionToUserProfile({
@@ -4734,14 +4899,17 @@ async function finalizeAccountPaymentFromCheckoutSession(stripe, session, source
     subscriptionId,
     currentPeriodEnd,
     source,
+    skipFirestore: bypassFirestore,
   });
-  await finalizeSellerProgramCheckoutArtifacts({
-    userUid,
-    planId,
-    session,
-    subscriptionId,
-    source,
-  });
+  if (!bypassFirestore) {
+    await finalizeSellerProgramCheckoutArtifacts({
+      userUid,
+      planId,
+      session,
+      subscriptionId,
+      source,
+    });
+  }
 
   return { paid: true, listingId: null, planId, scope: 'account' };
 }
@@ -4774,18 +4942,44 @@ function stripeUnixToTimestamp(rawUnixSeconds) {
   return admin.firestore.Timestamp.fromMillis(Math.floor(rawUnixSeconds) * 1000);
 }
 
-async function resolveUserUidFromStripeCustomerId(stripeCustomerId) {
+async function resolveUserUidFromStripeCustomerId(stripeCustomerId, stripe = null) {
   const normalizedCustomerId = String(stripeCustomerId || '').trim();
   if (!normalizedCustomerId) return '';
 
-  const usersSnap = await getDb()
-    .collection('users')
-    .where('stripeCustomerId', '==', normalizedCustomerId)
-    .limit(1)
-    .get();
+  try {
+    const usersSnap = await getDb()
+      .collection('users')
+      .where('stripeCustomerId', '==', normalizedCustomerId)
+      .limit(1)
+      .get();
 
-  if (usersSnap.empty) return '';
-  return usersSnap.docs[0].id;
+    if (!usersSnap.empty) {
+      return usersSnap.docs[0].id;
+    }
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+    logger.warn('Skipping Firestore customer lookup because quota is exhausted.', {
+      stripeCustomerId: normalizedCustomerId,
+    });
+  }
+
+  if (!stripe) return '';
+
+  try {
+    const customer = await stripe.customers.retrieve(normalizedCustomerId);
+    if (customer && !customer.deleted) {
+      return String(customer.metadata?.userUid || '').trim();
+    }
+  } catch (error) {
+    logger.warn('Unable to resolve user uid from Stripe customer metadata.', {
+      stripeCustomerId: normalizedCustomerId,
+      error: String(error?.message || error || ''),
+    });
+  }
+
+  return '';
 }
 
 async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, source) {
@@ -4799,14 +4993,15 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
   const nowUnix = Math.floor(Date.now() / 1000);
   const rawPeriodEndUnix = typeof rawSubscription?.current_period_end === 'number' ? rawSubscription.current_period_end : 0;
   const hasRemainingPeriod = rawPeriodEndUnix > nowUnix;
+  const inferredPlanId = inferPlanIdFromStripeSubscription(rawSubscription);
 
   let userUid = String(metadata.userUid || '').trim();
   if (!userUid) {
-    userUid = await resolveUserUidFromStripeCustomerId(rawSubscription?.customer);
+    userUid = await resolveUserUidFromStripeCustomerId(rawSubscription?.customer, stripe);
   }
 
   const listingId = String(metadata.listingId || '').trim();
-  const planId = String(metadata.planId || '').trim();
+  const planId = inferredPlanId || String(metadata.planId || '').trim();
   const checkoutScope = String(metadata.checkoutScope || '').trim();
   const rawQuantity = rawSubscription?.items?.data?.[0]?.quantity;
   const requestedQuantity = Number(metadata.subscriptionQuantity || 1);
@@ -4818,55 +5013,81 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
     ? subscriptionQuantity * (plan?.listingCap || 1)
     : plan?.listingCap || 0;
   const statementLabel = getSellerProgramStatementLabel(planId);
+  const bypassFirestore = shouldBypassFirestoreForStripeSync(source);
 
-  await getDb().collection('subscriptions').doc(stripeSubscriptionId).set(
-    {
-      userUid: userUid || null,
-      listingId: listingId || null,
-      planId: planId || null,
-      stripeSubscriptionId,
-      checkoutScope: checkoutScope || (listingId ? 'listing' : 'account'),
-      status: subscriptionStatus,
-      cancelAtPeriodEnd,
-      currentPeriodEnd,
-      subscriptionQuantity,
-      listingCap,
-      statementLabel,
-      legalTermsVersion: sanitizeEnrollmentString(metadata.legalTermsVersion, 80) || null,
-      legalAcceptedAtIso: sanitizeEnrollmentString(metadata.legalTermsAcceptedAt, 80) || null,
-      legalScope: sanitizeEnrollmentString(metadata.legalScope, 60) || getSellerProgramScope(planId),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source,
-    },
-    { merge: true }
-  );
+  if (!bypassFirestore) {
+    await runFirestoreTaskWithQuotaTolerance(
+      () => getDb().collection('subscriptions').doc(stripeSubscriptionId).set(
+        {
+          userUid: userUid || null,
+          listingId: listingId || null,
+          planId: planId || null,
+          stripeSubscriptionId,
+          checkoutScope: checkoutScope || (listingId ? 'listing' : 'account'),
+          status: subscriptionStatus,
+          cancelAtPeriodEnd,
+          currentPeriodEnd,
+          subscriptionQuantity,
+          listingCap,
+          statementLabel,
+          legalTermsVersion: sanitizeEnrollmentString(metadata.legalTermsVersion, 80) || null,
+          legalAcceptedAtIso: sanitizeEnrollmentString(metadata.legalTermsAcceptedAt, 80) || null,
+          legalScope: sanitizeEnrollmentString(metadata.legalScope, 60) || getSellerProgramScope(planId),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          source,
+        },
+        { merge: true }
+      ),
+      'Stripe subscription record sync',
+      {
+        subscriptionId: stripeSubscriptionId,
+        userUid,
+        planId,
+        source,
+      }
+    );
+  }
 
   const shouldRetainListingAccess =
     statusAllowsSellerAccess(subscriptionStatus, cancelAtPeriodEnd, hasRemainingPeriod);
 
-  if (listingId) {
-    const listingRef = getDb().collection('listings').doc(listingId);
-    const listingSnap = await listingRef.get();
-    if (listingSnap.exists) {
-      const listingData = listingSnap.data() || {};
-      const listingStatus = String(listingData.status || '').toLowerCase();
-      const listingUpdate = {
-        subscriptionPlanId: planId || null,
-        paymentStatus: shouldRetainListingAccess ? 'paid' : 'pending',
-        expiresAt: currentPeriodEnd || null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
+  if (listingId && !bypassFirestore) {
+    await runFirestoreTaskWithQuotaTolerance(
+      async () => {
+        const listingRef = getDb().collection('listings').doc(listingId);
+        const listingSnap = await listingRef.get();
+        if (!listingSnap.exists) {
+          return;
+        }
 
-      if (listingStatus !== 'sold') {
-        listingUpdate.status = shouldRetainListingAccess ? 'active' : 'pending';
+        const listingData = listingSnap.data() || {};
+        const listingStatus = String(listingData.status || '').toLowerCase();
+        const listingUpdate = {
+          subscriptionPlanId: planId || null,
+          paymentStatus: shouldRetainListingAccess ? 'paid' : 'pending',
+          expiresAt: currentPeriodEnd || null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (listingStatus !== 'sold') {
+          listingUpdate.status = shouldRetainListingAccess ? 'active' : 'pending';
+        }
+
+        if (shouldRetainListingAccess && !listingData.publishedAt) {
+          listingUpdate.publishedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        await listingRef.set(listingUpdate, { merge: true });
+      },
+      'Listing subscription visibility sync',
+      {
+        subscriptionId: stripeSubscriptionId,
+        listingId,
+        userUid,
+        planId,
+        source,
       }
-
-      if (shouldRetainListingAccess && !listingData.publishedAt) {
-        listingUpdate.publishedAt = admin.firestore.FieldValue.serverTimestamp();
-      }
-
-      await listingRef.set(listingUpdate, { merge: true });
-    }
+    );
   }
 
   if (userUid && planId && (checkoutScope === 'account' || !listingId)) {
@@ -4880,17 +5101,27 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
       currentPeriodEnd,
       cancelAtPeriodEnd,
       source,
+      skipFirestore: bypassFirestore,
     });
   }
 
-  if (userUid) {
-    await getDb().collection('billingAuditLogs').add({
-      action: 'STRIPE_SUBSCRIPTION_SYNC',
-      userUid,
-      listingId: listingId || null,
-      details: `Synced ${stripeSubscriptionId} as ${subscriptionStatus} via ${source}.`,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
+  if (userUid && !bypassFirestore) {
+    await runFirestoreTaskWithQuotaTolerance(
+      () => getDb().collection('billingAuditLogs').add({
+        action: 'STRIPE_SUBSCRIPTION_SYNC',
+        userUid,
+        listingId: listingId || null,
+        details: `Synced ${stripeSubscriptionId} as ${subscriptionStatus} via ${source}.`,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      }),
+      'Stripe subscription audit log write',
+      {
+        subscriptionId: stripeSubscriptionId,
+        userUid,
+        listingId: listingId || null,
+        source,
+      }
+    );
   }
 }
 
@@ -5463,32 +5694,17 @@ exports.apiProxy = onRequest(
           return res.status(400).send('Invalid signature');
         }
 
-        const eventRef = getDb().collection('webhook_events').doc(event.id);
-
-        try {
-          await eventRef.create({
-            type: event.type,
-            status: 'processing',
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        if (markRecentStripeWebhookEvent(event.id)) {
+          logger.info('Ignoring duplicate Stripe webhook event already handled on this instance.', {
+            eventId: event.id,
+            eventType: event.type,
           });
-        } catch (lockError) {
-          const lockMessage = String(lockError?.message || '').toLowerCase();
-          const lockCode = lockError?.code;
-          const alreadyExists =
-            lockCode === 6 ||
-            lockCode === 'already-exists' ||
-            lockMessage.includes('already exists');
-
-          if (alreadyExists) {
-            return res.status(200).json({ received: true, duplicate: true });
-          }
-
-          throw lockError;
+          return res.status(200).json({ received: true, duplicate: true });
         }
 
         try {
           if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-            await finalizeCheckoutSession(stripe, event.data.object, 'webhook');
+            await finalizeCheckoutSession(stripe, event.data.object, `webhook:${event.type}`);
           }
 
           if (
@@ -5502,50 +5718,24 @@ exports.apiProxy = onRequest(
           if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed') {
             const invoiceObject = event.data.object || {};
             const metadata = invoiceObject.metadata || invoiceObject.parent?.subscription_details?.metadata || invoiceObject.subscription_details?.metadata || {};
-            const userUid = String(metadata.userUid || '').trim() || await resolveUserUidFromStripeCustomerId(invoiceObject.customer);
-            const invoiceDocId = String(invoiceObject.id || '').trim();
+            const userUid = String(metadata.userUid || '').trim() || await resolveUserUidFromStripeCustomerId(invoiceObject.customer, stripe);
             const planName = getPlanDisplayName(metadata.planId);
-            const statementLabel = sanitizeEnrollmentString(metadata.statementLabel, 80) || getSellerProgramStatementLabel(metadata.planId);
+            if (event.type === 'invoice.payment_succeeded') {
+              const invoiceEmail =
+                String(invoiceObject.customer_email || '').trim().toLowerCase() ||
+                String(invoiceObject.customer_details?.email || '').trim().toLowerCase();
 
-            if (invoiceDocId && userUid) {
-              await getDb().collection('invoices').doc(invoiceDocId).set(
-                {
-                  userUid,
-                  listingId: metadata.listingId || null,
-                  stripeInvoiceId: invoiceObject.id,
-                  amount: typeof invoiceObject.amount_paid === 'number'
-                    ? invoiceObject.amount_paid / 100
-                    : typeof invoiceObject.amount_due === 'number'
-                      ? invoiceObject.amount_due / 100
-                      : 0,
+              if (invoiceEmail) {
+                const payload = templates.invoicePaidReceipt({
+                  displayName: String(invoiceObject.customer_name || '').trim() || 'there',
+                  invoiceNumber: invoiceObject.number || invoiceObject.id,
+                  amountPaid: typeof invoiceObject.amount_paid === 'number' ? invoiceObject.amount_paid / 100 : 0,
                   currency: invoiceObject.currency || 'usd',
-                  statementLabel,
-                  status: event.type === 'invoice.payment_succeeded' ? 'paid' : 'failed',
-                  items: Array.isArray(invoiceObject.lines?.data)
-                    ? invoiceObject.lines.data.map((line) => line.description).filter(Boolean)
-                    : [planName],
-                  paidAt: event.type === 'invoice.payment_succeeded' ? admin.firestore.FieldValue.serverTimestamp() : null,
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  source: `webhook:${event.type}`,
-                },
-                { merge: true }
-              );
-
-              if (event.type === 'invoice.payment_succeeded') {
-                const userSnap = await getDb().collection('users').doc(userUid).get();
-                const user = userSnap.data() || {};
-                if (user.email) {
-                  const payload = templates.invoicePaidReceipt({
-                    displayName: user.displayName || 'there',
-                    invoiceNumber: invoiceObject.number || invoiceObject.id,
-                    amountPaid: typeof invoiceObject.amount_paid === 'number' ? invoiceObject.amount_paid / 100 : 0,
-                    currency: invoiceObject.currency || 'usd',
-                    planName,
-                    hostedInvoiceUrl: invoiceObject.hosted_invoice_url || '',
-                    invoicePdfUrl: invoiceObject.invoice_pdf || '',
-                  });
-                  await sendEmail({ to: user.email, ...payload });
-                }
+                  planName,
+                  hostedInvoiceUrl: invoiceObject.hosted_invoice_url || '',
+                  invoicePdfUrl: invoiceObject.invoice_pdf || '',
+                });
+                await sendEmail({ to: invoiceEmail, ...payload });
               }
             }
 
@@ -5559,20 +5749,10 @@ exports.apiProxy = onRequest(
             }
           }
 
-          await eventRef.set(
-            {
-              status: 'processed',
-              processedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-
           return res.status(200).json({ received: true });
         } catch (processingError) {
           logger.error('Stripe webhook processing failed', processingError);
-          await eventRef.delete().catch((cleanupError) => {
-            logger.error('Failed to release webhook processing lock', cleanupError);
-          });
+          recentStripeWebhookEvents.delete(String(event.id || '').trim());
           return res.status(500).json({ error: 'Webhook processing failed. Retry expected.' });
         }
       }
@@ -6074,6 +6254,76 @@ exports.apiProxy = onRequest(
           listingId: finalized.listingId,
           planId: finalized.planId,
           scope: finalized.scope,
+        });
+      }
+
+      if (req.method === 'POST' && path.startsWith('/billing/refresh-account-access')) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const uid = decodedToken.uid;
+        const email = String(decodedToken.email || '').trim().toLowerCase();
+        const customerId = await findExistingStripeCustomerId(stripe, uid, email);
+        const entries = customerId
+          ? await listStripeAccountSubscriptionEntries(stripe, customerId)
+          : [];
+        const summary = buildAccountSubscriptionAccessSummary(entries);
+        const relevantEntry = getMostRelevantStripeAccountSubscriptionEntry(entries);
+
+        if (customerId && relevantEntry?.planId) {
+          await applyAccountSubscriptionToUserProfile({
+            stripe,
+            stripeCustomerId: customerId,
+            userUid: uid,
+            planId: String(relevantEntry.planId || '').trim(),
+            subscriptionStatus: String(relevantEntry.status || summary.subscriptionStatus || 'pending').trim(),
+            subscriptionId: String(relevantEntry.subscriptionId || summary.currentSubscriptionId || '').trim() || null,
+            currentPeriodEnd: Number.isFinite(Number(relevantEntry.currentPeriodEndMillis || 0)) && Number(relevantEntry.currentPeriodEndMillis || 0) > 0
+              ? admin.firestore.Timestamp.fromMillis(Number(relevantEntry.currentPeriodEndMillis || 0))
+              : null,
+            cancelAtPeriodEnd: Boolean(relevantEntry.cancelAtPeriodEnd),
+            source: 'manual_refresh',
+            skipFirestore: true,
+          });
+        }
+
+        const authUserRecord = await getAuthUserRecordSafe(uid);
+        const claims = authUserRecord?.customClaims || {};
+        const claimedRole = normalizeUserRole(String(claims.role || ''));
+        const claimedAccessSource = normalizeAccountAccessSource(claims.accountAccessSource);
+        const claimedAccountStatus = normalizeAccountStatus(claims.accountStatus);
+        const claimedPlanId = getListingCheckoutPlan(String(claims.subscriptionPlanId || '').trim())
+          ? String(claims.subscriptionPlanId || '').trim()
+          : '';
+        const rawClaimedSubscriptionStatus = String(claims.subscriptionStatus || summary.subscriptionStatus || '').trim().toLowerCase();
+        const claimedSubscriptionStatus =
+          rawClaimedSubscriptionStatus === 'pending'
+            ? 'pending'
+            : rawClaimedSubscriptionStatus
+              ? normalizeStripeSubscriptionStatus(rawClaimedSubscriptionStatus)
+              : null;
+
+        return res.status(200).json({
+          stripeCustomerId: customerId || null,
+          planId: claimedPlanId || summary.planId || null,
+          subscriptionStatus: claimedSubscriptionStatus || summary.subscriptionStatus || null,
+          listingCap: Number.isFinite(Number(claims.listingCap))
+            ? Number(claims.listingCap)
+            : summary.listingCap,
+          managedAccountCap: Number.isFinite(Number(claims.managedAccountCap))
+            ? Number(claims.managedAccountCap)
+            : summary.managedAccountCap,
+          currentSubscriptionId: summary.currentSubscriptionId || null,
+          currentPeriodEnd: summary.currentPeriodEndIso || null,
+          role: claimedRole || null,
+          accountAccessSource: claimedAccessSource || (summary.planId ? 'subscription' : null),
+          accountStatus: claimedAccountStatus || 'active',
         });
       }
 
@@ -7426,6 +7676,12 @@ exports.apiProxy = onRequest(
         }
       }
 
+      if (path.startsWith('/billing/')) {
+        logger.warn('Unhandled billing route reached apiProxy fallback.', {
+          method: req.method,
+          path,
+        });
+      }
       return res.status(404).json({ error: 'Not found' });
     } catch (error) {
       logger.error('apiProxy failed', error);

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   onIdTokenChanged,
   signInWithPopup,
@@ -14,7 +14,7 @@ import {
 import { auth } from '../firebase';
 import { UserProfile } from '../types';
 import { userService } from '../services/userService';
-import type { ListingPlanId } from '../services/billingService';
+import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
 
 const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
@@ -88,6 +88,54 @@ function deriveOnboardingIntent(
     return role === 'buyer' ? 'individual_seller' : 'free_member';
   }
   return role === 'member' ? 'free_member' : 'free_member';
+}
+
+function shouldRefreshBillingAccess(profile: UserProfile | null | undefined): boolean {
+  if (!profile) return false;
+
+  const role = userService.normalizeRole(profile.role || '');
+  const accessSource = normalizeAccountAccessSource(profile.accountAccessSource);
+  const onboardingIntent = normalizeSubscriptionPlanId(profile.onboardingIntent);
+  const activePlanId = normalizeSubscriptionPlanId(profile.activeSubscriptionPlanId);
+
+  if (['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(role)) {
+    return false;
+  }
+
+  if (activePlanId && accessSource === 'subscription') {
+    return false;
+  }
+
+  return ['individual_seller', 'dealer', 'pro_dealer'].includes(role) || !!onboardingIntent;
+}
+
+function applyBillingRefreshToProfile(
+  baseProfile: UserProfile,
+  refresh: RefreshedAccountAccessSummary
+): UserProfile {
+  const refreshedRole = refresh.role ? userService.normalizeRole(refresh.role) : baseProfile.role;
+  const refreshedAccessSource = normalizeAccountAccessSource(refresh.accountAccessSource) ?? baseProfile.accountAccessSource ?? null;
+  const refreshedPlanId = normalizeSubscriptionPlanId(refresh.planId) ?? baseProfile.activeSubscriptionPlanId ?? null;
+  const refreshedAccountStatus = normalizeAccountStatus(refresh.accountStatus) ?? baseProfile.accountStatus ?? 'active';
+
+  return {
+    ...baseProfile,
+    role: refreshedRole,
+    activeSubscriptionPlanId: refreshedPlanId,
+    subscriptionStatus: normalizeSubscriptionStatus(refresh.subscriptionStatus) ?? baseProfile.subscriptionStatus ?? null,
+    listingCap: typeof refresh.listingCap === 'number' ? refresh.listingCap : baseProfile.listingCap,
+    managedAccountCap: typeof refresh.managedAccountCap === 'number' ? refresh.managedAccountCap : baseProfile.managedAccountCap,
+    currentSubscriptionId: refresh.currentSubscriptionId ?? baseProfile.currentSubscriptionId ?? null,
+    currentPeriodEnd: refresh.currentPeriodEnd ?? baseProfile.currentPeriodEnd ?? null,
+    accountAccessSource: refreshedAccessSource,
+    accountStatus: refreshedAccountStatus,
+    onboardingIntent: deriveOnboardingIntent(
+      refreshedRole,
+      refreshedAccessSource,
+      refreshedPlanId,
+      baseProfile.onboardingIntent
+    ),
+  };
 }
 
 async function resolveAuthAccessSnapshot(
@@ -221,6 +269,7 @@ async function bootstrapPrivilegedAdminProfile(firebaseUser: FirebaseUser | null
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const billingRefreshAttemptsRef = useRef<Set<string>>(new Set());
 
   const normalizeProfile = (profile: UserProfile): UserProfile => ({
     ...profile,
@@ -252,6 +301,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (meta?.error) {
               const fallbackProfile = await buildFallbackProfile(firebaseUser, user);
               setUser(normalizeProfile(fallbackProfile));
+              const billingRefreshKey = `${firebaseUser.uid}:${currentVersion}:fallback`;
+              if (shouldRefreshBillingAccess(fallbackProfile) && !billingRefreshAttemptsRef.current.has(billingRefreshKey)) {
+                billingRefreshAttemptsRef.current.add(billingRefreshKey);
+                void (async () => {
+                  try {
+                    const refreshedAccess = await billingService.refreshAccountAccess();
+                    if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
+                      return;
+                    }
+
+                    setUser((currentUser) => {
+                      const baseProfile = currentUser && currentUser.uid === firebaseUser.uid
+                        ? currentUser
+                        : fallbackProfile;
+                      return normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
+                    });
+                  } catch (error) {
+                    console.error('Unable to refresh billing access from Stripe:', error);
+                  }
+                })();
+              }
               setLoading(false);
               return;
             }
@@ -264,6 +334,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 photoURL: firebaseUser.photoURL || profile.photoURL || '',
                 emailVerified: firebaseUser.emailVerified,
               });
+              const accessSnapshot = await resolveAuthAccessSnapshot(firebaseUser, mergedProfile);
+              const effectiveAccessSource = accessSnapshot.accountAccessSource ?? mergedProfile.accountAccessSource ?? null;
+              const effectivePlanId = accessSnapshot.activeSubscriptionPlanId ?? mergedProfile.activeSubscriptionPlanId ?? null;
+              const effectiveRole = accessSnapshot.role || mergedProfile.role;
+              const effectiveAccountStatus = accessSnapshot.accountStatus ?? mergedProfile.accountStatus ?? 'active';
+              const accessAwareProfile = normalizeProfile({
+                ...mergedProfile,
+                role: effectiveRole,
+                activeSubscriptionPlanId: effectivePlanId,
+                subscriptionStatus: accessSnapshot.subscriptionStatus ?? mergedProfile.subscriptionStatus ?? null,
+                listingCap: accessSnapshot.listingCap ?? mergedProfile.listingCap ?? 0,
+                managedAccountCap: accessSnapshot.managedAccountCap ?? mergedProfile.managedAccountCap ?? 0,
+                accountAccessSource: effectiveAccessSource,
+                accountStatus: effectiveAccountStatus,
+                onboardingIntent: deriveOnboardingIntent(
+                  effectiveRole,
+                  effectiveAccessSource,
+                  effectivePlanId,
+                  mergedProfile.onboardingIntent
+                ),
+              });
 
               if (profile.emailVerified !== firebaseUser.emailVerified) {
                 try {
@@ -275,7 +366,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
               // Auto-promote known admin emails to super admin role
               const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-              if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && mergedProfile.role !== 'super_admin') {
+              if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && accessAwareProfile.role !== 'super_admin') {
                 try {
                   const promoted = await bootstrapPrivilegedAdminProfile(firebaseUser);
                   if (!promoted) {
@@ -287,9 +378,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
                   return;
                 }
-                setUser({ ...mergedProfile, role: 'super_admin' });
+                setUser({ ...accessAwareProfile, role: 'super_admin' });
               } else {
-                setUser(mergedProfile);
+                setUser(accessAwareProfile);
+              }
+
+              const billingRefreshKey = `${firebaseUser.uid}:${currentVersion}`;
+              if (shouldRefreshBillingAccess(accessAwareProfile) && !billingRefreshAttemptsRef.current.has(billingRefreshKey)) {
+                billingRefreshAttemptsRef.current.add(billingRefreshKey);
+                void (async () => {
+                  try {
+                    const refreshedAccess = await billingService.refreshAccountAccess();
+                    if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
+                      return;
+                    }
+
+                    setUser((currentUser) => {
+                      const baseProfile = currentUser && currentUser.uid === firebaseUser.uid
+                        ? currentUser
+                        : accessAwareProfile;
+                      return normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
+                    });
+                  } catch (error) {
+                    console.error('Unable to refresh billing access from Stripe:', error);
+                  }
+                })();
               }
             } else if (meta?.exists === false) {
               // Create profile if it doesn't exist
@@ -316,6 +429,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })();
         });
       } else {
+        billingRefreshAttemptsRef.current.clear();
         setUser(null);
         setLoading(false);
       }

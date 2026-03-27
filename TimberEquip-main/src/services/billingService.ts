@@ -92,6 +92,74 @@ export interface BillingAuditLog {
   timestamp: any;
 }
 
+export interface RefreshedAccountAccessSummary {
+  stripeCustomerId: string | null;
+  planId: ListingPlanId | null;
+  subscriptionStatus: 'active' | 'canceled' | 'past_due' | 'trialing' | 'pending' | null;
+  listingCap: number;
+  managedAccountCap: number;
+  currentSubscriptionId: string | null;
+  currentPeriodEnd: string | null;
+  role: string | null;
+  accountAccessSource: string | null;
+  accountStatus: 'active' | 'pending' | 'suspended' | null;
+}
+
+function getBillingApiBaseUrls(): string[] {
+  const bases = [''];
+  if (typeof window === 'undefined') {
+    return bases;
+  }
+
+  const hostname = window.location.hostname.trim().toLowerCase();
+  const origin = window.location.origin.trim();
+
+  if (origin && !bases.includes(origin)) {
+    bases.push(origin);
+  }
+
+  if (hostname === 'www.timberequip.com') {
+    bases.push('https://timberequip.com');
+  }
+
+  return Array.from(new Set(bases));
+}
+
+async function fetchBillingApi(
+  path: string,
+  init: RequestInit,
+  options: { allowFallbackOn404?: boolean } = {}
+): Promise<Response> {
+  const baseUrls = getBillingApiBaseUrls();
+  let lastResponse: Response | null = null;
+  let lastError: unknown = null;
+
+  for (let index = 0; index < baseUrls.length; index += 1) {
+    const baseUrl = baseUrls[index];
+    const url = `${baseUrl}${path}`;
+
+    try {
+      const response = await fetch(url, init);
+      if (!response.ok && options.allowFallbackOn404 && response.status === 404 && index < baseUrls.length - 1) {
+        lastResponse = response;
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (index === baseUrls.length - 1) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Billing API request failed');
+}
+
 export const billingService = {
   async createAccountCheckoutSession(
     planId: ListingPlanId,
@@ -178,6 +246,30 @@ export const billingService = {
 
   async confirmListingCheckoutSession(sessionId: string) {
     return this.confirmCheckoutSession(sessionId);
+  },
+
+  async refreshAccountAccess(): Promise<RefreshedAccountAccessSummary> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Unauthorized');
+
+    const token = await user.getIdToken(true);
+    const response = await fetchBillingApi(
+      '/api/billing/refresh-account-access',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      },
+      { allowFallbackOn404: true }
+    );
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Failed to refresh account access');
+    }
+
+    return payload;
   },
 
   async getAdminInvoices(): Promise<Invoice[]> {
