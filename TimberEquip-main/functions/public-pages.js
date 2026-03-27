@@ -557,16 +557,17 @@ function renderHead({ title, description, canonicalUrl, jsonLd, robots = 'index,
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
-    <meta property="og:image" content="${escapeHtml(DEFAULT_BASE_URL)}/android-chrome-512x512.png" />
+    <meta property="og:image" content="${escapeHtml(DEFAULT_BASE_URL)}/Forestry_Equipment_Sales_Logo.png?v=20260327c" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260327a" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260327a" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260327a" />
-    <link rel="shortcut icon" href="/favicon.ico?v=20260327a" />
-    <link rel="manifest" href="/site.webmanifest?v=20260327a" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260327c" />
+    <link rel="icon" type="image/svg+xml" href="/Forestry_Equipment_Sales_Favicon.svg?v=20260327c" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260327c" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260327c" />
+    <link rel="shortcut icon" href="/favicon.ico?v=20260327c" />
+    <link rel="manifest" href="/site.webmanifest?v=20260327c" />
     <style>${baseStyles()}</style>
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ''}
   `;
@@ -582,7 +583,7 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
     <header class="topbar">
       <div class="shell topbar-inner">
         <a class="brand" href="/">
-          <img src="/Forestry_Equipment_Sales_Logo.svg?v=20260327a" alt="Forestry Equipment Sales" />
+          <img src="/Forestry_Equipment_Sales_Logo.svg?v=20260327c" alt="Forestry Equipment Sales" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260327c';" />
           <span class="brand-copy">
             <strong>Hybrid Marketplace</strong>
             <span>Dealer hub, clean routes, and crawlable equipment inventory.</span>
@@ -603,7 +604,7 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
       <div class="shell">
         <div class="footer-card">
           <div class="footer-brand">
-            <img src="/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327a" alt="Forestry Equipment Sales logo" />
+            <img src="/Logo-Transparent.png?v=20260327c" alt="Forestry Equipment Sales logo" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327c';" />
             <span class="footer-copy">
               <strong>Forestry Equipment Sales Marketplace</strong>
               <span>Dealer storefronts, live inventory, embeds, and lead-ready public pages.</span>

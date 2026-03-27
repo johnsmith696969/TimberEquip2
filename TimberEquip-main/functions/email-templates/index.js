@@ -77,7 +77,7 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="header">
         <p class="eyebrow">Forestry Equipment Sales Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Header.png?v=20260327a" alt="Forestry Equipment Sales" />
+          <img class="header-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Header.png?v=20260327c" alt="Forestry Equipment Sales" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
         <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the Forestry Equipment Sales network.</p>
@@ -89,7 +89,7 @@ function baseLayout(title, headerSubtitle, content) {
       </div>
       <div class="footer">
         <div class="footer-logo-wrap">
-          <img class="footer-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Footer.png?v=20260327a" alt="Forestry Equipment Sales" />
+          <img class="footer-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Footer.png?v=20260327c" alt="Forestry Equipment Sales" />
         </div>
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>

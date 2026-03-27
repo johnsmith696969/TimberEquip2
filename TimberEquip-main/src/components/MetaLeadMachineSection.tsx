@@ -8,17 +8,23 @@ import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { getListEquipmentPath } from '../utils/sellerAccess';
 
-const BRAND_ASSET_VERSION = '20260327a';
+const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
+const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 
 export function MetaLeadMachineSection() {
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const brandLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
   const brandLogoAlt = 'Forestry Equipment Sales';
+  const [brandLogoSrc, setBrandLogoSrc] = React.useState(brandLogo);
   const headingClass = theme === 'light' ? 'text-ink' : 'text-white';
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
+
+  React.useEffect(() => {
+    setBrandLogoSrc(brandLogo);
+  }, [brandLogo]);
 
   return (
     <section className="border-y border-line bg-bg">
@@ -72,9 +78,12 @@ export function MetaLeadMachineSection() {
             className="rounded-sm border border-line bg-surface p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]"
           >
             <img
-              src={brandLogo}
+              src={brandLogoSrc}
               alt={brandLogoAlt}
               className="h-12 w-auto object-contain"
+              onError={() => {
+                setBrandLogoSrc((current) => current === HEADER_LOGO_FALLBACK ? current : HEADER_LOGO_FALLBACK);
+              }}
             />
             <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-accent">
               Dealer Website Syndication Ready

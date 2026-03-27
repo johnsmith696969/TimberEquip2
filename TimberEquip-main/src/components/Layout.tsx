@@ -18,10 +18,12 @@ import { canAccessDealerOs, getListEquipmentPath } from '../utils/sellerAccess';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
 const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
-const BRAND_ASSET_VERSION = '20260327a';
+const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
+const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO = `/Logo-Transparent.png?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -44,6 +46,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout, isAuthenticated } = useAuth();
   const headerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
   const headerLogoAlt = 'Forestry Equipment Sales';
+  const [headerLogoSrc, setHeaderLogoSrc] = useState(headerLogo);
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +84,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    setHeaderLogoSrc(headerLogo);
+  }, [headerLogo]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -288,9 +295,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="bg-bg border-b border-line py-4 px-4 md:px-8 flex justify-between items-center">
         <Link to="/" className="flex items-center">
           <img
-            src={headerLogo}
+            src={headerLogoSrc}
             alt={headerLogoAlt}
             className="h-14 md:h-16 w-auto object-contain"
+            onError={() => {
+              setHeaderLogoSrc((current) => current === HEADER_LOGO_FALLBACK ? current : HEADER_LOGO_FALLBACK);
+            }}
           />
         </Link>
 
@@ -452,7 +462,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <img
                   src={FOOTER_LOGO}
                   alt="Forestry Equipment Sales"
-                  className="h-12 w-12 object-contain"
+                  className="h-12 w-auto max-w-[180px] object-contain"
+                  onError={(event) => {
+                    const target = event.currentTarget;
+                    if (target.src.includes('Forestry_Equipment_Sales_Favicon_512x512.png')) return;
+                    target.src = FOOTER_LOGO_FALLBACK;
+                  }}
                 />
               </Link>
               <p className="text-sm text-muted leading-relaxed max-w-md">

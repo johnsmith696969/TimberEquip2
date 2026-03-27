@@ -260,7 +260,12 @@ service cloud.firestore {
              (!('storefrontDescription' in data) || (data.storefrontDescription is string && data.storefrontDescription.size() <= 5000)) &&
              (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
              (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
-             (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30));
+             (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
+             (!('mfaEnabled' in data) || data.mfaEnabled is bool) &&
+             (!('mfaMethod' in data) || data.mfaMethod == null || data.mfaMethod in ['sms']) &&
+             (!('mfaPhoneNumber' in data) || data.mfaPhoneNumber == null || (data.mfaPhoneNumber is string && data.mfaPhoneNumber.size() <= 80)) &&
+             (!('mfaDisplayName' in data) || data.mfaDisplayName == null || (data.mfaDisplayName is string && data.mfaDisplayName.size() <= 120)) &&
+             (!('mfaEnrolledAt' in data) || data.mfaEnrolledAt == null || data.mfaEnrolledAt is string);
     }
 
     function isValidManagedUserCreate(userId, data) {

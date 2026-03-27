@@ -37,7 +37,7 @@ export function Seo({
   robots = DEFAULT_ROBOTS,
   jsonLd,
   ogType = 'website',
-  imagePath = '/android-chrome-512x512.png?v=20260327a',
+  imagePath = '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
 }: SeoProps) {
   useEffect(() => {
     document.title = title;

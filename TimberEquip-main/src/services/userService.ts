@@ -135,6 +135,14 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('accountAccessSource' in payload) sanitized.accountAccessSource = sanitizeAccountAccessSource(payload.accountAccessSource) ?? null;
   if ('currentSubscriptionId' in payload) sanitized.currentSubscriptionId = sanitizeOptionalString(payload.currentSubscriptionId, 200) || null;
   if ('currentPeriodEnd' in payload) sanitized.currentPeriodEnd = payload.currentPeriodEnd ? String(payload.currentPeriodEnd) : null;
+  if ('mfaEnabled' in payload) sanitized.mfaEnabled = Boolean(payload.mfaEnabled);
+  if ('mfaMethod' in payload) {
+    const normalizedMethod = String(payload.mfaMethod || '').trim().toLowerCase();
+    sanitized.mfaMethod = normalizedMethod === 'sms' ? 'sms' : null;
+  }
+  if ('mfaPhoneNumber' in payload) sanitized.mfaPhoneNumber = sanitizeOptionalString(payload.mfaPhoneNumber, 80) || null;
+  if ('mfaDisplayName' in payload) sanitized.mfaDisplayName = sanitizeOptionalString(payload.mfaDisplayName, 120) || null;
+  if ('mfaEnrolledAt' in payload) sanitized.mfaEnrolledAt = payload.mfaEnrolledAt ? String(payload.mfaEnrolledAt) : null;
 
   return sanitized;
 }

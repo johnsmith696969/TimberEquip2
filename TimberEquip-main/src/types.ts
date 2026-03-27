@@ -446,6 +446,11 @@ export interface UserProfile {
   currentSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
   stripeCustomerId?: string;
+  mfaEnabled?: boolean;
+  mfaMethod?: 'sms' | null;
+  mfaPhoneNumber?: string | null;
+  mfaDisplayName?: string | null;
+  mfaEnrolledAt?: string | null;
   favorites?: string[];
   emailVerified: boolean;
   createdAt: string;
