@@ -346,18 +346,24 @@ export function AdPrograms() {
     }
 
     if (shouldReplace) {
-      setSearchParams(nextParams, { replace: true });
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
     }
   }, [searchParams, setSearchParams]);
 
   const handleSelectSellerPlan = (planId: ListingPlanId) => {
+    const nextParams = new URLSearchParams(searchParams);
+    const currentPlanInUrl = nextParams.get('plan');
+
     setSelectedSellerPlan(planId);
     setCheckoutError('');
     setCheckoutNotice('');
     setEnrollmentForm((prev) => ({ ...prev, planId }));
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('plan', planId);
-    setSearchParams(nextParams, { replace: true });
+
+    if (currentPlanInUrl !== planId) {
+      nextParams.set('plan', planId);
+      setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+    }
+
     focusEnrollmentSection();
   };
 
