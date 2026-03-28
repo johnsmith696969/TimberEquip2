@@ -99,13 +99,9 @@ export function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [listingsData, allListings, metrics] = await Promise.all([
-          equipmentService.getListings({ featured: true, inStockOnly: true, sortBy: 'newest' }),
-          equipmentService.getListings({ inStockOnly: false, sortBy: 'newest' }),
-          equipmentService.getCategoryInventoryMetrics(),
-        ]);
+        const marketplaceData = await equipmentService.getHomeMarketplaceData();
 
-        const metricMap = metrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, item) => {
+        const metricMap = marketplaceData.categoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, item) => {
           acc[item.category] = {
             activeCount: item.activeCount,
             weeklyChangePercent: item.weeklyChangePercent,
@@ -114,49 +110,10 @@ export function Home() {
           return acc;
         }, {});
 
-        const isDemoListing = (listing: Listing) => {
-          const id = (listing.id || '').toLowerCase();
-          const seller = (listing.sellerUid || listing.sellerId || '').toLowerCase();
-          return id.startsWith('demo-') || id.startsWith('catalog-') || seller.includes('demo');
-        };
-
-        const realListings = allListings.filter((listing) => !isDemoListing(listing));
-
-        const activeAllListings = realListings.filter((l) => (l.status || 'active').toLowerCase() !== 'sold');
-        const totalActive = activeAllListings.length;
-        const totalMarketValue = activeAllListings.reduce(
-          (sum, l) => sum + (Number.isFinite(l.price) && l.price > 0 ? l.price : 0),
-          0
-        );
-
-        const parseMs = (v: unknown): number => {
-          if (!v) return 0;
-          if (typeof v === 'number') return v;
-          if (typeof v === 'string') return new Date(v).getTime() || 0;
-          if (v instanceof Date) return v.getTime();
-          const ts = v as any;
-          if (typeof ts.seconds === 'number') return ts.seconds * 1000;
-          if (typeof ts.toDate === 'function') return ts.toDate().getTime();
-          return 0;
-        };
-        const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
-        const soldListings = realListings
-          .filter((listing) => {
-            if ((listing.status || '').toLowerCase() !== 'sold') return false;
-            const soldMs = parseMs(listing.updatedAt) || parseMs(listing.createdAt);
-            return soldMs >= threeDaysAgo;
-          })
-          .sort((a, b) => {
-            const aTime = parseMs(a.updatedAt) || parseMs(a.createdAt);
-            const bTime = parseMs(b.updatedAt) || parseMs(b.createdAt);
-            return bTime - aTime;
-          })
-          .slice(0, 12);
-
-        setFeaturedListings(listingsData);
-        setRecentSoldListings(soldListings);
+        setFeaturedListings(marketplaceData.featuredListings);
+        setRecentSoldListings(marketplaceData.recentSoldListings);
         setCategoryMetrics(metricMap);
-        setHeroStats({ totalActive, totalMarketValue });
+        setHeroStats(marketplaceData.heroStats);
       } catch (error) {
         console.error('Error fetching home data:', error);
       } finally {

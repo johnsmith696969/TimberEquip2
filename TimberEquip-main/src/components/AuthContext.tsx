@@ -381,14 +381,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 ),
               });
 
-              if (profile.emailVerified !== firebaseUser.emailVerified) {
-                try {
-                  await userService.updateProfile(firebaseUser.uid, { emailVerified: firebaseUser.emailVerified });
-                } catch (_) {
-                  // Non-blocking sync; continue with merged client state.
-                }
-              }
-
               // Auto-promote known admin emails to super admin role
               const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
               if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && accessAwareProfile.role !== 'super_admin') {

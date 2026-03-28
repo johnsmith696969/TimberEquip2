@@ -375,6 +375,32 @@ export const userService = {
       return { seatLimit: 0, seatCount: 0, activePlanIds: [] };
     }
 
+    if (auth.currentUser) {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const params = new URLSearchParams({ ownerUid: normalizedOwnerUid });
+        const response = await fetch(`/api/account/seat-context?${params.toString()}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          return {
+            seatLimit: Number(payload.seatLimit) || 0,
+            seatCount: Number(payload.seatCount) || 0,
+            activePlanIds: Array.isArray(payload.activePlanIds)
+              ? payload.activePlanIds.map((planId: unknown) => String(planId || '').trim()).filter(Boolean)
+              : [],
+          };
+        }
+      } catch (error) {
+        console.warn('Falling back to Firestore seat context lookup:', error);
+      }
+    }
+
     const [subscriptionsSnapshot, managedAccountsSnapshot] = await Promise.all([
       getDocs(query(collection(db, 'subscriptions'), where('userUid', '==', normalizedOwnerUid), where('status', '==', 'active'))),
       getDocs(query(collection(db, 'users'), where('parentAccountUid', '==', normalizedOwnerUid))),

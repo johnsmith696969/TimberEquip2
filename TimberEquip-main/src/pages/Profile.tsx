@@ -768,13 +768,13 @@ export function Profile() {
         setProfileDataError('');
         try {
           const results = await Promise.allSettled([
-            canViewMyListings ? equipmentService.getListings({ sellerUid: user.uid }) : Promise.resolve([]),
+            canViewMyListings ? equipmentService.getMyListings({ sellerUid: user.uid }) : Promise.resolve([]),
             canViewBuyerFinancing ? equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role }) : Promise.resolve([]),
             canViewSearchAlerts ? userService.getSavedSearches(user.uid) : Promise.resolve([]),
             canViewSavedEquipment && user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
-            canViewSellerCalls ? equipmentService.getCalls({ sellerUid: user.uid, role: user.role }) : Promise.resolve([]),
-            canViewSellerInquiries ? equipmentService.getInquiries(user.uid) : Promise.resolve([]),
-            hasStorefrontAccess ? equipmentService.getSeller(user.uid) : Promise.resolve(null),
+            canViewSellerCalls ? equipmentService.getMyCalls() : Promise.resolve([]),
+            canViewSellerInquiries ? equipmentService.getMyInquiries() : Promise.resolve([]),
+            hasStorefrontAccess ? equipmentService.getMyStorefront() : Promise.resolve(null),
           ]);
 
           setMyListings(results[0].status === 'fulfilled' ? results[0].value : []);
@@ -1024,7 +1024,7 @@ export function Profile() {
         });
       }
 
-      const refreshedListings = await equipmentService.getListings({ sellerUid: user.uid });
+      const refreshedListings = await equipmentService.getMyListings({ sellerUid: user.uid });
       setMyListings(refreshedListings);
       setIsListingModalOpen(false);
       setSelectedListing(null);
@@ -1098,7 +1098,7 @@ export function Profile() {
         `${storefrontTabLabel} storage is taking too long to respond. Please try again once Firestore quota resets.`
       );
 
-      const refreshedStorefront = await equipmentService.getSeller(user.uid);
+      const refreshedStorefront = await equipmentService.getMyStorefront();
       setStorefrontPreview(refreshedStorefront || null);
       setStorefrontForm((prev) => ({ ...prev, storefrontSlug: result.storefrontSlug }));
       setStorefrontNotice(`${storefrontTabLabel} saved. Canonical path: ${result.canonicalPath}`);

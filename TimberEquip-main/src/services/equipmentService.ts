@@ -1,4 +1,5 @@
 import { db, auth } from '../firebase';
+import { onAuthStateChanged, type User as FirebaseAuthUser } from 'firebase/auth';
 import { 
   collection, 
   type DocumentData,
@@ -152,6 +153,17 @@ export interface AdminListingsPage {
   hasMore: boolean;
 }
 
+export interface HomeMarketplaceData {
+  featuredListings: Listing[];
+  recentSoldListings: Listing[];
+  categoryMetrics: CategoryInventoryMetric[];
+  heroStats: {
+    totalActive: number;
+    totalMarketValue: number;
+  };
+  asOf?: string;
+}
+
 const toMillis = (value: unknown): number | undefined => {
   if (!value) return undefined;
   if (typeof value === 'string') {
@@ -220,6 +232,28 @@ function validateListingQuality(listing: Partial<Listing>): string[] {
   }
 
   return errors;
+}
+
+const LISTING_QUALITY_FIELDS = new Set<keyof Listing>([
+  'category',
+  'subcategory',
+  'title',
+  'make',
+  'manufacturer',
+  'model',
+  'year',
+  'hours',
+  'condition',
+  'price',
+  'location',
+  'images',
+  'imageVariants',
+  'videoUrls',
+  'conditionChecklist',
+]);
+
+function shouldValidateListingQualityOnUpdate(updates: Partial<Listing>): boolean {
+  return Object.keys(updates).some((key) => LISTING_QUALITY_FIELDS.has(key as keyof Listing));
 }
 
 function normalizeListingImages(listing: Listing): Listing {
@@ -531,7 +565,11 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const currentUser = auth.currentUser;
+  if (typeof auth.authStateReady === 'function') {
+    await auth.authStateReady();
+  }
+
+  const currentUser = await waitForAuthenticatedUser();
   if (!currentUser) {
     throw new Error('Unauthorized');
   }
@@ -564,35 +602,100 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
   return payload as T;
 }
 
+async function waitForAuthenticatedUser(timeoutMs = 4000): Promise<FirebaseAuthUser | null> {
+  if (auth.currentUser) return auth.currentUser;
+
+  return await new Promise((resolve) => {
+    let settled = false;
+    const timeoutHandle = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      resolve(auth.currentUser);
+    }, timeoutMs);
+
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      if (settled || !nextUser) return;
+      settled = true;
+      window.clearTimeout(timeoutHandle);
+      unsubscribe();
+      resolve(nextUser);
+    }, () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutHandle);
+      unsubscribe();
+      resolve(auth.currentUser);
+    });
+  });
+}
+
+async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const rawBody = await response.text().catch(() => '');
+  let payload: Record<string, unknown> = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+  }
+
+  if (!response.ok) {
+    const fallbackMessage = rawBody.trim() || `Public equipment request failed (${response.status}).`;
+    throw new Error(String(payload?.error || fallbackMessage));
+  }
+
+  return payload as T;
+}
+
+function buildListingFilterSearchParams(filters?: ListingFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (!filters) return params;
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+
+  return params;
+}
+
 export const equipmentService = {
   async getListings(filters?: ListingFilters): Promise<Listing[]> {
     const path = 'listings';
     try {
       const includeUnapproved = !!filters?.includeUnapproved;
-      let q = includeUnapproved
-        ? query(collection(db, path))
-        : query(
-            collection(db, path),
-            where('approvalStatus', '==', 'approved'),
-            where('paymentStatus', '==', 'paid')
-          );
-      
-      const querySnapshot = await getDocs(q);
-      let listings = querySnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as Listing))
-        .map((listing) => normalizeListingImages(listing));
+      const normalizedCurrentUid = normalize(auth.currentUser?.uid || '');
+      const requestedSellerUid = normalize(String(filters?.sellerUid || ''));
+      const isOwnSellerInventory = !includeUnapproved && !!normalizedCurrentUid && requestedSellerUid === normalizedCurrentUid;
 
-      if (!includeUnapproved) {
-        const nowMs = Date.now();
-        listings = listings.filter((listing) => {
-          const status = normalize(listing.status || 'active');
-          if (status === 'sold') return true;
-          if (status === 'archived' || status === 'expired' || status === 'pending') return false;
+      let listings: Listing[] = [];
 
-          const expiresAtMs = toMillis((listing as Listing & { expiresAt?: unknown }).expiresAt);
-          if (expiresAtMs === undefined) return true;
-          return expiresAtMs > nowMs;
-        });
+      if (isOwnSellerInventory) {
+        const params = buildListingFilterSearchParams(filters);
+        const queryString = params.toString();
+        const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
+        listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+      } else if (!includeUnapproved) {
+        const params = buildListingFilterSearchParams(filters);
+        const queryString = params.toString();
+        const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings${queryString ? `?${queryString}` : ''}`);
+        listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+      } else {
+        const q = query(collection(db, path));
+        const querySnapshot = await getDocs(q);
+        listings = querySnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Listing))
+          .map((listing) => normalizeListingImages(listing));
       }
 
       const toNumber = (value: unknown): number | undefined => {
@@ -798,6 +901,54 @@ export const equipmentService = {
     }
   },
 
+  async getMyListings(filters?: ListingFilters): Promise<Listing[]> {
+    try {
+      const params = buildListingFilterSearchParams(filters);
+      const queryString = params.toString();
+      const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
+      return Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'account/listings');
+      return [];
+    }
+  },
+
+  async getMyStorefront(): Promise<Seller | undefined> {
+    try {
+      const payload = await getAuthorizedJson<{ seller?: Seller | null }>('/api/account/storefront');
+      return payload.seller || undefined;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, 'account/storefront');
+      return undefined;
+    }
+  },
+
+  async getMyInquiries(): Promise<Inquiry[]> {
+    const path = 'account/inquiries';
+    try {
+      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>('/api/account/inquiries');
+      return Array.isArray(payload.inquiries) ? payload.inquiries : [];
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  async getHomeMarketplaceData(): Promise<HomeMarketplaceData> {
+    const payload = await getPublicJson<HomeMarketplaceData>('/api/public/home-data');
+    return {
+      featuredListings: Array.isArray(payload.featuredListings)
+        ? payload.featuredListings.map((listing) => normalizeListingImages(listing as Listing))
+        : [],
+      recentSoldListings: Array.isArray(payload.recentSoldListings)
+        ? payload.recentSoldListings.map((listing) => normalizeListingImages(listing as Listing))
+        : [],
+      categoryMetrics: Array.isArray(payload.categoryMetrics) ? payload.categoryMetrics : [],
+      heroStats: payload.heroStats || { totalActive: 0, totalMarketValue: 0 },
+      asOf: payload.asOf,
+    };
+  },
+
   async getAdminListingsPage(options?: {
     pageSize?: number;
     cursor?: AdminListingsCursor;
@@ -866,21 +1017,12 @@ export const equipmentService = {
 
   async getListingsByIds(ids: string[]): Promise<Listing[]> {
     if (!ids || ids.length === 0) return [];
-    const path = 'listings';
     try {
-      const results: Listing[] = [];
-      // Firestore 'in' query limit is 10
-      for (let i = 0; i < ids.length; i += 10) {
-        const chunk = ids.slice(i, i + 10);
-        const q = query(collection(db, path), where('__name__', 'in', chunk));
-        const querySnapshot = await getDocs(q);
-        results.push(...querySnapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as Listing))
-          .map((listing) => normalizeListingImages(listing)));
-      }
-      return results;
+      const params = new URLSearchParams({ ids: ids.join(',') });
+      const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings/by-id?${params.toString()}`);
+      return Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      handleFirestoreError(error, OperationType.LIST, 'public/listings/by-id');
       return [];
     }
   },
@@ -924,6 +1066,21 @@ export const equipmentService = {
 
     const path = 'listings';
     try {
+      if (auth.currentUser) {
+        const params = new URLSearchParams({
+          sellerUid: normalizedSellerUid,
+          includeUnapproved: 'true',
+        });
+        if (options?.includeSold) {
+          params.set('inStockOnly', 'false');
+        }
+
+        const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings?${params.toString()}`);
+        return Array.isArray(payload.listings)
+          ? payload.listings.map((listing) => normalizeListingImages(listing as Listing))
+          : [];
+      }
+
       const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
         getDocs(query(collection(db, path), where('sellerUid', '==', normalizedSellerUid))),
         getDocs(query(collection(db, path), where('sellerId', '==', normalizedSellerUid))),
@@ -1048,9 +1205,11 @@ export const equipmentService = {
         ...(existing || {}),
         ...updates
       } as Partial<Listing>;
-      const qualityErrors = validateListingQuality(merged);
-      if (qualityErrors.length > 0) {
-        throw new Error(`Listing quality validation failed: ${qualityErrors.join(' ')}`);
+      if (shouldValidateListingQualityOnUpdate(updates)) {
+        const qualityErrors = validateListingQuality(merged);
+        if (qualityErrors.length > 0) {
+          throw new Error(`Listing quality validation failed: ${qualityErrors.join(' ')}`);
+        }
       }
 
       const featureContext = await ensureFeaturedListingCapacity({
@@ -1059,6 +1218,18 @@ export const equipmentService = {
         nextFeatured: merged.featured,
       });
       const sellerScopeUid = featureContext.ownerUid || String(merged.sellerUid || auth.currentUser?.uid || '').trim();
+
+      if (auth.currentUser) {
+        const requestUpdates: Partial<Listing> = {
+          ...updates,
+          ...(sellerScopeUid ? { sellerUid: sellerScopeUid, sellerId: sellerScopeUid } : {}),
+        };
+        await getAuthorizedJson(`/api/account/listings/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(requestUpdates),
+        });
+        return;
+      }
 
       const docRef = doc(db, 'listings', id);
       await updateDoc(docRef, {
@@ -1139,6 +1310,12 @@ export const equipmentService = {
   async getInquiries(sellerUid?: string): Promise<Inquiry[]> {
     const path = 'inquiries';
     try {
+      if (sellerUid) {
+        const params = new URLSearchParams({ sellerUid });
+        const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>(`/api/account/inquiries?${params.toString()}`);
+        return Array.isArray(payload.inquiries) ? payload.inquiries : [];
+      }
+
       if (!sellerUid) {
         const allInquiries = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
         return allInquiries.docs.map(doc => ({ id: doc.id, ...doc.data() } as Inquiry));
@@ -1336,11 +1513,28 @@ export const equipmentService = {
     }
   },
 
+  async getMyCalls(): Promise<CallLog[]> {
+    const path = 'account/calls';
+    try {
+      const payload = await getAuthorizedJson<{ calls?: CallLog[] }>('/api/account/calls');
+      return Array.isArray(payload.calls) ? payload.calls : [];
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
   async getCalls(sellerUidOrOptions?: string | { sellerUid?: string; role?: string }): Promise<CallLog[]> {
     const path = 'calls';
     const sellerUid = typeof sellerUidOrOptions === 'string' ? sellerUidOrOptions : sellerUidOrOptions?.sellerUid;
     const role = typeof sellerUidOrOptions === 'string' ? '' : sellerUidOrOptions?.role;
     try {
+      if (sellerUid) {
+        const params = new URLSearchParams({ sellerUid });
+        const payload = await getAuthorizedJson<{ calls?: CallLog[] }>(`/api/account/calls?${params.toString()}`);
+        return Array.isArray(payload.calls) ? payload.calls : [];
+      }
+
       if (!sellerUid || canReadAllCalls(role)) {
         const querySnapshot = await getDocs(collection(db, path));
         return querySnapshot.docs
@@ -1465,14 +1659,26 @@ export const equipmentService = {
   },
 
   async getSeller(id: string): Promise<Seller | undefined> {
-    const storefrontPath = `storefronts/${id}`;
-    const fallbackPath = `users/${id}`;
+    const normalizedId = String(id || '').trim();
+    if (!normalizedId) {
+      return undefined;
+    }
+
+    if (auth.currentUser?.uid && auth.currentUser.uid === normalizedId) {
+      const accountStorefront = await this.getMyStorefront();
+      if (accountStorefront) {
+        return accountStorefront;
+      }
+    }
+
+    const storefrontPath = `storefronts/${normalizedId}`;
+    const fallbackPath = `users/${normalizedId}`;
 
     try {
-      let storefrontSnap = await getDoc(doc(db, 'storefronts', id));
+      let storefrontSnap = await getDoc(doc(db, 'storefronts', normalizedId));
 
       if (!storefrontSnap.exists()) {
-        const storefrontSlugSnapshot = await getDocs(query(collection(db, 'storefronts'), where('storefrontSlug', '==', id), limit(1)));
+        const storefrontSlugSnapshot = await getDocs(query(collection(db, 'storefronts'), where('storefrontSlug', '==', normalizedId), limit(1)));
         if (!storefrontSlugSnapshot.empty) {
           storefrontSnap = storefrontSlugSnapshot.docs[0];
         }
@@ -1509,7 +1715,7 @@ export const equipmentService = {
         } as Seller;
       }
 
-      const userRef = doc(db, 'users', id);
+      const userRef = doc(db, 'users', normalizedId);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
         const data = userSnap.data() || {};
@@ -1755,37 +1961,8 @@ export const equipmentService = {
   },
 
   async getCategoryInventoryMetrics(): Promise<CategoryInventoryMetric[]> {
-    const listings = (await this.getListings({ inStockOnly: false })).filter((listing) => !isDemoListing(listing));
-    const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
-    const byCategory = new Map<string, Listing[]>();
-    for (const listing of listings) {
-      const category = (listing.subcategory || listing.category || 'Uncategorized').trim();
-      const existing = byCategory.get(category) || [];
-      existing.push(listing);
-      byCategory.set(category, existing);
-    }
-
-    const metrics: CategoryInventoryMetric[] = Array.from(byCategory.entries()).map(([category, categoryListings]) => {
-      const activeListings = categoryListings.filter((listing) => normalize(listing.status || 'active') !== 'sold');
-      const previousWeekCount = categoryListings.filter((listing) => wasActiveAt(listing, weekAgoMs)).length;
-      const activeCount = activeListings.length;
-      const weeklyChangePercent = previousWeekCount === 0 ? 0 : ((activeCount - previousWeekCount) / previousWeekCount) * 100;
-      const averagePrice =
-        activeCount > 0
-          ? Math.round(activeListings.reduce((sum, listing) => sum + (Number.isFinite(listing.price) ? listing.price : 0), 0) / activeCount)
-          : null;
-
-      return {
-        category,
-        activeCount,
-        previousWeekCount,
-        weeklyChangePercent: Number(weeklyChangePercent.toFixed(1)),
-        averagePrice
-      };
-    });
-
-    return metrics.sort((a, b) => b.activeCount - a.activeCount);
+    const payload = await getPublicJson<{ metrics?: CategoryInventoryMetric[] }>('/api/public/category-metrics');
+    return Array.isArray(payload.metrics) ? payload.metrics : [];
   },
 
   async submitFinancingRequest(payload: {
@@ -1821,40 +1998,14 @@ export const equipmentService = {
     const role = typeof options === 'string' ? '' : options?.role;
     if (!userUid) return [];
 
-    const path = 'financingRequests';
     try {
-      const snapshot = canReadAllFinancingRequests(role)
-        ? await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')))
-        : await getDocs(query(collection(db, path), where('buyerUid', '==', userUid)));
-
-      return snapshot.docs
-        .map((financingRequestDoc) => {
-          const data = financingRequestDoc.data() as Partial<FinancingRequest> & {
-            createdAt?: unknown;
-            updatedAt?: unknown;
-          };
-          const createdAtMs = toMillis(data.createdAt) || Date.now();
-          const updatedAtMs = toMillis(data.updatedAt);
-
-          return {
-            id: financingRequestDoc.id,
-            listingId: typeof data.listingId === 'string' ? data.listingId : undefined,
-            sellerUid: typeof data.sellerUid === 'string' ? data.sellerUid : undefined,
-            buyerUid: typeof data.buyerUid === 'string' || data.buyerUid === null ? data.buyerUid : null,
-            applicantName: String(data.applicantName || ''),
-            applicantEmail: String(data.applicantEmail || ''),
-            applicantPhone: String(data.applicantPhone || ''),
-            company: typeof data.company === 'string' ? data.company : undefined,
-            requestedAmount: typeof data.requestedAmount === 'number' ? data.requestedAmount : undefined,
-            message: typeof data.message === 'string' ? data.message : undefined,
-            status: (data.status as FinancingRequest['status']) || 'New',
-            createdAt: new Date(createdAtMs).toISOString(),
-            updatedAt: updatedAtMs ? new Date(updatedAtMs).toISOString() : undefined,
-          };
-        })
-        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      const params = new URLSearchParams();
+      if (userUid) params.set('userUid', userUid);
+      if (role) params.set('role', role);
+      const payload = await getAuthorizedJson<{ financingRequests?: FinancingRequest[] }>(`/api/account/financing-requests?${params.toString()}`);
+      return Array.isArray(payload.financingRequests) ? payload.financingRequests : [];
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      handleFirestoreError(error, OperationType.LIST, 'account/financing-requests');
       return [];
     }
   },

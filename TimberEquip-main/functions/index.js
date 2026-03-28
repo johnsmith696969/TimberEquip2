@@ -14,7 +14,12 @@ const { XMLParser } = require('fast-xml-parser');
 const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = require('node:crypto');
 const { templates } = require('./email-templates/index.js');
 const { handlePublicPagesRequest } = require('./public-pages.js');
-const { rebuildPublicSeoReadModel, syncPublicSeoForListingChange, syncPublicSeoForSellerChange } = require('./public-seo-read-model.js');
+const {
+  PUBLIC_SEO_COLLECTIONS,
+  rebuildPublicSeoReadModel,
+  syncPublicSeoForListingChange,
+  syncPublicSeoForSellerChange,
+} = require('./public-seo-read-model.js');
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
@@ -2972,6 +2977,7 @@ exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
     const listingId = event.params.listingId;
     const before = event.data?.before?.data() || null;
     const after = event.data?.after?.data() || null;
+    invalidateMarketplaceCaches();
 
     const [seoResult, governanceResult] = await Promise.allSettled([
       syncPublicSeoForListingChange({
@@ -3666,6 +3672,19 @@ async function getMarketRatesPayload() {
 
 let marketplaceStatsCache = null;
 const MARKETPLACE_STATS_TTL_MS = 10 * 60 * 1000;
+let publicActiveListingsCache = null;
+let publicSoldListingsCache = null;
+let publicCategoryMetricsCache = null;
+let publicHomeDataCache = null;
+const PUBLIC_LISTINGS_TTL_MS = 60 * 1000;
+
+function invalidateMarketplaceCaches() {
+  publicActiveListingsCache = null;
+  publicSoldListingsCache = null;
+  publicCategoryMetricsCache = null;
+  publicHomeDataCache = null;
+  marketplaceStatsCache = null;
+}
 
 function parseCreatedAt(value) {
   if (!value) return null;
@@ -3691,6 +3710,604 @@ function getCountryFromLocation(location) {
     .map((part) => part.trim())
     .filter(Boolean);
   return parts.length ? parts[parts.length - 1] : null;
+}
+
+function getStateFromMarketplaceLocation(location) {
+  if (typeof location !== 'string') return null;
+  const parts = location
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length > 1) {
+    return parts[parts.length - 2];
+  }
+
+  return parts[0] || null;
+}
+
+function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
+  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
+    type: isDealerRole ? 'Dealer' : 'Private',
+    role: normalizeNonEmptyString(data.role, 'buyer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    location: normalizeNonEmptyString(data.location, 'Unknown'),
+    phone: normalizeNonEmptyString(data.phone),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.logo),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    rating: 5,
+    totalListings: 0,
+    memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    verified: Boolean(data.storefrontEnabled),
+  };
+}
+
+function serializeSellerPayloadFromUser(snapshotId, data = {}) {
+  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
+    type: isDealerRole ? 'Dealer' : 'Private',
+    role: normalizeNonEmptyString(data.role, 'buyer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    location: normalizeNonEmptyString(data.location, 'Unknown'),
+    phone: normalizeNonEmptyString(data.phoneNumber),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.photoURL || data.profileImage),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    rating: 5,
+    totalListings: 0,
+    memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    verified: true,
+  };
+}
+
+function serializeInquiryDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    listingId: normalizeNonEmptyString(data.listingId) || undefined,
+    sellerUid: normalizeNonEmptyString(data.sellerUid) || undefined,
+    sellerId: normalizeNonEmptyString(data.sellerId) || undefined,
+    buyerUid: data.buyerUid == null ? undefined : normalizeNonEmptyString(data.buyerUid) || undefined,
+    buyerName: normalizeNonEmptyString(data.buyerName),
+    buyerEmail: normalizeNonEmptyString(data.buyerEmail),
+    buyerPhone: normalizeNonEmptyString(data.buyerPhone),
+    message: normalizeNonEmptyString(data.message),
+    type: normalizeNonEmptyString(data.type, 'Inquiry'),
+    status: normalizeNonEmptyString(data.status, 'New'),
+    assignedToUid: data.assignedToUid == null ? null : normalizeNonEmptyString(data.assignedToUid) || null,
+    assignedToName: data.assignedToName == null ? null : normalizeNonEmptyString(data.assignedToName) || null,
+    internalNotes: Array.isArray(data.internalNotes)
+      ? data.internalNotes
+          .filter((note) => note && typeof note === 'object')
+          .map((note) => ({
+            id: normalizeNonEmptyString(note.id) || `${docSnapshot.id}-note`,
+            text: normalizeNonEmptyString(note.text),
+            authorUid: normalizeNonEmptyString(note.authorUid) || undefined,
+            authorName: normalizeNonEmptyString(note.authorName) || undefined,
+            createdAt: normalizeNonEmptyString(note.createdAt, new Date().toISOString()),
+          }))
+      : [],
+    firstResponseAt: timestampValueToIso(data.firstResponseAt) || normalizeNonEmptyString(data.firstResponseAt) || undefined,
+    responseTimeMinutes: toFiniteNumberOrUndefined(data.responseTimeMinutes) ?? null,
+    spamScore: toFiniteNumberOrUndefined(data.spamScore),
+    spamFlags: Array.isArray(data.spamFlags) ? data.spamFlags.filter((flag) => typeof flag === 'string') : [],
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+    duration: toFiniteNumberOrUndefined(data.duration),
+    recordingUrl: normalizeNonEmptyString(data.recordingUrl) || undefined,
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function serializeCallDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    listingId: normalizeNonEmptyString(data.listingId),
+    listingTitle: normalizeNonEmptyString(data.listingTitle) || undefined,
+    sellerId: normalizeNonEmptyString(data.sellerId),
+    sellerUid: normalizeNonEmptyString(data.sellerUid) || undefined,
+    sellerName: normalizeNonEmptyString(data.sellerName) || undefined,
+    sellerPhone: normalizeNonEmptyString(data.sellerPhone) || undefined,
+    callerUid: data.callerUid == null ? null : normalizeNonEmptyString(data.callerUid) || null,
+    callerName: normalizeNonEmptyString(data.callerName),
+    callerEmail: normalizeNonEmptyString(data.callerEmail) || undefined,
+    callerPhone: normalizeNonEmptyString(data.callerPhone),
+    duration: toFiniteNumberOrUndefined(data.duration) || 0,
+    status: normalizeNonEmptyString(data.status, 'Completed'),
+    source: normalizeNonEmptyString(data.source) || undefined,
+    isAuthenticated: Boolean(data.isAuthenticated),
+    recordingUrl: normalizeNonEmptyString(data.recordingUrl) || undefined,
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function buildMarketplaceListingPayload(listingId, rawListing) {
+  const listing = rawListing || {};
+  const rawImages = Array.isArray(listing.images)
+    ? listing.images
+    : listing.image
+      ? [listing.image]
+      : [];
+  const images = normalizeImageUrls(rawImages);
+  const make = normalizeNonEmptyString(listing.make || listing.manufacturer || listing.brand);
+
+  return {
+    id: String(listingId),
+    sellerUid: normalizeNonEmptyString(listing.sellerUid || listing.sellerId),
+    sellerId: normalizeNonEmptyString(listing.sellerId || listing.sellerUid),
+    title: normalizeNonEmptyString(listing.title, 'Equipment Listing'),
+    category: normalizeNonEmptyString(listing.category, 'Equipment'),
+    subcategory: normalizeNonEmptyString(listing.subcategory || listing.category, 'Equipment'),
+    make,
+    manufacturer: normalizeNonEmptyString(listing.manufacturer || make),
+    brand: normalizeNonEmptyString(listing.brand || make),
+    model: normalizeNonEmptyString(listing.model),
+    year: toFiniteNumberOrUndefined(listing.year) || 0,
+    price: toFiniteNumberOrUndefined(listing.price) || 0,
+    currency: normalizeNonEmptyString(listing.currency, 'USD'),
+    hours: toFiniteNumberOrUndefined(listing.hours) || 0,
+    condition: normalizeNonEmptyString(listing.condition, 'Used'),
+    description: normalizeNonEmptyString(listing.description),
+    images,
+    location: normalizeNonEmptyString(listing.location),
+    stockNumber: normalizeNonEmptyString(listing.stockNumber),
+    serialNumber: normalizeNonEmptyString(listing.serialNumber),
+    latitude: toFiniteNumberOrUndefined(listing.latitude),
+    longitude: toFiniteNumberOrUndefined(listing.longitude),
+    features: Array.isArray(listing.features) ? listing.features.filter((entry) => typeof entry === 'string') : [],
+    status: normalizeNonEmptyString(listing.status, 'active'),
+    approvalStatus: normalizeNonEmptyString(listing.approvalStatus, 'pending'),
+    approvedBy: normalizeNonEmptyString(listing.approvedBy),
+    paymentStatus: normalizeNonEmptyString(listing.paymentStatus, 'pending'),
+    subscriptionPlanId: normalizeNonEmptyString(listing.subscriptionPlanId),
+    publishedAt: timestampValueToIso(listing.publishedAt) || normalizeNonEmptyString(listing.publishedAt),
+    expiresAt: timestampValueToIso(listing.expiresAt) || normalizeNonEmptyString(listing.expiresAt),
+    soldAt: timestampValueToIso(listing.soldAt) || normalizeNonEmptyString(listing.soldAt),
+    archivedAt: timestampValueToIso(listing.archivedAt) || normalizeNonEmptyString(listing.archivedAt),
+    approvedAt: timestampValueToIso(listing.approvedAt) || normalizeNonEmptyString(listing.approvedAt),
+    rejectedAt: timestampValueToIso(listing.rejectedAt) || normalizeNonEmptyString(listing.rejectedAt),
+    rejectedBy: normalizeNonEmptyString(listing.rejectedBy),
+    rejectionReason: normalizeNonEmptyString(listing.rejectionReason),
+    lastLifecycleAction: normalizeNonEmptyString(listing.lastLifecycleAction),
+    lastLifecycleAt: timestampValueToIso(listing.lastLifecycleAt) || normalizeNonEmptyString(listing.lastLifecycleAt),
+    marketValueEstimate: toFiniteNumberOrUndefined(listing.marketValueEstimate) ?? null,
+    featured: Boolean(listing.featured),
+    views: toFiniteNumberOrUndefined(listing.views) || 0,
+    leads: toFiniteNumberOrUndefined(listing.leads) || 0,
+    createdAt:
+      timestampValueToIso(listing.createdAt) ||
+      normalizeNonEmptyString(listing.createdAtIso) ||
+      timestampValueToIso(listing.lastmod) ||
+      new Date().toISOString(),
+    updatedAt:
+      timestampValueToIso(listing.updatedAt) ||
+      normalizeNonEmptyString(listing.updatedAtIso) ||
+      timestampValueToIso(listing.lastmod) ||
+      null,
+    specs: typeof listing.specs === 'object' && listing.specs ? listing.specs : {},
+  };
+}
+
+function toMarketplaceNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function normalizeMarketplaceText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function toMarketplaceMillis(value) {
+  if (!value) return undefined;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (typeof value?.toDate === 'function') {
+    const parsed = value.toDate().getTime();
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (typeof value?.seconds === 'number') {
+    return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1e6);
+  }
+  return undefined;
+}
+
+function sortMarketplaceListings(listings, sortBy = 'newest', keyword = '') {
+  const normalizedKeyword = normalizeMarketplaceText(keyword);
+  const withFeaturedPriority = (compare) => {
+    return [...listings].sort((left, right) => {
+      const featuredDelta = Number(Boolean(right.featured)) - Number(Boolean(left.featured));
+      if (featuredDelta !== 0) return featuredDelta;
+      return compare(left, right);
+    });
+  };
+
+  const relevanceScore = (listing) => {
+    if (!normalizedKeyword) return 0;
+    const title = normalizeMarketplaceText(listing.title);
+    const make = normalizeMarketplaceText(listing.make || listing.manufacturer || listing.brand);
+    const model = normalizeMarketplaceText(listing.model);
+    const description = normalizeMarketplaceText(listing.description);
+    const stockNumber = normalizeMarketplaceText(listing.stockNumber);
+    const serialNumber = normalizeMarketplaceText(listing.serialNumber);
+
+    let score = 0;
+    if (title.includes(normalizedKeyword)) score += 15;
+    if (make.includes(normalizedKeyword)) score += 20;
+    if (model.includes(normalizedKeyword)) score += 25;
+    if (description.includes(normalizedKeyword)) score += 5;
+    if (stockNumber.includes(normalizedKeyword)) score += 30;
+    if (serialNumber.includes(normalizedKeyword)) score += 30;
+    if (`${make} ${model}`.includes(normalizedKeyword)) score += 10;
+    if (title.startsWith(normalizedKeyword) || model.startsWith(normalizedKeyword)) score += 8;
+    return score;
+  };
+
+  if (sortBy === 'price_asc') {
+    return [...listings].sort((left, right) => left.price - right.price);
+  }
+  if (sortBy === 'price_desc') {
+    return [...listings].sort((left, right) => right.price - left.price);
+  }
+  if (sortBy === 'popular') {
+    return withFeaturedPriority((left, right) => (right.views + right.leads * 3) - (left.views + left.leads * 3));
+  }
+  if (sortBy === 'relevance' && normalizedKeyword) {
+    return withFeaturedPriority((left, right) => relevanceScore(right) - relevanceScore(left));
+  }
+
+  return withFeaturedPriority((left, right) => {
+    const leftTime = toMarketplaceMillis(left.updatedAt || left.createdAt) || 0;
+    const rightTime = toMarketplaceMillis(right.updatedAt || right.createdAt) || 0;
+    return rightTime - leftTime;
+  });
+}
+
+function filterMarketplaceListings(listings, filters = {}, options = {}) {
+  const includeUnapproved = Boolean(options.includeUnapproved);
+  const nowMs = Date.now();
+  let filtered = [...listings];
+
+  if (!includeUnapproved) {
+    filtered = filtered.filter((listing) => {
+      const status = normalizeMarketplaceText(listing.status || 'active');
+      if (status === 'archived' || status === 'expired' || status === 'pending') return false;
+      if (status === 'sold') return true;
+      const expiresAtMs = toMarketplaceMillis(listing.expiresAt);
+      return expiresAtMs === undefined || expiresAtMs > nowMs;
+    });
+  }
+
+  if (filters.q) {
+    const searchStr = normalizeMarketplaceText(filters.q);
+    filtered = filtered.filter((listing) => {
+      return (
+        normalizeMarketplaceText(listing.title).includes(searchStr) ||
+        normalizeMarketplaceText(listing.make).includes(searchStr) ||
+        normalizeMarketplaceText(listing.manufacturer).includes(searchStr) ||
+        normalizeMarketplaceText(listing.model).includes(searchStr) ||
+        normalizeMarketplaceText(listing.description).includes(searchStr) ||
+        normalizeMarketplaceText(listing.stockNumber).includes(searchStr) ||
+        normalizeMarketplaceText(listing.serialNumber).includes(searchStr)
+      );
+    });
+  }
+
+  if (filters.inStockOnly !== false) {
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.status || 'active') !== 'sold');
+  }
+
+  if (filters.featured) {
+    filtered = filtered.filter((listing) => Boolean(listing.featured));
+  }
+
+  if (filters.category) {
+    const category = normalizeMarketplaceText(filters.category);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.category) === category);
+  }
+
+  if (filters.subcategory) {
+    const subcategory = normalizeMarketplaceText(filters.subcategory);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.subcategory) === subcategory);
+  }
+
+  if (filters.manufacturer) {
+    const manufacturer = normalizeMarketplaceText(filters.manufacturer);
+    filtered = filtered.filter((listing) => {
+      const make = normalizeMarketplaceText(listing.make || listing.manufacturer || listing.brand);
+      return make.includes(manufacturer);
+    });
+  }
+
+  if (filters.model) {
+    const model = normalizeMarketplaceText(filters.model);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.model).includes(model));
+  }
+
+  if (filters.state) {
+    const state = normalizeMarketplaceText(filters.state);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(getStateFromMarketplaceLocation(listing.location)).includes(state));
+  }
+
+  if (filters.country) {
+    const country = normalizeMarketplaceText(filters.country);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(getCountryFromLocation(listing.location)).includes(country));
+  }
+
+  if (filters.sellerUid) {
+    const sellerUid = normalizeMarketplaceText(filters.sellerUid);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.sellerUid || listing.sellerId) === sellerUid);
+  }
+
+  const minPrice = toMarketplaceNumber(filters.minPrice);
+  if (minPrice !== undefined) filtered = filtered.filter((listing) => listing.price >= minPrice);
+
+  const maxPrice = toMarketplaceNumber(filters.maxPrice);
+  if (maxPrice !== undefined) filtered = filtered.filter((listing) => listing.price <= maxPrice);
+
+  const minYear = toMarketplaceNumber(filters.minYear);
+  if (minYear !== undefined) filtered = filtered.filter((listing) => listing.year >= minYear);
+
+  const maxYear = toMarketplaceNumber(filters.maxYear);
+  if (maxYear !== undefined) filtered = filtered.filter((listing) => listing.year <= maxYear);
+
+  const minHours = toMarketplaceNumber(filters.minHours);
+  if (minHours !== undefined) filtered = filtered.filter((listing) => listing.hours >= minHours);
+
+  const maxHours = toMarketplaceNumber(filters.maxHours);
+  if (maxHours !== undefined) filtered = filtered.filter((listing) => listing.hours <= maxHours);
+
+  if (filters.condition) {
+    const condition = normalizeMarketplaceText(filters.condition);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.condition) === condition);
+  }
+
+  if (filters.location) {
+    const location = normalizeMarketplaceText(filters.location);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.location).includes(location));
+  }
+
+  if (filters.stockNumber) {
+    const stockNumber = normalizeMarketplaceText(filters.stockNumber);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.stockNumber).includes(stockNumber));
+  }
+
+  if (filters.serialNumber) {
+    const serialNumber = normalizeMarketplaceText(filters.serialNumber);
+    filtered = filtered.filter((listing) => normalizeMarketplaceText(listing.serialNumber).includes(serialNumber));
+  }
+
+  if (filters.attachment) {
+    const attachment = normalizeMarketplaceText(filters.attachment);
+    filtered = filtered.filter((listing) => Array.isArray(listing.specs?.attachments)
+      && listing.specs.attachments.some((entry) => normalizeMarketplaceText(entry).includes(attachment)));
+  }
+
+  if (filters.feature) {
+    const feature = normalizeMarketplaceText(filters.feature);
+    filtered = filtered.filter((listing) => {
+      const topLevelFeatures = Array.isArray(listing.features) ? listing.features : [];
+      const specFeatures = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
+      return [...topLevelFeatures, ...specFeatures].some((entry) => normalizeMarketplaceText(entry).includes(feature));
+    });
+  }
+
+  const locationRadius = toMarketplaceNumber(filters.locationRadius);
+  const locationCenterLat = toMarketplaceNumber(filters.locationCenterLat);
+  const locationCenterLng = toMarketplaceNumber(filters.locationCenterLng);
+  if (locationRadius !== undefined && locationRadius > 0 && locationCenterLat !== undefined && locationCenterLng !== undefined) {
+    const toRadians = (degrees) => (degrees * Math.PI) / 180;
+    const distanceMiles = (aLat, aLng, bLat, bLng) => {
+      const earthRadiusMiles = 3958.8;
+      const dLat = toRadians(bLat - aLat);
+      const dLng = toRadians(bLng - aLng);
+      const aa =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+      return earthRadiusMiles * c;
+    };
+
+    filtered = filtered.filter((listing) => {
+      const lat = toMarketplaceNumber(listing.latitude ?? listing.specs?.latitude ?? listing.specs?.lat);
+      const lng = toMarketplaceNumber(listing.longitude ?? listing.specs?.longitude ?? listing.specs?.lng ?? listing.specs?.lon);
+      if (lat === undefined || lng === undefined) return false;
+      return distanceMiles(locationCenterLat, locationCenterLng, lat, lng) <= locationRadius;
+    });
+  }
+
+  return sortMarketplaceListings(filtered, normalizeNonEmptyString(filters.sortBy, 'newest'), normalizeNonEmptyString(filters.q));
+}
+
+async function loadActivePublicListings() {
+  const now = Date.now();
+  if (publicActiveListingsCache && now - publicActiveListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
+    return publicActiveListingsCache.value;
+  }
+
+  const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.listings).get();
+  const listings = snapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+  publicActiveListingsCache = { value: listings, fetchedAt: now };
+  return listings;
+}
+
+async function loadSoldMarketplaceListings() {
+  const now = Date.now();
+  if (publicSoldListingsCache && now - publicSoldListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
+    return publicSoldListingsCache.value;
+  }
+
+  const snapshot = await getDb().collection('listings').where('status', '==', 'sold').get();
+  const listings = snapshot.docs
+    .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
+    .filter((listing) => normalizeMarketplaceText(listing.approvalStatus) === 'approved' && normalizeMarketplaceText(listing.paymentStatus) === 'paid');
+
+  publicSoldListingsCache = { value: listings, fetchedAt: now };
+  return listings;
+}
+
+function buildPublicCategoryMetricsPayload(listings) {
+  const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const byCategory = new Map();
+
+  listings.forEach((listing) => {
+    const category = normalizeNonEmptyString(listing.subcategory || listing.category, 'Uncategorized');
+    const existing = byCategory.get(category) || [];
+    existing.push(listing);
+    byCategory.set(category, existing);
+  });
+
+  return [...byCategory.entries()]
+    .map(([category, categoryListings]) => {
+      const activeListings = categoryListings.filter((listing) => normalizeMarketplaceText(listing.status || 'active') !== 'sold');
+      const previousWeekCount = categoryListings.filter((listing) => {
+        const createdAtMs = toMarketplaceMillis(listing.createdAt) || 0;
+        return createdAtMs <= weekAgoMs;
+      }).length;
+      const activeCount = activeListings.length;
+      const weeklyChangePercent = previousWeekCount === 0 ? 0 : ((activeCount - previousWeekCount) / previousWeekCount) * 100;
+      const averagePrice =
+        activeCount > 0
+          ? Math.round(activeListings.reduce((sum, listing) => sum + (Number.isFinite(listing.price) ? listing.price : 0), 0) / activeCount)
+          : null;
+
+      return {
+        category,
+        activeCount,
+        previousWeekCount,
+        weeklyChangePercent: Number(weeklyChangePercent.toFixed(1)),
+        averagePrice,
+      };
+    })
+    .sort((left, right) => right.activeCount - left.activeCount);
+}
+
+async function getPublicCategoryMetricsPayload() {
+  const now = Date.now();
+  if (publicCategoryMetricsCache && now - publicCategoryMetricsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
+    return publicCategoryMetricsCache.value;
+  }
+
+  const listings = await loadActivePublicListings();
+  const metrics = buildPublicCategoryMetricsPayload(listings);
+  publicCategoryMetricsCache = { value: metrics, fetchedAt: now };
+  return metrics;
+}
+
+async function getPublicHomeDataPayload() {
+  const now = Date.now();
+  if (publicHomeDataCache && now - publicHomeDataCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
+    return publicHomeDataCache.value;
+  }
+
+  const [activeListings, soldListings, categoryMetrics] = await Promise.all([
+    loadActivePublicListings(),
+    loadSoldMarketplaceListings(),
+    getPublicCategoryMetricsPayload(),
+  ]);
+
+  const featuredListings = sortMarketplaceListings(
+    activeListings.filter((listing) => Boolean(listing.featured)),
+    'newest',
+    ''
+  ).slice(0, 12);
+
+  const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+  const recentSoldListings = sortMarketplaceListings(
+    soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= threeDaysAgo),
+    'newest',
+    ''
+  ).slice(0, 12);
+
+  const totalMarketValue = activeListings.reduce((sum, listing) => sum + (Number.isFinite(listing.price) ? listing.price : 0), 0);
+
+  const payload = {
+    featuredListings,
+    recentSoldListings,
+    categoryMetrics,
+    heroStats: {
+      totalActive: activeListings.length,
+      totalMarketValue,
+    },
+    asOf: new Date(now).toISOString(),
+  };
+
+  publicHomeDataCache = { value: payload, fetchedAt: now };
+  return payload;
+}
+
+function parseMarketplaceListingFilters(queryParams = {}) {
+  const readBoolean = (value, defaultValue = undefined) => {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes'].includes(normalized)) return true;
+    if (['0', 'false', 'no'].includes(normalized)) return false;
+    return defaultValue;
+  };
+
+  const readString = (value) => {
+    const normalized = normalizeNonEmptyString(value);
+    return normalized || undefined;
+  };
+
+  return {
+    q: readString(queryParams.q),
+    featured: readBoolean(queryParams.featured, false),
+    inStockOnly: readBoolean(queryParams.inStockOnly, true),
+    category: readString(queryParams.category),
+    subcategory: readString(queryParams.subcategory),
+    manufacturer: readString(queryParams.manufacturer),
+    model: readString(queryParams.model),
+    state: readString(queryParams.state),
+    country: readString(queryParams.country),
+    sellerUid: readString(queryParams.sellerUid),
+    minPrice: readString(queryParams.minPrice),
+    maxPrice: readString(queryParams.maxPrice),
+    minYear: readString(queryParams.minYear),
+    maxYear: readString(queryParams.maxYear),
+    minHours: readString(queryParams.minHours),
+    maxHours: readString(queryParams.maxHours),
+    condition: readString(queryParams.condition),
+    location: readString(queryParams.location),
+    locationRadius: readString(queryParams.locationRadius),
+    locationCenterLat: readString(queryParams.locationCenterLat),
+    locationCenterLng: readString(queryParams.locationCenterLng),
+    attachment: readString(queryParams.attachment),
+    feature: readString(queryParams.feature),
+    stockNumber: readString(queryParams.stockNumber),
+    serialNumber: readString(queryParams.serialNumber),
+    sortBy: readString(queryParams.sortBy) || 'newest',
+  };
 }
 
 async function getMarketplaceStatsPayload() {
@@ -7002,6 +7619,341 @@ exports.apiProxy = onRequest(
         const payload = await getMarketplaceStatsPayload();
         res.set('Cache-Control', 'public, max-age=600');
         return res.status(200).json(payload);
+      }
+
+      if (req.method === 'GET' && path === '/public/listings') {
+        const filters = parseMarketplaceListingFilters(req.query || {});
+        const [activeListings, soldListings] = await Promise.all([
+          loadActivePublicListings(),
+          filters.inStockOnly === false ? loadSoldMarketplaceListings() : Promise.resolve([]),
+        ]);
+        const listings = filterMarketplaceListings(
+          [...activeListings, ...soldListings],
+          filters,
+          { includeUnapproved: false }
+        );
+        res.set('Cache-Control', 'public, max-age=60');
+        return res.status(200).json({ listings });
+      }
+
+      if (req.method === 'GET' && path === '/public/listings/by-id') {
+        const rawIds = normalizeNonEmptyString(req.query?.ids);
+        const ids = rawIds
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(0, 25);
+
+        if (ids.length === 0) {
+          return res.status(200).json({ listings: [] });
+        }
+
+        const [activeListings, soldListings] = await Promise.all([
+          loadActivePublicListings(),
+          loadSoldMarketplaceListings(),
+        ]);
+        const listingLookup = new Map([...activeListings, ...soldListings].map((listing) => [String(listing.id), listing]));
+        const listings = ids.map((id) => listingLookup.get(id)).filter(Boolean);
+        res.set('Cache-Control', 'public, max-age=60');
+        return res.status(200).json({ listings });
+      }
+
+      if (req.method === 'GET' && path === '/public/category-metrics') {
+        const metrics = await getPublicCategoryMetricsPayload();
+        res.set('Cache-Control', 'public, max-age=60');
+        return res.status(200).json({ metrics });
+      }
+
+      if (req.method === 'GET' && path === '/public/home-data') {
+        const payload = await getPublicHomeDataPayload();
+        res.set('Cache-Control', 'public, max-age=60');
+        return res.status(200).json(payload);
+      }
+
+      const accountListingMatch = path.match(/^\/account\/listings\/([^/]+)$/i);
+      if (accountListingMatch && req.method === 'PATCH') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const listingId = normalizeNonEmptyString(decodeURIComponent(accountListingMatch[1]));
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const listingRef = getDb().collection('listings').doc(listingId);
+        const listingSnapshot = await listingRef.get();
+        if (!listingSnapshot.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+
+        const existingData = listingSnapshot.data() || {};
+        const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
+        if (listingSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const requestUpdates = req.body && typeof req.body === 'object' ? req.body : {};
+        const allowedKeys = new Set([
+          'title',
+          'description',
+          'category',
+          'subcategory',
+          'make',
+          'manufacturer',
+          'model',
+          'year',
+          'hours',
+          'condition',
+          'price',
+          'salePrice',
+          'location',
+          'city',
+          'state',
+          'country',
+          'serialNumber',
+          'stockNumber',
+          'images',
+          'imageVariants',
+          'videoUrls',
+          'specifications',
+          'conditionChecklist',
+          'featured',
+          'featuredRank',
+          'metaTitle',
+          'metaDescription',
+          'canonicalSlug',
+          'contactPhone',
+          'contactEmail',
+        ]);
+
+        const updates = {};
+        for (const [key, value] of Object.entries(requestUpdates)) {
+          if (!allowedKeys.has(key)) continue;
+          updates[key] = value;
+        }
+
+        if (Object.keys(updates).length === 0) {
+          return res.status(400).json({ error: 'No supported listing updates were provided.' });
+        }
+
+        if (Object.prototype.hasOwnProperty.call(updates, 'featured')) {
+          updates.featured = Boolean(updates.featured);
+        }
+
+        updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+        await listingRef.update(updates);
+        const updatedSnapshot = await listingRef.get();
+        return res.status(200).json({
+          listing: buildMarketplaceListingPayload(updatedSnapshot.id, updatedSnapshot.data() || {}),
+        });
+      }
+
+      if (req.method === 'GET' && path === '/account/listings') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
+        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+        const filters = parseMarketplaceListingFilters({
+          ...req.query,
+          sellerUid: requestedSellerUid,
+        });
+
+        const primarySnapshot = await getDb()
+          .collection('listings')
+          .where('sellerUid', '==', requestedSellerUid)
+          .get();
+
+        let listings = primarySnapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+
+        if (listings.length === 0) {
+          const legacySnapshot = await getDb()
+            .collection('listings')
+            .where('sellerId', '==', requestedSellerUid)
+            .get();
+          listings = legacySnapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+        }
+
+        const filteredListings = filterMarketplaceListings(listings, filters, { includeUnapproved: true });
+        return res.status(200).json({ listings: filteredListings });
+      }
+
+      if (req.method === 'GET' && path === '/account/financing-requests') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, actorUid);
+        if (requestedUserUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const snapshot = canAdministrateAccount(actorRole) && !requestedUserUid
+          ? await getDb().collection('financingRequests').orderBy('createdAt', 'desc').get()
+          : await getDb().collection('financingRequests').where('buyerUid', '==', requestedUserUid).get();
+
+        const financingRequests = snapshot.docs
+          .map((docSnapshot) => {
+            const data = docSnapshot.data() || {};
+            return {
+              id: docSnapshot.id,
+              listingId: normalizeNonEmptyString(data.listingId) || undefined,
+              sellerUid: normalizeNonEmptyString(data.sellerUid) || undefined,
+              buyerUid: data.buyerUid == null ? null : normalizeNonEmptyString(data.buyerUid) || null,
+              applicantName: normalizeNonEmptyString(data.applicantName),
+              applicantEmail: normalizeNonEmptyString(data.applicantEmail),
+              applicantPhone: normalizeNonEmptyString(data.applicantPhone),
+              company: normalizeNonEmptyString(data.company) || undefined,
+              requestedAmount: toFiniteNumberOrUndefined(data.requestedAmount),
+              message: normalizeNonEmptyString(data.message) || undefined,
+              status: normalizeNonEmptyString(data.status, 'New'),
+              createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+              updatedAt: timestampValueToIso(data.updatedAt) || null,
+            };
+          })
+          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+
+        return res.status(200).json({ financingRequests });
+      }
+
+      if (req.method === 'GET' && path === '/account/seat-context') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedOwnerUid = normalizeNonEmptyString(req.query?.ownerUid, actorUid);
+        if (requestedOwnerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const [subscriptionsSnapshot, managedAccountsSnapshot] = await Promise.all([
+          getDb().collection('subscriptions').where('userUid', '==', requestedOwnerUid).where('status', '==', 'active').get(),
+          getDb().collection('users').where('parentAccountUid', '==', requestedOwnerUid).get(),
+        ]);
+
+        const activePlanIds = Array.from(
+          new Set(
+            subscriptionsSnapshot.docs
+              .map((snapshot) => String(snapshot.data()?.planId || '').trim())
+              .filter((planId) => planId === 'dealer' || planId === 'fleet_dealer')
+          )
+        );
+
+        const seatCount = managedAccountsSnapshot.docs.filter((snapshot) => {
+          const status = String(snapshot.data()?.accountStatus || 'active').trim().toLowerCase();
+          return status !== 'suspended';
+        }).length;
+
+        return res.status(200).json({
+          seatLimit: activePlanIds.length > 0 ? 3 : 0,
+          seatCount,
+          activePlanIds,
+        });
+      }
+
+      if (req.method === 'GET' && path === '/account/inquiries') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
+        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
+          getDb().collection('inquiries').where('sellerUid', '==', requestedSellerUid).get(),
+          getDb().collection('inquiries').where('sellerId', '==', requestedSellerUid).get(),
+        ]);
+
+        const seen = new Set();
+        const inquiries = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs]
+          .filter((docSnapshot) => {
+            if (seen.has(docSnapshot.id)) return false;
+            seen.add(docSnapshot.id);
+            return true;
+          })
+          .map((docSnapshot) => serializeInquiryDoc(docSnapshot))
+          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+
+        return res.status(200).json({ inquiries });
+      }
+
+      if (req.method === 'GET' && path === '/account/calls') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
+        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
+          getDb().collection('calls').where('sellerUid', '==', requestedSellerUid).get(),
+          getDb().collection('calls').where('sellerId', '==', requestedSellerUid).get(),
+        ]);
+
+        const seen = new Set();
+        const calls = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs]
+          .filter((docSnapshot) => {
+            if (seen.has(docSnapshot.id)) return false;
+            seen.add(docSnapshot.id);
+            return true;
+          })
+          .map((docSnapshot) => serializeCallDoc(docSnapshot))
+          .sort((left, right) => timestampValueToSortableMs(right.createdAt) - timestampValueToSortableMs(left.createdAt));
+
+        return res.status(200).json({ calls });
+      }
+
+      if (req.method === 'GET' && path === '/account/storefront') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, actorUid);
+        if (requestedUserUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const storefrontSnapshot = await getDb().collection('storefronts').doc(requestedUserUid).get();
+        if (storefrontSnapshot.exists) {
+          return res.status(200).json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+        }
+
+        const userSnapshot = await getDb().collection('users').doc(requestedUserUid).get();
+        if (userSnapshot.exists) {
+          return res.status(200).json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+        }
+
+        return res.status(200).json({ seller: null });
       }
 
       if (req.method === 'POST' && path === '/admin/users/create-managed-account') {
