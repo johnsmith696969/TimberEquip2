@@ -3353,15 +3353,6 @@ export function AdminDashboard() {
                  activeTab === 'users'     ? 'Operator Directory' : 'Profile Settings'}
               </h2>
             </div>
-            {activeTab === 'listings' && (
-              <button 
-                onClick={() => { setEditingListing(null); setIsModalOpen(true); }}
-                className="btn-industrial btn-accent py-4 px-8"
-              >
-                <Plus size={16} className="mr-2" />
-                New Listing
-              </button>
-            )}
           </header>
 
           {userFeedback && (
