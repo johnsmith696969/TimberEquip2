@@ -1,5 +1,3 @@
-import { Listing } from '../types';
-
 const DISALLOWED_PUBLIC_TOKENS = new Set([
   'qa',
   'test',
@@ -11,15 +9,14 @@ const DISALLOWED_PUBLIC_TOKENS = new Set([
   'staging',
 ]);
 
-export const NOINDEX_ROBOTS = 'noindex, nofollow, noarchive, nosnippet, noimageindex';
+const NOINDEX_ROBOTS = 'noindex, nofollow, noarchive, nosnippet, noimageindex';
 
-type ListingPathRecord = Pick<Listing, 'id' | 'title' | 'year' | 'model' | 'category' | 'subcategory' | 'location'> & {
-  make?: string;
-  manufacturer?: string;
-  brand?: string;
-};
+function normalizeText(value, fallback = '') {
+  const normalized = String(value || '').trim();
+  return normalized || fallback;
+}
 
-function splitPublicTokens(value: string): string[] {
+function splitPublicTokens(value) {
   return String(value || '')
     .toLowerCase()
     .split(/[^a-z0-9]+/i)
@@ -27,13 +24,7 @@ function splitPublicTokens(value: string): string[] {
     .filter(Boolean);
 }
 
-export function isPublicQaOrTestRecord(...values: Array<string | number | null | undefined>): boolean {
-  return values.some((value) =>
-    splitPublicTokens(String(value || '')).some((token) => DISALLOWED_PUBLIC_TOKENS.has(token))
-  );
-}
-
-export function sanitizePublicSeoLabel(value: string, fallback = ''): string {
+function sanitizePublicSeoLabel(value, fallback = '') {
   const cleaned = String(value || '')
     .replace(/\b(qa|test|testing|demo|probe|sandbox|sample|staging)\b/gi, ' ')
     .replace(/[_|/]+/g, ' ')
@@ -43,7 +34,7 @@ export function sanitizePublicSeoLabel(value: string, fallback = ''): string {
   return cleaned || fallback;
 }
 
-function normalizeSeoSlug(value: string, fallback = ''): string {
+function normalizeSeoSlug(value, fallback = '') {
   const normalized = String(value || '')
     .toLowerCase()
     .trim()
@@ -56,7 +47,7 @@ function normalizeSeoSlug(value: string, fallback = ''): string {
   return normalized || fallback;
 }
 
-function getLocationSeoParts(value: string): { city: string; state: string } {
+function getLocationSeoParts(value) {
   const parts = String(value || '')
     .split(',')
     .map((part) => part.trim())
@@ -73,8 +64,8 @@ function getLocationSeoParts(value: string): { city: string; state: string } {
   return { city: parts[0] || '', state: '' };
 }
 
-function dedupeSlugParts(parts: string[]): string[] {
-  const seen = new Set<string>();
+function dedupeSlugParts(parts) {
+  const seen = new Set();
   return parts.filter((part) => {
     if (!part || seen.has(part)) return false;
     seen.add(part);
@@ -82,11 +73,11 @@ function dedupeSlugParts(parts: string[]): string[] {
   });
 }
 
-export function buildListingSeoSlug(listing: ListingPathRecord): string {
+function buildListingSeoSlug(listing) {
   const manufacturer = sanitizePublicSeoLabel(listing?.make || listing?.manufacturer || listing?.brand || '', '');
   const model = sanitizePublicSeoLabel(listing?.model || '', '');
   const machineType = sanitizePublicSeoLabel(listing?.subcategory || listing?.category || '', 'equipment');
-  const { city, state } = getLocationSeoParts(listing?.location || '');
+  const { city, state } = getLocationSeoParts(listing?.location);
   const fallbackTitle = sanitizePublicSeoLabel(listing?.title || '', 'equipment listing');
 
   const rawParts = [
@@ -108,21 +99,19 @@ export function buildListingSeoSlug(listing: ListingPathRecord): string {
   return normalizeSeoSlug(fallbackTitle, 'equipment-listing');
 }
 
-export function encodeListingPublicKey(listingId: string): string {
-  const safeId = String(listingId || '').trim();
-  if (!safeId) return '';
+function encodeListingPublicKey(listingId) {
+  const normalizedId = normalizeText(listingId);
+  if (!normalizedId) return '';
 
-  const bytes = new TextEncoder().encode(safeId);
-  let binary = '';
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  return Buffer.from(normalizedId, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
 }
 
-export function decodeListingPublicKey(publicKey: string): string {
-  const normalizedKey = String(publicKey || '').trim();
+function decodeListingPublicKey(publicKey) {
+  const normalizedKey = normalizeText(publicKey);
   if (!normalizedKey) return '';
 
   try {
@@ -130,21 +119,36 @@ export function decodeListingPublicKey(publicKey: string): string {
       .replace(/-/g, '+')
       .replace(/_/g, '/')
       .padEnd(Math.ceil(normalizedKey.length / 4) * 4, '=');
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new TextDecoder().decode(bytes).trim();
+    return Buffer.from(padded, 'base64').toString('utf8').trim();
   } catch {
     return '';
   }
 }
 
-export function buildListingPath(listing: ListingPathRecord): string {
-  const publicKey = encodeListingPublicKey(String(listing?.id || '').trim());
-  const safeSlug = buildListingSeoSlug(listing);
+function buildListingPublicPath(listing) {
+  const publicKey = encodeListingPublicKey(listing?.id);
+  const slug = buildListingSeoSlug(listing);
 
   if (!publicKey) {
-    return `/equipment/${safeSlug}`;
+    return `/equipment/${slug}`;
   }
 
-  return `/equipment/${safeSlug}/${publicKey}`;
+  return `/equipment/${slug}/${publicKey}`;
 }
+
+function isPublicQaOrTestRecord(...values) {
+  return values.some((value) =>
+    splitPublicTokens(value).some((token) => DISALLOWED_PUBLIC_TOKENS.has(token))
+  );
+}
+
+module.exports = {
+  NOINDEX_ROBOTS,
+  buildListingPublicPath,
+  buildListingSeoSlug,
+  decodeListingPublicKey,
+  encodeListingPublicKey,
+  isPublicQaOrTestRecord,
+  normalizeSeoSlug,
+  sanitizePublicSeoLabel,
+};
