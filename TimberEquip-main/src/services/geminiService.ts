@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { getAmvInsufficientComparableMessage, getAmvMatchRulesSummary } from '../utils/amvMatching';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
@@ -42,7 +43,7 @@ export const geminiService = {
 
   async explainAMV(machineName: string, price: number, marketValue: number | null, specs: any) {
     if (marketValue === null) {
-      return 'AMV is N/A for this machine because there are fewer than two comparable listings that match manufacturer, model, year (+/-1), and hours (+/-500).';
+      return getAmvInsufficientComparableMessage();
     }
 
     try {
@@ -56,7 +57,7 @@ export const geminiService = {
       return response.text;
     } catch (error) {
       console.error("Error explaining AMV from Gemini:", error);
-      return "AMV is calculated using comparable equipment listings that match make, model, year, and operating hours.";
+      return `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`;
     }
   }
 };

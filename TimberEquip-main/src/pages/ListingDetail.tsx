@@ -10,6 +10,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
 import { geminiService } from '../services/geminiService';
+import {
+  AMV_MIN_COMPARABLES,
+  getAmvMatchRulesSummary,
+} from '../utils/amvMatching';
 import { Listing, Seller } from '../types';
 import { useAuth } from '../components/AuthContext';
 import { LoginPromptModal } from '../components/LoginPromptModal';
@@ -213,6 +217,7 @@ export function ListingDetail() {
             category: listingData.category,
             manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
             model: listingData.model,
+            price: listingData.price,
             year: listingData.year,
             hours: listingData.hours
           });
@@ -1428,8 +1433,8 @@ export function ListingDetail() {
 
                 <div className="grid grid-cols-1 gap-4">
                   {[
-                    { label: 'Match Rules', desc: 'Same manufacturer and model, with year +/-1 and hours +/-500.' },
-                    { label: 'Comparable Count', desc: 'At least 2 comparable listings are required for an AMV value.' },
+                    { label: 'Match Rules', desc: getAmvMatchRulesSummary() },
+                    { label: 'Comparable Count', desc: `At least ${AMV_MIN_COMPARABLES} comparable listings are required for an AMV value.` },
                     { label: 'Output', desc: 'AMV is the arithmetic average of matched listing prices.' }
                   ].map((item, i) => (
                     <div key={i} className="flex items-start space-x-4">

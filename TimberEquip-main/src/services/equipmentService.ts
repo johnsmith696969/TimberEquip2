@@ -22,6 +22,13 @@ import {
 } from 'firebase/firestore';
 import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
+import {
+  AMV_MATCH_HOURS_PERCENT,
+  AMV_MATCH_PRICE_PERCENT,
+  AMV_MATCH_YEAR_RANGE,
+  AMV_MIN_COMPARABLES,
+  isWithinPercentRange,
+} from '../utils/amvMatching';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
   'Logging Equipment': ['Wisconsin, USA', 'Georgia, USA', 'Ontario, Canada'],
@@ -2047,15 +2054,24 @@ export const equipmentService = {
     manufacturer?: string;
     make?: string;
     model?: string;
+    price?: number;
     year?: number;
     hours?: number;
   }): Promise<number | null> {
     const targetManufacturer = normalize(specs.make || specs.manufacturer);
     const targetModel = normalize(specs.model);
+    const targetPrice = Number(specs.price);
     const targetYear = Number(specs.year);
     const targetHours = Number(specs.hours);
 
-    if (!targetManufacturer || !targetModel || !Number.isFinite(targetYear) || !Number.isFinite(targetHours)) {
+    if (
+      !targetManufacturer ||
+      !targetModel ||
+      !Number.isFinite(targetPrice) ||
+      targetPrice <= 0 ||
+      !Number.isFinite(targetYear) ||
+      !Number.isFinite(targetHours)
+    ) {
       return null;
     }
 
@@ -2070,14 +2086,15 @@ export const equipmentService = {
 
       if (specs.category && normalize(listing.category) !== normalize(specs.category)) return false;
 
-      if (!Number.isFinite(listing.year) || Math.abs(listing.year - targetYear) > 1) return false;
-      if (!Number.isFinite(listing.hours) || Math.abs(listing.hours - targetHours) > 500) return false;
       if (!Number.isFinite(listing.price) || listing.price <= 0) return false;
+      if (!Number.isFinite(listing.year) || Math.abs(listing.year - targetYear) > AMV_MATCH_YEAR_RANGE) return false;
+      if (!Number.isFinite(listing.hours) || !isWithinPercentRange(listing.hours, targetHours, AMV_MATCH_HOURS_PERCENT)) return false;
+      if (!isWithinPercentRange(listing.price, targetPrice, AMV_MATCH_PRICE_PERCENT)) return false;
 
       return true;
     });
 
-    if (comparables.length < 2) {
+    if (comparables.length < AMV_MIN_COMPARABLES) {
       return null;
     }
 
