@@ -7,6 +7,7 @@ const { buildListingPublicPath } = require('./listing-public-paths.js');
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const PUBLIC_PAGES_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_BASE_URL = 'https://www.timberequip.com';
 const MARKET_ROUTE_LABELS = Object.freeze({
   logging: 'logging-equipment-for-sale',
@@ -343,6 +344,21 @@ function createCountLinks(values, pathBuilder, limit = 12) {
 
 let publicInventoryCache = null;
 let publicRouteIndexCache = null;
+let publicPagesQuotaCooldownUntil = 0;
+
+function isPublicPagesQuotaCooldownActive(now = Date.now()) {
+  return publicPagesQuotaCooldownUntil > now;
+}
+
+function activatePublicPagesQuotaCooldown(now = Date.now()) {
+  publicPagesQuotaCooldownUntil = now + PUBLIC_PAGES_QUOTA_COOLDOWN_MS;
+}
+
+function createFirestoreQuotaCooldownError() {
+  const error = new Error('Public SSR quota cooldown is active.');
+  error.code = 8;
+  return error;
+}
 
 async function loadSellerRecords(sellerUids) {
   const normalizedSellerUids = [...new Set(sellerUids.map((sellerUid) => normalizeText(sellerUid)).filter(Boolean))];
@@ -387,23 +403,41 @@ async function loadPublicInventory(forceRefresh = false) {
   if (!forceRefresh && publicInventoryCache && now - publicInventoryCache.fetchedAt < CACHE_TTL_MS) {
     return publicInventoryCache;
   }
-
-  const readModelInventory = await loadPublicInventoryFromReadModel();
-  if (readModelInventory) {
-    publicInventoryCache = {
-      fetchedAt: now,
-      ...readModelInventory,
-    };
-    return publicInventoryCache;
+  if (!forceRefresh && isPublicPagesQuotaCooldownActive(now)) {
+    if (publicInventoryCache) {
+      return publicInventoryCache;
+    }
+    throw createFirestoreQuotaCooldownError();
   }
 
-  const rawInventory = await loadPublicInventoryFromRawListings();
-  publicInventoryCache = {
-    fetchedAt: now,
-    ...rawInventory,
-  };
+  try {
+    const readModelInventory = await loadPublicInventoryFromReadModel();
+    if (readModelInventory) {
+      publicInventoryCache = {
+        fetchedAt: now,
+        ...readModelInventory,
+      };
+      return publicInventoryCache;
+    }
 
-  return publicInventoryCache;
+    const rawInventory = await loadPublicInventoryFromRawListings();
+    publicInventoryCache = {
+      fetchedAt: now,
+      ...rawInventory,
+    };
+
+    return publicInventoryCache;
+  } catch (error) {
+    if (!isFirestoreQuotaError(error)) {
+      throw error;
+    }
+
+    activatePublicPagesQuotaCooldown(now);
+    if (publicInventoryCache) {
+      return publicInventoryCache;
+    }
+    throw error;
+  }
 }
 
 async function loadPublicInventoryFromReadModel() {
@@ -533,24 +567,36 @@ async function loadPublicRouteIndex(forceRefresh = false) {
   if (!forceRefresh && publicRouteIndexCache && now - publicRouteIndexCache.fetchedAt < CACHE_TTL_MS) {
     return publicRouteIndexCache;
   }
-
-  const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.routes).get();
-  if (snapshot.empty) {
-    return null;
+  if (!forceRefresh && isPublicPagesQuotaCooldownActive(now)) {
+    return publicRouteIndexCache;
   }
 
-  const docs = snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  }));
+  try {
+    const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.routes).get();
+    if (snapshot.empty) {
+      return null;
+    }
 
-  publicRouteIndexCache = {
-    fetchedAt: now,
-    docs,
-    byPath: new Map(docs.map((doc) => [normalizeText(doc.path), doc])),
-  };
+    const docs = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }));
 
-  return publicRouteIndexCache;
+    publicRouteIndexCache = {
+      fetchedAt: now,
+      docs,
+      byPath: new Map(docs.map((doc) => [normalizeText(doc.path), doc])),
+    };
+
+    return publicRouteIndexCache;
+  } catch (error) {
+    if (!isFirestoreQuotaError(error)) {
+      throw error;
+    }
+
+    activatePublicPagesQuotaCooldown(now);
+    return publicRouteIndexCache;
+  }
 }
 
 async function resolveDealer(identity) {
