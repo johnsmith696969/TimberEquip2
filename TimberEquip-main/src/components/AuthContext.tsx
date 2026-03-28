@@ -36,9 +36,42 @@ interface AuthContextType {
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   toggleFavorite: (listingId: string) => Promise<void>;
+  patchCurrentUserProfile: (updates: Partial<UserProfile>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const USER_PROFILE_CACHE_PREFIX = 'fes:user-profile-cache:';
+
+function getCachedProfileStorageKey(uid: string): string {
+  return `${USER_PROFILE_CACHE_PREFIX}${uid}`;
+}
+
+function readCachedProfile(uid: string): Partial<UserProfile> | null {
+  if (typeof window === 'undefined' || !uid) return null;
+
+  try {
+    const raw = window.localStorage.getItem(getCachedProfileStorageKey(uid));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<UserProfile>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedProfile(profile: Partial<UserProfile> | null | undefined) {
+  if (typeof window === 'undefined' || !profile?.uid) return;
+
+  try {
+    window.localStorage.setItem(
+      getCachedProfileStorageKey(profile.uid),
+      JSON.stringify(profile)
+    );
+  } catch {
+    // Best-effort only; quota fallback should not break auth flows.
+  }
+}
 
 function normalizeSubscriptionPlanId(value: unknown): UserProfile['activeSubscriptionPlanId'] {
   const normalized = String(value || '').trim().toLowerCase();
@@ -218,42 +251,57 @@ async function buildFallbackProfile(
   firebaseUser: FirebaseUser,
   current: UserProfile | null
 ): Promise<UserProfile> {
+  const cachedProfile = readCachedProfile(firebaseUser.uid);
   const accessSnapshot = await resolveAuthAccessSnapshot(firebaseUser, current);
   const role = accessSnapshot.role;
   const accountAccessSource = accessSnapshot.accountAccessSource;
-  const activeSubscriptionPlanId = current?.activeSubscriptionPlanId ?? accessSnapshot.activeSubscriptionPlanId ?? null;
-  const subscriptionStatus = current?.subscriptionStatus ?? accessSnapshot.subscriptionStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : null);
-  const listingCap = current?.listingCap ?? accessSnapshot.listingCap ?? 0;
-  const managedAccountCap = current?.managedAccountCap ?? accessSnapshot.managedAccountCap ?? 0;
-  const accountStatus = current?.accountStatus ?? accessSnapshot.accountStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : 'active');
+  const mergedCurrent = {
+    ...(cachedProfile || {}),
+    ...(current || {}),
+  } as Partial<UserProfile>;
+  const activeSubscriptionPlanId = mergedCurrent.activeSubscriptionPlanId ?? accessSnapshot.activeSubscriptionPlanId ?? null;
+  const subscriptionStatus = mergedCurrent.subscriptionStatus ?? accessSnapshot.subscriptionStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : null);
+  const listingCap = mergedCurrent.listingCap ?? accessSnapshot.listingCap ?? 0;
+  const managedAccountCap = mergedCurrent.managedAccountCap ?? accessSnapshot.managedAccountCap ?? 0;
+  const accountStatus = mergedCurrent.accountStatus ?? accessSnapshot.accountStatus ?? (accountAccessSource === 'pending_checkout' ? 'pending' : 'active');
 
   return {
     uid: firebaseUser.uid,
-    displayName: current?.displayName || firebaseUser.displayName || 'Anonymous User',
-    email: firebaseUser.email || current?.email || '',
+    displayName: mergedCurrent.displayName || firebaseUser.displayName || 'Anonymous User',
+    email: firebaseUser.email || mergedCurrent.email || '',
     role,
-    photoURL: firebaseUser.photoURL || current?.photoURL || '',
-    coverPhotoUrl: current?.coverPhotoUrl || '',
-    company: current?.company || '',
-    phoneNumber: current?.phoneNumber || '',
-    website: current?.website || '',
-    about: current?.about || '',
-    bio: current?.bio || '',
-    location: current?.location || '',
+    photoURL: firebaseUser.photoURL || mergedCurrent.photoURL || '',
+    coverPhotoUrl: mergedCurrent.coverPhotoUrl || '',
+    company: mergedCurrent.company || '',
+    phoneNumber: mergedCurrent.phoneNumber || '',
+    website: mergedCurrent.website || '',
+    about: mergedCurrent.about || '',
+    bio: mergedCurrent.bio || '',
+    location: mergedCurrent.location || '',
     accountStatus,
     accountAccessSource,
-    onboardingIntent: deriveOnboardingIntent(role, accountAccessSource, activeSubscriptionPlanId, current?.onboardingIntent),
+    onboardingIntent: deriveOnboardingIntent(role, accountAccessSource, activeSubscriptionPlanId, mergedCurrent.onboardingIntent),
     activeSubscriptionPlanId,
     subscriptionStatus,
     listingCap,
     managedAccountCap,
-    currentSubscriptionId: current?.currentSubscriptionId || null,
-    currentPeriodEnd: current?.currentPeriodEnd || null,
-    favorites: Array.isArray(current?.favorites) ? current.favorites : [],
+    currentSubscriptionId: mergedCurrent.currentSubscriptionId || null,
+    currentPeriodEnd: mergedCurrent.currentPeriodEnd || null,
+    favorites: Array.isArray(mergedCurrent.favorites) ? mergedCurrent.favorites : [],
     emailVerified: firebaseUser.emailVerified,
-    createdAt: current?.createdAt || new Date().toISOString(),
+    preferredLanguage: mergedCurrent.preferredLanguage,
+    preferredCurrency: mergedCurrent.preferredCurrency,
+    emailNotificationsEnabled: mergedCurrent.emailNotificationsEnabled,
+    storefrontSlug: mergedCurrent.storefrontSlug,
+    storefrontName: mergedCurrent.storefrontName,
+    storefrontTagline: mergedCurrent.storefrontTagline,
+    storefrontDescription: mergedCurrent.storefrontDescription,
+    seoTitle: mergedCurrent.seoTitle,
+    seoDescription: mergedCurrent.seoDescription,
+    seoKeywords: Array.isArray(mergedCurrent.seoKeywords) ? mergedCurrent.seoKeywords : [],
+    createdAt: mergedCurrent.createdAt || new Date().toISOString(),
     entitlement: resolveAccountEntitlement({
-      ...(current || {}),
+      ...(mergedCurrent || {}),
       role,
       accountStatus,
       accountAccessSource,
@@ -261,8 +309,8 @@ async function buildFallbackProfile(
       subscriptionStatus,
       listingCap,
       managedAccountCap,
-      currentSubscriptionId: current?.currentSubscriptionId || null,
-      currentPeriodEnd: current?.currentPeriodEnd || null,
+      currentSubscriptionId: mergedCurrent.currentSubscriptionId || null,
+      currentPeriodEnd: mergedCurrent.currentPeriodEnd || null,
     }),
   };
 }
@@ -300,6 +348,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ...profile,
     favorites: Array.isArray(profile.favorites) ? profile.favorites : [],
   });
+
+  const applyPatchedCurrentUserProfile = (updates: Partial<UserProfile>) => {
+    setUser((currentUser) => {
+      if (!currentUser) return currentUser;
+      const nextUser = normalizeProfile({
+        ...currentUser,
+        ...updates,
+      });
+      writeCachedProfile(nextUser);
+      return nextUser;
+    });
+  };
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
@@ -340,7 +400,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       const baseProfile = currentUser && currentUser.uid === firebaseUser.uid
                         ? currentUser
                         : fallbackProfile;
-                      return normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
+                      const nextUser = normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
+                      writeCachedProfile(nextUser);
+                      return nextUser;
                     });
                   } catch (error) {
                     console.error('Unable to refresh billing access from Stripe:', error);
@@ -395,8 +457,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
                   return;
                 }
-                setUser({ ...accessAwareProfile, role: 'super_admin' });
+                const nextProfile = normalizeProfile({ ...accessAwareProfile, role: 'super_admin' });
+                writeCachedProfile(nextProfile);
+                setUser(nextProfile);
               } else {
+                writeCachedProfile(accessAwareProfile);
                 setUser(accessAwareProfile);
               }
 
@@ -414,7 +479,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       const baseProfile = currentUser && currentUser.uid === firebaseUser.uid
                         ? currentUser
                         : accessAwareProfile;
-                      return normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
+                      const nextUser = normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
+                      writeCachedProfile(nextUser);
+                      return nextUser;
                     });
                   } catch (error) {
                     console.error('Unable to refresh billing access from Stripe:', error);
@@ -438,6 +505,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
 
               setUser(normalizeProfile(newProfile));
+              writeCachedProfile(normalizeProfile(newProfile));
             }
 
             if (currentVersion === authStateVersion && auth.currentUser?.uid === firebaseUser.uid) {
@@ -612,7 +680,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, loginWithGoogle, sendVerificationEmail: () => sendVerificationEmailViaApi(), sendPasswordReset, logout, isAuthenticated: !!user, toggleFavorite }}>
+    <AuthContext.Provider value={{ user, login, register, loginWithGoogle, sendVerificationEmail: () => sendVerificationEmailViaApi(), sendPasswordReset, logout, isAuthenticated: !!user, toggleFavorite, patchCurrentUserProfile: applyPatchedCurrentUserProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );

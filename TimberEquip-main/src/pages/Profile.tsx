@@ -66,7 +66,7 @@ function withAsyncTimeout<T>(promise: Promise<T>, timeoutMs: number, message: st
 
 export function Profile() {
   const { formatPrice, language, currency, setLanguage, setCurrency } = useLocale();
-  const { user, logout, toggleFavorite } = useAuth();
+  const { user, logout, toggleFavorite, patchCurrentUserProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasUser = Boolean(user);
   const entitlement = useMemo(() => resolveAccountEntitlement(user), [user]);
@@ -593,6 +593,8 @@ export function Profile() {
         `${assetType === 'avatar' ? 'Profile photo' : 'Cover photo'} upload finished, but profile storage is taking too long to respond. Please try again once Firestore quota resets.`
       );
 
+      patchCurrentUserProfile(immediateUpdates);
+
       setStorefrontPreview((prev) => prev ? ({
         ...prev,
         logo: assetType === 'avatar' ? downloadUrl : prev.logo,
@@ -724,6 +726,10 @@ export function Profile() {
         );
       }
 
+      patchCurrentUserProfile({
+        ...baseProfileUpdates,
+        email: auth.currentUser?.email?.trim().toLowerCase() === nextEmail ? nextEmail : (user.email || nextEmail),
+      });
       setSettingsNotice('Profile updated successfully.');
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : 'Unable to update profile right now.');

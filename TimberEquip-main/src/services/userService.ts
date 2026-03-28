@@ -81,6 +81,11 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function isQuotaExceededFirestoreError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /quota limit exceeded|free daily read units per project|quota exceeded/i.test(message);
+}
+
 function sanitizeOptionalString(value: unknown, maxLength?: number): string | undefined {
   if (value === undefined) return undefined;
   const normalized = String(value ?? '').trim();
@@ -723,7 +728,11 @@ export const userService = {
         callback(null, { exists: false });
       }
     }, (error) => {
-      console.error('User profile snapshot error:', error, { path });
+      if (isQuotaExceededFirestoreError(error)) {
+        console.warn('User profile snapshot is temporarily unavailable because Firestore read quota is exhausted.', { path });
+      } else {
+        console.error('User profile snapshot error:', error, { path });
+      }
       callback(null, { error: error instanceof Error ? error : new Error(String(error)) });
     });
   },

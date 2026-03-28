@@ -56,7 +56,7 @@ const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
 ]);
 
 export function AdminDashboard() {
-  const { user: authUser, logout: authLogout } = useAuth();
+  const { user: authUser, logout: authLogout, patchCurrentUserProfile } = useAuth();
   const { formatPrice } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
   const profileName = authUser?.displayName || 'Caleb Happy';
@@ -466,6 +466,9 @@ export function AdminDashboard() {
       await userService.updateProfile(authUser.uid, {
         emailNotificationsEnabled: nextValue,
       });
+      patchCurrentUserProfile({
+        emailNotificationsEnabled: nextValue,
+      });
       setUserFeedback({
         tone: 'success',
         message: `Email notifications ${nextValue ? 'enabled' : 'disabled'} successfully.`,
@@ -530,6 +533,14 @@ export function AdminDashboard() {
           await updateFirebaseProfile(currentAuthUser, { displayName: nextDisplayName });
         }
       }
+
+      patchCurrentUserProfile({
+        displayName: nextDisplayName,
+        email: emailForProfile,
+        phoneNumber: nextPhoneNumber,
+        company: nextCompany,
+        emailNotificationsEnabled: adminSettingsForm.emailNotificationsEnabled,
+      });
 
       setUserFeedback({
         tone: successMessage.includes('recent sign-in') ? 'warning' : 'success',
@@ -648,18 +659,39 @@ export function AdminDashboard() {
     }
 
     setLoading(true);
-  setBillingLoaded(false);
-  setBillingLoadError('');
-  setContentLoaded(false);
-  setContentLoadError('');
-  setInvoices([]);
-  setSubscriptions([]);
-  setBillingLogs([]);
-  setBlogPosts([]);
-  setMediaItems([]);
-  setContentBlocks([]);
-    // Fetch users independently so a failure doesn't block the rest of the dashboard
-    void fetchUsers();
+    const shouldLoadOperationalData = ['overview', 'listings', 'inquiries', 'calls'].includes(activeTab);
+    const shouldLoadUserDirectory = ['overview', 'accounts', 'users'].includes(activeTab);
+
+    if (!shouldLoadOperationalData) {
+      listingsInitializedRef.current = false;
+    }
+
+    if (!['billing', 'tracking'].includes(activeTab)) {
+      setBillingLoaded(false);
+      setBillingLoadError('');
+      setInvoices([]);
+      setSubscriptions([]);
+      setBillingLogs([]);
+    }
+
+    if (activeTab !== 'content') {
+      setContentLoaded(false);
+      setContentLoadError('');
+      setBlogPosts([]);
+      setMediaItems([]);
+      setContentBlocks([]);
+    }
+
+    if (shouldLoadUserDirectory) {
+      // Fetch users independently so a failure doesn't block the rest of the dashboard
+      void fetchUsers();
+    }
+
+    if (!shouldLoadOperationalData) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [listingsPage, inquiriesData, callsData] = await Promise.all([
         equipmentService.getAdminListingsPage({
@@ -688,7 +720,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     void fetchData();
-  }, [authUser?.uid]);
+  }, [activeTab, authUser?.uid]);
 
   useEffect(() => {
     if (activeTab === 'billing' || activeTab === 'tracking') {
