@@ -1,29 +1,31 @@
 # Tier 2 Enterprise QA + SEO Cleanup TODO
 
 ## Immediate Production Fixes
-- [ ] Enable Firebase Phone auth provider so SMS MFA can actually send verification texts.
-- [ ] Verify SMS MFA enrollment end-to-end on production with a real phone number.
-- [ ] Fix Financing page placeholders:
-  - [ ] Business structure default should be `-Select-`
-  - [ ] Legal entity placeholder should be `Legal Entity Name`
-  - [ ] Stop prefilling legal entity name from QA dealer/company data
-- [ ] Fix Financing hero rendering in dusk mode so the hero remains readable and branded.
-- [ ] Fix listing detail fallback so live inventory does not incorrectly show `Equipment Not Found`.
-- [ ] Fix Google Maps on listing detail pages so location previews and open-in-maps actions work reliably.
+- [x] Enable Firebase Phone auth provider so SMS MFA can actually send verification texts.
+- [x] Verify SMS MFA enrollment end-to-end on production with a live number flow.
+  Notes:
+  Production SMS MFA now works with standard reCAPTCHA phone enforcement. The previous blocker was Identity Platform SMS toll-fraud enforcement. Caleb's number was also configured as a Firebase test number, which prevented real texts until that override was removed.
+- [x] Fix Financing page placeholders:
+  - [x] Business structure default should be `-Select-`
+  - [x] Legal entity placeholder should be `Legal Entity Name`
+  - [x] Stop prefilling legal entity name from QA dealer/company data
+- [x] Fix Financing hero rendering in dusk mode so the hero remains readable and branded.
+- [x] Fix listing detail fallback so live inventory does not incorrectly show `Equipment Not Found`.
+- [x] Fix Google Maps on listing detail pages so location previews and open-in-maps actions work reliably.
 
 ## Home / Categories / Inventory Accuracy
-- [ ] Make home page category counts reflect live listed inventory instead of zero fallbacks.
-- [ ] Add shared top-level category model so home and categories use the same live category set.
-- [ ] Include main marketplace families on home, including construction equipment, trucks, trailers, tree service, etc.
-- [ ] Add a selector/dropdown on home for major equipment families if needed for density.
-- [ ] Make the categories directory include all categories represented on home.
-- [ ] Ensure SSR categories and client categories stay aligned with live approved inventory.
+- [x] Make home page category counts reflect live listed inventory instead of zero fallbacks.
+- [x] Add shared top-level category model so home and categories use the same live category set.
+- [x] Include main marketplace families on home, including construction equipment, trucks, trailers, tree service, etc.
+- [x] Add a selector/dropdown on home for major equipment families if needed for density.
+- [x] Make the categories directory include all categories represented on home.
+- [x] Ensure SSR categories and client categories stay aligned with live approved inventory.
 
 ## Dealer / Storefront Functionality
-- [ ] Audit dealer profile / storefront behavior end to end.
-- [ ] Replace placeholder-ish dealer profile blocks with functional storefront actions and real inventory context.
-- [ ] Improve dealer profile contact, call, site, and inquiry behavior.
-- [ ] Strengthen dealer storefront inventory/category filtering.
+- [x] Audit dealer profile / storefront behavior end to end.
+- [x] Replace placeholder-ish dealer profile blocks with functional storefront actions and real inventory context.
+- [x] Improve dealer profile contact, call, site, and inquiry behavior.
+- [x] Strengthen dealer storefront inventory/category filtering.
 
 ## SEO Cleanup Execution
 - [ ] Remove QA/test labeling from public listing/storefront surfaces.
