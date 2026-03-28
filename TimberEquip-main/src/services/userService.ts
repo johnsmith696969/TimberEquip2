@@ -180,6 +180,11 @@ export const userService = {
     return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalized);
   },
 
+  supportsManagedStorefrontSync(role?: string): boolean {
+    const normalized = this.normalizeRole(role);
+    return ['individual_seller', 'dealer', 'pro_dealer'].includes(normalized);
+  },
+
   buildStorefrontSlug(value: string): string {
     return slugifyStorefrontValue(value) || 'timber-equip-storefront';
   },
@@ -479,7 +484,17 @@ export const userService = {
         updatedAt: serverTimestamp()
       }, { merge: true });
 
-      const storefrontRelevantKeys: Array<keyof UserProfile> = [
+      const storefrontExplicitKeys: Array<keyof UserProfile> = [
+        'storefrontSlug',
+        'storefrontName',
+        'storefrontTagline',
+        'storefrontDescription',
+        'seoTitle',
+        'seoDescription',
+        'seoKeywords',
+      ];
+
+      const storefrontMirrorKeys: Array<keyof UserProfile> = [
         'displayName',
         'email',
         'phoneNumber',
@@ -490,17 +505,12 @@ export const userService = {
         'location',
         'photoURL',
         'coverPhotoUrl',
-        'storefrontSlug',
-        'storefrontName',
-        'storefrontTagline',
-        'storefrontDescription',
-        'seoTitle',
-        'seoDescription',
-        'seoKeywords',
         'role',
       ];
 
-      const shouldSyncStorefront = storefrontRelevantKeys.some((key) => key in sanitizedUpdates);
+      const hasExplicitStorefrontUpdate = storefrontExplicitKeys.some((key) => key in sanitizedUpdates);
+      const hasMirroredStorefrontUpdate = storefrontMirrorKeys.some((key) => key in sanitizedUpdates);
+      const shouldSyncStorefront = hasExplicitStorefrontUpdate || hasMirroredStorefrontUpdate;
       if (shouldSyncStorefront) {
         let roleForSync = sanitizedUpdates.role ? this.normalizeRole(sanitizedUpdates.role) : undefined;
 
@@ -513,7 +523,13 @@ export const userService = {
           }
         }
 
-        if (roleForSync && this.supportsEnterpriseStorefront(roleForSync)) {
+        const canAutoSyncStorefront = roleForSync && (
+          hasExplicitStorefrontUpdate
+            ? this.supportsEnterpriseStorefront(roleForSync)
+            : this.supportsManagedStorefrontSync(roleForSync)
+        );
+
+        if (roleForSync && canAutoSyncStorefront) {
           try {
             await this.syncStorefrontDocument(uid, {
               ...sanitizedUpdates,

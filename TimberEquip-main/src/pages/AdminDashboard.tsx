@@ -138,6 +138,7 @@ export function AdminDashboard() {
     emailNotificationsEnabled: true,
   });
   const [savingAdminSettings, setSavingAdminSettings] = useState(false);
+  const [savingAdminPreferenceKey, setSavingAdminPreferenceKey] = useState('');
   const [adminSettingsError, setAdminSettingsError] = useState('');
   const listingsInitializedRef = useRef(false);
 
@@ -447,6 +448,34 @@ export function AdminDashboard() {
       ...previous,
       [key]: value,
     }));
+  };
+
+  const handleToggleAdminEmailNotifications = async () => {
+    if (!authUser?.uid || savingAdminPreferenceKey === 'emailNotificationsEnabled') {
+      return;
+    }
+
+    const previousValue = adminSettingsForm.emailNotificationsEnabled;
+    const nextValue = !previousValue;
+
+    handleAdminSettingsInputChange('emailNotificationsEnabled', nextValue);
+    setSavingAdminPreferenceKey('emailNotificationsEnabled');
+    setUserFeedback(null);
+
+    try {
+      await userService.updateProfile(authUser.uid, {
+        emailNotificationsEnabled: nextValue,
+      });
+      setUserFeedback({
+        tone: 'success',
+        message: `Email notifications ${nextValue ? 'enabled' : 'disabled'} successfully.`,
+      });
+    } catch (error) {
+      handleAdminSettingsInputChange('emailNotificationsEnabled', previousValue);
+      setAdminSettingsError(error instanceof Error ? error.message : 'Unable to update email notification preferences right now.');
+    } finally {
+      setSavingAdminPreferenceKey('');
+    }
   };
 
   const handleSaveAdminSettings = async () => {
@@ -2917,8 +2946,9 @@ export function AdminDashboard() {
             </div>
             <button
               type="button"
-              onClick={() => handleAdminSettingsInputChange('emailNotificationsEnabled', !adminSettingsForm.emailNotificationsEnabled)}
-              className={`w-10 h-5 rounded-full relative transition-colors ${adminSettingsForm.emailNotificationsEnabled ? 'bg-accent' : 'bg-line'}`}
+              onClick={() => void handleToggleAdminEmailNotifications()}
+              disabled={savingAdminPreferenceKey === 'emailNotificationsEnabled'}
+              className={`w-10 h-5 rounded-full relative transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${adminSettingsForm.emailNotificationsEnabled ? 'bg-accent' : 'bg-line'}`}
               aria-pressed={adminSettingsForm.emailNotificationsEnabled}
             >
               <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${adminSettingsForm.emailNotificationsEnabled ? 'right-1' : 'left-1'}`} />

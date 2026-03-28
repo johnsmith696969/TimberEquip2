@@ -1,10 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { getAmvInsufficientComparableMessage, getAmvMatchRulesSummary } from '../utils/amvMatching';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const GEMINI_API_KEY = String(import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 export const geminiService = {
   async getMachineSpecs(machineName: string, category: string) {
+    if (!ai) {
+      return null;
+    }
+
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -36,7 +41,7 @@ export const geminiService = {
 
       return JSON.parse(response.text || '{}');
     } catch (error) {
-      console.error("Error fetching machine specs from Gemini:", error);
+      console.warn("Machine specs are temporarily unavailable from Gemini:", error);
       return null;
     }
   },
@@ -44,6 +49,10 @@ export const geminiService = {
   async explainAMV(machineName: string, price: number, marketValue: number | null, specs: any) {
     if (marketValue === null) {
       return getAmvInsufficientComparableMessage();
+    }
+
+    if (!ai) {
+      return `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`;
     }
 
     try {
@@ -56,7 +65,7 @@ export const geminiService = {
 
       return response.text;
     } catch (error) {
-      console.error("Error explaining AMV from Gemini:", error);
+      console.warn("AMV explanation is temporarily unavailable from Gemini:", error);
       return `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`;
     }
   }

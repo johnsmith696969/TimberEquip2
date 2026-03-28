@@ -158,6 +158,7 @@ export function Login() {
 
     try {
       const verifier = await getLoginMfaRecaptcha();
+      setInfoMessage('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
       const preferredFactor = getPreferredSmsMfaFactor(resolver);
       const { verificationId, factor } = await startSmsMfaSignIn(resolver, preferredFactor?.uid, verifier);
       setMfaFactor(factor);

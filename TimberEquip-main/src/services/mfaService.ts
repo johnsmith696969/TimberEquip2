@@ -44,7 +44,10 @@ export async function ensureAuthRecaptchaConfig(): Promise<void> {
     authRecaptchaConfigPromise = initializeRecaptchaConfig(auth)
       .then(() => undefined)
       .catch((error) => {
-        console.warn('Unable to prefetch Firebase Auth reCAPTCHA config.', error);
+        const message = error instanceof Error ? error.message : String(error || '');
+        if (!/recaptchaKey/i.test(message)) {
+          console.warn('Unable to prefetch Firebase Auth reCAPTCHA config.', error);
+        }
         authRecaptchaConfigPromise = null;
       });
   }

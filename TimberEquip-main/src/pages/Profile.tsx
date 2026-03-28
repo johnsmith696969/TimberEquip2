@@ -8,7 +8,8 @@ import {
   CreditCard, Edit, Trash2, Plus,
   ExternalLink, MapPin, Phone,
   Mail, Building2, Wrench, MessageSquare,
-  Shield, Download, ClipboardList, AlertTriangle
+  Shield, Download, ClipboardList, AlertTriangle,
+  Activity, Users, FileText, Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
@@ -171,6 +172,27 @@ export function Profile() {
     hasStorefrontAccess,
     storefrontTabLabel,
   ]);
+  const adminProfileLinks = useMemo(() => {
+    if (!hasAdminProfileScope) {
+      return [];
+    }
+
+    const items = [
+      { label: 'Admin Overview', icon: LayoutDashboard, href: '/admin' },
+      { label: 'Performance', icon: Activity, href: '/admin?tab=tracking' },
+      { label: 'Accounts', icon: Building2, href: '/admin?tab=accounts' },
+      { label: 'Billing', icon: CreditCard, href: '/admin?tab=billing' },
+      { label: 'Content', icon: FileText, href: '/admin?tab=content' },
+      { label: 'Dealer Feeds', icon: Database, href: '/admin?tab=dealer_feeds' },
+      { label: 'Admin Settings', icon: Settings, href: '/admin?tab=settings' },
+    ];
+
+    if (normalizedRole === 'super_admin' || normalizedRole === 'admin') {
+      items.splice(3, 0, { label: 'Users', icon: Users, href: '/admin?tab=users' });
+    }
+
+    return items;
+  }, [hasAdminProfileScope, normalizedRole]);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
@@ -438,6 +460,7 @@ export function Profile() {
 
     try {
       const verifier = await getProfileMfaRecaptcha();
+      setMfaNotice('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
       const verificationId = await startSmsMfaEnrollment(authUser, normalizedPhoneNumber, verifier);
       setMfaVerificationId(verificationId);
       setMfaVerificationCode('');
@@ -2169,7 +2192,7 @@ export function Profile() {
               disabled={isSendingMfaCode || isEnrollingMfa}
               className="btn-industrial btn-accent py-3 px-6 disabled:opacity-60"
             >
-              {isSendingMfaCode ? 'Sending Code...' : mfaVerificationId ? 'Resend Code' : 'Send Verification Code'}
+              {isSendingMfaCode ? 'Waiting For Security Check...' : mfaVerificationId ? 'Resend Code' : 'Send Verification Code'}
             </button>
             {mfaVerificationId ? (
               <button
@@ -2325,6 +2348,24 @@ export function Profile() {
         )}
 
         {/* Mobile tab grid */}
+        {adminProfileLinks.length > 0 && (
+          <div className="lg:hidden mb-6">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.22em] text-muted">Administration</p>
+            <div className="grid grid-cols-2 gap-2">
+              {adminProfileLinks.map((item) => (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className="w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden bg-surface border-line text-muted hover:border-accent/50 hover:text-ink"
+                >
+                  <item.icon size={14} className="shrink-0" />
+                  <span className="truncate text-center">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="lg:hidden mb-8">
           <div className="grid grid-cols-2 gap-2">
             {profileTabItems.map((item) => (
@@ -2347,6 +2388,24 @@ export function Profile() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           {/* Sidebar Navigation */}
           <div className="hidden lg:block lg:col-span-3 space-y-2">
+            {adminProfileLinks.length > 0 && (
+              <div className="mb-6">
+                <p className="mb-3 px-4 text-[10px] font-black uppercase tracking-[0.22em] text-muted">Administration</p>
+                <div className="space-y-2">
+                  {adminProfileLinks.map((item) => (
+                    <Link
+                      key={item.label}
+                      to={item.href}
+                      className="w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm text-muted hover:bg-surface hover:text-ink"
+                    >
+                      <item.icon size={18} />
+                      <span>{item.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {profileTabItems.map((item, i) => (
               <button 
                 key={i}
