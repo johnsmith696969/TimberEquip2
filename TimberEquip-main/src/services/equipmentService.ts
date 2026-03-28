@@ -157,6 +157,7 @@ export interface HomeMarketplaceData {
   featuredListings: Listing[];
   recentSoldListings: Listing[];
   categoryMetrics: CategoryInventoryMetric[];
+  topLevelCategoryMetrics: CategoryInventoryMetric[];
   heroStats: {
     totalActive: number;
     totalMarketValue: number;
@@ -944,6 +945,7 @@ export const equipmentService = {
         ? payload.recentSoldListings.map((listing) => normalizeListingImages(listing as Listing))
         : [],
       categoryMetrics: Array.isArray(payload.categoryMetrics) ? payload.categoryMetrics : [],
+      topLevelCategoryMetrics: Array.isArray(payload.topLevelCategoryMetrics) ? payload.topLevelCategoryMetrics : [],
       heroStats: payload.heroStats || { totalActive: 0, totalMarketValue: 0 },
       asOf: payload.asOf,
     };
@@ -1119,9 +1121,15 @@ export const equipmentService = {
       if (docSnap.exists()) {
         return normalizeListingImages({ id: docSnap.id, ...docSnap.data() } as Listing);
       }
-      return undefined;
     } catch (error) {
       handleFirestoreError(error, OperationType.GET, path);
+    }
+
+    try {
+      const [publicListing] = await this.getListingsByIds([id]);
+      return publicListing;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, 'public/listings/by-id');
       return undefined;
     }
   },

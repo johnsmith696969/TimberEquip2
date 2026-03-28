@@ -3,6 +3,7 @@ import {
   PhoneMultiFactorGenerator,
   RecaptchaVerifier,
   getMultiFactorResolver,
+  initializeRecaptchaConfig,
   multiFactor,
   type MultiFactorInfo,
   type MultiFactorResolver,
@@ -17,6 +18,8 @@ export interface SmsMfaFactorSummary {
   phoneNumber: string;
   enrollmentTime: string;
 }
+
+let authRecaptchaConfigPromise: Promise<void> | null = null;
 
 function normalizeFactorString(value: unknown): string {
   return String(value || '').trim();
@@ -34,6 +37,19 @@ function toSmsFactorSummary(factor: MultiFactorInfo): SmsMfaFactorSummary | null
     phoneNumber: normalizeFactorString(phoneFactor.phoneNumber),
     enrollmentTime: normalizeFactorString(factor.enrollmentTime),
   };
+}
+
+export async function ensureAuthRecaptchaConfig(): Promise<void> {
+  if (!authRecaptchaConfigPromise) {
+    authRecaptchaConfigPromise = initializeRecaptchaConfig(auth)
+      .then(() => undefined)
+      .catch((error) => {
+        console.warn('Unable to prefetch Firebase Auth reCAPTCHA config.', error);
+        authRecaptchaConfigPromise = null;
+      });
+  }
+
+  await authRecaptchaConfigPromise;
 }
 
 export function createVisibleRecaptchaVerifier(containerId: string): RecaptchaVerifier {

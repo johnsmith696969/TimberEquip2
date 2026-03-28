@@ -1037,6 +1037,14 @@ function getInventoryStats(listings) {
   };
 }
 
+function buildTopLevelCategoryDirectoryItems(listings) {
+  return createCountLinks(
+    listings.map((listing) => listing.category),
+    (category) => `/search?category=${encodeURIComponent(category)}`,
+    100
+  );
+}
+
 function buildSharedSections(listings, sellerMap, options = {}) {
   const sellerCounts = new Map();
   listings.forEach((listing) => {
@@ -1670,21 +1678,22 @@ async function renderRoute(req, res) {
       { label: 'Home', path: '/' },
       { label: 'Categories', path: '/categories' },
     ];
-    const items = categoriesDirectoryDoc?.items?.length ? categoriesDirectoryDoc.items : shared.topCategories;
-    const statValue = categoriesDirectoryDoc?.stats?.itemCount ?? items.length;
+    const topLevelCategoryItems = buildTopLevelCategoryDirectoryItems(inventory.listings);
+    const items = topLevelCategoryItems.length ? topLevelCategoryItems : categoriesDirectoryDoc?.items?.length ? categoriesDirectoryDoc.items : shared.topCategories;
+    const statValue = topLevelCategoryItems.length ? topLevelCategoryItems.length : categoriesDirectoryDoc?.stats?.itemCount ?? items.length;
     res.status(200).type('html').send(
       renderIndexPage({
         title: 'Equipment Categories',
         eyebrow: 'Category Directory',
-        description: 'Browse category-specific marketplace routes generated from live approved inventory.',
+        description: 'Browse the major equipment families currently represented in live approved inventory, then drill into filtered marketplace search.',
         canonicalUrl: `${baseUrl}/categories`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'This index gives buyers and search engines a stable way to move through the equipment taxonomy without falling back to noisy query strings.',
+        intro: 'This index highlights the main equipment families buyers actually see on the marketplace today, including logging equipment, land clearing equipment, trucks, trailers, and specialty categories backed by live approved inventory.',
         breadcrumbs,
         statValue,
         items,
         emptyMessage: 'Categories will appear here as soon as live marketplace inventory is published.',
-        jsonLd: buildDirectoryJsonLd('Equipment Categories', 'Browse category-specific marketplace routes generated from live approved inventory.', `${baseUrl}/categories`, breadcrumbs, items),
+        jsonLd: buildDirectoryJsonLd('Equipment Categories', 'Browse the live major equipment families currently represented on Forestry Equipment Sales.', `${baseUrl}/categories`, breadcrumbs, items),
       })
     );
     return true;

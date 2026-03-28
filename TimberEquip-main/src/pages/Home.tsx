@@ -27,23 +27,23 @@ import { useLocale } from '../components/LocaleContext';
 import { MetaLeadMachineSection } from '../components/MetaLeadMachineSection';
 import { useAuth } from '../components/AuthContext';
 import { getListEquipmentPath } from '../utils/sellerAccess';
+import {
+  buildMarketplaceCategoryFamilies,
+  getMarketplaceSubcategories,
+} from '../utils/marketplaceCategoryFamilies';
 
-const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
-  Skidders: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },
-  'Bogie Skidders': { icon: Truck, color: 'bg-sky-500/10 text-sky-500' },
-  'Feller Bunchers': { icon: Hammer, color: 'bg-orange-500/10 text-orange-500' },
-  Harvesters: { icon: Settings, color: 'bg-emerald-500/10 text-emerald-500' },
-  Chippers: { icon: Zap, color: 'bg-lime-500/10 text-lime-500' },
-  Delimbers: { icon: Activity, color: 'bg-rose-500/10 text-rose-500' },
-  Forwarders: { icon: Truck, color: 'bg-cyan-500/10 text-cyan-500' },
-  'Dozers With Winch': { icon: Package, color: 'bg-yellow-500/10 text-yellow-600' },
-  'Log Loaders': { icon: Activity, color: 'bg-red-500/10 text-red-500' },
-  'Firewood Processors': { icon: Zap, color: 'bg-amber-500/10 text-amber-500' },
-  Excavators: { icon: LayoutDashboard, color: 'bg-purple-500/10 text-purple-500' },
-  Mulchers: { icon: Hammer, color: 'bg-teal-500/10 text-teal-500' },
+const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
+  'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
+  'Land Clearing Equipment': { icon: Hammer, color: 'bg-orange-500/10 text-orange-500' },
+  'Firewood Equipment': { icon: Zap, color: 'bg-amber-500/10 text-amber-500' },
+  'Tree Service Equipment': { icon: Activity, color: 'bg-lime-500/10 text-lime-500' },
+  'Sawmill Equipment': { icon: Settings, color: 'bg-sky-500/10 text-sky-500' },
+  Trailers: { icon: Package, color: 'bg-cyan-500/10 text-cyan-500' },
+  Trucks: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },
+  'Parts And Attachments': { icon: LayoutDashboard, color: 'bg-purple-500/10 text-purple-500' },
 };
 
-const CATEGORY_ORDER = [
+const SUBCATEGORY_MARKET_ORDER = [
   'Bogie Skidders',
   'Chippers',
   'Delimbers',
@@ -92,8 +92,8 @@ export function Home() {
   const [featuredListings, setFeaturedListings] = useState<Listing[]>([]);
   const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>([]);
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>({});
+  const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>({});
   const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>({ totalActive: 0, totalMarketValue: 0 });
-  const [loading, setLoading] = useState(true);
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
 
   useEffect(() => {
@@ -109,15 +109,23 @@ export function Home() {
           };
           return acc;
         }, {});
+        const topLevelMetricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
+          acc[item.category] = {
+            activeCount: item.activeCount,
+            weeklyChangePercent: item.weeklyChangePercent,
+            averagePrice: item.averagePrice,
+            previousWeekCount: item.previousWeekCount,
+          };
+          return acc;
+        }, {});
 
         setFeaturedListings(marketplaceData.featuredListings);
         setRecentSoldListings(marketplaceData.recentSoldListings);
         setCategoryMetrics(metricMap);
+        setTopLevelCategoryMetrics(topLevelMetricMap);
         setHeroStats(marketplaceData.heroStats);
       } catch (error) {
         console.error('Error fetching home data:', error);
-      } finally {
-        setLoading(false);
       }
     };
     fetchData();
@@ -125,16 +133,35 @@ export function Home() {
 
   const tickerListings = recentSoldListings.length > 0 ? recentSoldListings : featuredListings;
 
-  const categoryCards = CATEGORY_ORDER.map((name) => {
-    const visual = CATEGORY_VISUALS[name] || { icon: Activity, color: 'bg-slate-500/10 text-slate-500' };
-    const metric = categoryMetrics[name];
+  const categoryCards = buildMarketplaceCategoryFamilies(
+    Object.entries(topLevelCategoryMetrics).map(([category, metric]) => ({
+      category,
+      activeCount: metric.activeCount,
+      previousWeekCount: metric.previousWeekCount,
+      weeklyChangePercent: metric.weeklyChangePercent,
+      averagePrice: metric.averagePrice,
+    }))
+  ).map((category) => {
+    const visual = TOP_LEVEL_CATEGORY_VISUALS[category.name] || { icon: Activity, color: 'bg-slate-500/10 text-slate-500' };
     return {
-      name,
+      ...category,
       icon: visual.icon,
       color: visual.color,
-      count: metric?.activeCount || 0
     };
   });
+
+  const [selectedCategoryFamily, setSelectedCategoryFamily] = useState('Logging Equipment');
+
+  useEffect(() => {
+    if (!categoryCards.length) return;
+    if (categoryCards.some((category) => category.name === selectedCategoryFamily)) return;
+    setSelectedCategoryFamily(categoryCards[0].name);
+  }, [categoryCards, selectedCategoryFamily]);
+
+  const selectedFamilySubcategories = useMemo(
+    () => getMarketplaceSubcategories(selectedCategoryFamily).slice(0, 18),
+    [selectedCategoryFamily]
+  );
 
   const totalActiveListings = heroStats.totalActive;
   const totalMarketValue = heroStats.totalMarketValue;
@@ -171,7 +198,7 @@ export function Home() {
   }
 
   const marketCards: MarketCard[] = [
-    ...CATEGORY_ORDER.flatMap((cat) => {
+    ...SUBCATEGORY_MARKET_ORDER.flatMap((cat) => {
       const metric = categoryMetrics[cat];
       const meta = CATEGORY_CARD_META[cat];
       if (!meta) return [];
@@ -406,22 +433,81 @@ export function Home() {
               <h2 className="text-4xl md:text-6xl font-black tracking-tighter uppercase mb-6">
                 {t('home.browseByCategory', 'Browse by')} <span className="text-muted">{t('layout.categories', 'Category')}</span>
               </h2>
+              <p className="text-muted font-medium max-w-3xl mx-auto">
+                Live inventory counts now roll up by major equipment family, so buyers can jump directly into logging, land clearing, trucks, trailers, and other active marketplace segments.
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="mb-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+              <div>
+                <span className="label-micro text-accent mb-3 block">Main Equipment Families</span>
+                <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">
+                  {selectedCategoryFamily}
+                </h3>
+              </div>
+              <div className="w-full lg:w-[360px]">
+                <label className="label-micro mb-2 block">{t('layout.categories', 'Category')} Selector</label>
+                <select
+                  value={selectedCategoryFamily}
+                  onChange={(event) => setSelectedCategoryFamily(event.target.value)}
+                  className="w-full bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none"
+                >
+                  {categoryCards.map((category) => (
+                    <option key={category.name} value={category.name}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {categoryCards.map((cat, i) => (
                 <Link
                   key={i}
-                  to={`/search?subcategory=${encodeURIComponent(cat.name)}`}
-                  className="group bg-bg border border-line p-8 flex flex-col items-center text-center hover:border-accent transition-all duration-300"
+                  to={cat.searchPath}
+                  className={`group bg-bg border p-8 flex flex-col text-left hover:border-accent transition-all duration-300 ${selectedCategoryFamily === cat.name ? 'border-accent' : 'border-line'}`}
                 >
                   <div className={`w-16 h-16 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
                     <cat.icon size={32} />
                   </div>
-                  <h4 className="text-xs font-black uppercase tracking-widest mb-2">{cat.name}</h4>
-                  <span className="text-[10px] font-bold text-muted uppercase">{formatNumber(cat.count)} {t('home.machines', 'Machines')}</span>
+                  <h4 className="text-sm font-black uppercase tracking-widest mb-3">{cat.name}</h4>
+                  <p className="text-xs text-muted font-medium leading-relaxed mb-6 flex-1">{cat.description}</p>
+                  <div className="flex items-end justify-between gap-4 mt-auto">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{t('home.machines', 'Machines')}</span>
+                      <span className="text-3xl font-black tracking-tighter">{formatNumber(cat.activeCount)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-muted uppercase tracking-widest block">Subcategories</span>
+                      <span className="text-lg font-black tracking-tighter">{formatNumber(cat.subcategoryCount)}</span>
+                    </div>
+                  </div>
                 </Link>
               ))}
+            </div>
+
+            <div className="mt-10 bg-bg border border-line p-6 md:p-8">
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+                <div>
+                  <span className="label-micro text-accent mb-2 block">Family Breakdown</span>
+                  <h4 className="text-2xl font-black uppercase tracking-tighter">{selectedCategoryFamily} Subcategories</h4>
+                </div>
+                <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 w-fit">
+                  Browse {selectedCategoryFamily}
+                </Link>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {selectedFamilySubcategories.map((subcategory) => (
+                  <Link
+                    key={subcategory}
+                    to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}&subcategory=${encodeURIComponent(subcategory)}`}
+                    className="px-4 py-2 border border-line text-[10px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
+                  >
+                    {subcategory}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </section>

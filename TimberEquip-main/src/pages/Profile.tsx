@@ -30,6 +30,7 @@ import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
+  ensureAuthRecaptchaConfig,
   listSmsMfaFactors,
   resetRecaptchaVerifier,
   startSmsMfaEnrollment,
@@ -383,6 +384,7 @@ export function Profile() {
 
   const getProfileMfaRecaptcha = async () => {
     resetProfileMfaRecaptcha();
+    await ensureAuthRecaptchaConfig();
     const verifier = createVisibleRecaptchaVerifier('profile-mfa-recaptcha');
     mfaRecaptchaRef.current = verifier;
     await verifier.render();

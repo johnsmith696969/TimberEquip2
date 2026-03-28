@@ -57,6 +57,17 @@ function roleIcon(role?: string) {
   return Building2;
 }
 
+function toDialablePhone(value?: string): string {
+  return String(value || '').replace(/[^\d+]/g, '');
+}
+
+function normalizeWebsiteHref(value?: string): string {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  return `https://${normalized}`;
+}
+
 export function SellerProfile() {
   const { id, categorySlug } = useParams<{ id: string; categorySlug?: string }>();
   const location = useLocation();
@@ -292,6 +303,22 @@ export function SellerProfile() {
   const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
   const description = seller.storefrontDescription || 'This storefront is managed on Forestry Equipment Sales with branded inventory, verified seller controls, and direct lead routing.';
   const preferredDealerPath = buildDealerPath(seller);
+  const storefrontCategoryLinks = (() => {
+    const counts = new Map<string, number>();
+    listings.forEach((listing) => {
+      const categoryLabel = getListingCategoryLabel(listing);
+      if (!categoryLabel) return;
+      counts.set(categoryLabel, (counts.get(categoryLabel) || 0) + 1);
+    });
+
+    return [...counts.entries()]
+      .map(([label, count]) => ({
+        label,
+        count,
+        path: `${preferredDealerPath}/${normalizeSeoSlug(label)}`,
+      }))
+      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  })();
   const dealerRouteQuality = isDealerRoute
     ? evaluateRouteQuality(categorySlug ? 'dealerCategory' : 'dealer', filteredListings.length, {
         fallbackPath: categorySlug ? `${preferredDealerPath}/inventory` : '/dealers',
@@ -356,6 +383,11 @@ export function SellerProfile() {
   };
 
   const StorefrontRoleIcon = storefrontIcon;
+  const sellerWebsiteHref = normalizeWebsiteHref(seller.website);
+  const sellerPhoneHref = seller.phone ? `tel:${toDialablePhone(seller.phone)}` : '';
+  const sellerEmailHref = seller.email ? `mailto:${seller.email}` : '';
+  const activeCategoryCount = storefrontCategoryLinks.length;
+  const averageListingsPerCategory = activeCategoryCount > 0 ? Math.round(filteredListings.length / activeCategoryCount) : filteredListings.length;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -597,19 +629,27 @@ export function SellerProfile() {
                   Storefront branding is available for Owner-Operator, Dealer, Pro Dealer, Admin, and Super Admin roles.
                 </div>
               )}
-              <button className="btn-industrial btn-accent py-4 px-12">
+              <a href={sellerEmailHref || '/contact'} className="btn-industrial btn-accent py-4 px-12">
                 <MessageSquare size={16} className="mr-3" />
                 Contact Storefront
-              </button>
+              </a>
               <div className="flex space-x-2">
-                <button className="btn-industrial flex-1 py-3 bg-white/10 border-white/20 hover:bg-white hover:text-ink">
+                <a
+                  href={sellerPhoneHref || undefined}
+                  className={`btn-industrial flex-1 py-3 bg-white/10 border-white/20 hover:bg-white hover:text-ink ${sellerPhoneHref ? '' : 'pointer-events-none opacity-50'}`}
+                >
                   <Phone size={14} className="mr-2" />
                   Call
-                </button>
-                <button className="btn-industrial flex-1 py-3 bg-white/10 border-white/20 hover:bg-white hover:text-ink">
+                </a>
+                <a
+                  href={sellerWebsiteHref || undefined}
+                  target={sellerWebsiteHref ? '_blank' : undefined}
+                  rel={sellerWebsiteHref ? 'noopener noreferrer' : undefined}
+                  className={`btn-industrial flex-1 py-3 bg-white/10 border-white/20 hover:bg-white hover:text-ink ${sellerWebsiteHref ? '' : 'pointer-events-none opacity-50'}`}
+                >
                   <Globe size={14} className="mr-2" />
                   Site
-                </button>
+                </a>
               </div>
             </div>
           </div>
@@ -629,6 +669,26 @@ export function SellerProfile() {
           </div>
         </div>
 
+        {storefrontCategoryLinks.length > 0 ? (
+          <div className="flex flex-wrap gap-3 mb-10">
+            <Link
+              to={`${preferredDealerPath}/inventory`}
+              className={`px-4 py-2 border text-[10px] font-black uppercase tracking-widest transition-colors ${isInventoryRoute && !categorySlug ? 'border-accent text-accent' : 'border-line hover:border-accent hover:text-accent'}`}
+            >
+              All Inventory ({listings.length})
+            </Link>
+            {storefrontCategoryLinks.map((category) => (
+              <Link
+                key={category.label}
+                to={category.path}
+                className={`px-4 py-2 border text-[10px] font-black uppercase tracking-widest transition-colors ${categorySlug === normalizeSeoSlug(category.label) ? 'border-accent text-accent' : 'border-line hover:border-accent hover:text-accent'}`}
+              >
+                {category.label} ({category.count})
+              </Link>
+            ))}
+          </div>
+        ) : null}
+
         <div className="industrial-grid">
           {filteredListings.map((listing) => (
             <div key={listing.id}>
@@ -645,13 +705,13 @@ export function SellerProfile() {
               <div className="p-3 bg-blue-500/10 text-blue-500 rounded-sm w-fit mb-8">
                 <TrendingUp size={24} />
               </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Storefront Performance</h4>
+              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Inventory Coverage</h4>
               <p className="text-xs text-muted leading-relaxed mb-8">
-                Storefront pages are structured for launch-ready machine search visibility and high-intent buyer discovery.
+                This storefront currently publishes live inventory across active machine families and gives buyers a direct path into filtered dealer search.
               </p>
               <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">Managed</span>
-                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Tier</span>
+                <span className="text-3xl font-black tracking-tighter">{activeCategoryCount}</span>
+                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Active Categories</span>
               </div>
             </div>
 
@@ -659,13 +719,13 @@ export function SellerProfile() {
               <div className="p-3 bg-orange-500/10 text-orange-500 rounded-sm w-fit mb-8">
                 <Activity size={24} />
               </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Lead Routing</h4>
+              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Buyer Contact Paths</h4>
               <p className="text-xs text-muted leading-relaxed mb-8">
-                Traffic campaigns and listing SEO can direct buyers to your branded storefront where inventory and contact workflows are unified.
+                Buyers can use your direct storefront email, phone, website, and inventory inquiry flow from one public dealer page.
               </p>
               <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">Unified</span>
-                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Attribution</span>
+                <span className="text-3xl font-black tracking-tighter">{[sellerEmailHref, sellerPhoneHref, sellerWebsiteHref].filter(Boolean).length}</span>
+                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Live Channels</span>
               </div>
             </div>
 
@@ -673,13 +733,15 @@ export function SellerProfile() {
               <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-sm w-fit mb-8">
                 <ShieldCheck size={24} />
               </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Brand Control</h4>
+              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Storefront Readiness</h4>
               <p className="text-xs text-muted leading-relaxed mb-8">
-                Configure storefront logo, cover image, profile messaging, and SEO metadata from one managed profile.
+                Logo, cover image, profile messaging, dealer route structure, and category filtering are all exposed through the managed storefront layer.
               </p>
               <div className="mt-auto flex items-center space-x-2 text-data">
                 <CheckCircle2 size={18} />
-                <span className="text-xs font-black uppercase tracking-widest">Storefront Ready</span>
+                <span className="text-xs font-black uppercase tracking-widest">
+                  {seller.verified ? 'Verified And Search Ready' : `${averageListingsPerCategory} Avg Units / Category`}
+                </span>
               </div>
             </div>
           </div>

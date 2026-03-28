@@ -22,6 +22,7 @@ import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService
 import {
   completeSmsMfaSignIn,
   createVisibleRecaptchaVerifier,
+  ensureAuthRecaptchaConfig,
   getPreferredSmsMfaFactor,
   getSmsMultiFactorResolver,
   resetRecaptchaVerifier,
@@ -142,6 +143,7 @@ export function Login() {
     }
 
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
+    await ensureAuthRecaptchaConfig();
     const verifier = createVisibleRecaptchaVerifier('login-mfa-recaptcha');
     mfaRecaptchaRef.current = verifier;
     await verifier.render();

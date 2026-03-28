@@ -8,66 +8,33 @@ import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { buildCategoryPath } from '../utils/seoRoutes';
+import { buildMarketplaceCategoryFamilies } from '../utils/marketplaceCategoryFamilies';
 
-const CATEGORIES = [
-  { 
-    name: 'Skidders', 
-    icon: Truck, 
-    
-    color: 'bg-blue-500/10 text-blue-500',
-    description: 'Heavy-duty log extraction vehicles for all terrain types.'
-  },
-  { 
-    name: 'Feller Bunchers', 
-    icon: Hammer, 
-    
-    color: 'bg-orange-500/10 text-orange-500',
-    description: 'High-production felling machines for clear-cutting operations.'
-  },
-  { 
-    name: 'Harvesters', 
-    icon: Settings, 
-    
-    color: 'bg-emerald-500/10 text-emerald-500',
-    description: 'Precision felling and processing units for selective logging.'
-  },
-  { 
-    name: 'Forwarders', 
-    icon: Truck, 
-    
-    color: 'bg-purple-500/10 text-purple-500',
-    description: 'Efficient log transport from stump to landing.'
-  },
-  { 
-    name: 'Log Loaders', 
-    icon: Activity, 
-    
-    color: 'bg-red-500/10 text-red-500',
-    description: 'High-capacity loading systems for trucks and decks.'
-  },
-  { 
-    name: 'Firewood Processors', 
-    icon: Zap, 
-    
-    color: 'bg-amber-500/10 text-amber-500',
-    description: 'Dedicated cut, split, and processing systems for firewood production.'
-  },
-];
+const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
+  'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
+  'Land Clearing Equipment': { icon: Hammer, color: 'bg-orange-500/10 text-orange-500' },
+  'Firewood Equipment': { icon: Zap, color: 'bg-amber-500/10 text-amber-500' },
+  'Tree Service Equipment': { icon: Activity, color: 'bg-lime-500/10 text-lime-500' },
+  'Sawmill Equipment': { icon: Settings, color: 'bg-sky-500/10 text-sky-500' },
+  Trailers: { icon: Truck, color: 'bg-cyan-500/10 text-cyan-500' },
+  Trucks: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },
+  'Parts And Attachments': { icon: Settings, color: 'bg-purple-500/10 text-purple-500' },
+};
 
 export function Categories() {
-  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>({});
+  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>({});
 
   const { formatNumber } = useLocale();
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const metrics = await equipmentService.getCategoryInventoryMetrics();
-        const metricMap = metrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, metric) => {
+        const marketplaceData = await equipmentService.getHomeMarketplaceData();
+        const metricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
           acc[metric.category] = {
             activeCount: metric.activeCount,
             weeklyChangePercent: metric.weeklyChangePercent,
-            averagePrice: metric.averagePrice
+            averagePrice: metric.averagePrice,
+            previousWeekCount: metric.previousWeekCount,
           };
           return acc;
         }, {});
@@ -82,10 +49,19 @@ export function Categories() {
 
   const categoryCards = useMemo(
     () =>
-      CATEGORIES.map((cat) => ({
-        ...cat,
-        count: categoryMetrics[cat.name]?.activeCount || 0,
-        weeklyChangePercent: categoryMetrics[cat.name]?.weeklyChangePercent ?? 0
+      buildMarketplaceCategoryFamilies(
+        Object.entries(categoryMetrics).map(([category, metric]) => ({
+          category,
+          activeCount: metric.activeCount,
+          previousWeekCount: metric.previousWeekCount,
+          weeklyChangePercent: metric.weeklyChangePercent,
+          averagePrice: metric.averagePrice,
+        }))
+      ).map((category) => ({
+        ...category,
+        icon: CATEGORY_VISUALS[category.name]?.icon || Activity,
+        color: CATEGORY_VISUALS[category.name]?.color || 'bg-slate-500/10 text-slate-500',
+        count: category.activeCount,
       })),
     [categoryMetrics]
   );
@@ -104,9 +80,9 @@ export function Categories() {
   );
   const inventoryChange = totalPreviousWeek > 0 ? ((totalActive - totalPreviousWeek) / totalPreviousWeek) * 100 : 0;
 
-  const seoTitle = 'Equipment Categories | Browse Logging Equipment by Type | Forestry Equipment Sales';
+  const seoTitle = 'Equipment Categories | Browse Marketplace Equipment Families | Forestry Equipment Sales';
   const seoDescription =
-    'Browse logging equipment by category: Skidders, Feller Bunchers, Harvesters, Forwarders, Log Loaders, Firewood Processors. Real-time inventory metrics.';
+    'Browse Forestry Equipment Sales inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.';
 
   const categoriesSchemaData = {
     '@context': 'https://schema.org',
@@ -114,11 +90,11 @@ export function Categories() {
     name: 'Equipment Categories',
     description: seoDescription,
     url: 'https://timberequip.com/categories',
-    hasPart: CATEGORIES.map(cat => ({
+    hasPart: categoryCards.map(cat => ({
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://timberequip.com${buildCategoryPath(cat.name)}`
+      url: `https://timberequip.com/search?category=${encodeURIComponent(cat.name)}`
     }))
   };
 
@@ -164,7 +140,7 @@ export function Categories() {
               
               <div className="flex flex-col space-y-4">
                 <Link 
-                  to={buildCategoryPath(cat.name)}
+                  to={`/search?category=${encodeURIComponent(cat.name)}`}
                   className="btn-industrial btn-accent py-4 w-full text-center"
                 >
                   Browse Inventory
@@ -175,9 +151,9 @@ export function Categories() {
                     <TrendingUp size={12} className="mr-2" />
                     {`${cat.weeklyChangePercent >= 0 ? '+' : ''}${cat.weeklyChangePercent.toFixed(1)}% WoW`}
                   </div>
-                  <button className="text-[10px] font-bold text-muted uppercase hover:text-ink flex items-center">
-                    AMV Index <Info size={12} className="ml-1.5" />
-                  </button>
+                  <span className="text-[10px] font-bold text-muted uppercase flex items-center">
+                    {formatNumber(cat.subcategoryCount)} Types <Info size={12} className="ml-1.5" />
+                  </span>
                 </div>
               </div>
             </div>

@@ -56,7 +56,7 @@ export function ListingDetail() {
   const [aiSpecs, setAiSpecs] = useState<any>(null);
   const [loadingAiData, setLoadingAiData] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
-  const [loadingLocationMap, setLoadingLocationMap] = useState(false);
+  const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
   
   const [inquiryForm, setInquiryForm] = useState({
     name: '',
@@ -147,25 +147,37 @@ export function ListingDetail() {
     notes: ''
   });
 
-  const buildMapsHref = (query: string) => {
+  const buildMapsHref = (query: string, latitude?: number, longitude?: number) => {
+    const coordinates =
+      latitude !== undefined && longitude !== undefined
+        ? `${latitude},${longitude}`
+        : '';
     const encoded = encodeURIComponent(query);
     if (typeof navigator !== 'undefined') {
       const userAgent = navigator.userAgent.toLowerCase();
       if (/iphone|ipad|ipod/.test(userAgent)) {
-        return `https://maps.apple.com/?q=${encoded}`;
+        return coordinates ? `https://maps.apple.com/?ll=${coordinates}&q=${encoded}` : `https://maps.apple.com/?q=${encoded}`;
       }
       if (/android/.test(userAgent)) {
-        return `geo:0,0?q=${encoded}`;
+        return `geo:0,0?q=${encodeURIComponent(coordinates || query)}`;
       }
     }
-    return `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+    return coordinates
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`
+      : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
   };
 
-  const buildGoogleMapsEmbedUrl = (query: string) => {
+  const buildGoogleMapsEmbedUrl = (query: string, latitude?: number, longitude?: number) => {
+    if (latitude !== undefined && longitude !== undefined) {
+      return `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}&z=11&output=embed`;
+    }
     return `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=11&output=embed`;
   };
 
-  const buildGoogleMapsLink = (query: string) => {
+  const buildGoogleMapsLink = (query: string, latitude?: number, longitude?: number) => {
+    if (latitude !== undefined && longitude !== undefined) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${latitude},${longitude}`)}`;
+    }
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   };
 
@@ -249,10 +261,6 @@ export function ListingDetail() {
     return () => media.removeEventListener?.('change', update);
   }, []);
 
-  useEffect(() => {
-    setLoadingLocationMap(Boolean(listing?.location));
-  }, [listing?.location, seller?.name, seller?.storefrontName]);
-
   const hasDirtyInquiryForm = Boolean(
     inquiryForm.name.trim() || inquiryForm.email.trim() || inquiryForm.phone.trim() || inquiryForm.message.trim()
   );
@@ -281,12 +289,19 @@ export function ListingDetail() {
   );
 
   const confirmDiscardChanges = () => window.confirm('Are you sure you want to discard changes?');
-  const machineMapsHref = buildMapsHref(listing?.location || '');
-  const machineMapQuery = [seller?.storefrontName || seller?.name || '', listing?.location || '']
+  const machineLatitude = toFiniteNumber(listing?.latitude);
+  const machineLongitude = toFiniteNumber(listing?.longitude);
+  const machineMapQuery = [listing?.location || '', seller?.storefrontName || seller?.name || '', seller?.location || '']
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(', ');
-  const googleMapsHref = buildGoogleMapsLink(machineMapQuery || listing?.location || '');
+  const hasMachineMap = Boolean(machineMapQuery || (machineLatitude !== undefined && machineLongitude !== undefined));
+  const machineMapsHref = buildMapsHref(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude);
+  const googleMapsHref = buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude);
+
+  useEffect(() => {
+    setIsMapFrameLoading(hasMachineMap);
+  }, [hasMachineMap, machineMapQuery, machineLatitude, machineLongitude]);
 
   const runRecaptchaCheck = async (action: string) => {
     const token = await getRecaptchaToken(action);
@@ -1111,19 +1126,22 @@ export function ListingDetail() {
                     Open Full Map
                   </a>
                 </div>
-                {loadingLocationMap ? (
-                  <div className="h-64 flex items-center justify-center bg-bg text-[10px] font-bold uppercase tracking-widest text-muted">
-                    Loading map...
+                {hasMachineMap ? (
+                  <div className="relative h-64 bg-bg">
+                    {isMapFrameLoading ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-bg text-[10px] font-bold uppercase tracking-widest text-muted z-10">
+                        Loading map...
+                      </div>
+                    ) : null}
+                    <iframe
+                      title={`Map for ${machineMapQuery || safeCityState}`}
+                      src={buildGoogleMapsEmbedUrl(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)}
+                      className="h-64 w-full border-0"
+                      loading="lazy"
+                      onLoad={() => setIsMapFrameLoading(false)}
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
                   </div>
-                ) : machineMapQuery ? (
-                  <iframe
-                    title={`Map for ${machineMapQuery}`}
-                    src={buildGoogleMapsEmbedUrl(machineMapQuery)}
-                    className="h-64 w-full border-0"
-                    loading="lazy"
-                    onLoad={() => setLoadingLocationMap(false)}
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
                 ) : (
                   <div className="h-64 flex flex-col items-center justify-center bg-bg px-6 text-center">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-3">Map preview unavailable for this location.</p>

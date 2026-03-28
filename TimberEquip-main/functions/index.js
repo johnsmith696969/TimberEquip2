@@ -4176,12 +4176,12 @@ async function loadSoldMarketplaceListings() {
   return listings;
 }
 
-function buildPublicCategoryMetricsPayload(listings) {
+function buildPublicMetricsPayload(listings, selectLabel) {
   const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const byCategory = new Map();
 
   listings.forEach((listing) => {
-    const category = normalizeNonEmptyString(listing.subcategory || listing.category, 'Uncategorized');
+    const category = normalizeNonEmptyString(selectLabel(listing), 'Uncategorized');
     const existing = byCategory.get(category) || [];
     existing.push(listing);
     byCategory.set(category, existing);
@@ -4212,6 +4212,14 @@ function buildPublicCategoryMetricsPayload(listings) {
     .sort((left, right) => right.activeCount - left.activeCount);
 }
 
+function buildPublicCategoryMetricsPayload(listings) {
+  return buildPublicMetricsPayload(listings, (listing) => listing.subcategory || listing.category);
+}
+
+function buildTopLevelCategoryMetricsPayload(listings) {
+  return buildPublicMetricsPayload(listings, (listing) => listing.category);
+}
+
 async function getPublicCategoryMetricsPayload() {
   const now = Date.now();
   if (publicCategoryMetricsCache && now - publicCategoryMetricsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
@@ -4235,6 +4243,7 @@ async function getPublicHomeDataPayload() {
     loadSoldMarketplaceListings(),
     getPublicCategoryMetricsPayload(),
   ]);
+  const topLevelCategoryMetrics = buildTopLevelCategoryMetricsPayload(activeListings);
 
   const featuredListings = sortMarketplaceListings(
     activeListings.filter((listing) => Boolean(listing.featured)),
@@ -4255,6 +4264,7 @@ async function getPublicHomeDataPayload() {
     featuredListings,
     recentSoldListings,
     categoryMetrics,
+    topLevelCategoryMetrics,
     heroStats: {
       totalActive: activeListings.length,
       totalMarketValue,

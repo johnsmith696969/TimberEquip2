@@ -18,13 +18,13 @@ export function Financing() {
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [formData, setFormData] = useState({
-    businessStructure: 'Corporation',
+    businessStructure: '',
     legalEntityName: '',
     yearsInOperation: '',
     annualRevenue: '',
     assetValue: '',
     requestedAmount: '',
-    termLength: '60',
+    termLength: '60 Months',
     downPayment: '',
     contactName: '',
     contactEmail: user?.email || '',
@@ -34,12 +34,11 @@ export function Financing() {
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
-      legalEntityName: prev.legalEntityName || user?.company || '',
       contactName: prev.contactName || user?.displayName || '',
       contactEmail: prev.contactEmail || user?.email || '',
       contactPhone: prev.contactPhone || user?.phoneNumber || '',
     }));
-  }, [user?.company, user?.displayName, user?.email, user?.phoneNumber]);
+  }, [user?.displayName, user?.email, user?.phoneNumber]);
 
   const handleNext = () => setStep(prev => prev + 1);
   const handlePrev = () => setStep(prev => prev - 1);
@@ -82,7 +81,15 @@ export function Financing() {
     <div className="min-h-screen bg-bg">
       {/* Header */}
       <div className="bg-ink text-white py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
+        <div className="absolute inset-0">
+          <img
+            src="/page-photos/pine-forest.jpg"
+            alt="Forestry financing backdrop"
+            className="w-full h-full object-cover opacity-30"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/80 to-black/55" />
+          <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/12 skew-x-12 translate-x-1/2"></div>
+        </div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="flex items-center space-x-3 mb-6">
             <div className="w-10 h-10 bg-accent flex items-center justify-center rounded-sm">
@@ -94,7 +101,7 @@ export function Financing() {
             Institutional <br />
             <span className="text-accent">Financing</span>
           </h1>
-          <p className="text-white/60 font-medium max-w-2xl leading-relaxed">
+          <p className="text-white/75 font-medium max-w-2xl leading-relaxed">
             Customized credit facilities for forestry operations. 
             Fast approvals, flexible terms, and competitive rates tailored to your business cycle.
           </p>
@@ -135,15 +142,16 @@ export function Financing() {
                         <div className="flex flex-col space-y-3">
                           <label className="label-micro">Business Structure</label>
                           <select value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
-                            <option>Corporation</option>
-                            <option>LLC</option>
-                            <option>Partnership</option>
-                            <option>Sole Proprietorship</option>
+                            <option value="">-Select-</option>
+                            <option value="Corporation">Corporation</option>
+                            <option value="LLC">LLC</option>
+                            <option value="Partnership">Partnership</option>
+                            <option value="Sole Proprietorship">Sole Proprietorship</option>
                           </select>
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label className="label-micro">Legal Entity Name</label>
-                          <input type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="E.G. NORTHWEST LOGGING LLC" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label className="label-micro">Years in Operation</label>
