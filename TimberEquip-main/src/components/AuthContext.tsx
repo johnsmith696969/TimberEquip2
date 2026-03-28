@@ -12,7 +12,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth } from '../firebase';
-import { UserProfile } from '../types';
+import { AccountBootstrapResponse, UserProfile } from '../types';
 import { userService } from '../services/userService';
 import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
 import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../utils/accountEntitlement';
@@ -22,6 +22,7 @@ type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
 
 interface AuthContextType {
   user: UserProfile | null;
+  accountBootstrap: AccountBootstrapResponse | null;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: {
     displayName: string;
@@ -341,6 +342,7 @@ async function bootstrapPrivilegedAdminProfile(firebaseUser: FirebaseUser | null
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [accountBootstrap, setAccountBootstrap] = useState<AccountBootstrapResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const billingRefreshAttemptsRef = useRef<Set<string>>(new Set());
   const currentUserRef = useRef<UserProfile | null>(null);
@@ -351,15 +353,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const applyPatchedCurrentUserProfile = (updates: Partial<UserProfile>) => {
+    let nextUserSnapshot: UserProfile | null = null;
     setUser((currentUser) => {
       if (!currentUser) return currentUser;
-      const nextUser = normalizeProfile({
+      nextUserSnapshot = normalizeProfile({
         ...currentUser,
         ...updates,
       });
-      writeCachedProfile(nextUser);
-      return nextUser;
+      return nextUserSnapshot;
     });
+
+    if (nextUserSnapshot) {
+      writeCachedProfile(nextUserSnapshot);
+      setAccountBootstrap((currentBootstrap) => (
+        currentBootstrap
+          ? {
+              ...currentBootstrap,
+              profile: nextUserSnapshot,
+              fetchedAt: new Date().toISOString(),
+            }
+          : currentBootstrap
+      ));
+    }
   };
 
   useEffect(() => {
@@ -378,12 +393,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void (async () => {
           const isStaleSession = () => currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid;
 
-          const persistResolvedProfile = (nextProfile: UserProfile) => {
+          const persistResolvedProfile = (nextProfile: UserProfile, bootstrapPayload?: AccountBootstrapResponse | null) => {
             if (isStaleSession()) return;
             const normalizedProfile = normalizeProfile(nextProfile);
             writeCachedProfile(normalizedProfile);
             currentUserRef.current = normalizedProfile;
             setUser(normalizedProfile);
+            setAccountBootstrap((currentBootstrap) => {
+              if (bootstrapPayload) {
+                return {
+                  ...bootstrapPayload,
+                  profile: normalizedProfile,
+                };
+              }
+
+              return currentBootstrap
+                ? {
+                    ...currentBootstrap,
+                    profile: normalizedProfile,
+                    fetchedAt: new Date().toISOString(),
+                  }
+                : currentBootstrap;
+            });
           };
 
           const scheduleBillingRefresh = (baseProfile: UserProfile, suffix = '') => {
@@ -400,15 +431,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   return;
                 }
 
+                let nextUserSnapshot: UserProfile | null = null;
                 setUser((currentUser) => {
                   const resolvedBaseProfile = currentUser && currentUser.uid === firebaseUser.uid
                     ? currentUser
                     : baseProfile;
-                  const nextUser = normalizeProfile(applyBillingRefreshToProfile(resolvedBaseProfile, refreshedAccess));
-                  writeCachedProfile(nextUser);
-                  currentUserRef.current = nextUser;
-                  return nextUser;
+                  nextUserSnapshot = normalizeProfile(applyBillingRefreshToProfile(resolvedBaseProfile, refreshedAccess));
+                  return nextUserSnapshot;
                 });
+
+                if (nextUserSnapshot) {
+                  writeCachedProfile(nextUserSnapshot);
+                  currentUserRef.current = nextUserSnapshot;
+                  setAccountBootstrap((currentBootstrap) => (
+                    currentBootstrap
+                      ? {
+                          ...currentBootstrap,
+                          profile: nextUserSnapshot,
+                          fetchedAt: new Date().toISOString(),
+                        }
+                      : currentBootstrap
+                  ));
+                }
               } catch (error) {
                 console.error('Unable to refresh billing access from Stripe:', error);
               }
@@ -472,7 +516,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               resolvedProfile = normalizeProfile({ ...resolvedProfile, role: 'super_admin' });
             }
 
-            persistResolvedProfile(resolvedProfile);
+            persistResolvedProfile(resolvedProfile, profileResponse);
 
             if (profileResponse.profileDocExists === false && !profileResponse.firestoreQuotaLimited) {
               try {
@@ -488,12 +532,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             scheduleBillingRefresh(resolvedProfile, profileResponse.profile ? '' : ':fallback');
           } catch (error) {
             console.error('Unable to bootstrap profile via account API:', error);
+            const cachedBootstrap = userService.getCachedAccountBootstrap();
             const fallbackProfile = await buildFallbackProfile(firebaseUser, currentUserRef.current);
             if (isStaleSession()) {
               return;
             }
 
-            persistResolvedProfile(fallbackProfile);
+            persistResolvedProfile(fallbackProfile, cachedBootstrap);
             scheduleBillingRefresh(fallbackProfile, ':fallback');
           } finally {
             if (!isStaleSession()) {
@@ -505,6 +550,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         billingRefreshAttemptsRef.current.clear();
         currentUserRef.current = null;
         setUser(null);
+        setAccountBootstrap(null);
         setLoading(false);
       }
     });
@@ -653,6 +699,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     setUser(null);
+    setAccountBootstrap(null);
     await signOut(auth);
   };
 
@@ -665,7 +712,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, loginWithGoogle, sendVerificationEmail: () => sendVerificationEmailViaApi(), sendPasswordReset, logout, isAuthenticated: !!user, toggleFavorite, patchCurrentUserProfile: applyPatchedCurrentUserProfile }}>
+    <AuthContext.Provider value={{ user, accountBootstrap, login, register, loginWithGoogle, sendVerificationEmail: () => sendVerificationEmailViaApi(), sendPasswordReset, logout, isAuthenticated: !!user, toggleFavorite, patchCurrentUserProfile: applyPatchedCurrentUserProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );

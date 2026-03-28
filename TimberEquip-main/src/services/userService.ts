@@ -17,7 +17,14 @@ import {
   orderBy,
   limit
 } from 'firebase/firestore';
-import { UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
+import {
+  UserProfile,
+  ManagedSubAccountInput,
+  UserRole,
+  SavedSearch,
+  AlertPreferences,
+  AccountBootstrapResponse,
+} from '../types';
 
 function slugifyStorefrontValue(value: string): string {
   return String(value || '')
@@ -187,12 +194,39 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
   return payload as T;
 }
 
-type CurrentProfileResponse = {
-  profile?: UserProfile | null;
-  source?: string;
-  profileDocExists?: boolean;
-  firestoreQuotaLimited?: boolean;
-};
+type CurrentProfileResponse = AccountBootstrapResponse;
+
+const ACCOUNT_BOOTSTRAP_CACHE_PREFIX = 'fes:account-bootstrap-cache:';
+
+function getAccountBootstrapCacheKey(uid: string): string {
+  return `${ACCOUNT_BOOTSTRAP_CACHE_PREFIX}${uid}`;
+}
+
+function readCachedAccountBootstrap(uid: string | null | undefined): CurrentProfileResponse | null {
+  if (typeof window === 'undefined' || !uid) return null;
+
+  try {
+    const raw = window.localStorage.getItem(getAccountBootstrapCacheKey(uid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CurrentProfileResponse;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    console.warn('Unable to read cached account bootstrap:', error);
+    return null;
+  }
+}
+
+function writeCachedAccountBootstrap(payload: CurrentProfileResponse | null | undefined): void {
+  if (typeof window === 'undefined') return;
+  const uid = payload?.profile?.uid || auth.currentUser?.uid;
+  if (!uid || !payload) return;
+
+  try {
+    window.localStorage.setItem(getAccountBootstrapCacheKey(uid), JSON.stringify(payload));
+  } catch (error) {
+    console.warn('Unable to write cached account bootstrap:', error);
+  }
+}
 
 function deriveSeatContextFromProfile(profile: Partial<UserProfile> | null | undefined): {
   seatLimit: number;
@@ -534,23 +568,53 @@ export const userService = {
   },
 
   async getCurrentProfile(): Promise<CurrentProfileResponse> {
-    const path = 'account/profile';
+    const path = 'account/bootstrap';
+    const cachedBootstrap = readCachedAccountBootstrap(auth.currentUser?.uid);
     try {
-      return await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+      const payload = await getAuthorizedJson<CurrentProfileResponse>('/api/account/bootstrap', {
         method: 'GET',
         headers: {
           Accept: 'application/json',
         },
       });
+      writeCachedAccountBootstrap(payload);
+      return payload;
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
+      console.error('Account bootstrap request failed:', {
+        path,
+        error: error instanceof Error ? error.message : String(error),
+        uid: auth.currentUser?.uid || null,
+      });
+      if (cachedBootstrap) {
+        return {
+          ...cachedBootstrap,
+          source: 'cache',
+          firestoreQuotaLimited: cachedBootstrap.firestoreQuotaLimited || isQuotaExceededFirestoreError(error),
+          summaries: {
+            adminUsers: cachedBootstrap.summaries?.adminUsers
+              ? { ...cachedBootstrap.summaries.adminUsers, source: 'cache' }
+              : null,
+            billing: cachedBootstrap.summaries?.billing
+              ? { ...cachedBootstrap.summaries.billing, source: 'cache' }
+              : null,
+            content: cachedBootstrap.summaries?.content
+              ? { ...cachedBootstrap.summaries.content, source: 'cache' }
+              : null,
+          },
+        };
+      }
       return {
         profile: null,
         source: 'error',
         profileDocExists: false,
         firestoreQuotaLimited: isQuotaExceededFirestoreError(error),
+        fetchedAt: new Date().toISOString(),
       };
     }
+  },
+
+  getCachedAccountBootstrap(): CurrentProfileResponse | null {
+    return readCachedAccountBootstrap(auth.currentUser?.uid);
   },
 
   async createProfile(profile: UserProfile): Promise<void> {
@@ -560,10 +624,11 @@ export const userService = {
       const currentUser = auth.currentUser;
 
       if (currentUser && currentUser.uid === profile.uid) {
-        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile/bootstrap', {
+        const payload = await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile/bootstrap', {
           method: 'POST',
           body: JSON.stringify(sanitizedProfile),
         });
+        writeCachedAccountBootstrap(payload);
         return;
       }
 
@@ -597,10 +662,11 @@ export const userService = {
       const currentUser = auth.currentUser;
 
       if (currentUser && currentUser.uid === uid) {
-        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+        const payload = await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
           method: 'PATCH',
           body: JSON.stringify(sanitizedUpdates),
         });
+        writeCachedAccountBootstrap(payload);
         return;
       }
 

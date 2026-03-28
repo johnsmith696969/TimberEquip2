@@ -5554,6 +5554,175 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
   };
 }
 
+function normalizeAccountBootstrapSummarySource(results = []) {
+  const availableCount = results.filter((result) => result?.available).length;
+  if (availableCount === 0) {
+    return 'unavailable';
+  }
+  if (availableCount === results.length) {
+    return 'live';
+  }
+  return 'partial';
+}
+
+async function getAggregateCountSafe(queryRef, description, context = {}) {
+  const result = await runFirestoreTaskWithQuotaTolerance(async () => {
+    if (typeof queryRef?.count === 'function') {
+      const aggregateSnapshot = await queryRef.count().get();
+      return Number(aggregateSnapshot.data()?.count || 0);
+    }
+
+    const snapshot = await queryRef.get();
+    return snapshot.size;
+  }, description, context);
+
+  return {
+    count: Number(result.value || 0),
+    available: Boolean(result.ok),
+    firestoreQuotaLimited: Boolean(result.skipped),
+  };
+}
+
+async function loadAccountProfileState(decodedToken) {
+  const actorUid = normalizeNonEmptyString(decodedToken.uid);
+  const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+  const actorDisplayName =
+    normalizeNonEmptyString(decodedToken.name)
+    || normalizeNonEmptyString(decodedToken.displayName)
+    || 'Forestry Equipment Sales User';
+  const actorPhotoUrl = normalizeNonEmptyString(decodedToken.picture);
+
+  let authRecord = null;
+  try {
+    authRecord = await getAuthUserRecordSafe(actorUid);
+  } catch (error) {
+    logger.warn('Unable to load auth record for account profile API.', {
+      actorUid,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  let profileDocExists = false;
+  let firestoreQuotaLimited = false;
+  let profileSource = 'auth_fallback';
+  let userData = {};
+
+  try {
+    const userSnapshot = await getDb().collection('users').doc(actorUid).get();
+    if (userSnapshot.exists) {
+      userData = userSnapshot.data() || {};
+      profileDocExists = true;
+      profileSource = 'firestore';
+    }
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+
+    firestoreQuotaLimited = true;
+    logger.warn('Account profile API falling back to auth-only data because Firestore quota is exhausted.', {
+      actorUid,
+    });
+  }
+
+  return {
+    actorUid,
+    actorEmail,
+    actorDisplayName,
+    actorPhotoUrl,
+    authRecord,
+    userData,
+    profileDocExists,
+    firestoreQuotaLimited,
+    profileSource,
+    profile: serializeAccountProfileData(actorUid, userData, authRecord, {
+      uid: actorUid,
+      email: actorEmail,
+      displayName: authRecord?.displayName || actorDisplayName,
+      photoURL: authRecord?.photoURL || actorPhotoUrl || null,
+      emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
+    }),
+  };
+}
+
+async function buildAccountBootstrapSummaries(profileState) {
+  const actorRole = normalizeUserRole(profileState?.profile?.role || '');
+  const actorEmail = normalizeNonEmptyString(profileState?.actorEmail).toLowerCase();
+  const actorUid = normalizeNonEmptyString(profileState?.actorUid);
+  if (!canAdministrateAccount(actorRole) && !isPrivilegedAdminEmail(actorEmail)) {
+    return {
+      adminUsers: null,
+      billing: null,
+      content: null,
+    };
+  }
+
+  const summaryContext = { actorUid, actorRole };
+  const [
+    totalUsersResult,
+    activeUsersResult,
+    suspendedUsersResult,
+    pendingUsersResult,
+    invoiceCountResult,
+    paidInvoiceCountResult,
+    subscriptionCountResult,
+    activeSubscriptionCountResult,
+    trialingSubscriptionCountResult,
+    auditLogCountResult,
+    blogPostCountResult,
+    publishedBlogPostCountResult,
+    mediaCountResult,
+    contentBlockCountResult,
+  ] = await Promise.all([
+    getAggregateCountSafe(getDb().collection('users'), 'Account bootstrap total user summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('users').where('accountStatus', '==', 'active'), 'Account bootstrap active user summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('users').where('accountStatus', '==', 'suspended'), 'Account bootstrap suspended user summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('users').where('accountStatus', '==', 'pending'), 'Account bootstrap pending user summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('invoices'), 'Account bootstrap invoice summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('invoices').where('status', '==', 'paid'), 'Account bootstrap paid invoice summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('subscriptions'), 'Account bootstrap subscription summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('subscriptions').where('status', '==', 'active'), 'Account bootstrap active subscription summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('subscriptions').where('status', '==', 'trialing'), 'Account bootstrap trialing subscription summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('billingAuditLogs'), 'Account bootstrap billing audit summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('blogPosts'), 'Account bootstrap blog post summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('blogPosts').where('status', '==', 'published'), 'Account bootstrap published blog post summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('mediaLibrary'), 'Account bootstrap media summary', summaryContext),
+    getAggregateCountSafe(getDb().collection('contentBlocks'), 'Account bootstrap content block summary', summaryContext),
+  ]);
+
+  const adminResults = [totalUsersResult, activeUsersResult, suspendedUsersResult, pendingUsersResult];
+  const billingResults = [invoiceCountResult, paidInvoiceCountResult, subscriptionCountResult, activeSubscriptionCountResult, trialingSubscriptionCountResult, auditLogCountResult];
+  const contentResults = [blogPostCountResult, publishedBlogPostCountResult, mediaCountResult, contentBlockCountResult];
+
+  return {
+    adminUsers: {
+      totalUsers: totalUsersResult.count,
+      activeUsers: activeUsersResult.count,
+      suspendedUsers: suspendedUsersResult.count,
+      pendingUsers: pendingUsersResult.count,
+      source: normalizeAccountBootstrapSummarySource(adminResults),
+      firestoreQuotaLimited: adminResults.some((result) => result.firestoreQuotaLimited),
+    },
+    billing: {
+      invoiceCount: invoiceCountResult.count,
+      paidInvoiceCount: paidInvoiceCountResult.count,
+      subscriptionCount: subscriptionCountResult.count,
+      activeSubscriptionCount: activeSubscriptionCountResult.count + trialingSubscriptionCountResult.count,
+      auditLogCount: auditLogCountResult.count,
+      source: normalizeAccountBootstrapSummarySource(billingResults),
+      firestoreQuotaLimited: billingResults.some((result) => result.firestoreQuotaLimited),
+    },
+    content: {
+      blogPostCount: blogPostCountResult.count,
+      publishedBlogPostCount: publishedBlogPostCountResult.count,
+      mediaCount: mediaCountResult.count,
+      contentBlockCount: contentBlockCountResult.count,
+      source: normalizeAccountBootstrapSummarySource(contentResults),
+      firestoreQuotaLimited: contentResults.some((result) => result.firestoreQuotaLimited),
+    },
+  };
+}
+
 function trimAccountText(value, maxLength = 5000) {
   if (value === undefined || value === null) return '';
   return String(value).trim().slice(0, maxLength);
@@ -8647,65 +8816,40 @@ exports.apiProxy = onRequest(
         return res.status(200).json({ listings: filteredListings });
       }
 
+      if (req.method === 'GET' && path === '/account/bootstrap') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const profileState = await loadAccountProfileState(decodedToken);
+        const summaries = await buildAccountBootstrapSummaries(profileState);
+        const summaryQuotaLimited = Object.values(summaries).some((summary) => summary?.firestoreQuotaLimited);
+
+        return res.status(200).json({
+          profile: profileState.profile,
+          source: profileState.profileSource,
+          profileDocExists: profileState.profileDocExists,
+          firestoreQuotaLimited: profileState.firestoreQuotaLimited || summaryQuotaLimited,
+          fetchedAt: new Date().toISOString(),
+          summaries,
+        });
+      }
+
       if (req.method === 'GET' && path === '/account/profile') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorEmail = normalizeNonEmptyString(decodedToken.email);
-        const actorDisplayName =
-          normalizeNonEmptyString(decodedToken.name) ||
-          normalizeNonEmptyString(decodedToken.displayName) ||
-          'Forestry Equipment Sales User';
-        const actorPhotoUrl = normalizeNonEmptyString(decodedToken.picture);
-        let authRecord = null;
-        try {
-          authRecord = await getAuthUserRecordSafe(actorUid);
-        } catch (error) {
-          logger.warn('Unable to load auth record for account profile API.', {
-            actorUid,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-
-        let profileDocExists = false;
-        let firestoreQuotaLimited = false;
-        let profileSource = 'auth_fallback';
-        let userData = {};
-
-        try {
-          const userSnapshot = await getDb().collection('users').doc(actorUid).get();
-          if (userSnapshot.exists) {
-            userData = userSnapshot.data() || {};
-            profileDocExists = true;
-            profileSource = 'firestore';
-          }
-        } catch (error) {
-          if (!isFirestoreQuotaExceeded(error)) {
-            throw error;
-          }
-
-          firestoreQuotaLimited = true;
-          logger.warn('Account profile API falling back to auth-only data because Firestore quota is exhausted.', {
-            actorUid,
-          });
-        }
-
-        const profile = serializeAccountProfileData(actorUid, userData, authRecord, {
-          uid: actorUid,
-          email: actorEmail,
-          displayName: authRecord?.displayName || actorDisplayName,
-          photoURL: authRecord?.photoURL || actorPhotoUrl || null,
-          emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
-        });
+        const profileState = await loadAccountProfileState(decodedToken);
 
         return res.status(200).json({
-          profile,
-          source: profileSource,
-          profileDocExists,
-          firestoreQuotaLimited,
+          profile: profileState.profile,
+          source: profileState.profileSource,
+          profileDocExists: profileState.profileDocExists,
+          firestoreQuotaLimited: profileState.firestoreQuotaLimited,
+          fetchedAt: new Date().toISOString(),
         });
       }
 
@@ -8824,6 +8968,7 @@ exports.apiProxy = onRequest(
           source: existingSnapshot?.exists ? 'bootstrap_refresh' : 'bootstrap_create',
           profileDocExists: true,
           firestoreQuotaLimited: false,
+          fetchedAt: new Date().toISOString(),
         });
       }
 
@@ -8900,6 +9045,7 @@ exports.apiProxy = onRequest(
           source: 'account_profile_patch',
           profileDocExists: true,
           firestoreQuotaLimited: false,
+          fetchedAt: new Date().toISOString(),
         });
       }
 

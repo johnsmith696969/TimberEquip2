@@ -64,7 +64,7 @@ function resolveDashboardTab(tab: string | null | undefined): DashboardTab {
 }
 
 export function AdminDashboard() {
-  const { user: authUser, logout: authLogout, patchCurrentUserProfile } = useAuth();
+  const { user: authUser, accountBootstrap, logout: authLogout, patchCurrentUserProfile } = useAuth();
   const { formatPrice } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
@@ -153,6 +153,19 @@ export function AdminDashboard() {
   const operationalLoadKeyRef = useRef('');
   const userDirectoryLoadKeyRef = useRef('');
   const requestedTabRef = useRef(requestedTab);
+  const bootstrapAdminSummary = accountBootstrap?.summaries?.adminUsers || null;
+  const bootstrapBillingSummary = accountBootstrap?.summaries?.billing || null;
+  const bootstrapContentSummary = accountBootstrap?.summaries?.content || null;
+  const totalAccountCount = accounts.length > 0 ? accounts.length : (bootstrapAdminSummary?.totalUsers || 0);
+  const activeAccountCount = accounts.length > 0
+    ? accounts.filter(account => account.status === 'Active').length
+    : (bootstrapAdminSummary?.activeUsers || 0);
+  const suspendedAccountCount = accounts.length > 0
+    ? accounts.filter(account => account.status === 'Suspended').length
+    : (bootstrapAdminSummary?.suspendedUsers || 0);
+  const pendingAccountCount = accounts.length > 0
+    ? accounts.filter(account => account.status === 'Pending').length
+    : (bootstrapAdminSummary?.pendingUsers || 0);
 
   const selectAdminTab = useCallback((nextTab: DashboardTab) => {
     if (nextTab === activeTab) {
@@ -1396,8 +1409,8 @@ export function AdminDashboard() {
     const totalInquiries = inquiries.length;
     const wonInquiries = inquiries.filter((inquiry) => inquiry.status === 'Won').length;
     const conversionRate = totalInquiries === 0 ? 0 : Math.round((wonInquiries / totalInquiries) * 100);
-    const totalAccounts = accounts.length;
-    const activeAccounts = accounts.filter((account) => account.status === 'Active').length;
+    const totalAccounts = totalAccountCount;
+    const activeAccounts = activeAccountCount;
     const totalInventoryValue = listings.reduce((sum, listing) => sum + (listing.price || 0), 0);
     const totalViews = listings.reduce((sum, listing) => sum + (listing.views || 0), 0);
     const totalRevenue = invoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + invoice.amount, 0);
@@ -1425,7 +1438,7 @@ export function AdminDashboard() {
     { label: 'Visible Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
     { label: 'Total Leads', value: inquiries.length, change: '+24%', icon: MessageSquare, color: 'text-secondary' },
     { label: 'Call Volume', value: calls.length, change: '+8%', icon: Phone, color: 'text-data' },
-    { label: 'Active Users', value: accounts.length, change: '+15%', icon: Users, color: 'text-ink' }
+    { label: 'Active Users', value: activeAccountCount, change: '+15%', icon: Users, color: 'text-ink' }
   ];
 
   const renderOverview = () => (
@@ -2295,10 +2308,10 @@ export function AdminDashboard() {
       <>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Users', value: accounts.length },
-          { label: 'Active', value: accounts.filter(account => account.status === 'Active').length },
-          { label: 'Suspended', value: accounts.filter(account => account.status === 'Suspended').length },
-          { label: 'Pending', value: accounts.filter(account => account.status === 'Pending').length },
+          { label: 'Total Users', value: totalAccountCount },
+          { label: 'Active', value: activeAccountCount },
+          { label: 'Suspended', value: suspendedAccountCount },
+          { label: 'Pending', value: pendingAccountCount },
         ].map((metric) => (
           <div key={metric.label} className="bg-surface border border-line rounded-sm p-5">
             <span className="label-micro block mb-1">{metric.label}</span>
@@ -2472,7 +2485,7 @@ export function AdminDashboard() {
       );
     }
 
-    if (billingLoadError && invoices.length === 0 && subscriptions.length === 0 && billingLogs.length === 0) {
+    if (billingLoadError && invoices.length === 0 && subscriptions.length === 0 && billingLogs.length === 0 && !bootstrapBillingSummary) {
       return (
         <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-3">
@@ -2491,9 +2504,13 @@ export function AdminDashboard() {
     }
 
     const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
-    const pendingCount = invoices.filter(i => i.status === 'pending').length;
+    const pendingCount = invoices.length > 0
+      ? invoices.filter(i => i.status === 'pending').length
+      : Math.max((bootstrapBillingSummary?.invoiceCount || 0) - (bootstrapBillingSummary?.paidInvoiceCount || 0), 0);
     const failedCount = invoices.filter(i => i.status === 'failed').length;
-    const activeSubs = subscriptions.filter(s => s.status === 'active').length;
+    const activeSubs = subscriptions.length > 0
+      ? subscriptions.filter(s => s.status === 'active').length
+      : (bootstrapBillingSummary?.activeSubscriptionCount || 0);
 
     return (
       <div className="space-y-8">
@@ -2646,7 +2663,7 @@ export function AdminDashboard() {
       );
     }
 
-    if (contentLoadError && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0) {
+    if (contentLoadError && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0 && !bootstrapContentSummary) {
       return (
         <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-3">
