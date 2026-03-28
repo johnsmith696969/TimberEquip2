@@ -389,9 +389,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const currentVersion = authStateVersion;
 
       if (firebaseUser) {
-        setLoading(true);
+        const existingUser = currentUserRef.current;
+        const shouldBlockRender = !existingUser || existingUser.uid !== firebaseUser.uid;
+        if (shouldBlockRender) {
+          setLoading(true);
+        }
         void (async () => {
           const isStaleSession = () => currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid;
+          const cachedBootstrap = userService.getCachedAccountBootstrap();
+          const cachedBootstrapForCurrentUser =
+            cachedBootstrap?.profile?.uid === firebaseUser.uid ? cachedBootstrap : null;
+          let initialRenderReleased = !shouldBlockRender;
+
+          const releaseInitialRender = () => {
+            if (!shouldBlockRender || initialRenderReleased || isStaleSession()) return;
+            initialRenderReleased = true;
+            setLoading(false);
+          };
 
           const persistResolvedProfile = (nextProfile: UserProfile, bootstrapPayload?: AccountBootstrapResponse | null) => {
             if (isStaleSession()) return;
@@ -460,6 +474,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
 
           try {
+            if (shouldBlockRender) {
+              const provisionalProfile = cachedBootstrapForCurrentUser?.profile
+                ? normalizeProfile({
+                    ...cachedBootstrapForCurrentUser.profile,
+                    displayName:
+                      cachedBootstrapForCurrentUser.profile.displayName ||
+                      firebaseUser.displayName ||
+                      'Anonymous User',
+                    email: cachedBootstrapForCurrentUser.profile.email || firebaseUser.email || '',
+                    photoURL: firebaseUser.photoURL || cachedBootstrapForCurrentUser.profile.photoURL || '',
+                    emailVerified: firebaseUser.emailVerified,
+                  })
+                : await buildFallbackProfile(firebaseUser, currentUserRef.current);
+
+              if (isStaleSession()) {
+                return;
+              }
+
+              persistResolvedProfile(provisionalProfile, cachedBootstrapForCurrentUser);
+              releaseInitialRender();
+            }
+
             const profileResponse = await userService.getCurrentProfile();
             if (isStaleSession()) {
               return;
@@ -532,18 +568,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             scheduleBillingRefresh(resolvedProfile, profileResponse.profile ? '' : ':fallback');
           } catch (error) {
             console.error('Unable to bootstrap profile via account API:', error);
-            const cachedBootstrap = userService.getCachedAccountBootstrap();
-            const fallbackProfile = await buildFallbackProfile(firebaseUser, currentUserRef.current);
-            if (isStaleSession()) {
-              return;
-            }
+            if (shouldBlockRender && !currentUserRef.current) {
+              const fallbackProfile = await buildFallbackProfile(firebaseUser, currentUserRef.current);
+              if (isStaleSession()) {
+                return;
+              }
 
-            persistResolvedProfile(fallbackProfile, cachedBootstrap);
-            scheduleBillingRefresh(fallbackProfile, ':fallback');
-          } finally {
-            if (!isStaleSession()) {
-              setLoading(false);
+              persistResolvedProfile(fallbackProfile, cachedBootstrapForCurrentUser);
             }
+            const latestProfile = currentUserRef.current;
+            if (latestProfile) {
+              scheduleBillingRefresh(latestProfile, ':fallback');
+            }
+          } finally {
+            releaseInitialRender();
           }
         })();
       } else {

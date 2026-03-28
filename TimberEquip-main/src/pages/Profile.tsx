@@ -194,7 +194,22 @@ export function Profile() {
 
     return items;
   }, [hasAdminProfileScope, normalizedRole]);
-  const [activeTab, setActiveTab] = useState('Overview');
+  const resolveRequestedProfileTab = useCallback((requestedTab: string | null) => {
+    const normalizedRequestedTab = requestedTab?.trim().toLowerCase() || '';
+    const tabAlias =
+      normalizedRequestedTab === 'settings'
+        ? 'account settings'
+        : normalizedRequestedTab === 'privacy'
+          ? 'privacy & data'
+          : normalizedRequestedTab;
+
+    if (!tabAlias) {
+      return null;
+    }
+
+    return profileTabs.find((tab) => tab.toLowerCase() === tabAlias) || null;
+  }, [profileTabs]);
+  const [activeTab, setActiveTab] = useState(() => resolveRequestedProfileTab(searchParams.get('tab')) || 'Overview');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -802,10 +817,11 @@ export function Profile() {
   }, [activeTab, searchParams, setSearchParams]);
 
   useEffect(() => {
-    const requestedTab = searchParams.get('tab');
-    if (requestedTab && profileTabs.includes(requestedTab)) {
-      if (requestedTab !== activeTab) {
-        setActiveTab(requestedTab);
+    const matchedRequestedTab = resolveRequestedProfileTab(searchParams.get('tab'));
+
+    if (matchedRequestedTab) {
+      if (matchedRequestedTab !== activeTab) {
+        setActiveTab(matchedRequestedTab);
       }
       return;
     }
@@ -813,7 +829,7 @@ export function Profile() {
     if (!profileTabs.includes(activeTab)) {
       setActiveTab('Overview');
     }
-  }, [activeTab, profileTabs, searchParams]);
+  }, [activeTab, profileTabs, resolveRequestedProfileTab, searchParams]);
 
   useEffect(() => {
     const fetchProfileData = async () => {

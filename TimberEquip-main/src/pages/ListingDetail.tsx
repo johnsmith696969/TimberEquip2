@@ -206,47 +206,56 @@ export function ListingDetail() {
   const isFavorite = resolvedListingId ? favoriteIds.includes(resolvedListingId) : false;
 
   useEffect(() => {
+    let isActive = true;
+
     const fetchData = async () => {
       const requestedListingId = String(decodeListingPublicKey(publicKey || '') || id || '').trim();
       if (!requestedListingId) {
-        setLoading(false);
+        if (isActive) {
+          setLoading(false);
+        }
         return;
       }
-      setLoading(true);
-      setLoadError('');
-      setMarketMatchRecommendations([]);
-      setLoadingMarketMatches(false);
+      if (isActive) {
+        setLoading(true);
+        setLoadError('');
+        setMarketMatchRecommendations([]);
+        setLoadingMarketMatches(false);
+        setLoadingAiData(false);
+      }
       try {
         const listingData = await equipmentService.getListing(requestedListingId);
-        if (listingData) {
-          setLoadingMarketMatches(true);
-          const computedAmv = await equipmentService.getMarketValue({
-            listingId: listingData.id,
-            category: listingData.category,
-            manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
-            model: listingData.model,
-            price: listingData.price,
-            year: listingData.year,
-            hours: listingData.hours
+        if (!listingData) {
+          if (isActive) {
+            setLoadError('This equipment record is temporarily unavailable. Please return to inventory and try again shortly.');
+          }
+          return;
+        }
+
+        if (!isActive) {
+          return;
+        }
+
+        setListing({
+          ...listingData,
+          marketValueEstimate: listingData.marketValueEstimate ?? null,
+        });
+        setSeller(null);
+        setAiSpecs(null);
+        setAmvExplanation(null);
+        setLoading(false);
+        setLoadingAiData(true);
+        setLoadingMarketMatches(true);
+
+        const sellerPromise = equipmentService
+          .getSeller(listingData.sellerUid || listingData.sellerId || '')
+          .catch((error) => {
+            console.error('Error fetching listing seller:', error);
+            return undefined;
           });
 
-          const listingWithAmv = {
-            ...listingData,
-            marketValueEstimate: computedAmv
-          };
-
-          setListing(listingWithAmv);
-          const sellerData = await equipmentService.getSeller(listingData.sellerUid || listingData.sellerId || '');
-          if (sellerData) setSeller(sellerData);
-
-          // Fetch AI Data
-          setLoadingAiData(true);
-          const specsPromise = geminiService.getMachineSpecs(listingData.title, listingData.category);
-          const explanationPromise =
-            computedAmv !== null
-              ? geminiService.explainAMV(listingData.title, listingData.price, computedAmv, listingData.specs)
-              : Promise.resolve<string | null>(null);
-          const marketMatchPromise = equipmentService.getMarketMatchRecommendations({
+        const computedAmv = await equipmentService
+          .getMarketValue({
             listingId: listingData.id,
             category: listingData.category,
             manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
@@ -254,26 +263,83 @@ export function ListingDetail() {
             price: listingData.price,
             year: listingData.year,
             hours: listingData.hours,
+          })
+          .catch((error) => {
+            console.error('Error fetching market value estimate:', error);
+            return null;
           });
 
-          const [specs, explanation, recommendations] = await Promise.all([specsPromise, explanationPromise, marketMatchPromise]);
-          setAiSpecs(specs);
-          setAmvExplanation(explanation || null);
-          setMarketMatchRecommendations(recommendations);
-          setLoadingAiData(false);
-          setLoadingMarketMatches(false);
-        } else {
-          setLoadError('This equipment record is temporarily unavailable. Please return to inventory and try again shortly.');
+        if (isActive) {
+          setListing((current) =>
+            current && current.id === listingData.id
+              ? {
+                  ...current,
+                  marketValueEstimate: computedAmv,
+                }
+              : current
+          );
         }
+
+        const explanationPromise =
+          computedAmv !== null
+            ? geminiService
+                .explainAMV(listingData.title, listingData.price, computedAmv, listingData.specs)
+                .catch((error) => {
+                  console.error('Error explaining AMV:', error);
+                  return null;
+                })
+            : Promise.resolve<string | null>(null);
+
+        const [sellerData, specs, explanation, recommendations] = await Promise.all([
+          sellerPromise,
+          geminiService.getMachineSpecs(listingData.title, listingData.category).catch((error) => {
+            console.error('Error fetching machine specs:', error);
+            return null;
+          }),
+          explanationPromise,
+          equipmentService
+            .getMarketMatchRecommendations({
+              listingId: listingData.id,
+              category: listingData.category,
+              manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
+              model: listingData.model,
+              price: listingData.price,
+              year: listingData.year,
+              hours: listingData.hours,
+            })
+            .catch((error) => {
+              console.error('Error fetching market match recommendations:', error);
+              return [];
+            }),
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        if (sellerData) {
+          setSeller(sellerData);
+        }
+        setAiSpecs(specs);
+        setAmvExplanation(explanation || null);
+        setMarketMatchRecommendations(recommendations);
       } catch (error) {
         console.error('Error fetching listing detail:', error);
-        setLoadError(error instanceof Error ? error.message : 'This equipment record is temporarily unavailable right now.');
-        setLoadingMarketMatches(false);
+        if (isActive) {
+          setLoadError(error instanceof Error ? error.message : 'This equipment record is temporarily unavailable right now.');
+          setLoading(false);
+        }
       } finally {
-        setLoading(false);
+        if (isActive) {
+          setLoadingAiData(false);
+          setLoadingMarketMatches(false);
+        }
       }
     };
     fetchData();
+    return () => {
+      isActive = false;
+    };
   }, [id, publicKey]);
 
   useEffect(() => {
