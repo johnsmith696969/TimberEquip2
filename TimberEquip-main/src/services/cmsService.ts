@@ -5,12 +5,100 @@ import {
 } from 'firebase/firestore';
 import { BlogPost, ContentBlock, MediaItem } from '../types';
 
+const CMS_CACHE_PREFIX = 'te-cms-cache-v1';
+
+type CmsCacheEnvelope<T> = {
+  savedAt: string;
+  data: T;
+};
+
+function readCmsCache<T>(scope: string): T | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(`${CMS_CACHE_PREFIX}:${scope}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CmsCacheEnvelope<T> | T;
+    if (parsed && typeof parsed === 'object' && 'data' in (parsed as CmsCacheEnvelope<T>)) {
+      return ((parsed as CmsCacheEnvelope<T>).data ?? null) as T | null;
+    }
+    return parsed as T;
+  } catch (error) {
+    console.warn(`Unable to read CMS cache for ${scope}:`, error);
+    return null;
+  }
+}
+
+function writeCmsCache<T>(scope: string, data: T): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const payload: CmsCacheEnvelope<T> = {
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    window.localStorage.setItem(`${CMS_CACHE_PREFIX}:${scope}`, JSON.stringify(payload));
+  } catch (error) {
+    console.warn(`Unable to write CMS cache for ${scope}:`, error);
+  }
+}
+
+async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Unauthorized');
+  }
+
+  const idToken = await currentUser.getIdToken();
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const rawBody = await response.text().catch(() => '');
+  let payload: Record<string, unknown> = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(String(payload?.error || rawBody || `Content request failed (${response.status}).`));
+  }
+
+  return payload as T;
+}
+
 export const cmsService = {
   // ── Blog Posts ─────────────────────────────────────────────────────────────
 
   async getBlogPosts(): Promise<BlogPost[]> {
-    const snap = await getDocs(query(collection(db, 'blogPosts'), orderBy('updatedAt', 'desc')));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as BlogPost));
+    try {
+      const posts = await getAuthorizedJson<BlogPost[]>('/api/admin/content/blog-posts', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (Array.isArray(posts)) {
+        writeCmsCache('blog-posts', posts);
+      }
+      return posts;
+    } catch (error) {
+      const cachedPosts = readCmsCache<BlogPost[]>('blog-posts');
+      if (Array.isArray(cachedPosts) && cachedPosts.length > 0) {
+        console.warn('Using cached blog posts because the live CMS request failed:', error);
+        return cachedPosts;
+      }
+      throw error;
+    }
   },
 
   async createPost(post: Omit<BlogPost, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
@@ -106,8 +194,25 @@ export const cmsService = {
   // ── Media Library ──────────────────────────────────────────────────────────
 
   async getMedia(): Promise<MediaItem[]> {
-    const snap = await getDocs(query(collection(db, 'mediaLibrary'), orderBy('createdAt', 'desc')));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as MediaItem));
+    try {
+      const media = await getAuthorizedJson<MediaItem[]>('/api/admin/content/media', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (Array.isArray(media)) {
+        writeCmsCache('media', media);
+      }
+      return media;
+    } catch (error) {
+      const cachedMedia = readCmsCache<MediaItem[]>('media');
+      if (Array.isArray(cachedMedia) && cachedMedia.length > 0) {
+        console.warn('Using cached media assets because the live CMS request failed:', error);
+        return cachedMedia;
+      }
+      throw error;
+    }
   },
 
   async addMedia(item: Omit<MediaItem, 'id' | 'createdAt'>): Promise<string> {
@@ -131,8 +236,25 @@ export const cmsService = {
   // ── Content Blocks ─────────────────────────────────────────────────────────
 
   async getContentBlocks(): Promise<ContentBlock[]> {
-    const snap = await getDocs(query(collection(db, 'contentBlocks'), orderBy('order', 'asc')));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentBlock));
+    try {
+      const blocks = await getAuthorizedJson<ContentBlock[]>('/api/admin/content/blocks', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (Array.isArray(blocks)) {
+        writeCmsCache('content-blocks', blocks);
+      }
+      return blocks;
+    } catch (error) {
+      const cachedBlocks = readCmsCache<ContentBlock[]>('content-blocks');
+      if (Array.isArray(cachedBlocks) && cachedBlocks.length > 0) {
+        console.warn('Using cached content blocks because the live CMS request failed:', error);
+        return cachedBlocks;
+      }
+      throw error;
+    }
   },
 
   async createContentBlock(block: Omit<ContentBlock, 'id'>): Promise<string> {

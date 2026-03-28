@@ -20,14 +20,22 @@ const {
   syncPublicSeoForListingChange,
   syncPublicSeoForSellerChange,
 } = require('./public-seo-read-model.js');
+const {
+  getFallbackMarketplaceListings,
+  getFallbackMarketplaceHomeData,
+  getFallbackMarketplaceCategoryMetrics,
+  getFallbackMarketplaceStats,
+} = require('./public-marketplace-fallback.js');
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 
-const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
-const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
+const RUNTIME_PROJECT_ID = String(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID || 'mobile-app-equipment-sales').trim();
+const RECAPTCHA_PROJECT_ID = String(process.env.RECAPTCHA_PROJECT_ID || RUNTIME_PROJECT_ID || 'mobile-app-equipment-sales').trim();
+const RECAPTCHA_SITE_KEY = String(process.env.RECAPTCHA_SITE_KEY || '').trim()
+  || (RECAPTCHA_PROJECT_ID === 'mobile-app-equipment-sales' ? '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0' : '');
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -4035,6 +4043,169 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
   };
 }
 
+function isDemoListing(listing) {
+  const id = normalizeMarketplaceText(listing?.id);
+  const seller = normalizeMarketplaceText(listing?.sellerUid || listing?.sellerId);
+  return id.startsWith('demo-') || id.startsWith('catalog-') || seller.includes('demo');
+}
+
+function sanitizeListingWritePayload(input = {}) {
+  const title = normalizeNonEmptyString(input.title, 'Equipment Listing');
+  const category = normalizeNonEmptyString(input.category, 'Equipment');
+  const make = normalizeNonEmptyString(input.make || input.manufacturer || input.brand);
+  const manufacturer = normalizeNonEmptyString(input.manufacturer || make);
+  const model = normalizeNonEmptyString(input.model);
+  const year = toFiniteNumberOrUndefined(input.year) || null;
+  const price = toFiniteNumberOrUndefined(input.price) || 0;
+  const hours = toFiniteNumberOrUndefined(input.hours) || 0;
+  const imageVariants = Array.isArray(input.imageVariants)
+    ? input.imageVariants
+        .filter((entry) => entry && typeof entry === 'object')
+        .slice(0, 20)
+        .map((entry) => ({
+          detailUrl: normalizeNonEmptyString(entry.detailUrl || entry.url),
+          thumbnailUrl: normalizeNonEmptyString(entry.thumbnailUrl || entry.thumbUrl || entry.detailUrl || entry.url),
+          format: normalizeNonEmptyString(entry.format, 'image/jpeg'),
+        }))
+        .filter((entry) => entry.detailUrl)
+    : [];
+
+  return {
+    title,
+    description: normalizeNonEmptyString(input.description, `${title} listed on Forestry Equipment Sales.`),
+    category,
+    subcategory: normalizeNonEmptyString(input.subcategory || category, category),
+    make,
+    manufacturer,
+    model,
+    year,
+    price,
+    currency: normalizeNonEmptyString(input.currency, 'USD'),
+    hours,
+    condition: normalizeNonEmptyString(input.condition, 'Used'),
+    location: normalizeNonEmptyString(input.location),
+    city: normalizeNonEmptyString(input.city),
+    state: normalizeNonEmptyString(input.state),
+    country: normalizeNonEmptyString(input.country),
+    serialNumber: normalizeNonEmptyString(input.serialNumber),
+    stockNumber: normalizeNonEmptyString(input.stockNumber),
+    images: normalizeImageUrls(Array.isArray(input.images) ? input.images : []),
+    imageVariants,
+    videoUrls: Array.isArray(input.videoUrls)
+      ? input.videoUrls.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 10)
+      : [],
+    specifications: input.specifications && typeof input.specifications === 'object' ? input.specifications : {},
+    specs: input.specs && typeof input.specs === 'object'
+      ? input.specs
+      : (input.specifications && typeof input.specifications === 'object' ? input.specifications : {}),
+    conditionChecklist: input.conditionChecklist && typeof input.conditionChecklist === 'object' ? input.conditionChecklist : {},
+    features: Array.isArray(input.features)
+      ? input.features.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 20)
+      : [],
+    featured: Boolean(input.featured),
+    featuredRank: toFiniteNumberOrUndefined(input.featuredRank) || 0,
+    metaTitle: normalizeNonEmptyString(input.metaTitle),
+    metaDescription: normalizeNonEmptyString(input.metaDescription),
+    canonicalSlug: normalizeNonEmptyString(input.canonicalSlug),
+    contactPhone: normalizeNonEmptyString(input.contactPhone),
+    contactEmail: normalizeNonEmptyString(input.contactEmail).toLowerCase(),
+    latitude: toFiniteNumberOrUndefined(input.latitude),
+    longitude: toFiniteNumberOrUndefined(input.longitude),
+  };
+}
+
+function buildSeedDemoListingsForSeller(sellerUid) {
+  const seedId = Date.now();
+  const baseRecords = [
+    {
+      key: 'pending',
+      title: '2021 John Deere 853M Demo',
+      category: 'Forestry',
+      subcategory: 'Feller Bunchers',
+      manufacturer: 'John Deere',
+      model: '853M',
+      year: 2021,
+      price: 289500,
+      hours: 4280,
+      condition: 'Used',
+      location: 'Grand Rapids, MN',
+      stockNumber: `DEM-${seedId}-P`,
+      description: 'Pending review demo listing for staging lifecycle validation.',
+      approvalStatus: 'pending',
+      paymentStatus: 'pending',
+      status: 'pending',
+    },
+    {
+      key: 'approved-unpaid',
+      title: '2020 Tigercat 620E Demo',
+      category: 'Forestry',
+      subcategory: 'Skidders',
+      manufacturer: 'Tigercat',
+      model: '620E',
+      year: 2020,
+      price: 219000,
+      hours: 5010,
+      condition: 'Used',
+      location: 'Duluth, MN',
+      stockNumber: `DEM-${seedId}-A`,
+      description: 'Approved but unpaid demo listing for staging lifecycle validation.',
+      approvalStatus: 'approved',
+      paymentStatus: 'pending',
+      status: 'active',
+    },
+    {
+      key: 'live',
+      title: '2022 Caterpillar 535 Demo',
+      category: 'Forestry',
+      subcategory: 'Log Loaders',
+      manufacturer: 'Caterpillar',
+      model: '535',
+      year: 2022,
+      price: 332000,
+      hours: 1780,
+      condition: 'Used',
+      location: 'Bemidji, MN',
+      stockNumber: `DEM-${seedId}-L`,
+      description: 'Live demo listing for staging lifecycle validation.',
+      approvalStatus: 'approved',
+      paymentStatus: 'paid',
+      status: 'active',
+      publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  ];
+
+  return baseRecords.map((record) => ({
+    ...record,
+    id: `demo-${record.key}-${seedId}`,
+    sellerUid,
+    sellerId: sellerUid,
+    currency: 'USD',
+    images: [
+      `https://picsum.photos/seed/${record.key}-${seedId}-1/1200/800`,
+      `https://picsum.photos/seed/${record.key}-${seedId}-2/1200/800`,
+    ],
+    imageVariants: [
+      {
+        detailUrl: `https://picsum.photos/seed/${record.key}-${seedId}-detail-1/1600/1000`,
+        thumbnailUrl: `https://picsum.photos/seed/${record.key}-${seedId}-thumb-1/480/320`,
+        format: 'image/jpeg',
+      },
+    ],
+    features: ['Staging QA', 'Lifecycle Validation', 'Demo Inventory'],
+    sellerVerified: true,
+    qualityValidated: true,
+    approvedBy: record.approvalStatus === 'approved' ? sellerUid : null,
+    publishedAt: record.publishedAt || null,
+    approvedAt: record.approvedAt || null,
+    rejectedAt: null,
+    rejectedBy: null,
+    rejectionReason: null,
+    views: 0,
+    leads: 0,
+  }));
+}
+
 function toMarketplaceNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -4278,10 +4449,23 @@ async function loadActivePublicListings() {
     return publicActiveListingsCache.value;
   }
 
-  const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.listings).get();
-  const listings = snapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
-  publicActiveListingsCache = { value: listings, fetchedAt: now };
-  return listings;
+  try {
+    const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.listings).get();
+    const listings = snapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+    publicActiveListingsCache = { value: listings, fetchedAt: now };
+    return listings;
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+
+    logger.warn('Serving emergency public listings snapshot because Firestore public read quota is exhausted.', {
+      collection: PUBLIC_SEO_COLLECTIONS.listings,
+    });
+    const listings = getFallbackMarketplaceListings();
+    publicActiveListingsCache = { value: listings, fetchedAt: now };
+    return listings;
+  }
 }
 
 async function loadSoldMarketplaceListings() {
@@ -4290,13 +4474,26 @@ async function loadSoldMarketplaceListings() {
     return publicSoldListingsCache.value;
   }
 
-  const snapshot = await getDb().collection('listings').where('status', '==', 'sold').get();
-  const listings = snapshot.docs
-    .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
-    .filter((listing) => normalizeMarketplaceText(listing.approvalStatus) === 'approved' && normalizeMarketplaceText(listing.paymentStatus) === 'paid');
+  try {
+    const snapshot = await getDb().collection('listings').where('status', '==', 'sold').get();
+    const listings = snapshot.docs
+      .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
+      .filter((listing) => normalizeMarketplaceText(listing.approvalStatus) === 'approved' && normalizeMarketplaceText(listing.paymentStatus) === 'paid');
 
-  publicSoldListingsCache = { value: listings, fetchedAt: now };
-  return listings;
+    publicSoldListingsCache = { value: listings, fetchedAt: now };
+    return listings;
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+
+    logger.warn('Serving empty sold-listings snapshot because Firestore public read quota is exhausted.', {
+      collection: 'listings',
+    });
+    const listings = getFallbackMarketplaceHomeData().recentSoldListings || [];
+    publicSoldListingsCache = { value: listings, fetchedAt: now };
+    return listings;
+  }
 }
 
 function buildPublicMetricsPayload(listings, selectLabel) {
@@ -4349,10 +4546,21 @@ async function getPublicCategoryMetricsPayload() {
     return publicCategoryMetricsCache.value;
   }
 
-  const listings = await loadActivePublicListings();
-  const metrics = buildPublicCategoryMetricsPayload(listings);
-  publicCategoryMetricsCache = { value: metrics, fetchedAt: now };
-  return metrics;
+  try {
+    const listings = await loadActivePublicListings();
+    const metrics = buildPublicCategoryMetricsPayload(listings);
+    publicCategoryMetricsCache = { value: metrics, fetchedAt: now };
+    return metrics;
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+
+    logger.warn('Serving emergency category metrics snapshot because Firestore public read quota is exhausted.');
+    const metrics = getFallbackMarketplaceCategoryMetrics();
+    publicCategoryMetricsCache = { value: metrics, fetchedAt: now };
+    return metrics;
+  }
 }
 
 async function getPublicHomeDataPayload() {
@@ -4361,42 +4569,53 @@ async function getPublicHomeDataPayload() {
     return publicHomeDataCache.value;
   }
 
-  const [activeListings, soldListings, categoryMetrics] = await Promise.all([
-    loadActivePublicListings(),
-    loadSoldMarketplaceListings(),
-    getPublicCategoryMetricsPayload(),
-  ]);
-  const topLevelCategoryMetrics = buildTopLevelCategoryMetricsPayload(activeListings);
+  try {
+    const [activeListings, soldListings, categoryMetrics] = await Promise.all([
+      loadActivePublicListings(),
+      loadSoldMarketplaceListings(),
+      getPublicCategoryMetricsPayload(),
+    ]);
+    const topLevelCategoryMetrics = buildTopLevelCategoryMetricsPayload(activeListings);
 
-  const featuredListings = sortMarketplaceListings(
-    activeListings.filter((listing) => Boolean(listing.featured)),
-    'newest',
-    ''
-  ).slice(0, 12);
+    const featuredListings = sortMarketplaceListings(
+      activeListings.filter((listing) => Boolean(listing.featured)),
+      'newest',
+      ''
+    ).slice(0, 12);
 
-  const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
-  const recentSoldListings = sortMarketplaceListings(
-    soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= threeDaysAgo),
-    'newest',
-    ''
-  ).slice(0, 12);
+    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+    const recentSoldListings = sortMarketplaceListings(
+      soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= threeDaysAgo),
+      'newest',
+      ''
+    ).slice(0, 12);
 
-  const totalMarketValue = activeListings.reduce((sum, listing) => sum + (Number.isFinite(listing.price) ? listing.price : 0), 0);
+    const totalMarketValue = activeListings.reduce((sum, listing) => sum + (Number.isFinite(listing.price) ? listing.price : 0), 0);
 
-  const payload = {
-    featuredListings,
-    recentSoldListings,
-    categoryMetrics,
-    topLevelCategoryMetrics,
-    heroStats: {
-      totalActive: activeListings.length,
-      totalMarketValue,
-    },
-    asOf: new Date(now).toISOString(),
-  };
+    const payload = {
+      featuredListings,
+      recentSoldListings,
+      categoryMetrics,
+      topLevelCategoryMetrics,
+      heroStats: {
+        totalActive: activeListings.length,
+        totalMarketValue,
+      },
+      asOf: new Date(now).toISOString(),
+    };
 
-  publicHomeDataCache = { value: payload, fetchedAt: now };
-  return payload;
+    publicHomeDataCache = { value: payload, fetchedAt: now };
+    return payload;
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+
+    logger.warn('Serving emergency home marketplace snapshot because Firestore public read quota is exhausted.');
+    const payload = getFallbackMarketplaceHomeData();
+    publicHomeDataCache = { value: payload, fetchedAt: now };
+    return payload;
+  }
 }
 
 function parseMarketplaceListingFilters(queryParams = {}) {
@@ -4449,62 +4668,78 @@ async function getMarketplaceStatsPayload() {
     return marketplaceStatsCache.value;
   }
 
-  const [listingsSnap, inquiriesSnap] = await Promise.all([
-    getDb().collection('listings').where('approvalStatus', '==', 'approved').get(),
-    getDb().collection('inquiries').get(),
-  ]);
+  try {
+    const [listingsSnap, inquiriesSnap] = await Promise.all([
+      getDb().collection('listings').where('approvalStatus', '==', 'approved').get(),
+      getDb().collection('inquiries').get(),
+    ]);
 
-  let priceSum = 0;
-  let pricedListingCount = 0;
-  let totalViews = 0;
-  let totalLeads = 0;
-  const countries = new Set();
+    let priceSum = 0;
+    let pricedListingCount = 0;
+    let totalViews = 0;
+    let totalLeads = 0;
+    const countries = new Set();
 
-  listingsSnap.docs.forEach((doc) => {
-    const data = doc.data() || {};
-    const status = String(data.status || 'active').toLowerCase();
-    if (status === 'sold') return;
+    listingsSnap.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      const status = String(data.status || 'active').toLowerCase();
+      if (status === 'sold') return;
 
-    const price = typeof data.price === 'number' ? data.price : Number(data.price || 0);
-    if (Number.isFinite(price) && price > 0) {
-      priceSum += price;
-      pricedListingCount += 1;
+      const price = typeof data.price === 'number' ? data.price : Number(data.price || 0);
+      if (Number.isFinite(price) && price > 0) {
+        priceSum += price;
+        pricedListingCount += 1;
+      }
+
+      const views = typeof data.views === 'number' ? data.views : Number(data.views || 0);
+      const leads = typeof data.leads === 'number' ? data.leads : Number(data.leads || 0);
+      if (Number.isFinite(views) && views > 0) totalViews += views;
+      if (Number.isFinite(leads) && leads > 0) totalLeads += leads;
+
+      const country = getCountryFromLocation(data.location);
+      if (country) countries.add(country);
+    });
+
+    const cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    const activeBuyerKeys = new Set();
+
+    inquiriesSnap.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      const createdAt = parseCreatedAt(data.createdAt);
+      if (!createdAt || createdAt < cutoff) return;
+
+      const buyerKey = data.buyerUid || (data.buyerEmail ? String(data.buyerEmail).toLowerCase() : null) || data.buyerPhone || null;
+      if (buyerKey) activeBuyerKeys.add(String(buyerKey));
+    });
+
+    const payload = {
+      monthlyActiveBuyers: activeBuyerKeys.size,
+      avgEquipmentValue: pricedListingCount > 0 ? Math.round(priceSum / pricedListingCount) : 0,
+      globalReachCountries: countries.size,
+      conversionRate: totalViews > 0 ? Number(((totalLeads / totalViews) * 100).toFixed(1)) : 0,
+      asOf: new Date(now).toISOString(),
+    };
+
+    marketplaceStatsCache = { value: payload, fetchedAt: now };
+    return payload;
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
     }
 
-    const views = typeof data.views === 'number' ? data.views : Number(data.views || 0);
-    const leads = typeof data.leads === 'number' ? data.leads : Number(data.leads || 0);
-    if (Number.isFinite(views) && views > 0) totalViews += views;
-    if (Number.isFinite(leads) && leads > 0) totalLeads += leads;
-
-    const country = getCountryFromLocation(data.location);
-    if (country) countries.add(country);
-  });
-
-  const cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000);
-  const activeBuyerKeys = new Set();
-
-  inquiriesSnap.docs.forEach((doc) => {
-    const data = doc.data() || {};
-    const createdAt = parseCreatedAt(data.createdAt);
-    if (!createdAt || createdAt < cutoff) return;
-
-    const buyerKey = data.buyerUid || (data.buyerEmail ? String(data.buyerEmail).toLowerCase() : null) || data.buyerPhone || null;
-    if (buyerKey) activeBuyerKeys.add(String(buyerKey));
-  });
-
-  const payload = {
-    monthlyActiveBuyers: activeBuyerKeys.size,
-    avgEquipmentValue: pricedListingCount > 0 ? Math.round(priceSum / pricedListingCount) : 0,
-    globalReachCountries: countries.size,
-    conversionRate: totalViews > 0 ? Number(((totalLeads / totalViews) * 100).toFixed(1)) : 0,
-    asOf: new Date(now).toISOString(),
-  };
-
-  marketplaceStatsCache = { value: payload, fetchedAt: now };
-  return payload;
+    logger.warn('Serving emergency marketplace stats snapshot because Firestore public read quota is exhausted.');
+    const payload = getFallbackMarketplaceStats();
+    marketplaceStatsCache = { value: payload, fetchedAt: now };
+    return payload;
+  }
 }
 
 async function assessRecaptchaToken(token, action) {
+  if (!RECAPTCHA_SITE_KEY) {
+    logger.warn('reCAPTCHA Enterprise site key is not configured for this environment. Allowing request.');
+    return { valid: true, score: null };
+  }
+
   const client = new RecaptchaEnterpriseServiceClient();
   const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID);
   const request = {
@@ -5201,6 +5436,288 @@ function buildAccountStateFromSources(userData = {}, authRecord = null, override
   };
 }
 
+function deriveAccountProfileOnboardingIntent(userData = {}, accountState = {}) {
+  const currentIntent = normalizeNonEmptyString(userData.onboardingIntent);
+  if (currentIntent) return currentIntent;
+  if (accountState.activeSubscriptionPlanId) return accountState.activeSubscriptionPlanId;
+  if (accountState.accountAccessSource === 'free_member' || accountState.role === 'member') return 'free_member';
+  return null;
+}
+
+function serializeAccountProfileData(uid, userData = {}, authRecord = null, overrides = {}) {
+  const normalizedUid = normalizeNonEmptyString(uid);
+  const normalizedEmail = normalizeNonEmptyString(
+    overrides.email
+      ?? userData.email
+      ?? authRecord?.email
+  ).toLowerCase();
+  const privilegedAdmin = isPrivilegedAdminEmail(normalizedEmail);
+  const accountState = buildAccountStateFromSources(userData, authRecord, {
+    ...(privilegedAdmin
+      ? {
+          role: 'super_admin',
+          accountStatus: 'active',
+          accountAccessSource: 'admin_override',
+        }
+      : {}),
+    ...overrides,
+  });
+  const entitlement = buildAccountEntitlementSnapshot(accountState);
+  const enrolledFactors = Array.isArray(authRecord?.multiFactor?.enrolledFactors)
+    ? authRecord.multiFactor.enrolledFactors
+    : [];
+  const smsFactor = enrolledFactors.find((factor) => String(factor?.factorId || '').trim().toLowerCase() === 'phone');
+  const emailVerified = authRecord ? Boolean(authRecord.emailVerified) : Boolean(userData.emailVerified);
+
+  return {
+    uid: normalizedUid,
+    email: normalizedEmail,
+    displayName: normalizeNonEmptyString(
+      userData.displayName
+      || userData.name
+      || authRecord?.displayName,
+      'Forestry Equipment Sales User'
+    ),
+    role: accountState.role || 'buyer',
+    emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+    preferredLanguage: normalizeNonEmptyString(userData.preferredLanguage) || undefined,
+    preferredCurrency: normalizeNonEmptyString(userData.preferredCurrency) || undefined,
+    photoURL: normalizeNonEmptyString(userData.photoURL || authRecord?.photoURL) || '',
+    coverPhotoUrl: normalizeNonEmptyString(userData.coverPhotoUrl) || '',
+    phoneNumber: normalizeNonEmptyString(userData.phoneNumber || authRecord?.phoneNumber) || '',
+    company: normalizeNonEmptyString(userData.company) || '',
+    website: normalizeNonEmptyString(userData.website) || '',
+    about: normalizeNonEmptyString(userData.about) || '',
+    bio: normalizeNonEmptyString(userData.bio) || '',
+    location: normalizeNonEmptyString(userData.location) || '',
+    storefrontEnabled: Boolean(userData.storefrontEnabled),
+    storefrontSlug: normalizeNonEmptyString(userData.storefrontSlug) || '',
+    storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
+    storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline) || '',
+    storefrontDescription: normalizeNonEmptyString(userData.storefrontDescription) || '',
+    seoTitle: normalizeNonEmptyString(userData.seoTitle) || '',
+    seoDescription: normalizeNonEmptyString(userData.seoDescription) || '',
+    seoKeywords: Array.isArray(userData.seoKeywords)
+      ? userData.seoKeywords.filter((keyword) => typeof keyword === 'string')
+      : [],
+    parentAccountUid: normalizeNonEmptyString(userData.parentAccountUid) || null,
+    accountStatus: accountState.accountStatus,
+    accountAccessSource: accountState.accountAccessSource,
+    onboardingIntent: deriveAccountProfileOnboardingIntent(userData, accountState),
+    activeSubscriptionPlanId: accountState.activeSubscriptionPlanId,
+    subscriptionStatus: accountState.subscriptionStatus,
+    listingCap: accountState.listingCap,
+    managedAccountCap: accountState.managedAccountCap,
+    currentSubscriptionId: accountState.currentSubscriptionId,
+    currentPeriodEnd: accountState.currentPeriodEnd,
+    entitlement,
+    stripeCustomerId: normalizeNonEmptyString(userData.stripeCustomerId) || '',
+    mfaEnabled: Boolean(smsFactor || userData.mfaEnabled),
+    mfaMethod: smsFactor ? 'sms' : (normalizeNonEmptyString(userData.mfaMethod) === 'sms' ? 'sms' : null),
+    mfaPhoneNumber: normalizeNonEmptyString(smsFactor?.phoneNumber || userData.mfaPhoneNumber) || null,
+    mfaDisplayName: normalizeNonEmptyString(smsFactor?.displayName || userData.mfaDisplayName) || null,
+    mfaEnrolledAt:
+      normalizeNonEmptyString(userData.mfaEnrolledAt)
+      || normalizeNonEmptyString(smsFactor?.enrollmentTime)
+      || null,
+    favorites: Array.isArray(userData.favorites)
+      ? userData.favorites.filter((favorite) => typeof favorite === 'string')
+      : [],
+    emailVerified,
+    createdAt:
+      timestampValueToIso(userData.createdAt)
+      || timestampValueToIso(authRecord?.metadata?.creationTime)
+      || new Date().toISOString(),
+  };
+}
+
+function trimAccountText(value, maxLength = 5000) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim().slice(0, maxLength);
+}
+
+function normalizeOptionalAccountUrl(value) {
+  const normalized = trimAccountText(value, 500);
+  return normalized || '';
+}
+
+function normalizeAccountSeoKeywords(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((keyword) => trimAccountText(keyword, 80))
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+function sanitizeAccountProfileUpdatePayload(input = {}) {
+  const payload = {};
+
+  if ('displayName' in input) payload.displayName = trimAccountText(input.displayName, 120);
+  if ('email' in input) payload.email = trimAccountText(input.email, 320).toLowerCase();
+  if ('phoneNumber' in input) payload.phoneNumber = trimAccountText(input.phoneNumber, 60);
+  if ('company' in input) payload.company = trimAccountText(input.company, 200);
+  if ('website' in input) payload.website = normalizeOptionalAccountUrl(input.website);
+  if ('about' in input) payload.about = trimAccountText(input.about, 5000);
+  if ('bio' in input) payload.bio = trimAccountText(input.bio, 1000);
+  if ('location' in input) payload.location = trimAccountText(input.location, 200);
+  if ('photoURL' in input) payload.photoURL = normalizeOptionalAccountUrl(input.photoURL);
+  if ('coverPhotoUrl' in input) payload.coverPhotoUrl = normalizeOptionalAccountUrl(input.coverPhotoUrl);
+  if ('preferredLanguage' in input) payload.preferredLanguage = trimAccountText(input.preferredLanguage, 16).toUpperCase();
+  if ('preferredCurrency' in input) payload.preferredCurrency = trimAccountText(input.preferredCurrency, 16).toUpperCase();
+  if ('emailNotificationsEnabled' in input) payload.emailNotificationsEnabled = Boolean(input.emailNotificationsEnabled);
+  if ('mfaEnabled' in input) payload.mfaEnabled = Boolean(input.mfaEnabled);
+  if ('mfaMethod' in input) {
+    const normalizedMethod = trimAccountText(input.mfaMethod, 24).toLowerCase();
+    payload.mfaMethod = normalizedMethod === 'sms' ? 'sms' : null;
+  }
+  if ('mfaPhoneNumber' in input) payload.mfaPhoneNumber = trimAccountText(input.mfaPhoneNumber, 80) || null;
+  if ('mfaDisplayName' in input) payload.mfaDisplayName = trimAccountText(input.mfaDisplayName, 120) || null;
+  if ('mfaEnrolledAt' in input) payload.mfaEnrolledAt = trimAccountText(input.mfaEnrolledAt, 80) || null;
+  if ('storefrontSlug' in input) payload.storefrontSlug = trimAccountText(input.storefrontSlug, 180);
+  if ('storefrontName' in input) payload.storefrontName = trimAccountText(input.storefrontName, 180);
+  if ('storefrontTagline' in input) payload.storefrontTagline = trimAccountText(input.storefrontTagline, 240);
+  if ('storefrontDescription' in input) payload.storefrontDescription = trimAccountText(input.storefrontDescription, 5000);
+  if ('seoTitle' in input) payload.seoTitle = trimAccountText(input.seoTitle, 200);
+  if ('seoDescription' in input) payload.seoDescription = trimAccountText(input.seoDescription, 600);
+  if ('seoKeywords' in input) payload.seoKeywords = normalizeAccountSeoKeywords(input.seoKeywords);
+
+  return payload;
+}
+
+function sanitizeSavedSearchFilters(input = {}) {
+  const filters = {};
+  Object.entries(input || {}).forEach(([key, value]) => {
+    const normalizedKey = trimAccountText(key, 80);
+    const normalizedValue = trimAccountText(value, 240);
+    if (!normalizedKey || !normalizedValue) return;
+    filters[normalizedKey] = normalizedValue;
+  });
+  return filters;
+}
+
+function sanitizeAlertPreferences(input = {}) {
+  return {
+    newListingAlerts: Boolean(input?.newListingAlerts),
+    priceDropAlerts: Boolean(input?.priceDropAlerts),
+    soldStatusAlerts: Boolean(input?.soldStatusAlerts),
+    restockSimilarAlerts: Boolean(input?.restockSimilarAlerts),
+  };
+}
+
+function serializeSavedSearchDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    userUid: normalizeNonEmptyString(data.userUid),
+    name: normalizeNonEmptyString(data.name, 'Saved Search'),
+    filters: sanitizeSavedSearchFilters(data.filters || {}),
+    alertEmail: normalizeNonEmptyString(data.alertEmail),
+    alertPreferences: sanitizeAlertPreferences(data.alertPreferences || {}),
+    status: normalizeNonEmptyString(data.status, 'active') === 'paused' ? 'paused' : 'active',
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+  };
+}
+
+function serializeBlogPostRevision(revision = {}) {
+  return {
+    id: normalizeNonEmptyString(revision.id) || String(Date.now()),
+    title: normalizeNonEmptyString(revision.title),
+    content: normalizeNonEmptyString(revision.content),
+    authorUid: normalizeNonEmptyString(revision.authorUid),
+    authorName: normalizeNonEmptyString(revision.authorName),
+    savedAt: timestampValueToIso(revision.savedAt) || normalizeNonEmptyString(revision.savedAt) || new Date().toISOString(),
+    note: normalizeNonEmptyString(revision.note) || undefined,
+  };
+}
+
+function serializeAdminBlogPostDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    title: normalizeNonEmptyString(data.title),
+    excerpt: normalizeNonEmptyString(data.excerpt) || undefined,
+    content: normalizeNonEmptyString(data.content),
+    authorUid: normalizeNonEmptyString(data.authorUid),
+    authorName: normalizeNonEmptyString(data.authorName),
+    category: normalizeNonEmptyString(data.category),
+    tags: Array.isArray(data.tags) ? data.tags.map((tag) => normalizeNonEmptyString(tag)).filter(Boolean) : [],
+    image: normalizeNonEmptyString(data.image) || undefined,
+    status: normalizeNonEmptyString(data.status, 'draft') === 'published' ? 'published' : 'draft',
+    reviewStatus: normalizeNonEmptyString(data.reviewStatus || data.status || 'draft') || 'draft',
+    scheduledAt: timestampValueToIso(data.scheduledAt) || normalizeNonEmptyString(data.scheduledAt) || null,
+    seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
+    seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.map((keyword) => normalizeNonEmptyString(keyword)).filter(Boolean) : [],
+    seoSlug: normalizeNonEmptyString(data.seoSlug) || undefined,
+    blocks: Array.isArray(data.blocks) ? data.blocks : [],
+    revisions: Array.isArray(data.revisions) ? data.revisions.map((revision) => serializeBlogPostRevision(revision)) : [],
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    updatedAt: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function serializeAdminMediaDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    url: normalizeNonEmptyString(data.url),
+    filename: normalizeNonEmptyString(data.filename),
+    mimeType: normalizeNonEmptyString(data.mimeType),
+    sizeBytes: toFiniteNumberOrUndefined(data.sizeBytes),
+    altText: normalizeNonEmptyString(data.altText) || undefined,
+    tags: Array.isArray(data.tags) ? data.tags.map((tag) => normalizeNonEmptyString(tag)).filter(Boolean) : [],
+    uploadedBy: normalizeNonEmptyString(data.uploadedBy),
+    uploadedByName: normalizeNonEmptyString(data.uploadedByName) || undefined,
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function serializeInspectionRequestDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    listingId: normalizeNonEmptyString(data.listingId) || undefined,
+    listingTitle: normalizeNonEmptyString(data.listingTitle) || undefined,
+    listingUrl: normalizeNonEmptyString(data.listingUrl) || undefined,
+    reference: normalizeNonEmptyString(data.reference) || undefined,
+    requesterUid: data.requesterUid == null ? null : normalizeNonEmptyString(data.requesterUid) || null,
+    requesterName: normalizeNonEmptyString(data.requesterName),
+    requesterEmail: normalizeNonEmptyString(data.requesterEmail),
+    requesterPhone: normalizeNonEmptyString(data.requesterPhone),
+    requesterCompany: normalizeNonEmptyString(data.requesterCompany) || undefined,
+    equipment: normalizeNonEmptyString(data.equipment),
+    inspectionLocation: normalizeNonEmptyString(data.inspectionLocation),
+    timeline: normalizeNonEmptyString(data.timeline) || undefined,
+    notes: normalizeNonEmptyString(data.notes) || undefined,
+    matchedDealerUid: data.matchedDealerUid == null ? null : normalizeNonEmptyString(data.matchedDealerUid) || null,
+    matchedDealerName: normalizeNonEmptyString(data.matchedDealerName) || undefined,
+    matchedDealerLocation: normalizeNonEmptyString(data.matchedDealerLocation) || undefined,
+    matchedDealerDistanceMiles: toFiniteNumberOrUndefined(data.matchedDealerDistanceMiles) ?? null,
+    assignedToUid: data.assignedToUid == null ? null : normalizeNonEmptyString(data.assignedToUid) || null,
+    assignedToName: normalizeNonEmptyString(data.assignedToName) || undefined,
+    quotedPrice: toFiniteNumberOrUndefined(data.quotedPrice) ?? null,
+    status: normalizeNonEmptyString(data.status, 'New'),
+    reviewedAt: timestampValueToIso(data.reviewedAt) || normalizeNonEmptyString(data.reviewedAt) || null,
+    respondedAt: timestampValueToIso(data.respondedAt) || normalizeNonEmptyString(data.respondedAt) || null,
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+  };
+}
+
+function serializeAdminContentBlockDoc(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    type: normalizeNonEmptyString(data.type, 'text'),
+    content: normalizeNonEmptyString(data.content),
+    caption: normalizeNonEmptyString(data.caption) || undefined,
+    title: normalizeNonEmptyString(data.title) || undefined,
+    label: normalizeNonEmptyString(data.label) || undefined,
+    order: Number.isFinite(Number(data.order)) ? Number(data.order) : 0,
+  };
+}
+
 async function writeAccountAuditLog({
   eventType,
   actorUid = '',
@@ -5265,7 +5782,19 @@ async function applyListingLifecycleAction({
   });
 
   await listingRef.set(patch, { merge: true });
-  return { patch, currentLifecycleState };
+  const updatedSnapshot = await listingRef.get();
+  const updatedListing = updatedSnapshot.exists ? (updatedSnapshot.data() || {}) : { ...listing, ...patch };
+
+  await syncListingGovernanceArtifactsForWrite({
+    db: getDb(),
+    listingId: normalizedListingId,
+    before: listing,
+    after: updatedListing,
+    source: 'listing_lifecycle_api',
+    emitInitializationTransition: true,
+  });
+
+  return { patch, currentLifecycleState, updatedListing };
 }
 
 async function upsertSellerProgramAgreementAcceptance({
@@ -6293,6 +6822,14 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
 
 function canAdministrateAccount(role) {
   return ['super_admin', 'admin', 'developer'].includes(role);
+}
+
+function canReadAllInspectionRequests(role) {
+  return ['super_admin', 'admin', 'developer'].includes(normalizeUserRole(role));
+}
+
+function canManageAssignedInspectionRequests(role) {
+  return ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalizeUserRole(role));
 }
 
 function getActorRoleFromDecodedToken(decodedToken) {
@@ -7854,6 +8391,74 @@ exports.apiProxy = onRequest(
       }
 
       const accountListingMatch = path.match(/^\/account\/listings\/([^/]+)$/i);
+      if (req.method === 'POST' && path === '/account/listings') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestBody = req.body && typeof req.body === 'object' ? req.body : {};
+        const requestedSellerUid = normalizeNonEmptyString(requestBody.sellerUid || requestBody.sellerId, actorUid);
+        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const listingInput = sanitizeListingWritePayload(requestBody);
+        const listingRef = getDb().collection('listings').doc();
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const effectiveRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : actorRole;
+        const sellerVerified = ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller'].includes(effectiveRole);
+        const paymentStatus = normalizeNonEmptyString(requestBody.paymentStatus, 'pending') === 'paid' ? 'paid' : 'pending';
+
+        const createPayload = {
+          ...listingInput,
+          id: listingRef.id,
+          sellerUid: requestedSellerUid,
+          sellerId: requestedSellerUid,
+          sellerVerified,
+          qualityValidated: true,
+          approvalStatus: 'pending',
+          approvedBy: null,
+          status: 'pending',
+          paymentStatus,
+          publishedAt: null,
+          approvedAt: null,
+          rejectedAt: null,
+          rejectedBy: null,
+          rejectionReason: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await listingRef.set(createPayload);
+
+        await writeAccountAuditLog({
+          eventType: 'listing_created',
+          actorUid,
+          actorEmail,
+          targetUid: requestedSellerUid,
+          source: 'account_listing_api',
+          previousState: null,
+          nextState: {
+            listingId: listingRef.id,
+            title: createPayload.title,
+            category: createPayload.category,
+            manufacturer: createPayload.manufacturer,
+            model: createPayload.model,
+            approvalStatus: createPayload.approvalStatus,
+            paymentStatus: createPayload.paymentStatus,
+            status: createPayload.status,
+          },
+        });
+
+        const createdSnapshot = await listingRef.get();
+        return res.status(201).json({
+          listing: buildMarketplaceListingPayload(createdSnapshot.id, createdSnapshot.data() || {}),
+        });
+      }
+
       if (accountListingMatch && req.method === 'PATCH') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -7936,6 +8541,53 @@ exports.apiProxy = onRequest(
         });
       }
 
+      if (accountListingMatch && req.method === 'DELETE') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const listingId = normalizeNonEmptyString(decodeURIComponent(accountListingMatch[1]));
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const listingRef = getDb().collection('listings').doc(listingId);
+        const listingSnapshot = await listingRef.get();
+        if (!listingSnapshot.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+
+        const existingData = listingSnapshot.data() || {};
+        const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
+        if (listingSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        await listingRef.delete();
+
+        await writeAccountAuditLog({
+          eventType: 'listing_deleted',
+          actorUid,
+          actorEmail,
+          targetUid: listingSellerUid || actorUid,
+          source: 'account_listing_api',
+          previousState: {
+            listingId,
+            title: normalizeNonEmptyString(existingData.title),
+            category: normalizeNonEmptyString(existingData.category),
+            manufacturer: normalizeNonEmptyString(existingData.manufacturer || existingData.make),
+            model: normalizeNonEmptyString(existingData.model),
+          },
+          nextState: { listingId, deleted: true },
+        });
+
+        return res.status(200).json({ deleted: true, id: listingId });
+      }
+
       if (req.method === 'GET' && path === '/account/listings') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -7970,6 +8622,389 @@ exports.apiProxy = onRequest(
 
         const filteredListings = filterMarketplaceListings(listings, filters, { includeUnapproved: true });
         return res.status(200).json({ listings: filteredListings });
+      }
+
+      if (req.method === 'GET' && path === '/account/profile') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email);
+        const actorDisplayName =
+          normalizeNonEmptyString(decodedToken.name) ||
+          normalizeNonEmptyString(decodedToken.displayName) ||
+          'Forestry Equipment Sales User';
+        const actorPhotoUrl = normalizeNonEmptyString(decodedToken.picture);
+        let authRecord = null;
+        try {
+          authRecord = await getAuthUserRecordSafe(actorUid);
+        } catch (error) {
+          logger.warn('Unable to load auth record for account profile API.', {
+            actorUid,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        let profileDocExists = false;
+        let firestoreQuotaLimited = false;
+        let profileSource = 'auth_fallback';
+        let userData = {};
+
+        try {
+          const userSnapshot = await getDb().collection('users').doc(actorUid).get();
+          if (userSnapshot.exists) {
+            userData = userSnapshot.data() || {};
+            profileDocExists = true;
+            profileSource = 'firestore';
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+
+          firestoreQuotaLimited = true;
+          logger.warn('Account profile API falling back to auth-only data because Firestore quota is exhausted.', {
+            actorUid,
+          });
+        }
+
+        const profile = serializeAccountProfileData(actorUid, userData, authRecord, {
+          uid: actorUid,
+          email: actorEmail,
+          displayName: authRecord?.displayName || actorDisplayName,
+          photoURL: authRecord?.photoURL || actorPhotoUrl || null,
+          emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
+        });
+
+        return res.status(200).json({
+          profile,
+          source: profileSource,
+          profileDocExists,
+          firestoreQuotaLimited,
+        });
+      }
+
+      if (req.method === 'POST' && path === '/account/profile/bootstrap') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const actorDisplayName =
+          normalizeNonEmptyString(decodedToken.name)
+          || normalizeNonEmptyString(decodedToken.displayName)
+          || 'Forestry Equipment Sales User';
+        const seed = sanitizeAccountProfileUpdatePayload(req.body || {});
+        const userRef = getDb().collection('users').doc(actorUid);
+
+        let authRecord = null;
+        try {
+          authRecord = await getAuthUserRecordSafe(actorUid);
+        } catch (error) {
+          logger.warn('Unable to load auth record while bootstrapping account profile.', {
+            actorUid,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        let existingSnapshot = null;
+        let existingData = {};
+        try {
+          existingSnapshot = await userRef.get();
+          if (existingSnapshot.exists) {
+            existingData = existingSnapshot.data() || {};
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          logger.warn('Account profile bootstrap is continuing without a Firestore pre-read because the daily read quota is exhausted.', {
+            actorUid,
+          });
+        }
+
+        const accountState = buildAccountStateFromSources(existingData, authRecord, {
+          uid: actorUid,
+          email: actorEmail,
+          displayName: actorDisplayName,
+          photoURL: normalizeNonEmptyString(authRecord?.photoURL),
+          emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
+        });
+
+        const nextData = {
+          uid: actorUid,
+          email: seed.email || normalizeNonEmptyString(existingData.email || actorEmail || authRecord?.email).toLowerCase(),
+          displayName: seed.displayName || normalizeNonEmptyString(existingData.displayName || authRecord?.displayName || actorDisplayName, actorDisplayName),
+          photoURL: seed.photoURL !== undefined ? seed.photoURL : normalizeNonEmptyString(existingData.photoURL || authRecord?.photoURL),
+          coverPhotoUrl: seed.coverPhotoUrl !== undefined ? seed.coverPhotoUrl : normalizeNonEmptyString(existingData.coverPhotoUrl),
+          phoneNumber: seed.phoneNumber !== undefined ? seed.phoneNumber : normalizeNonEmptyString(existingData.phoneNumber || authRecord?.phoneNumber),
+          company: seed.company !== undefined ? seed.company : normalizeNonEmptyString(existingData.company),
+          website: seed.website !== undefined ? seed.website : normalizeNonEmptyString(existingData.website),
+          about: seed.about !== undefined ? seed.about : normalizeNonEmptyString(existingData.about),
+          bio: seed.bio !== undefined ? seed.bio : normalizeNonEmptyString(existingData.bio),
+          location: seed.location !== undefined ? seed.location : normalizeNonEmptyString(existingData.location),
+          preferredLanguage: seed.preferredLanguage || normalizeNonEmptyString(existingData.preferredLanguage),
+          preferredCurrency: seed.preferredCurrency || normalizeNonEmptyString(existingData.preferredCurrency),
+          emailNotificationsEnabled:
+            seed.emailNotificationsEnabled !== undefined
+              ? Boolean(seed.emailNotificationsEnabled)
+              : existingData.emailNotificationsEnabled !== false,
+          favorites: Array.isArray(existingData.favorites)
+            ? existingData.favorites.filter((favorite) => typeof favorite === 'string')
+            : [],
+          role: accountState.role || normalizeUserRole(String(existingData.role || 'buyer')),
+          accountStatus: accountState.accountStatus || normalizeAccountStatus(String(existingData.accountStatus || 'active')),
+          accountAccessSource: accountState.accountAccessSource ?? existingData.accountAccessSource ?? null,
+          activeSubscriptionPlanId: accountState.activeSubscriptionPlanId,
+          subscriptionStatus: accountState.subscriptionStatus,
+          listingCap: accountState.listingCap,
+          managedAccountCap: accountState.managedAccountCap,
+          currentSubscriptionId: accountState.currentSubscriptionId,
+          currentPeriodEnd: accountState.currentPeriodEnd,
+          emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!existingSnapshot?.exists) {
+          nextData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        await userRef.set(nextData, { merge: true });
+
+        await writeAccountAuditLog({
+          eventType: existingSnapshot?.exists ? 'account_profile_bootstrap_refreshed' : 'account_profile_bootstrapped',
+          actorUid,
+          targetUid: actorUid,
+          source: 'account_profile_bootstrap_api',
+          previousState: existingSnapshot?.exists ? { profileDocExists: true } : { profileDocExists: false },
+          nextState: {
+            role: nextData.role,
+            accountStatus: nextData.accountStatus,
+            accountAccessSource: nextData.accountAccessSource,
+          },
+        });
+
+        return res.status(200).json({
+          profile: serializeAccountProfileData(actorUid, {
+            ...existingData,
+            ...nextData,
+          }, authRecord, {
+            email: nextData.email,
+            displayName: nextData.displayName,
+            photoURL: nextData.photoURL,
+            emailVerified: nextData.emailVerified,
+          }),
+          source: existingSnapshot?.exists ? 'bootstrap_refresh' : 'bootstrap_create',
+          profileDocExists: true,
+          firestoreQuotaLimited: false,
+        });
+      }
+
+      if (req.method === 'PATCH' && path === '/account/profile') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const userRef = getDb().collection('users').doc(actorUid);
+        const updates = sanitizeAccountProfileUpdatePayload(req.body || {});
+
+        let authRecord = null;
+        try {
+          authRecord = await getAuthUserRecordSafe(actorUid);
+        } catch (error) {
+          logger.warn('Unable to load auth record for account profile update.', {
+            actorUid,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        let existingData = {};
+        let userSnapshot = null;
+        try {
+          userSnapshot = await userRef.get();
+          if (userSnapshot.exists) {
+            existingData = userSnapshot.data() || {};
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) {
+            throw error;
+          }
+          logger.warn('Account profile update is continuing without a Firestore pre-read because the daily read quota is exhausted.', {
+            actorUid,
+          });
+        }
+
+        const nextData = {
+          uid: actorUid,
+          ...updates,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!userSnapshot?.exists) {
+          nextData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+          nextData.email = updates.email || normalizeNonEmptyString(existingData.email || actorEmail || authRecord?.email).toLowerCase();
+          nextData.displayName = updates.displayName || normalizeNonEmptyString(existingData.displayName || authRecord?.displayName || decodedToken.name, 'Forestry Equipment Sales User');
+          nextData.role = normalizeUserRole(String(existingData.role || decodedToken.role || 'buyer'));
+          nextData.accountStatus = normalizeAccountStatus(String(existingData.accountStatus || 'active'));
+          nextData.accountAccessSource = existingData.accountAccessSource ?? null;
+          nextData.emailVerified = authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified);
+        }
+
+        await userRef.set(nextData, { merge: true });
+
+        await writeAccountAuditLog({
+          eventType: 'account_profile_updated',
+          actorUid,
+          targetUid: actorUid,
+          source: 'account_profile_api',
+          previousState: sanitizeAccountProfileUpdatePayload(existingData),
+          nextState: updates,
+        });
+
+        return res.status(200).json({
+          profile: serializeAccountProfileData(actorUid, {
+            ...existingData,
+            ...updates,
+            email: updates.email || existingData.email || actorEmail || authRecord?.email,
+          }, authRecord),
+          source: 'account_profile_patch',
+          profileDocExists: true,
+          firestoreQuotaLimited: false,
+        });
+      }
+
+      if (req.method === 'GET' && path === '/account/saved-searches') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const snapshot = await getDb()
+          .collection('savedSearches')
+          .where('userUid', '==', actorUid)
+          .orderBy('createdAt', 'desc')
+          .get();
+
+        return res.status(200).json({
+          savedSearches: snapshot.docs.map((docSnapshot) => serializeSavedSearchDoc(docSnapshot)),
+        });
+      }
+
+      if (req.method === 'POST' && path === '/account/saved-searches') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const name = trimAccountText(req.body?.name, 160);
+        const filters = sanitizeSavedSearchFilters(req.body?.filters || {});
+        const alertEmail = trimAccountText(req.body?.alertEmail || actorEmail, 320).toLowerCase();
+        const alertPreferences = sanitizeAlertPreferences(req.body?.alertPreferences || {});
+
+        if (!name) {
+          return res.status(400).json({ error: 'Search name is required.' });
+        }
+
+        const newDocRef = getDb().collection('savedSearches').doc();
+        await newDocRef.set({
+          userUid: actorUid,
+          name,
+          filters,
+          alertEmail,
+          alertPreferences,
+          status: 'active',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        await writeAccountAuditLog({
+          eventType: 'saved_search_created',
+          actorUid,
+          targetUid: actorUid,
+          source: 'account_saved_search_api',
+          nextState: {
+            savedSearchId: newDocRef.id,
+            name,
+          },
+        });
+
+        const createdSnapshot = await newDocRef.get();
+        return res.status(201).json({
+          savedSearch: serializeSavedSearchDoc(createdSnapshot),
+        });
+      }
+
+      if ((req.method === 'PATCH' || req.method === 'DELETE') && path.startsWith('/account/saved-searches/')) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const savedSearchId = normalizeNonEmptyString(path.split('/').pop());
+        if (!savedSearchId) {
+          return res.status(400).json({ error: 'Saved search id is required.' });
+        }
+
+        const savedSearchRef = getDb().collection('savedSearches').doc(savedSearchId);
+        const savedSearchSnapshot = await savedSearchRef.get();
+        if (!savedSearchSnapshot.exists) {
+          return res.status(404).json({ error: 'Saved search not found.' });
+        }
+
+        const savedSearchData = savedSearchSnapshot.data() || {};
+        if (normalizeNonEmptyString(savedSearchData.userUid) !== actorUid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (req.method === 'DELETE') {
+          await savedSearchRef.delete();
+          await writeAccountAuditLog({
+            eventType: 'saved_search_deleted',
+            actorUid,
+            targetUid: actorUid,
+            source: 'account_saved_search_api',
+            previousState: { savedSearchId, name: normalizeNonEmptyString(savedSearchData.name) },
+          });
+          return res.status(200).json({ id: savedSearchId, deleted: true });
+        }
+
+        const updates = {};
+        if ('name' in (req.body || {})) updates.name = trimAccountText(req.body?.name, 160);
+        if ('filters' in (req.body || {})) updates.filters = sanitizeSavedSearchFilters(req.body?.filters || {});
+        if ('alertEmail' in (req.body || {})) updates.alertEmail = trimAccountText(req.body?.alertEmail, 320).toLowerCase();
+        if ('alertPreferences' in (req.body || {})) updates.alertPreferences = sanitizeAlertPreferences(req.body?.alertPreferences || {});
+        if ('status' in (req.body || {})) {
+          updates.status = normalizeNonEmptyString(req.body?.status, 'active') === 'paused' ? 'paused' : 'active';
+        }
+
+        updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+        await savedSearchRef.set(updates, { merge: true });
+
+        await writeAccountAuditLog({
+          eventType: 'saved_search_updated',
+          actorUid,
+          targetUid: actorUid,
+          source: 'account_saved_search_api',
+          previousState: { savedSearchId, name: normalizeNonEmptyString(savedSearchData.name) },
+          nextState: { savedSearchId, ...updates },
+        });
+
+        const updatedSnapshot = await savedSearchRef.get();
+        return res.status(200).json({
+          savedSearch: serializeSavedSearchDoc(updatedSnapshot),
+        });
       }
 
       if (req.method === 'GET' && path === '/account/financing-requests') {
@@ -8011,6 +9046,191 @@ exports.apiProxy = onRequest(
           .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
 
         return res.status(200).json({ financingRequests });
+      }
+
+      if (req.method === 'POST' && path === '/account/inspection-requests') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const listingId = normalizeNonEmptyString(req.body?.listingId);
+        const listingTitle = normalizeNonEmptyString(req.body?.listingTitle || req.body?.equipment);
+        const listingUrl = normalizeNonEmptyString(req.body?.listingUrl);
+        const reference = normalizeNonEmptyString(req.body?.reference);
+        const requesterName = normalizeNonEmptyString(req.body?.requesterName);
+        const requesterEmail = normalizeNonEmptyString(req.body?.requesterEmail);
+        const requesterPhone = normalizeNonEmptyString(req.body?.requesterPhone);
+        const requesterCompany = normalizeNonEmptyString(req.body?.requesterCompany);
+        const equipment = normalizeNonEmptyString(req.body?.equipment || listingTitle);
+        const inspectionLocation = normalizeNonEmptyString(req.body?.inspectionLocation);
+        const timeline = normalizeNonEmptyString(req.body?.timeline);
+        const notes = normalizeNonEmptyString(req.body?.notes);
+        const matchedDealerUid = normalizeNonEmptyString(req.body?.matchedDealerUid) || null;
+        const matchedDealerName = normalizeNonEmptyString(req.body?.matchedDealerName);
+        const matchedDealerLocation = normalizeNonEmptyString(req.body?.matchedDealerLocation);
+        const matchedDealerDistanceMiles = toFiniteNumberOrUndefined(req.body?.matchedDealerDistanceMiles);
+        const assignedToUid = normalizeNonEmptyString(req.body?.assignedToUid || matchedDealerUid) || null;
+        const assignedToName = normalizeNonEmptyString(req.body?.assignedToName || matchedDealerName);
+
+        if (!requesterName || !requesterEmail || !requesterPhone || !equipment || !inspectionLocation) {
+          return res.status(400).json({ error: 'Requester name, email, phone, equipment, and inspection location are required.' });
+        }
+
+        const requestRef = getDb().collection('inspectionRequests').doc();
+        await requestRef.set({
+          id: requestRef.id,
+          listingId,
+          listingTitle,
+          listingUrl,
+          reference,
+          requesterUid: actorUid || null,
+          requesterName,
+          requesterEmail,
+          requesterPhone,
+          requesterCompany,
+          equipment,
+          inspectionLocation,
+          timeline,
+          notes,
+          matchedDealerUid,
+          matchedDealerName,
+          matchedDealerLocation,
+          matchedDealerDistanceMiles: matchedDealerDistanceMiles ?? null,
+          assignedToUid,
+          assignedToName,
+          quotedPrice: null,
+          status: 'New',
+          reviewedAt: null,
+          respondedAt: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        const createdSnapshot = await requestRef.get();
+        return res.status(201).json({
+          inspectionRequest: serializeInspectionRequestDoc(createdSnapshot),
+        });
+      }
+
+      if (req.method === 'GET' && path === '/account/inspection-requests') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, actorUid);
+
+        if (requestedUserUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (canReadAllInspectionRequests(actorRole)) {
+          const snapshot = await getDb().collection('inspectionRequests').orderBy('createdAt', 'desc').get();
+          return res.status(200).json({
+            inspectionRequests: snapshot.docs.map((docSnapshot) => serializeInspectionRequestDoc(docSnapshot)),
+          });
+        }
+
+        if (canManageAssignedInspectionRequests(actorRole)) {
+          const [assignedSnapshot, matchedSnapshot] = await Promise.all([
+            getDb().collection('inspectionRequests').where('assignedToUid', '==', requestedUserUid).get(),
+            getDb().collection('inspectionRequests').where('matchedDealerUid', '==', requestedUserUid).get(),
+          ]);
+
+          const seen = new Set();
+          const inspectionRequests = [...assignedSnapshot.docs, ...matchedSnapshot.docs]
+            .filter((docSnapshot) => {
+              if (seen.has(docSnapshot.id)) return false;
+              seen.add(docSnapshot.id);
+              return true;
+            })
+            .map((docSnapshot) => serializeInspectionRequestDoc(docSnapshot))
+            .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+
+          return res.status(200).json({ inspectionRequests });
+        }
+
+        const snapshot = await getDb().collection('inspectionRequests').where('requesterUid', '==', requestedUserUid).get();
+        const inspectionRequests = snapshot.docs
+          .map((docSnapshot) => serializeInspectionRequestDoc(docSnapshot))
+          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+
+        return res.status(200).json({ inspectionRequests });
+      }
+
+      if (req.method === 'PATCH' && path.startsWith('/account/inspection-requests/')) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const inspectionRequestId = decodeURIComponent(path.split('/').pop() || '').trim();
+        if (!inspectionRequestId) {
+          return res.status(400).json({ error: 'Inspection request id is required.' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const requestRef = getDb().collection('inspectionRequests').doc(inspectionRequestId);
+        const requestSnapshot = await requestRef.get();
+        if (!requestSnapshot.exists) {
+          return res.status(404).json({ error: 'Inspection request not found.' });
+        }
+
+        const currentData = requestSnapshot.data() || {};
+        const assignedToUid = normalizeNonEmptyString(currentData.assignedToUid);
+        const matchedDealerUid = normalizeNonEmptyString(currentData.matchedDealerUid);
+        const requesterUid = normalizeNonEmptyString(currentData.requesterUid);
+        const canUpdate = canReadAllInspectionRequests(actorRole)
+          || (canManageAssignedInspectionRequests(actorRole) && (assignedToUid === actorUid || matchedDealerUid === actorUid))
+          || requesterUid === actorUid;
+
+        if (!canUpdate) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const nextStatus = normalizeNonEmptyString(req.body?.status);
+        const nextAssignedToUid = req.body?.assignedToUid === undefined ? undefined : normalizeNonEmptyString(req.body?.assignedToUid) || null;
+        const nextAssignedToName = req.body?.assignedToName === undefined ? undefined : normalizeNonEmptyString(req.body?.assignedToName) || null;
+        const requestedQuotedPrice = req.body?.quotedPrice;
+        const payload = {
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (nextStatus) {
+          payload.status = nextStatus;
+          payload.reviewedAt = admin.firestore.FieldValue.serverTimestamp();
+          if (['accepted', 'declined', 'quoted', 'completed'].includes(nextStatus)) {
+            payload.respondedAt = admin.firestore.FieldValue.serverTimestamp();
+          }
+        }
+
+        if (requestedQuotedPrice === null) {
+          payload.quotedPrice = null;
+        } else {
+          const quotedPrice = toFiniteNumberOrUndefined(requestedQuotedPrice);
+          if (quotedPrice !== undefined) {
+            payload.quotedPrice = quotedPrice;
+          }
+        }
+
+        if (req.body?.assignedToUid !== undefined) {
+          payload.assignedToUid = nextAssignedToUid;
+        }
+
+        if (req.body?.assignedToName !== undefined) {
+          payload.assignedToName = nextAssignedToName;
+        }
+
+        await requestRef.set(payload, { merge: true });
+        const updatedSnapshot = await requestRef.get();
+        return res.status(200).json({
+          inspectionRequest: serializeInspectionRequestDoc(updatedSnapshot),
+        });
       }
 
       if (req.method === 'GET' && path === '/account/seat-context') {
@@ -8445,15 +9665,177 @@ exports.apiProxy = onRequest(
         return res.status(200).json(users);
       }
 
+      if (req.method === 'GET' && path === '/admin/listings') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const pageSize = Math.max(1, Math.min(Number(req.query?.pageSize || 50) || 50, 100));
+        const includeDemoListings = ['1', 'true', 'yes'].includes(String(req.query?.includeDemoListings || '').trim().toLowerCase());
+        const chunkSize = includeDemoListings ? pageSize : Math.max(pageSize, 100);
+        const cursorId = normalizeNonEmptyString(req.query?.cursor);
+        const filters = parseMarketplaceListingFilters(req.query || {});
+
+        let cursorSnapshot = null;
+        if (cursorId) {
+          const listingCursorSnap = await getDb().collection('listings').doc(cursorId).get();
+          if (listingCursorSnap.exists) {
+            cursorSnapshot = listingCursorSnap;
+          }
+        }
+
+        let nextCursor = cursorId || null;
+        let hasMore = false;
+        const listings = [];
+
+        while (listings.length < pageSize) {
+          let listingsQuery = getDb()
+            .collection('listings')
+            .orderBy('createdAt', 'desc')
+            .limit(chunkSize);
+
+          if (cursorSnapshot) {
+            listingsQuery = listingsQuery.startAfter(cursorSnapshot);
+          }
+
+          const querySnapshot = await listingsQuery.get();
+          if (querySnapshot.empty) {
+            nextCursor = null;
+            hasMore = false;
+            break;
+          }
+
+          cursorSnapshot = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
+          nextCursor = cursorSnapshot?.id || null;
+          hasMore = querySnapshot.docs.length === chunkSize;
+
+          for (const docSnapshot of querySnapshot.docs) {
+            const listing = buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {});
+            if (!includeDemoListings && isDemoListing(listing)) {
+              continue;
+            }
+            listings.push(listing);
+            if (listings.length >= pageSize) {
+              break;
+            }
+          }
+
+          if (!hasMore) {
+            break;
+          }
+        }
+
+        const filteredListings = filterMarketplaceListings(listings, filters, { includeUnapproved: true });
+
+        return res.status(200).json({
+          listings: filteredListings,
+          nextCursor: hasMore ? nextCursor : null,
+          hasMore,
+        });
+      }
+
+      if (req.method === 'POST' && path === '/admin/listings/seed-demo') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const requestBody = req.body && typeof req.body === 'object' ? req.body : {};
+        const requestedSellerUid = normalizeNonEmptyString(requestBody.sellerUid, actor.ownerUid || actor.actorUid);
+        const sellerUid = requestedSellerUid || actor.ownerUid || actor.actorUid;
+        const seededListings = buildSeedDemoListingsForSeller(sellerUid);
+        const batch = getDb().batch();
+
+        for (const listing of seededListings) {
+          const listingRef = getDb().collection('listings').doc(listing.id);
+          batch.set(listingRef, {
+            ...listing,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+
+        await batch.commit();
+
+        await writeAccountAuditLog({
+          eventType: 'listing_demo_seeded',
+          actorUid: actor.actorUid,
+          actorEmail: actor.actorEmail,
+          targetUid: sellerUid,
+          source: 'admin_listing_seed_api',
+          previousState: null,
+          nextState: {
+            sellerUid,
+            seededListingIds: seededListings.map((listing) => listing.id),
+            count: seededListings.length,
+          },
+        });
+
+        return res.status(200).json({
+          seededCount: seededListings.length,
+          listingIds: seededListings.map((listing) => listing.id),
+        });
+      }
+
+      if (req.method === 'GET' && path === '/admin/inquiries') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const snapshot = await getDb().collection('inquiries').orderBy('createdAt', 'desc').get();
+          const inquiries = snapshot.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
+          return res.status(200).json({ inquiries });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Admin inquiries are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
+      if (req.method === 'GET' && path === '/admin/calls') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const snapshot = await getDb().collection('calls').orderBy('createdAt', 'desc').get();
+          const calls = snapshot.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
+          return res.status(200).json({ calls });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Admin calls are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
       if (req.method === 'GET' && path === '/admin/billing/invoices') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        const snapshot = await getDb().collection('invoices').orderBy('createdAt', 'desc').get();
-        const invoices = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        return res.status(200).json(invoices);
+        try {
+          const snapshot = await getDb().collection('invoices').orderBy('createdAt', 'desc').get();
+          const invoices = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          return res.status(200).json(invoices);
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Admin invoices are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/admin/billing/subscriptions') {
@@ -8462,9 +9844,75 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        const snapshot = await getDb().collection('subscriptions').get();
-        const subscriptions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        return res.status(200).json(subscriptions);
+        try {
+          const snapshot = await getDb().collection('subscriptions').get();
+          const subscriptions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          return res.status(200).json(subscriptions);
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Admin subscriptions are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
+      if (req.method === 'GET' && path === '/admin/content/blog-posts') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').get();
+          return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeAdminBlogPostDoc(docSnapshot)));
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Blog posts are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
+      if (req.method === 'GET' && path === '/admin/content/media') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const snapshot = await getDb().collection('mediaLibrary').orderBy('createdAt', 'desc').get();
+          return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeAdminMediaDoc(docSnapshot)));
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Media assets are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
+      if (req.method === 'GET' && path === '/admin/content/blocks') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const snapshot = await getDb().collection('contentBlocks').orderBy('order', 'asc').get();
+          return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeAdminContentBlockDoc(docSnapshot)));
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Content blocks are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/admin/billing/audit-logs') {
@@ -8473,9 +9921,18 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
-        const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        return res.status(200).json(logs);
+        try {
+          const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
+          const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          return res.status(200).json(logs);
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Billing audit logs are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'POST' && path === '/admin/email/test-send') {

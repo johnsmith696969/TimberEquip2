@@ -2,7 +2,6 @@ import { db, auth } from '../firebase';
 import { onAuthStateChanged, type User as FirebaseAuthUser } from 'firebase/auth';
 import { 
   collection, 
-  type DocumentData,
   doc, 
   getDoc, 
   getDocs, 
@@ -13,12 +12,10 @@ import {
   where, 
   orderBy, 
   limit, 
-  startAfter,
   serverTimestamp,
   arrayUnion,
   onSnapshot,
-  getDocFromServer,
-  type QueryDocumentSnapshot
+  getDocFromServer
 } from 'firebase/firestore';
 import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
@@ -228,7 +225,7 @@ export interface CategoryInventoryMetric {
   averagePrice: number | null;
 }
 
-export type AdminListingsCursor = QueryDocumentSnapshot<DocumentData> | null;
+export type AdminListingsCursor = string | null;
 
 export interface AdminListingsPage {
   listings: Listing[];
@@ -743,6 +740,7 @@ async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): P
 
 const PUBLIC_LISTINGS_CACHE_KEY = 'te-public-listings-cache-v1';
 const HOME_MARKETPLACE_CACHE_KEY = 'te-home-marketplace-cache-v1';
+const PRIVATE_DATA_CACHE_PREFIX = 'te-private-data-cache-v1';
 
 type BrowserCacheEnvelope<T> = {
   savedAt: string;
@@ -780,6 +778,19 @@ function writeBrowserCache<T>(key: string, data: T): void {
   } catch (error) {
     console.warn(`Unable to write browser cache for ${key}:`, error);
   }
+}
+
+function getPrivateCacheKey(scope: string): string {
+  const uid = auth.currentUser?.uid || 'anonymous';
+  return `${PRIVATE_DATA_CACHE_PREFIX}:${uid}:${scope}`;
+}
+
+function readPrivateBrowserCache<T>(scope: string): T | null {
+  return readBrowserCache<T>(getPrivateCacheKey(scope));
+}
+
+function writePrivateBrowserCache<T>(scope: string, data: T): void {
+  writeBrowserCache(getPrivateCacheKey(scope), data);
 }
 
 function getCachedPublicListingsSnapshot(): Listing[] {
@@ -840,6 +851,7 @@ export const equipmentService = {
 
   async getListings(filters?: ListingFilters): Promise<Listing[]> {
     const path = 'listings';
+    const ownInventoryCacheKey = `account-listings:${buildListingFilterSearchParams(filters).toString() || 'default'}`;
     try {
       const includeUnapproved = !!filters?.includeUnapproved;
       const normalizedCurrentUid = normalize(auth.currentUser?.uid || '');
@@ -1078,18 +1090,37 @@ export const equipmentService = {
 
       return listings;
     } catch (error) {
+      const cachedAccountListings = readPrivateBrowserCache<Listing[]>(ownInventoryCacheKey);
+      if (Array.isArray(cachedAccountListings) && cachedAccountListings.length > 0) {
+        console.warn('Using cached account listings because the live listings request failed:', error);
+        return cachedAccountListings.map((listing) => normalizeListingImages(listing as Listing));
+      }
+
+      const cachedListings = getCachedPublicListingsSnapshot();
+      if (cachedListings.length > 0 && isCacheablePublicListingsRequest(filters)) {
+        console.warn('Using cached public listings because the live listings request failed:', error);
+        return cachedListings;
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
 
   async getMyListings(filters?: ListingFilters): Promise<Listing[]> {
+    const cacheKey = `account-listings:${buildListingFilterSearchParams(filters).toString() || 'default'}`;
     try {
       const params = buildListingFilterSearchParams(filters);
       const queryString = params.toString();
       const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
-      return Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+      const listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+      writePrivateBrowserCache(cacheKey, listings);
+      return listings;
     } catch (error) {
+      const cachedListings = readPrivateBrowserCache<Listing[]>(cacheKey);
+      if (Array.isArray(cachedListings) && cachedListings.length > 0) {
+        console.warn('Using cached account listings because the live account listings request failed:', error);
+        return cachedListings.map((listing) => normalizeListingImages(listing as Listing));
+      }
       handleFirestoreError(error, OperationType.LIST, 'account/listings');
       return [];
     }
@@ -1107,10 +1138,18 @@ export const equipmentService = {
 
   async getMyInquiries(): Promise<Inquiry[]> {
     const path = 'account/inquiries';
+    const cacheKey = 'account-inquiries:self';
     try {
       const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>('/api/account/inquiries');
-      return Array.isArray(payload.inquiries) ? payload.inquiries : [];
+      const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
+      writePrivateBrowserCache(cacheKey, inquiries);
+      return inquiries;
     } catch (error) {
+      const cachedInquiries = readPrivateBrowserCache<Inquiry[]>(cacheKey);
+      if (Array.isArray(cachedInquiries) && cachedInquiries.length > 0) {
+        console.warn('Using cached account inquiries because the live account inquiries request failed:', error);
+        return cachedInquiries;
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -1147,58 +1186,44 @@ export const equipmentService = {
     cursor?: AdminListingsCursor;
     includeDemoListings?: boolean;
   }): Promise<AdminListingsPage> {
-    const path = 'listings';
+    const path = 'admin/listings';
     const pageSize = Math.max(1, Math.min(options?.pageSize ?? 50, 100));
-    const includeDemoListings = !!options?.includeDemoListings;
-    const chunkSize = includeDemoListings ? pageSize : Math.max(pageSize, 100);
+    const cacheKey = `admin-listings:${options?.includeDemoListings ? 'demo' : 'live'}:${options?.cursor || 'first'}:${pageSize}`;
 
     try {
-      let cursor = options?.cursor ?? null;
-      let nextCursor: AdminListingsCursor = cursor;
-      let hasMore = false;
-      const listings: Listing[] = [];
-
-      while (listings.length < pageSize) {
-        const baseQuery = query(
-          collection(db, path),
-          orderBy('createdAt', 'desc'),
-          limit(chunkSize)
-        );
-        const pageQuery = cursor ? query(baseQuery, startAfter(cursor)) : baseQuery;
-        const querySnapshot = await getDocs(pageQuery);
-
-        if (querySnapshot.empty) {
-          nextCursor = null;
-          hasMore = false;
-          break;
-        }
-
-        nextCursor = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
-        hasMore = querySnapshot.docs.length === chunkSize;
-        cursor = nextCursor;
-
-        for (const docSnapshot of querySnapshot.docs) {
-          const listing = normalizeListingImages({ id: docSnapshot.id, ...docSnapshot.data() } as Listing);
-          if (!includeDemoListings && isDemoListing(listing)) {
-            continue;
-          }
-          listings.push(listing);
-          if (listings.length >= pageSize) {
-            break;
-          }
-        }
-
-        if (!hasMore) {
-          break;
-        }
+      const params = new URLSearchParams({
+        pageSize: String(pageSize),
+        includeDemoListings: options?.includeDemoListings ? 'true' : 'false',
+      });
+      if (options?.cursor) {
+        params.set('cursor', options.cursor);
       }
 
-      return {
-        listings,
-        nextCursor: hasMore ? nextCursor : null,
-        hasMore,
+      const payload = await getAuthorizedJson<{
+        listings?: Listing[];
+        nextCursor?: string | null;
+        hasMore?: boolean;
+      }>(`/api/admin/listings?${params.toString()}`);
+
+      const page = {
+        listings: Array.isArray(payload.listings)
+          ? payload.listings.map((listing) => normalizeListingImages(listing as Listing))
+          : [],
+        nextCursor: payload.nextCursor || null,
+        hasMore: Boolean(payload.hasMore),
       };
+      writePrivateBrowserCache(cacheKey, page);
+      return page;
     } catch (error) {
+      const cachedPage = readPrivateBrowserCache<AdminListingsPage>(cacheKey);
+      if (cachedPage && Array.isArray(cachedPage.listings) && cachedPage.listings.length > 0) {
+        console.warn('Using cached admin listings page because the live admin listings request failed:', error);
+        return {
+          listings: cachedPage.listings.map((listing) => normalizeListingImages(listing as Listing)),
+          nextCursor: cachedPage.nextCursor || null,
+          hasMore: Boolean(cachedPage.hasMore),
+        };
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return {
         listings: [],
@@ -1263,6 +1288,7 @@ export const equipmentService = {
     if (!normalizedSellerUid) return [];
 
     const path = 'listings';
+    const cacheKey = `seller-listings:${normalizedSellerUid}:${options?.includeSold ? 'with-sold' : 'active-only'}`;
     try {
       if (auth.currentUser) {
         const params = new URLSearchParams({
@@ -1274,9 +1300,11 @@ export const equipmentService = {
         }
 
         const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings?${params.toString()}`);
-        return Array.isArray(payload.listings)
+        const listings = Array.isArray(payload.listings)
           ? payload.listings.map((listing) => normalizeListingImages(listing as Listing))
           : [];
+        writePrivateBrowserCache(cacheKey, listings);
+        return listings;
       }
 
       const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
@@ -1378,6 +1406,22 @@ export const equipmentService = {
       const requestedPaymentStatus = normalize(String(listing.paymentStatus || 'pending'));
       const nextPaymentStatus: Listing['paymentStatus'] = requestedPaymentStatus === 'paid' ? 'paid' : 'pending';
 
+      if (auth.currentUser) {
+        const payload = await getAuthorizedJson<{ listing?: Listing | null }>('/api/account/listings', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...listing,
+            sellerUid: sellerScopeUid,
+            sellerId: sellerScopeUid,
+            sellerVerified,
+            approvalStatus: nextApprovalStatus,
+            status: nextStatus,
+            paymentStatus: nextPaymentStatus,
+          }),
+        });
+        return payload.listing?.id || '';
+      }
+
       const docRef = listing.id ? doc(db, path, listing.id) : doc(collection(db, path));
       await setDoc(docRef, {
         ...listing,
@@ -1454,6 +1498,12 @@ export const equipmentService = {
   async deleteListing(id: string): Promise<void> {
     const path = `listings/${id}`;
     try {
+      if (auth.currentUser) {
+        await getAuthorizedJson(`/api/account/listings/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+        return;
+      }
       await deleteDoc(doc(db, 'listings', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
@@ -1516,35 +1566,27 @@ export const equipmentService = {
   },
 
   async getInquiries(sellerUid?: string): Promise<Inquiry[]> {
-    const path = 'inquiries';
+    const path = sellerUid ? 'account/inquiries' : 'admin/inquiries';
+    const cacheKey = sellerUid ? `account-inquiries:${sellerUid}` : 'admin-inquiries';
     try {
       if (sellerUid) {
         const params = new URLSearchParams({ sellerUid });
         const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>(`/api/account/inquiries?${params.toString()}`);
-        return Array.isArray(payload.inquiries) ? payload.inquiries : [];
+        const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
+        writePrivateBrowserCache(cacheKey, inquiries);
+        return inquiries;
       }
 
-      if (!sellerUid) {
-        const allInquiries = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
-        return allInquiries.docs.map(doc => ({ id: doc.id, ...doc.data() } as Inquiry));
-      }
-
-      const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
-        getDocs(query(collection(db, path), where('sellerUid', '==', sellerUid))),
-        getDocs(query(collection(db, path), where('sellerId', '==', sellerUid)))
-      ]);
-
-      const seen = new Set<string>();
-      const merged = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs].filter((snapshot) => {
-        if (seen.has(snapshot.id)) return false;
-        seen.add(snapshot.id);
-        return true;
-      });
-
-      return merged
-        .map(doc => ({ id: doc.id, ...doc.data() } as Inquiry))
-        .sort((a, b) => (new Date(b.createdAt as string).getTime() || 0) - (new Date(a.createdAt as string).getTime() || 0));
+      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>('/api/admin/inquiries');
+      const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
+      writePrivateBrowserCache(cacheKey, inquiries);
+      return inquiries;
     } catch (error) {
+      const cachedInquiries = readPrivateBrowserCache<Inquiry[]>(cacheKey);
+      if (Array.isArray(cachedInquiries) && cachedInquiries.length > 0) {
+        console.warn('Using cached inquiries because the live inquiries request failed:', error);
+        return cachedInquiries;
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -1599,6 +1641,14 @@ export const equipmentService = {
   }): Promise<string> {
     const path = 'inspectionRequests';
     try {
+      if (auth.currentUser) {
+        const response = await getAuthorizedJson<{ inspectionRequest?: InspectionRequest | null }>('/api/account/inspection-requests', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        return response.inspectionRequest?.id || '';
+      }
+
       const docRef = doc(collection(db, path));
       await setDoc(docRef, {
         id: docRef.id,
@@ -1636,22 +1686,32 @@ export const equipmentService = {
   },
 
   async getInspectionRequests(options?: { userUid?: string; role?: string }): Promise<InspectionRequest[]> {
-    const path = 'inspectionRequests';
+    const path = 'account/inspection-requests';
     const userUid = options?.userUid || auth.currentUser?.uid;
     const role = options?.role || '';
 
     try {
+      if (!userUid) return [];
+
+      if (auth.currentUser) {
+        const params = new URLSearchParams();
+        params.set('userUid', userUid);
+        if (role) params.set('role', role);
+        const payload = await getAuthorizedJson<{ inspectionRequests?: InspectionRequest[] }>(
+          `/api/account/inspection-requests?${params.toString()}`
+        );
+        return Array.isArray(payload.inspectionRequests) ? payload.inspectionRequests : [];
+      }
+
       if (canReadAllInspectionRequests(role)) {
-        const snapshot = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
+        const snapshot = await getDocs(query(collection(db, 'inspectionRequests'), orderBy('createdAt', 'desc')));
         return snapshot.docs.map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest));
       }
 
-      if (!userUid) return [];
-
       if (canManageAssignedInspectionRequests(role)) {
         const [assignedSnapshot, matchedSnapshot] = await Promise.all([
-          getDocs(query(collection(db, path), where('assignedToUid', '==', userUid))),
-          getDocs(query(collection(db, path), where('matchedDealerUid', '==', userUid))),
+          getDocs(query(collection(db, 'inspectionRequests'), where('assignedToUid', '==', userUid))),
+          getDocs(query(collection(db, 'inspectionRequests'), where('matchedDealerUid', '==', userUid))),
         ]);
 
         const seen = new Set<string>();
@@ -1666,7 +1726,7 @@ export const equipmentService = {
           .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
       }
 
-      const snapshot = await getDocs(query(collection(db, path), where('requesterUid', '==', userUid)));
+      const snapshot = await getDocs(query(collection(db, 'inspectionRequests'), where('requesterUid', '==', userUid)));
       return snapshot.docs
         .map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest))
         .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
@@ -1685,8 +1745,16 @@ export const equipmentService = {
       assignedToName?: string | null;
     }
   ): Promise<void> {
-    const path = `inspectionRequests/${id}`;
+    const path = `account/inspection-requests/${id}`;
     try {
+      if (auth.currentUser) {
+        await getAuthorizedJson<{ inspectionRequest?: InspectionRequest | null }>(`/api/account/inspection-requests/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(updates),
+        });
+        return;
+      }
+
       const docRef = doc(db, 'inspectionRequests', id);
       const nextStatus = updates.status;
       const payload: Record<string, unknown> = {
@@ -1723,49 +1791,46 @@ export const equipmentService = {
 
   async getMyCalls(): Promise<CallLog[]> {
     const path = 'account/calls';
+    const cacheKey = 'account-calls:self';
     try {
       const payload = await getAuthorizedJson<{ calls?: CallLog[] }>('/api/account/calls');
-      return Array.isArray(payload.calls) ? payload.calls : [];
+      const calls = Array.isArray(payload.calls) ? payload.calls : [];
+      writePrivateBrowserCache(cacheKey, calls);
+      return calls;
     } catch (error) {
+      const cachedCalls = readPrivateBrowserCache<CallLog[]>(cacheKey);
+      if (Array.isArray(cachedCalls) && cachedCalls.length > 0) {
+        console.warn('Using cached account calls because the live account calls request failed:', error);
+        return cachedCalls;
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
 
   async getCalls(sellerUidOrOptions?: string | { sellerUid?: string; role?: string }): Promise<CallLog[]> {
-    const path = 'calls';
     const sellerUid = typeof sellerUidOrOptions === 'string' ? sellerUidOrOptions : sellerUidOrOptions?.sellerUid;
-    const role = typeof sellerUidOrOptions === 'string' ? '' : sellerUidOrOptions?.role;
+    const path = sellerUid ? 'account/calls' : 'admin/calls';
+    const cacheKey = sellerUid ? `account-calls:${sellerUid}` : 'admin-calls';
     try {
       if (sellerUid) {
         const params = new URLSearchParams({ sellerUid });
         const payload = await getAuthorizedJson<{ calls?: CallLog[] }>(`/api/account/calls?${params.toString()}`);
-        return Array.isArray(payload.calls) ? payload.calls : [];
+        const calls = Array.isArray(payload.calls) ? payload.calls : [];
+        writePrivateBrowserCache(cacheKey, calls);
+        return calls;
       }
 
-      if (!sellerUid || canReadAllCalls(role)) {
-        const querySnapshot = await getDocs(collection(db, path));
-        return querySnapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as CallLog))
-          .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
-      }
-
-      const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
-        getDocs(query(collection(db, path), where('sellerUid', '==', sellerUid))),
-        getDocs(query(collection(db, path), where('sellerId', '==', sellerUid))),
-      ]);
-
-      const seen = new Set<string>();
-      const merged = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs].filter((snapshot) => {
-        if (seen.has(snapshot.id)) return false;
-        seen.add(snapshot.id);
-        return true;
-      });
-
-      return merged
-        .map((doc) => ({ id: doc.id, ...doc.data() } as CallLog))
-        .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
+      const payload = await getAuthorizedJson<{ calls?: CallLog[] }>('/api/admin/calls');
+      const calls = Array.isArray(payload.calls) ? payload.calls : [];
+      writePrivateBrowserCache(cacheKey, calls);
+      return calls;
     } catch (error) {
+      const cachedCalls = readPrivateBrowserCache<CallLog[]>(cacheKey);
+      if (Array.isArray(cachedCalls) && cachedCalls.length > 0) {
+        console.warn('Using cached calls because the live calls request failed:', error);
+        return cachedCalls;
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -2216,6 +2281,16 @@ export const equipmentService = {
   async seedDemoInventory(options?: { sellerUid?: string }): Promise<void> {
     const path = 'listings';
     try {
+      if (auth.currentUser) {
+        await getAuthorizedJson('/api/admin/listings/seed-demo', {
+          method: 'POST',
+          body: JSON.stringify({
+            sellerUid: options?.sellerUid || auth.currentUser.uid,
+          }),
+        });
+        return;
+      }
+
       const superAdminUid = await resolveSuperAdminSellerUid();
       const sellerUid = options?.sellerUid || superAdminUid || auth.currentUser?.uid || 'demo-seller';
       const demoListings: Listing[] = [];

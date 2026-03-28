@@ -107,6 +107,49 @@ export interface RefreshedAccountAccessSummary {
   entitlement?: AccountEntitlement | null;
 }
 
+const PRIVATE_BILLING_CACHE_PREFIX = 'te-billing-cache-v1';
+
+type BillingCacheEnvelope<T> = {
+  savedAt: string;
+  data: T;
+};
+
+function getBillingCacheKey(scope: string): string {
+  const uid = auth.currentUser?.uid || 'anonymous';
+  return `${PRIVATE_BILLING_CACHE_PREFIX}:${uid}:${scope}`;
+}
+
+function readBillingCache<T>(scope: string): T | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(getBillingCacheKey(scope));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BillingCacheEnvelope<T> | T;
+    if (parsed && typeof parsed === 'object' && 'data' in (parsed as BillingCacheEnvelope<T>)) {
+      return ((parsed as BillingCacheEnvelope<T>).data ?? null) as T | null;
+    }
+    return parsed as T;
+  } catch (error) {
+    console.warn(`Unable to read billing cache for ${scope}:`, error);
+    return null;
+  }
+}
+
+function writeBillingCache<T>(scope: string, data: T): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const payload: BillingCacheEnvelope<T> = {
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    window.localStorage.setItem(getBillingCacheKey(scope), JSON.stringify(payload));
+  } catch (error) {
+    console.warn(`Unable to write billing cache for ${scope}:`, error);
+  }
+}
+
 function getBillingApiBaseUrls(): string[] {
   const bases = [''];
   if (typeof window === 'undefined') {
@@ -285,8 +328,20 @@ export const billingService = {
       }
     });
 
-    if (!response.ok) throw new Error('Failed to fetch invoices');
-    return response.json();
+    if (!response.ok) {
+      const cached = readBillingCache<Invoice[]>('admin-invoices');
+      if (Array.isArray(cached) && cached.length > 0) {
+        console.warn('Using cached admin invoices because the live billing invoices request failed.');
+        return cached;
+      }
+      throw new Error('Failed to fetch invoices');
+    }
+
+    const invoices = await response.json();
+    if (Array.isArray(invoices)) {
+      writeBillingCache('admin-invoices', invoices);
+    }
+    return invoices;
   },
 
   async getAdminSubscriptions(): Promise<Subscription[]> {
@@ -300,8 +355,20 @@ export const billingService = {
       }
     });
 
-    if (!response.ok) throw new Error('Failed to fetch subscriptions');
-    return response.json();
+    if (!response.ok) {
+      const cached = readBillingCache<Subscription[]>('admin-subscriptions');
+      if (Array.isArray(cached) && cached.length > 0) {
+        console.warn('Using cached admin subscriptions because the live billing subscriptions request failed.');
+        return cached;
+      }
+      throw new Error('Failed to fetch subscriptions');
+    }
+
+    const subscriptions = await response.json();
+    if (Array.isArray(subscriptions)) {
+      writeBillingCache('admin-subscriptions', subscriptions);
+    }
+    return subscriptions;
   },
 
   async getAdminAuditLogs(): Promise<BillingAuditLog[]> {
@@ -315,8 +382,20 @@ export const billingService = {
       }
     });
 
-    if (!response.ok) throw new Error('Failed to fetch audit logs');
-    return response.json();
+    if (!response.ok) {
+      const cached = readBillingCache<BillingAuditLog[]>('admin-audit-logs');
+      if (Array.isArray(cached) && cached.length > 0) {
+        console.warn('Using cached billing audit logs because the live billing audit request failed.');
+        return cached;
+      }
+      throw new Error('Failed to fetch audit logs');
+    }
+
+    const logs = await response.json();
+    if (Array.isArray(logs)) {
+      writeBillingCache('admin-audit-logs', logs);
+    }
+    return logs;
   },
 
   async deleteUserAccount(): Promise<void> {

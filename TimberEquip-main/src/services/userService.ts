@@ -14,7 +14,6 @@ import {
   query,
   where,
   deleteDoc,
-  addDoc,
   orderBy,
   limit
 } from 'firebase/firestore';
@@ -152,6 +151,66 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('mfaEnrolledAt' in payload) sanitized.mfaEnrolledAt = payload.mfaEnrolledAt ? String(payload.mfaEnrolledAt) : null;
 
   return sanitized;
+}
+
+async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Unauthorized');
+  }
+
+  const idToken = await currentUser.getIdToken();
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const rawBody = await response.text().catch(() => '');
+  let payload: Record<string, unknown> = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+  }
+
+  if (!response.ok) {
+    const fallbackMessage = rawBody.trim() || `Account request failed (${response.status}).`;
+    throw new Error(String(payload?.error || fallbackMessage));
+  }
+
+  return payload as T;
+}
+
+type CurrentProfileResponse = {
+  profile?: UserProfile | null;
+  source?: string;
+  profileDocExists?: boolean;
+  firestoreQuotaLimited?: boolean;
+};
+
+function deriveSeatContextFromProfile(profile: Partial<UserProfile> | null | undefined): {
+  seatLimit: number;
+  seatCount: number;
+  activePlanIds: string[];
+} {
+  const activePlanId = String(profile?.activeSubscriptionPlanId || '').trim().toLowerCase();
+  const managedAccountCap = typeof profile?.managedAccountCap === 'number' ? profile.managedAccountCap : 0;
+  const planIds =
+    activePlanId === 'dealer' || activePlanId === 'fleet_dealer'
+      ? [activePlanId]
+      : [];
+
+  return {
+    seatLimit: managedAccountCap > 0 ? managedAccountCap : planIds.length > 0 ? 3 : 0,
+    seatCount: 0,
+    activePlanIds: planIds,
+  };
 }
 
 export const userService = {
@@ -386,9 +445,10 @@ export const userService = {
       return { seatLimit: 0, seatCount: 0, activePlanIds: [] };
     }
 
+    const currentUser = auth.currentUser;
     if (auth.currentUser) {
       try {
-        const token = await auth.currentUser.getIdToken();
+        const token = await currentUser.getIdToken();
         const params = new URLSearchParams({ ownerUid: normalizedOwnerUid });
         const response = await fetch(`/api/account/seat-context?${params.toString()}`, {
           headers: {
@@ -408,8 +468,24 @@ export const userService = {
           };
         }
       } catch (error) {
-        console.warn('Falling back to Firestore seat context lookup:', error);
+        console.warn('Account seat-context API unavailable, using reduced entitlement fallback:', error);
       }
+    }
+
+    if (currentUser && currentUser.uid === normalizedOwnerUid) {
+      try {
+        const profileResponse = await this.getCurrentProfile();
+        if (profileResponse.profile) {
+          return deriveSeatContextFromProfile(profileResponse.profile);
+        }
+      } catch (error) {
+        console.warn('Unable to derive seat context from authenticated profile fallback:', error);
+      }
+    }
+
+    const cachedCurrentUserRole = currentUser ? this.normalizeRole(String((await currentUser.getIdTokenResult().catch(() => ({ claims: {} as Record<string, unknown> }))).claims.role || '')) : '';
+    if (currentUser && (currentUser.uid === normalizedOwnerUid || ['super_admin', 'admin', 'developer'].includes(cachedCurrentUserRole))) {
+      return { seatLimit: 0, seatCount: 0, activePlanIds: [] };
     }
 
     const [subscriptionsSnapshot, managedAccountsSnapshot] = await Promise.all([
@@ -440,6 +516,11 @@ export const userService = {
   async getProfile(uid: string): Promise<UserProfile | null> {
     const path = `users/${uid}`;
     try {
+      if (auth.currentUser?.uid === uid) {
+        const payload = await this.getCurrentProfile();
+        return payload.profile || null;
+      }
+
       const docRef = doc(db, 'users', uid);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
@@ -452,10 +533,40 @@ export const userService = {
     }
   },
 
+  async getCurrentProfile(): Promise<CurrentProfileResponse> {
+    const path = 'account/profile';
+    try {
+      return await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return {
+        profile: null,
+        source: 'error',
+        profileDocExists: false,
+        firestoreQuotaLimited: isQuotaExceededFirestoreError(error),
+      };
+    }
+  },
+
   async createProfile(profile: UserProfile): Promise<void> {
     const path = `users/${profile.uid}`;
     try {
       const sanitizedProfile = sanitizeUserProfilePayload(profile);
+      const currentUser = auth.currentUser;
+
+      if (currentUser && currentUser.uid === profile.uid) {
+        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile/bootstrap', {
+          method: 'POST',
+          body: JSON.stringify(sanitizedProfile),
+        });
+        return;
+      }
+
       await this.ensureUserProfileDocument(profile.uid, {
         ...sanitizedProfile,
         createdAt: serverTimestamp()
@@ -483,6 +594,16 @@ export const userService = {
     const path = `users/${uid}`;
     try {
       const sanitizedUpdates = sanitizeUserProfilePayload(updates);
+      const currentUser = auth.currentUser;
+
+      if (currentUser && currentUser.uid === uid) {
+        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+          method: 'PATCH',
+          body: JSON.stringify(sanitizedUpdates),
+        });
+        return;
+      }
+
       await setDoc(doc(db, 'users', uid), {
         uid,
         ...sanitizedUpdates,
@@ -557,7 +678,8 @@ export const userService = {
       throw new Error('Authentication required to create managed sub-accounts.');
     }
 
-    const creatorProfile = await this.getProfile(currentUser.uid);
+    const creatorProfileResponse = await this.getCurrentProfile();
+    const creatorProfile = creatorProfileResponse.profile || null;
     if (!creatorProfile) {
       throw new Error('Creator profile not found.');
     }
@@ -658,17 +780,11 @@ export const userService = {
 
     const path = 'savedSearches';
     try {
-      const docRef = await addDoc(collection(db, path), {
-        userUid: currentUser.uid,
-        name: input.name,
-        filters: input.filters,
-        alertEmail: input.alertEmail,
-        alertPreferences: input.alertPreferences,
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+      const payload = await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>('/api/account/saved-searches', {
+        method: 'POST',
+        body: JSON.stringify(input),
       });
-      return docRef.id;
+      return payload.savedSearch?.id || '';
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
       return '';
@@ -682,6 +798,16 @@ export const userService = {
 
     const path = 'savedSearches';
     try {
+      if (currentUser && currentUser.uid === userUid) {
+        const payload = await getAuthorizedJson<{ savedSearches?: SavedSearch[] }>('/api/account/saved-searches', {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+        return Array.isArray(payload.savedSearches) ? payload.savedSearches : [];
+      }
+
       const q = query(collection(db, path), where('userUid', '==', userUid), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       return snapshot.docs.map((savedSearchDoc) => ({
@@ -697,6 +823,14 @@ export const userService = {
   async updateSavedSearch(id: string, updates: Partial<SavedSearch>): Promise<void> {
     const path = `savedSearches/${id}`;
     try {
+      if (auth.currentUser) {
+        await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(updates),
+        });
+        return;
+      }
+
       await updateDoc(doc(db, 'savedSearches', id), {
         ...updates,
         updatedAt: serverTimestamp()
@@ -709,6 +843,13 @@ export const userService = {
   async deleteSavedSearch(id: string): Promise<void> {
     const path = `savedSearches/${id}`;
     try {
+      if (auth.currentUser) {
+        await getAuthorizedJson<{ deleted?: boolean }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+        return;
+      }
+
       await deleteDoc(doc(db, 'savedSearches', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
@@ -719,6 +860,35 @@ export const userService = {
     uid: string,
     callback: (profile: UserProfile | null, meta?: { exists?: boolean; error?: Error }) => void
   ) {
+    if (auth.currentUser?.uid === uid && typeof window !== 'undefined') {
+      let cancelled = false;
+
+      const emitProfile = async () => {
+        try {
+          const payload = await this.getCurrentProfile();
+          if (cancelled) return;
+          callback(payload.profile || null, {
+            exists: Boolean(payload.profileDocExists ?? payload.profile),
+          });
+        } catch (error) {
+          if (cancelled) return;
+          callback(null, {
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
+        }
+      };
+
+      void emitProfile();
+      const intervalId = window.setInterval(() => {
+        void emitProfile();
+      }, 60000);
+
+      return () => {
+        cancelled = true;
+        window.clearInterval(intervalId);
+      };
+    }
+
     const path = `users/${uid}`;
     const docRef = doc(db, 'users', uid);
     return onSnapshot(docRef, (docSnap) => {

@@ -1,6 +1,44 @@
 import { auth } from '../firebase';
 import { Account, UserRole } from '../types';
 
+const ADMIN_USER_CACHE_KEY = 'te-admin-users-cache-v1';
+
+type AdminUserCacheEnvelope<T> = {
+  savedAt: string;
+  data: T;
+};
+
+function readAdminUserCache<T>(): T | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(ADMIN_USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AdminUserCacheEnvelope<T> | T;
+    if (parsed && typeof parsed === 'object' && 'data' in (parsed as AdminUserCacheEnvelope<T>)) {
+      return ((parsed as AdminUserCacheEnvelope<T>).data ?? null) as T | null;
+    }
+    return parsed as T;
+  } catch (error) {
+    console.warn('Unable to read cached admin users:', error);
+    return null;
+  }
+}
+
+function writeAdminUserCache<T>(data: T): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const payload: AdminUserCacheEnvelope<T> = {
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    window.localStorage.setItem(ADMIN_USER_CACHE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('Unable to write cached admin users:', error);
+  }
+}
+
 interface AdminUserUpdateInput {
   displayName: string;
   email: string;
@@ -51,12 +89,25 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
 
 export const adminUserService = {
   async getUsers(): Promise<Account[]> {
-    return getAuthorizedJson<Account[]>('/api/admin/users', {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
+    try {
+      const users = await getAuthorizedJson<Account[]>('/api/admin/users', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (Array.isArray(users)) {
+        writeAdminUserCache(users);
+      }
+      return users;
+    } catch (error) {
+      const cachedUsers = readAdminUserCache<Account[]>();
+      if (Array.isArray(cachedUsers) && cachedUsers.length > 0) {
+        console.warn('Using cached admin users because the live admin user directory request failed:', error);
+        return cachedUsers;
+      }
+      throw error;
+    }
   },
 
   async updateUser(uid: string, input: AdminUserUpdateInput): Promise<AdminUserMutationResult> {

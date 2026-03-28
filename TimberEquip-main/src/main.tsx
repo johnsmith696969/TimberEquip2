@@ -6,6 +6,7 @@ import './index.css';
 import './styles/input-fixes.css';
 
 const ASSET_RECOVERY_KEY = 'timberequip.asset-recovery-attempted';
+const ASSET_RECOVERY_PARAM = '__asset_recovery';
 
 function getErrorMessage(input: unknown): string {
   if (input instanceof Error) return input.message;
@@ -37,10 +38,18 @@ function recoverFromStaleAssets(reason: string): void {
 
   window.sessionStorage.setItem(ASSET_RECOVERY_KEY, '1');
   console.warn('Recovering from stale deployed assets:', reason);
-  window.location.reload();
+  const recoveryUrl = new URL(window.location.href);
+  recoveryUrl.searchParams.set(ASSET_RECOVERY_PARAM, String(Date.now()));
+  window.location.replace(recoveryUrl.toString());
 }
 
 if (typeof window !== 'undefined') {
+  const normalizedUrl = new URL(window.location.href);
+  if (normalizedUrl.searchParams.has(ASSET_RECOVERY_PARAM)) {
+    normalizedUrl.searchParams.delete(ASSET_RECOVERY_PARAM);
+    window.history.replaceState({}, '', normalizedUrl.toString());
+  }
+
   window.setTimeout(() => {
     window.sessionStorage.removeItem(ASSET_RECOVERY_KEY);
   }, 10000);
