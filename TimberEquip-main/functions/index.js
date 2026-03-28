@@ -3808,6 +3808,16 @@ let publicSoldListingsCache = null;
 let publicCategoryMetricsCache = null;
 let publicHomeDataCache = null;
 const PUBLIC_LISTINGS_TTL_MS = 60 * 1000;
+const PUBLIC_MARKETPLACE_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
+let publicMarketplaceQuotaCooldownUntil = 0;
+
+function isPublicMarketplaceQuotaCooldownActive(now = Date.now()) {
+  return publicMarketplaceQuotaCooldownUntil > now;
+}
+
+function activatePublicMarketplaceQuotaCooldown(now = Date.now()) {
+  publicMarketplaceQuotaCooldownUntil = now + PUBLIC_MARKETPLACE_QUOTA_COOLDOWN_MS;
+}
 
 function invalidateMarketplaceCaches() {
   publicActiveListingsCache = null;
@@ -3815,6 +3825,7 @@ function invalidateMarketplaceCaches() {
   publicCategoryMetricsCache = null;
   publicHomeDataCache = null;
   marketplaceStatsCache = null;
+  publicMarketplaceQuotaCooldownUntil = 0;
 }
 
 function parseCreatedAt(value) {
@@ -4448,6 +4459,9 @@ async function loadActivePublicListings() {
   if (publicActiveListingsCache && now - publicActiveListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
     return publicActiveListingsCache.value;
   }
+  if (isPublicMarketplaceQuotaCooldownActive(now)) {
+    return publicActiveListingsCache?.value || getFallbackMarketplaceListings();
+  }
 
   try {
     const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.listings).get();
@@ -4459,6 +4473,7 @@ async function loadActivePublicListings() {
       throw error;
     }
 
+    activatePublicMarketplaceQuotaCooldown(now);
     logger.warn('Serving emergency public listings snapshot because Firestore public read quota is exhausted.', {
       collection: PUBLIC_SEO_COLLECTIONS.listings,
     });
@@ -4472,6 +4487,9 @@ async function loadSoldMarketplaceListings() {
   const now = Date.now();
   if (publicSoldListingsCache && now - publicSoldListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
     return publicSoldListingsCache.value;
+  }
+  if (isPublicMarketplaceQuotaCooldownActive(now)) {
+    return publicSoldListingsCache?.value || getFallbackMarketplaceHomeData().recentSoldListings || [];
   }
 
   try {
@@ -4487,6 +4505,7 @@ async function loadSoldMarketplaceListings() {
       throw error;
     }
 
+    activatePublicMarketplaceQuotaCooldown(now);
     logger.warn('Serving empty sold-listings snapshot because Firestore public read quota is exhausted.', {
       collection: 'listings',
     });
@@ -4667,6 +4686,9 @@ async function getMarketplaceStatsPayload() {
   if (marketplaceStatsCache && now - marketplaceStatsCache.fetchedAt < MARKETPLACE_STATS_TTL_MS) {
     return marketplaceStatsCache.value;
   }
+  if (isPublicMarketplaceQuotaCooldownActive(now)) {
+    return marketplaceStatsCache?.value || getFallbackMarketplaceStats();
+  }
 
   try {
     const [listingsSnap, inquiriesSnap] = await Promise.all([
@@ -4727,6 +4749,7 @@ async function getMarketplaceStatsPayload() {
       throw error;
     }
 
+    activatePublicMarketplaceQuotaCooldown(now);
     logger.warn('Serving emergency marketplace stats snapshot because Firestore public read quota is exhausted.');
     const payload = getFallbackMarketplaceStats();
     marketplaceStatsCache = { value: payload, fetchedAt: now };
