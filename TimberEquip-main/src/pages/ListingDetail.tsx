@@ -296,8 +296,12 @@ export function ListingDetail() {
     .filter(Boolean)
     .join(', ');
   const hasMachineMap = Boolean(machineMapQuery || (machineLatitude !== undefined && machineLongitude !== undefined));
-  const machineMapsHref = buildMapsHref(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude);
-  const googleMapsHref = buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude);
+  const machineMapsHref = hasMachineMap
+    ? buildMapsHref(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
+    : '';
+  const googleMapsHref = hasMachineMap
+    ? buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
+    : '';
 
   useEffect(() => {
     setIsMapFrameLoading(hasMachineMap);
@@ -776,15 +780,19 @@ export function ListingDetail() {
                 {safeYear} {safeMake} {safeModel}
               </h1>
               <div className="flex items-center space-x-4 text-muted">
-                <div className="flex items-center space-x-1.5">
-                  <MapPin size={14} className="text-accent" />
-                  {isMobileViewport ? (
-                    <a href={machineMapsHref} className="text-xs font-bold uppercase tracking-widest hover:text-accent" aria-label={`Open ${safeCityState} in maps`}>
-                      {safeCityState}
-                    </a>
-                  ) : (
-                    <span className="text-xs font-bold uppercase tracking-widest">{safeCityState}</span>
-                  )}
+                  <div className="flex items-center space-x-1.5">
+                    <MapPin size={14} className="text-accent" />
+                    {isMobileViewport ? (
+                      machineMapsHref ? (
+                        <a href={machineMapsHref} className="text-xs font-bold uppercase tracking-widest hover:text-accent" aria-label={`Open ${safeCityState} in maps`}>
+                          {safeCityState}
+                        </a>
+                      ) : (
+                        <span className="text-xs font-bold uppercase tracking-widest">{safeCityState}</span>
+                      )
+                    ) : (
+                      <span className="text-xs font-bold uppercase tracking-widest">{safeCityState}</span>
+                    )}
                 </div>
                 <div className="flex items-center space-x-1.5">
                   <Clock size={14} className="text-accent" />
@@ -1118,15 +1126,17 @@ export function ListingDetail() {
               <div className="bg-surface border border-line overflow-hidden">
                 <div className="flex items-center justify-between border-b border-line px-6 py-4 gap-4">
                   <div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Google Maps</span>
-                    <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
-                    <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{seller?.storefrontName || seller?.name || 'Seller'} • {safeCityState}</p>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Google Maps</span>
+                      <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
+                      <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{seller?.storefrontName || seller?.name || 'Seller'} • {safeCityState}</p>
+                    </div>
+                    {googleMapsHref ? (
+                      <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
+                        Open Full Map
+                      </a>
+                    ) : null}
                   </div>
-                  <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
-                    Open Full Map
-                  </a>
-                </div>
-                {hasMachineMap ? (
+                  {hasMachineMap ? (
                   <div className="relative h-64 bg-bg">
                     {isMapFrameLoading ? (
                       <div className="absolute inset-0 flex items-center justify-center bg-bg text-[10px] font-bold uppercase tracking-widest text-muted z-10">
@@ -1142,14 +1152,16 @@ export function ListingDetail() {
                       referrerPolicy="no-referrer-when-downgrade"
                     />
                   </div>
-                ) : (
-                  <div className="h-64 flex flex-col items-center justify-center bg-bg px-6 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-3">Map preview unavailable for this location.</p>
-                    <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="btn-industrial px-4 py-2 text-[10px]">
-                      Open in Google Maps
-                    </a>
-                  </div>
-                )}
+                  ) : (
+                    <div className="h-64 flex flex-col items-center justify-center bg-bg px-6 text-center">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-3">Map preview unavailable for this location.</p>
+                      {googleMapsHref ? (
+                        <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="btn-industrial px-4 py-2 text-[10px]">
+                          Open in Google Maps
+                        </a>
+                      ) : null}
+                    </div>
+                  )}
               </div>
             </div>
           </aside>

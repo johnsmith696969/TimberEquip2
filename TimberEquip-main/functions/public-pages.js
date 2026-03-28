@@ -13,6 +13,102 @@ const MARKET_ROUTE_LABELS = Object.freeze({
 });
 const CANONICAL_MARKET_KEY = 'forestry';
 const CANONICAL_MARKET_ROUTE = MARKET_ROUTE_LABELS[CANONICAL_MARKET_KEY];
+const MARKETPLACE_CATEGORY_FAMILIES = Object.freeze({
+  'Logging Equipment': {
+    description: 'Harvesting, extraction, processing, and landing machines for professional forestry operations.',
+    subcategories: [
+      'Bogie Skidders',
+      'Chippers',
+      'Combo Harvester/Forwarder',
+      'Debarkers',
+      'Delimbers',
+      'Dozers With Winch',
+      'Feller Bunchers',
+      'Forwarders',
+      'Graders',
+      'Log Loaders',
+      'Skidders',
+      'Slasher Saws',
+      'Wood Chippers',
+      'Yarders',
+    ],
+  },
+  'Land Clearing Equipment': {
+    description: 'Earthmoving, mulching, grinding, and site-preparation equipment for clearing and development work.',
+    subcategories: [
+      'Backhoes',
+      'Dozers',
+      'Excavators',
+      'Feller Bunchers',
+      'Generators',
+      'Graders',
+      'Horizontal Grinders',
+      'Material Handlers',
+      'Mulchers',
+      'Skid Steers',
+      'Stump Grinders',
+      'Tub Grinders',
+      'Wheel Loaders',
+      'Powerscreens',
+    ],
+  },
+  'Firewood Equipment': {
+    description: 'Processors, splitters, conveyors, and bundling systems for commercial firewood production.',
+    subcategories: [
+      'Conveyors',
+      'Firewood Processors',
+      'Splitters',
+      'Tumblers',
+      'Bundlers',
+    ],
+  },
+  'Tree Service Equipment': {
+    description: 'Chippers, stump grinders, aerial support, and specialist gear for arborist and municipal crews.',
+    subcategories: [
+      'Bucket Trucks',
+      'Chippers',
+      'Lifts',
+      'Trimmers',
+    ],
+  },
+  'Sawmill Equipment': {
+    description: 'Milling, handling, and processing equipment for sawmill and wood-yard operations.',
+    subcategories: [
+      'Sawmills',
+      'Sawmill Machinery',
+    ],
+  },
+  'Trailers': {
+    description: 'Forestry-ready hauling systems for machines, logs, attachments, and support equipment.',
+    subcategories: [
+      'Log Trailers',
+      'Flatbed / Dropdeck Trailers',
+      'Lowboy Trailers',
+    ],
+  },
+  'Trucks': {
+    description: 'Vocational trucks and hauling units used to move machines, logs, crews, and support assets.',
+    subcategories: [
+      'Bucket Trucks',
+      'Chip Trucks',
+      'Day Cab Trucks',
+      'Dump Trucks',
+      'Grapple Trucks',
+      'Lifts',
+      'Log Trucks',
+    ],
+  },
+  'Parts And Attachments': {
+    description: 'Heads, grapples, blades, saws, and replacement components that keep operations moving.',
+    subcategories: [
+      'Attachments',
+      'Grapple Saws',
+      'Grapples',
+      'Masticating Heads',
+      'Winches',
+    ],
+  },
+});
 
 function normalizeNonEmptyString(value, fallback = '') {
   const normalized = String(value || '').trim();
@@ -155,6 +251,23 @@ function getStateFromLocation(location) {
   }
 
   return parts[0] || '';
+}
+
+function getMarketplaceCategoryFamilyName(category, subcategory) {
+  const normalizedCategory = normalizeText(category);
+  const normalizedSubcategory = normalizeText(subcategory);
+
+  if (MARKETPLACE_CATEGORY_FAMILIES[normalizedCategory]) {
+    return normalizedCategory;
+  }
+
+  for (const [familyName, familyConfig] of Object.entries(MARKETPLACE_CATEGORY_FAMILIES)) {
+    if (familyConfig.subcategories.includes(normalizedCategory) || familyConfig.subcategories.includes(normalizedSubcategory)) {
+      return familyName;
+    }
+  }
+
+  return normalizedCategory || normalizedSubcategory || 'Logging Equipment';
 }
 
 function isListingVisible(listing) {
@@ -673,13 +786,15 @@ function renderLinkCards(items, options = {}) {
       ${items
         .map(
           (item) => `
-            <a class="link-card" href="${escapeHtml(item.path)}">
-              <div class="link-card-body">
-                <span class="pill">${escapeHtml(String(item.count || 0))} listings</span>
-                <strong style="margin-top:14px;">${escapeHtml(item.label)}</strong>
-              </div>
-            </a>
-          `
+              <a class="link-card" href="${escapeHtml(item.path)}">
+                <div class="link-card-body">
+                  <span class="pill">${escapeHtml(String(item.count || 0))} listings</span>
+                  <strong style="margin-top:14px;">${escapeHtml(item.label)}</strong>
+                  ${item.description ? `<p style="margin:10px 0 0;color:var(--muted);line-height:1.7;">${escapeHtml(item.description)}</p>` : ''}
+                  ${typeof item.subcategoryCount === 'number' ? `<p style="margin:12px 0 0;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;">${escapeHtml(String(item.subcategoryCount))} subcategories</p>` : ''}
+                </div>
+              </a>
+            `
         )
         .join('')}
     </div>
@@ -1038,11 +1153,29 @@ function getInventoryStats(listings) {
 }
 
 function buildTopLevelCategoryDirectoryItems(listings) {
-  return createCountLinks(
-    listings.map((listing) => listing.category),
-    (category) => `/search?category=${encodeURIComponent(category)}`,
-    100
-  );
+  const counts = new Map();
+
+  Object.keys(MARKETPLACE_CATEGORY_FAMILIES).forEach((familyName) => {
+    counts.set(familyName, 0);
+  });
+
+  listings.forEach((listing) => {
+    const familyName = getMarketplaceCategoryFamilyName(listing.category, listing.subcategory);
+    if (!familyName) {
+      return;
+    }
+    counts.set(familyName, (counts.get(familyName) || 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([name, listingCount]) => ({
+      label: name,
+      count: listingCount,
+      path: `/search?category=${encodeURIComponent(name)}`,
+      description: MARKETPLACE_CATEGORY_FAMILIES[name]?.description || 'Live marketplace inventory grouped by equipment family.',
+      subcategoryCount: MARKETPLACE_CATEGORY_FAMILIES[name]?.subcategories.length || 0,
+    }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
 
 function buildSharedSections(listings, sellerMap, options = {}) {
