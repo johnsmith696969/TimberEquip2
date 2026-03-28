@@ -24,6 +24,7 @@ const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
+const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
 const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -152,6 +153,11 @@ function getAdminRecipients() {
 }
 
 const APP_URL = 'https://timberequip.com';
+
+function getDirectApiProxyUrl() {
+  const projectId = resolveProjectId();
+  return `https://us-central1-${projectId}.cloudfunctions.net/apiProxy`;
+}
 const STRIPE_WEBHOOK_DEDUPE_WINDOW_MS = 30 * 60 * 1000;
 const recentStripeWebhookEvents = new Map();
 
@@ -406,6 +412,12 @@ function parseListingIdFromReference(reference) {
   const listingUrlMatch = value.match(/\/listing\/([^/?#]+)/i);
   if (listingUrlMatch?.[1]) return listingUrlMatch[1].trim();
 
+  const equipmentUrlMatch = value.match(/\/equipment\/[^/?#]+\/([^/?#]+)/i);
+  if (equipmentUrlMatch?.[1]) {
+    const decodedListingId = decodeListingPublicKey(equipmentUrlMatch[1].trim());
+    if (decodedListingId) return decodedListingId;
+  }
+
   if (!value.includes('/') && !value.includes(' ') && value.length >= 8) {
     return value;
   }
@@ -508,7 +520,18 @@ async function resolveInspectionTarget({ listingId, reference, inspectionLocatio
       latitude: listingCoordinates?.lat,
       longitude: listingCoordinates?.lng,
       sellerUid: String(listingData.sellerUid || listingData.sellerId || '').trim(),
-      url: `${APP_URL}/listing/${listingSnap.id}`,
+      url: `${APP_URL}${buildListingPublicPath({
+        id: listingSnap.id,
+        title: listingData.title,
+        year: listingData.year,
+        make: listingData.make,
+        manufacturer: listingData.manufacturer,
+        brand: listingData.brand,
+        model: listingData.model,
+        category: listingData.category,
+        subcategory: listingData.subcategory,
+        location: listingData.location,
+      })}`,
     },
     targetLocation: String(listingData.location || inspectionLocation || '').trim(),
     targetCoordinates: listingCoordinates || geocodedLocation,
@@ -773,7 +796,7 @@ function extractDealerFeedItemsFromPayload(value, depth = 0) {
 const DEALER_FEED_STATUS_VALUES = new Set(['active', 'paused', 'disabled']);
 const DEALER_FEED_SYNC_MODE_VALUES = new Set(['pull', 'push', 'manual']);
 const DEALER_FEED_SYNC_FREQUENCY_VALUES = new Set(['hourly', 'daily', 'weekly', 'manual']);
-const DEALER_FEED_SOURCE_TYPE_VALUES = new Set(['auto', 'json', 'xml']);
+const DEALER_FEED_SOURCE_TYPE_VALUES = new Set(['auto', 'json', 'xml', 'csv']);
 const DEALER_WEBHOOK_SIGNATURE_WINDOW_MS = 10 * 60 * 1000;
 
 function sha256Hex(value) {
@@ -807,6 +830,100 @@ function normalizeDealerFeedSyncFrequency(value, fallback = 'daily') {
 function normalizeDealerFeedSourceType(value, fallback = 'auto') {
   const normalized = normalizeNonEmptyString(value, fallback).toLowerCase();
   return DEALER_FEED_SOURCE_TYPE_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function looksLikeCsvPayload(payloadText) {
+  const normalized = String(payloadText || '').trim();
+  if (!normalized || normalized.startsWith('{') || normalized.startsWith('[') || normalized.startsWith('<')) {
+    return false;
+  }
+
+  const lines = normalized
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) return false;
+  const header = parseCsvLine(lines[0]);
+  const firstRow = parseCsvLine(lines[1]);
+  return header.length > 1 && firstRow.length > 1;
+}
+
+function parseDealerFeedCsvText(payloadText) {
+  const normalized = String(payloadText || '').replace(/^\uFEFF/u, '').trim();
+  if (!normalized) {
+    throw new Error('Feed payload is empty.');
+  }
+
+  const lines = normalized
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/\r/u, ''))
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length < 2) {
+    throw new Error('CSV feed payload must include a header row and at least one data row.');
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header, index) => {
+    const normalizedHeader = normalizeNonEmptyString(header);
+    return normalizedHeader || `column_${index + 1}`;
+  });
+
+  const rows = lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    const row = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? '';
+    });
+    return row;
+  });
+
+  if (rows.length === 0) {
+    throw new Error('No listing items were found in the supplied CSV payload.');
+  }
+
+  return rows;
+}
+
+function inferDealerFeedParserOrder(payloadText) {
+  const normalized = String(payloadText || '').trim();
+  if (!normalized) return ['json', 'xml', 'csv'];
+  if (normalized.startsWith('{') || normalized.startsWith('[')) return ['json', 'csv', 'xml'];
+  if (normalized.startsWith('<')) return ['xml', 'json', 'csv'];
+  if (looksLikeCsvPayload(normalized)) return ['csv', 'json', 'xml'];
+  return ['json', 'xml', 'csv'];
 }
 
 function generateDealerFeedApiKey() {
@@ -948,7 +1065,8 @@ function buildDealerFeedWritePayload(input = {}, defaults = {}) {
 
 function serializeDealerFeed(feedId, rawFeed, options = {}) {
   const feed = rawFeed || {};
-  const webhookUrl = `${APP_URL}/api/dealer/webhook/${encodeURIComponent(feedId)}`;
+  const directApiProxyUrl = getDirectApiProxyUrl();
+  const webhookUrl = `${directApiProxyUrl}/dealer/webhook/${encodeURIComponent(feedId)}`;
 
   return {
     id: feedId,
@@ -981,7 +1099,7 @@ function serializeDealerFeed(feedId, rawFeed, options = {}) {
     apiKeyMasked: normalizeNonEmptyString(feed.apiKeyPreview) || maskSecret(feed.apiKey),
     webhookSecretMasked: maskSecret(feed.webhookSecret),
     webhookUrl,
-    ingestUrl: `${APP_URL}/api/dealer/ingest`,
+    ingestUrl: `${directApiProxyUrl}/dealer/ingest`,
     ...(options.includeSecrets ? {
       apiKey: normalizeNonEmptyString(feed.apiKey),
       webhookSecret: normalizeNonEmptyString(feed.webhookSecret),
@@ -1362,14 +1480,18 @@ function parseDealerFeedPayload(rawInput, sourceType = 'auto', fieldMapping = []
     ? ['json']
     : normalizedType === 'xml'
       ? ['xml']
-      : ['json', 'xml'];
+      : normalizedType === 'csv'
+        ? ['csv']
+        : inferDealerFeedParserOrder(payloadText);
 
   let lastError = null;
   for (const parserType of parsers) {
     try {
       const parsed = parserType === 'json'
         ? JSON.parse(payloadText)
-        : dealerFeedXmlParser.parse(payloadText);
+        : parserType === 'csv'
+          ? parseDealerFeedCsvText(payloadText)
+          : dealerFeedXmlParser.parse(payloadText);
       const items = extractDealerFeedItemsFromPayload(parsed)
         .map((item) => normalizeResolvedDealerFeedItem(item, fieldMapping))
         .filter((item) => item && item.externalId && item.title);
@@ -1533,7 +1655,7 @@ async function fetchDealerFeedPayloadFromSource({ rawInput, feedUrl, requestedTy
     const safeUrl = validateDealerFeedUrl(feedUrl);
     const response = await fetch(safeUrl, {
       headers: {
-        Accept: 'application/json, application/xml, text/xml, text/plain;q=0.8, */*;q=0.5',
+        Accept: 'application/json, application/xml, text/xml, text/csv, application/csv, text/plain;q=0.8, */*;q=0.5',
         'User-Agent': 'ForestryEquipmentSalesDealerFeedResolver/1.0',
       },
     });
@@ -1547,6 +1669,7 @@ async function fetchDealerFeedPayloadFromSource({ rawInput, feedUrl, requestedTy
       const contentType = String(response.headers.get('content-type') || '').toLowerCase();
       if (contentType.includes('xml')) parseType = 'xml';
       else if (contentType.includes('json')) parseType = 'json';
+      else if (contentType.includes('csv')) parseType = 'csv';
     }
   }
 
@@ -6244,6 +6367,55 @@ function getQuotaExceededApiMessage(path) {
   return 'This action is temporarily unavailable because the Firestore daily read quota is exhausted.';
 }
 
+function isCacheablePublicApiRoute(method, path) {
+  const normalizedMethod = String(method || 'GET').trim().toUpperCase();
+  const normalizedPath = String(path || '').trim();
+  if (normalizedMethod !== 'GET') {
+    return false;
+  }
+
+  return (
+    /^\/public\/dealers\/[^/]+\/feed\.json$/i.test(normalizedPath)
+    || /^\/public\/dealers\/[^/]+\/embed$/i.test(normalizedPath)
+    || normalizedPath === '/public/dealer-embed.js'
+    || normalizedPath === '/market-rates'
+    || normalizedPath === '/marketplace-stats'
+    || normalizedPath === '/public/listings'
+    || normalizedPath === '/public/listings/by-id'
+    || normalizedPath === '/public/category-metrics'
+    || normalizedPath === '/public/home-data'
+    || normalizedPath === '/currency-rates'
+  );
+}
+
+function applyApiResponseCachePolicy(res, req, path) {
+  const normalizedPath = String(path || '').trim();
+  const isSensitiveRoute = (
+    normalizedPath.startsWith('/admin/')
+    || normalizedPath.startsWith('/account/')
+    || normalizedPath.startsWith('/dealer/')
+    || normalizedPath.startsWith('/billing/')
+    || normalizedPath.startsWith('/auth/')
+    || normalizedPath.startsWith('/inspections/')
+    || normalizedPath.startsWith('/translate')
+  );
+
+  res.append('Vary', 'Origin');
+  if (isSensitiveRoute) {
+    res.append('Vary', 'Authorization');
+    res.append('Vary', 'X-Dealer-Api-Key');
+  }
+
+  if (isCacheablePublicApiRoute(req?.method, normalizedPath)) {
+    return;
+  }
+
+  res.set('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+}
+
 function timestampValueToIso(value) {
   if (!value) return '';
   if (typeof value?.toDate === 'function') {
@@ -6764,6 +6936,7 @@ exports.apiProxy = onRequest(
     let path = '/';
     try {
       path = (req.path || '/').replace(/^\/api/, '') || '/';
+      applyApiResponseCachePolicy(res, req, path);
       const stripe = createStripeClient();
 
       const publicDealerFeedMatch = path.match(/^\/public\/dealers\/([^/]+)\/feed\.json$/i);
@@ -8978,10 +9151,12 @@ exports.apiProxy = onRequest(
 
         if (req.method === 'GET') {
           const stats = await getDealerFeedStats(feedContext.feed.id);
+          const includeSecrets = ['1', 'true', 'yes'].includes(String(req.query?.includeSecrets || '').trim().toLowerCase())
+            && (feedContext.actorCanAdminister || feedContext.actorIsDealer);
           return res.status(200).json({
             feed: {
               ...serializeDealerFeed(feedContext.feed.id, feedContext.feed, {
-                includeSecrets: ['1', 'true', 'yes'].includes(String(req.query?.includeSecrets || '').trim().toLowerCase()) && feedContext.actorCanAdminister,
+                includeSecrets,
               }),
               ...stats,
             },
@@ -9203,10 +9378,12 @@ exports.apiProxy = onRequest(
         }
 
         const stats = await getDealerFeedStats(feedContext.feed.id);
+        const includeSecrets = ['1', 'true', 'yes'].includes(String(req.query?.includeSecrets || '').trim().toLowerCase())
+          && (feedContext.actorCanAdminister || feedContext.actorIsDealer);
         return res.status(200).json({
           feed: {
             ...serializeDealerFeed(feedContext.feed.id, feedContext.feed, {
-              includeSecrets: feedContext.actorCanAdminister && ['1', 'true', 'yes'].includes(String(req.query?.includeSecrets || '').trim().toLowerCase()),
+              includeSecrets,
             }),
             ...stats,
           },

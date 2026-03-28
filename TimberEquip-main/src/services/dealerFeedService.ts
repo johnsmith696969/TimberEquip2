@@ -1,6 +1,6 @@
 import { auth } from '../firebase';
 
-export type DealerFeedSourceType = 'auto' | 'json' | 'xml';
+export type DealerFeedSourceType = 'auto' | 'json' | 'xml' | 'csv';
 export type DealerFeedSyncMode = 'pull' | 'push' | 'manual';
 export type DealerFeedSyncFrequency = 'hourly' | 'daily' | 'weekly' | 'manual';
 
@@ -52,7 +52,7 @@ export interface DealerFeedIngestResult {
 
 export interface DealerFeedResolveResult {
   sourceName: string;
-  detectedType: 'json' | 'xml';
+  detectedType: 'json' | 'xml' | 'csv';
   itemCount: number;
   items: DealerFeedItem[];
   preview: Array<{
@@ -118,7 +118,9 @@ export interface DealerFeedProfile {
   totalListingsCreated?: number;
   totalListingsUpdated?: number;
   apiKeyMasked?: string;
+  apiKey?: string;
   webhookSecretMasked?: string;
+  webhookSecret?: string;
   webhookUrl?: string;
   ingestUrl?: string;
   lastSyncAt?: TimestampLike;
@@ -153,7 +155,9 @@ function normalizeDealerFeedProfile(profile: Partial<DealerFeedProfile> & { id: 
     totalListingsCreated: Number(profile.totalListingsCreated || 0),
     totalListingsUpdated: Number(profile.totalListingsUpdated || 0),
     apiKeyMasked: String(profile.apiKeyMasked || ''),
+    apiKey: String(profile.apiKey || ''),
     webhookSecretMasked: String(profile.webhookSecretMasked || ''),
+    webhookSecret: String(profile.webhookSecret || ''),
     webhookUrl: String(profile.webhookUrl || ''),
     ingestUrl: String(profile.ingestUrl || ''),
     lastSyncAt: profile.lastSyncAt,
@@ -265,6 +269,7 @@ export const dealerFeedService = {
     nightlySyncEnabled?: boolean;
     lastSyncStatus?: string;
     lastSyncMessage?: string;
+    rotateCredentials?: boolean;
   }): Promise<void> {
     const normalizedProfileId = String(profileId || '').trim();
     if (!normalizedProfileId) {
@@ -278,6 +283,24 @@ export const dealerFeedService = {
         body: changes as unknown as BodyInit,
       }
     );
+  },
+
+  async getProfile(profileId: string, options: { includeSecrets?: boolean } = {}): Promise<DealerFeedProfile> {
+    const normalizedProfileId = String(profileId || '').trim();
+    if (!normalizedProfileId) {
+      throw new Error('A valid feed profile is required.');
+    }
+
+    const searchParams = new URLSearchParams();
+    if (options.includeSecrets) {
+      searchParams.set('includeSecrets', '1');
+    }
+
+    const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
+      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+    );
+
+    return normalizeDealerFeedProfile(response.feed);
   },
 
   async deleteProfile(profileId: string): Promise<void> {

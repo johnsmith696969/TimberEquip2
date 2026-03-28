@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowUpRight,
   BadgeCheck,
   Building2,
+  Copy,
   Database,
+  Eye,
   Package,
   Plus,
   RefreshCw,
@@ -22,35 +24,26 @@ import {
   type DealerFeedItem,
   type DealerFeedLog,
   type DealerFeedProfile,
-  type DealerFeedSourceType,
 } from '../services/dealerFeedService';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { type Inquiry, type Listing, type Seller } from '../types';
+import { buildListingPath } from '../utils/listingPath';
 import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap } from '../utils/sellerAccess';
 import { useLocale } from '../components/LocaleContext';
+import {
+  buildDealerFeedApiCurlSnippet,
+  buildDealerFeedSampleUrl,
+  DEALER_FEED_SETUP_META,
+  type DealerFeedSetupMode,
+  getDealerFeedSetupLabel,
+  getDealerFeedSetupModeFromProfile,
+  getDealerFeedSamplePayload,
+  inferDealerFeedSetupModeFromFileName,
+} from '../utils/dealerFeedSetup';
 
-type FeedMode = 'json' | 'xml' | 'url';
 type InventoryFilter = 'all' | 'live' | 'featured' | 'imported' | 'sold';
 type LeadFilter = 'all' | 'new' | 'working' | 'closed';
-
-const FEED_MODE_META: Record<FeedMode, { label: string; sourceType: DealerFeedSourceType; helper: string }> = {
-  json: {
-    label: 'JSON / Array',
-    sourceType: 'json',
-    helper: 'Paste either a JSON array of machines or a JSON object that contains inventory items.',
-  },
-  xml: {
-    label: 'XML',
-    sourceType: 'xml',
-    helper: 'Paste raw XML inventory feeds and DealerOS will resolve listing records automatically.',
-  },
-  url: {
-    label: 'API / Feed URL',
-    sourceType: 'auto',
-    helper: 'Point DealerOS at a live JSON or XML endpoint and preview the mapped inventory before import.',
-  },
-};
 
 function formatLogTime(value: DealerFeedLog['processedAt'] | DealerFeedLog['createdAt']) {
   if (!value) return '—';
@@ -63,11 +56,6 @@ function formatLogTime(value: DealerFeedLog['processedAt'] | DealerFeedLog['crea
 
 function isImportedListing(listing: Listing): boolean {
   return !!listing.externalSource?.sourceName;
-}
-
-function getFeedModeFromProfile(profile: DealerFeedProfile): FeedMode {
-  if (profile.feedUrl) return 'url';
-  return profile.sourceType === 'xml' ? 'xml' : 'json';
 }
 
 export function DealerOS() {
@@ -92,13 +80,14 @@ export function DealerOS() {
   const [actionError, setActionError] = useState('');
   const [seatSummary, setSeatSummary] = useState<{ seatLimit: number; seatCount: number }>({ seatLimit: 0, seatCount: 0 });
 
-  const [feedMode, setFeedMode] = useState<FeedMode>('json');
+  const [feedMode, setFeedMode] = useState<DealerFeedSetupMode>('json');
   const [feedSourceName, setFeedSourceName] = useState('DealerOS Import');
   const [feedRawInput, setFeedRawInput] = useState('');
   const [feedUrl, setFeedUrl] = useState('');
+  const [feedFileName, setFeedFileName] = useState('');
   const [feedDryRun, setFeedDryRun] = useState(true);
   const [feedPreviewItems, setFeedPreviewItems] = useState<DealerFeedItem[]>([]);
-  const [feedPreviewType, setFeedPreviewType] = useState<'json' | 'xml' | ''>('');
+  const [feedPreviewType, setFeedPreviewType] = useState<'json' | 'xml' | 'csv' | ''>('');
   const [feedPreviewCount, setFeedPreviewCount] = useState(0);
   const [feedResult, setFeedResult] = useState<DealerFeedIngestResult | null>(null);
   const [feedLoading, setFeedLoading] = useState(false);
@@ -107,8 +96,13 @@ export function DealerOS() {
   const [profileError, setProfileError] = useState('');
   const [currentProfileId, setCurrentProfileId] = useState('');
   const [feedNightlySyncEnabled, setFeedNightlySyncEnabled] = useState(true);
+  const [activeFeedProfile, setActiveFeedProfile] = useState<DealerFeedProfile | null>(null);
   const [syndicationNotice, setSyndicationNotice] = useState('');
   const [syndicationError, setSyndicationError] = useState('');
+  const [feedCredentialNotice, setFeedCredentialNotice] = useState('');
+  const [feedCredentialError, setFeedCredentialError] = useState('');
+  const [revealingFeedCredentials, setRevealingFeedCredentials] = useState(false);
+  const feedFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [leadFilter, setLeadFilter] = useState<LeadFilter>('all');
   const [selectedInquiryId, setSelectedInquiryId] = useState('');
@@ -163,6 +157,28 @@ export function DealerOS() {
     }
   }, [inquiries, selectedInquiryId]);
 
+  useEffect(() => {
+    if (!currentProfileId) {
+      setActiveFeedProfile(null);
+      return;
+    }
+
+    const matchedProfile = profiles.find((profile) => profile.id === currentProfileId) || null;
+    setActiveFeedProfile((current) => {
+      if (!matchedProfile) {
+        return current?.id === currentProfileId ? current : null;
+      }
+      if (current?.id === matchedProfile.id) {
+        return {
+          ...matchedProfile,
+          apiKey: current.apiKey || '',
+          webhookSecret: current.webhookSecret || '',
+        };
+      }
+      return matchedProfile;
+    });
+  }, [currentProfileId, profiles]);
+
   const activeListings = useMemo(
     () => listings.filter((listing) => String(listing.status || 'active').toLowerCase() === 'active'),
     [listings]
@@ -206,6 +222,13 @@ export function DealerOS() {
     : '';
   const iframeSnippet = publicDealerId
     ? `<iframe src="${publicDealerEmbedUrl}" loading="lazy" style="width:100%;min-height:980px;border:0;" referrerpolicy="strict-origin-when-cross-origin"></iframe>`
+    : '';
+  const currentFeedCurlSnippet = activeFeedProfile?.ingestUrl
+    ? buildDealerFeedApiCurlSnippet({
+        ingestUrl: activeFeedProfile.ingestUrl,
+        apiKey: activeFeedProfile.apiKey || '',
+        sourceType: activeFeedProfile.sourceType === 'csv' ? 'csv' : 'json',
+      })
     : '';
 
   const filteredListings = useMemo(() => {
@@ -304,14 +327,38 @@ export function DealerOS() {
     setFeedError('');
   };
 
+  const handleFeedFileSelected = async (file?: File | null) => {
+    if (!file) return;
+
+    try {
+      const inferredMode = inferDealerFeedSetupModeFromFileName(file.name, feedMode === 'url' ? 'json' : feedMode);
+      const text = await file.text();
+      setFeedMode(inferredMode);
+      setFeedRawInput(text);
+      setFeedFileName(file.name);
+      setFeedError('');
+      setProfileError('');
+      resetFeedPreview();
+      if (!feedSourceName.trim() || feedSourceName === 'DealerOS Import') {
+        setFeedSourceName(file.name.replace(/\.[^.]+$/u, '') || 'DealerOS Import');
+      }
+    } catch (error) {
+      setFeedError(error instanceof Error ? error.message : 'Unable to read the selected feed file.');
+    }
+  };
+
   const handleLoadFeedProfile = (profile: DealerFeedProfile) => {
     setCurrentProfileId(profile.id);
+    setActiveFeedProfile(profile);
     setFeedSourceName(profile.sourceName);
-    setFeedMode(getFeedModeFromProfile(profile));
+    setFeedMode(getDealerFeedSetupModeFromProfile(profile));
     setFeedRawInput(profile.rawInput || '');
     setFeedUrl(profile.feedUrl || '');
+    setFeedFileName('');
     setFeedNightlySyncEnabled(profile.nightlySyncEnabled);
     setProfileError('');
+    setFeedCredentialError('');
+    setFeedCredentialNotice('');
     resetFeedPreview();
   };
 
@@ -337,7 +384,7 @@ export function DealerOS() {
         id: currentProfileId || undefined,
         sellerUid: ownerUid,
         sourceName: feedSourceName.trim(),
-        sourceType: FEED_MODE_META[feedMode].sourceType,
+        sourceType: DEALER_FEED_SETUP_META[feedMode].sourceType,
         rawInput: feedMode === 'url' ? '' : feedRawInput,
         feedUrl: feedMode === 'url' ? feedUrl.trim() : '',
         nightlySyncEnabled: feedNightlySyncEnabled,
@@ -346,6 +393,7 @@ export function DealerOS() {
       const refreshedProfiles = await dealerFeedService.getSavedProfiles(ownerUid);
       setProfiles(refreshedProfiles);
       setCurrentProfileId(savedProfile.id);
+      setActiveFeedProfile(savedProfile);
       setSyndicationNotice('');
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : 'Unable to save this feed profile.');
@@ -367,6 +415,8 @@ export function DealerOS() {
       setProfiles(refreshedProfiles);
       if (currentProfileId === profile.id) {
         setCurrentProfileId('');
+        setActiveFeedProfile(null);
+        setFeedFileName('');
         setFeedNightlySyncEnabled(true);
       }
     } catch (error) {
@@ -415,7 +465,7 @@ export function DealerOS() {
     try {
       const resolved = await dealerFeedService.resolveSource({
         sourceName: feedSourceName.trim(),
-        sourceType: FEED_MODE_META[feedMode].sourceType,
+        sourceType: DEALER_FEED_SETUP_META[feedMode].sourceType,
         rawInput: feedMode === 'url' ? undefined : feedRawInput,
         feedUrl: feedMode === 'url' ? feedUrl.trim() : undefined,
       });
@@ -452,6 +502,62 @@ export function DealerOS() {
       setFeedError(error instanceof Error ? error.message : 'Feed import failed.');
     } finally {
       setFeedLoading(false);
+    }
+  };
+
+  const handleUseSampleFeed = (mode: DealerFeedSetupMode) => {
+    setFeedMode(mode);
+    setFeedFileName('');
+    setFeedError('');
+    setProfileError('');
+    setFeedResult(null);
+    if (!feedSourceName.trim() || feedSourceName === 'DealerOS Import') {
+      setFeedSourceName(mode === 'url' ? 'Sample Feed URL' : `Sample ${DEALER_FEED_SETUP_META[mode].label}`);
+    }
+    if (mode === 'url') {
+      setFeedUrl(buildDealerFeedSampleUrl(appOrigin, 'json'));
+      setFeedRawInput('');
+    } else {
+      setFeedRawInput(getDealerFeedSamplePayload(mode));
+      setFeedUrl('');
+    }
+    clearFeedPreviewState();
+  };
+
+  const handleRevealFeedCredentials = async () => {
+    if (!currentProfileId) {
+      setFeedCredentialError('Save a feed profile first to generate API credentials.');
+      return;
+    }
+
+    setRevealingFeedCredentials(true);
+    setFeedCredentialError('');
+    setFeedCredentialNotice('');
+    try {
+      const detailedProfile = await dealerFeedService.getProfile(currentProfileId, { includeSecrets: true });
+      setActiveFeedProfile(detailedProfile);
+      setFeedCredentialNotice('Feed credentials loaded for setup and copy/paste.');
+    } catch (error) {
+      setFeedCredentialError(error instanceof Error ? error.message : 'Unable to load the API credentials for this feed.');
+    } finally {
+      setRevealingFeedCredentials(false);
+    }
+  };
+
+  const handleCopyFeedCredential = async (value: string, label: string) => {
+    if (!value) {
+      setFeedCredentialError(`${label} is not available yet.`);
+      setFeedCredentialNotice('');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setFeedCredentialNotice(`${label} copied.`);
+      setFeedCredentialError('');
+    } catch (error) {
+      setFeedCredentialError(error instanceof Error ? error.message : `Unable to copy ${label.toLowerCase()}.`);
+      setFeedCredentialNotice('');
     }
   };
 
@@ -689,7 +795,7 @@ export function DealerOS() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Import Console</h2>
-              <p className="mt-1 text-sm text-muted">Resolve JSON arrays, nested JSON objects, XML feeds, or live API URLs before running a dry run or write import.</p>
+              <p className="mt-1 text-sm text-muted">Resolve JSON arrays, CSV uploads, XML feeds, or live API URLs before running a dry run or write import.</p>
             </div>
             <button
               type="button"
@@ -766,7 +872,7 @@ export function DealerOS() {
               <div className="mt-4 grid gap-3">
                 {profiles.length === 0 ? (
                   <div className="rounded-sm border border-dashed border-line px-4 py-4 text-xs text-muted">
-                    Save your current JSON, XML, or URL setup to reuse it for scheduled imports and vendor feed checks.
+                    Save your current JSON, CSV, XML, or API setup to reuse it for scheduled imports and vendor feed checks.
                   </div>
                 ) : (
                   profiles.map((profile) => (
@@ -774,7 +880,7 @@ export function DealerOS() {
                       <div>
                         <div className="text-xs font-black uppercase tracking-[0.16em] text-ink">{profile.sourceName}</div>
                         <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-muted">
-                          {getFeedModeFromProfile(profile) === 'url' ? 'API / Feed URL' : FEED_MODE_META[getFeedModeFromProfile(profile)].label}
+                          {getDealerFeedSetupLabel(getDealerFeedSetupModeFromProfile(profile))}
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted">
                           <span className={`rounded-full px-2 py-1 ${profile.nightlySyncEnabled ? 'bg-accent/10 text-accent' : 'bg-line/60 text-ink'}`}>
@@ -818,20 +924,45 @@ export function DealerOS() {
             </div>
 
             <div className="grid gap-2 md:grid-cols-3">
-              {(Object.keys(FEED_MODE_META) as FeedMode[]).map((mode) => (
+              {(Object.keys(DEALER_FEED_SETUP_META) as DealerFeedSetupMode[]).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => {
                     setFeedMode(mode);
+                    setFeedFileName('');
                     resetFeedPreview();
                   }}
                   className={`rounded-sm border px-4 py-3 text-left transition-colors ${feedMode === mode ? 'border-ink bg-bg text-ink' : 'border-line bg-surface text-muted hover:text-ink'}`}
                 >
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em]">{FEED_MODE_META[mode].label}</div>
-                  <div className="mt-2 text-xs leading-relaxed">{FEED_MODE_META[mode].helper}</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em]">{DEALER_FEED_SETUP_META[mode].label}</div>
+                  <div className="mt-2 text-xs leading-relaxed">{DEALER_FEED_SETUP_META[mode].helper}</div>
                 </button>
               ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleUseSampleFeed('json')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Load Sample JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUseSampleFeed('csv')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Load Sample CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUseSampleFeed('url')}
+                className="btn-industrial px-3 py-2 text-[10px]"
+              >
+                Use Sample Feed URL
+              </button>
             </div>
 
             {feedMode === 'url' ? (
@@ -844,23 +975,46 @@ export function DealerOS() {
                     resetFeedPreview();
                   }}
                   className="input-industrial mt-1 w-full"
-                  placeholder="https://dealer.example.com/inventory-feed.xml"
+                  placeholder={DEALER_FEED_SETUP_META.url.placeholder}
                 />
               </div>
             ) : (
               <div>
-                <label className="label-micro block">Feed Payload</label>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="label-micro block">Feed Payload</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={feedFileInputRef}
+                      type="file"
+                      accept={DEALER_FEED_SETUP_META[feedMode].accept}
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleFeedFileSelected(event.target.files?.[0] || null);
+                        event.currentTarget.value = '';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => feedFileInputRef.current?.click()}
+                      className="btn-industrial px-3 py-2 text-[10px]"
+                    >
+                      {DEALER_FEED_SETUP_META[feedMode].uploadLabel}
+                    </button>
+                    {feedFileName ? (
+                      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">{feedFileName}</span>
+                    ) : null}
+                  </div>
+                </div>
                 <textarea
                   rows={12}
                   value={feedRawInput}
                   onChange={(event) => {
                     setFeedRawInput(event.target.value);
+                    if (feedFileName) setFeedFileName('');
                     resetFeedPreview();
                   }}
                   className="input-industrial mt-1 w-full resize-y font-mono text-[11px]"
-                  placeholder={feedMode === 'json'
-                    ? '[{"externalId":"SKU-1","title":"2021 Tigercat 620E Skidder"}]'
-                    : '<inventory><item><id>SKU-1</id><title>2021 Tigercat 620E Skidder</title></item></inventory>'}
+                  placeholder={DEALER_FEED_SETUP_META[feedMode].placeholder}
                 />
               </div>
             )}
@@ -944,6 +1098,84 @@ export function DealerOS() {
                 </div>
               </div>
             ) : null}
+
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Direct API + Webhook Setup</div>
+                  <div className="mt-1 text-xs text-muted">
+                    Save a feed profile once, then copy these direct server-to-server endpoints into your DMS, ERP, scheduler, or vendor push integration.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRevealFeedCredentials()}
+                  disabled={revealingFeedCredentials || !currentProfileId}
+                  className="btn-industrial flex items-center gap-2 px-3 py-2 text-[10px] disabled:opacity-50"
+                >
+                  {revealingFeedCredentials ? <RefreshCw size={12} className="animate-spin" /> : <Eye size={12} />}
+                  {activeFeedProfile?.apiKey ? 'Refresh Secrets' : 'Reveal Secrets'}
+                </button>
+              </div>
+
+              {feedCredentialError ? (
+                <div className="mt-4 flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-3 text-accent">
+                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                  <span className="text-xs font-bold">{feedCredentialError}</span>
+                </div>
+              ) : null}
+
+              {feedCredentialNotice ? (
+                <div className="mt-4 rounded-sm border border-accent/20 bg-accent/10 px-3 py-3 text-xs font-bold text-accent">
+                  {feedCredentialNotice}
+                </div>
+              ) : null}
+
+              {!currentProfileId ? (
+                <div className="mt-4 rounded-sm border border-dashed border-line px-4 py-4 text-xs text-muted">
+                  Save the current feed profile first. That creates a reusable direct ingest URL, API key, webhook endpoint, and starter cURL command for direct integrations.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3 text-xs text-muted">
+                  {[
+                    { label: 'Direct Ingest URL', value: activeFeedProfile?.ingestUrl || '', copyLabel: 'Direct ingest URL' },
+                    { label: 'Direct Webhook URL', value: activeFeedProfile?.webhookUrl || '', copyLabel: 'Direct webhook URL' },
+                    { label: 'API Key', value: activeFeedProfile?.apiKey || activeFeedProfile?.apiKeyMasked || '', copyLabel: 'API key' },
+                    { label: 'Webhook Secret', value: activeFeedProfile?.webhookSecret || activeFeedProfile?.webhookSecretMasked || '', copyLabel: 'Webhook secret' },
+                  ].map((entry) => (
+                    <div key={entry.label} className="rounded-sm border border-line bg-surface p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">{entry.label}</div>
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyFeedCredential(entry.value, entry.copyLabel)}
+                          className="btn-industrial flex items-center gap-1 px-2 py-1 text-[10px]"
+                        >
+                          <Copy size={12} /> Copy
+                        </button>
+                      </div>
+                      <div className="mt-2 break-all font-mono text-[11px] text-ink">{entry.value || 'Not available yet'}</div>
+                    </div>
+                  ))}
+
+                  <div className="rounded-sm border border-line bg-surface p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Server-to-Server cURL</div>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyFeedCredential(currentFeedCurlSnippet, 'Sample cURL command')}
+                        className="btn-industrial flex items-center gap-1 px-2 py-1 text-[10px]"
+                      >
+                        <Copy size={12} /> Copy
+                      </button>
+                    </div>
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-sm border border-line bg-bg p-3 font-mono text-[11px] text-ink">
+                      {currentFeedCurlSnippet}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -1324,7 +1556,10 @@ export function DealerOS() {
                         >
                           Edit
                         </button>
-                        <Link to={`/listing/${listing.id}`} className="btn-industrial px-3 py-2 text-[10px]">
+                        <Link
+                          to={buildListingPath(listing)}
+                          className="btn-industrial px-3 py-2 text-[10px]"
+                        >
                           View
                         </Link>
                         <button

@@ -22,6 +22,7 @@
     "governance:backfill": "node scripts/backfill-listing-governance.cjs",
     "release:notes": "node scripts/generate-release-notes.mjs",
     "smoke:routes": "node scripts/http-smoke-check.mjs",
+    "qa:dealer-feeds": "node scripts/test-dealer-feeds.mjs",
     "ops:alerts:render": "node scripts/render-alert-policies.mjs",
     "ops:alerts:apply": "node scripts/apply-alert-policies.mjs",
     "ops:staging:setup": "node scripts/setup-staging-project.mjs",

@@ -4,7 +4,7 @@ import { updateEmail, updateProfile as updateFirebaseProfile } from 'firebase/au
 import { 
   LayoutDashboard, Package, MessageSquare, 
   Users, Settings, TrendingUp, Plus,
-  Search, Filter, MoreVertical, Edit, Trash2, Download,
+  Search, Filter, MoreVertical, Edit, Trash2, Download, Copy, Eye,
   CheckCircle2, Clock, AlertCircle, ArrowUpRight,
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
@@ -17,7 +17,7 @@ import { adminUserService } from '../services/adminUserService';
 import { cmsService } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
 import { billingService, Invoice, Subscription, BillingAuditLog } from '../services/billingService';
-import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog } from '../services/dealerFeedService';
+import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { InquiryList } from '../components/admin/InquiryList';
 import { VirtualizedListingsTable } from '../components/admin/VirtualizedListingsTable';
@@ -28,6 +28,14 @@ import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
 import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
+import {
+  buildDealerFeedApiCurlSnippet,
+  buildDealerFeedSampleUrl,
+  DEALER_FEED_SETUP_META,
+  type DealerFeedSetupMode,
+  getDealerFeedSamplePayload,
+  inferDealerFeedSetupModeFromFileName,
+} from '../utils/dealerFeedSetup';
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
 type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
@@ -135,15 +143,29 @@ export function AdminDashboard() {
 
   // ── Dealer Feed state ──────────────────────────────────────────────
   const [dfSubTab,     setDfSubTab]     = useState<'ingest' | 'logs'>('ingest');
+  const [dfMode,       setDfMode]       = useState<DealerFeedSetupMode>('json');
   const [dfSource,     setDfSource]     = useState('');
   const [dfDealerId,   setDfDealerId]   = useState('');
-  const [dfItemsJson,  setDfItemsJson]  = useState('[]');
+  const [dfPayload,    setDfPayload]    = useState('');
+  const [dfFeedUrl,    setDfFeedUrl]    = useState('');
+  const [dfFileName,   setDfFileName]   = useState('');
   const [dfDryRun,     setDfDryRun]     = useState(true);
   const [dfLoading,    setDfLoading]    = useState(false);
   const [dfResult,     setDfResult]     = useState<DealerFeedIngestResult | null>(null);
+  const [dfPreviewItems, setDfPreviewItems] = useState<Parameters<typeof dealerFeedService.ingest>[0]['items']>([]);
+  const [dfPreviewCount, setDfPreviewCount] = useState(0);
+  const [dfPreviewType, setDfPreviewType] = useState<'json' | 'xml' | 'csv' | ''>('');
   const [dfError,      setDfError]      = useState('');
   const [dfLogs,       setDfLogs]       = useState<DealerFeedLog[]>([]);
   const [dfLogsLoading, setDfLogsLoading] = useState(false);
+  const [dfCurrentProfileId, setDfCurrentProfileId] = useState('');
+  const [dfActiveProfile, setDfActiveProfile] = useState<DealerFeedProfile | null>(null);
+  const [dfProfileSaving, setDfProfileSaving] = useState(false);
+  const [dfCredentialNotice, setDfCredentialNotice] = useState('');
+  const [dfCredentialError, setDfCredentialError] = useState('');
+  const [dfRevealingCredentials, setDfRevealingCredentials] = useState(false);
+  const dfFileInputRef = useRef<HTMLInputElement | null>(null);
+  const setupModes = Object.keys(DEALER_FEED_SETUP_META) as DealerFeedSetupMode[];
 
   // ── CMS state ────────────────────────────────────────────────────
   const [blogPosts,      setBlogPosts]      = useState<BlogPost[]>([]);
@@ -1151,6 +1173,18 @@ export function AdminDashboard() {
 
     return haystack.includes(userSearchQuery.trim().toLowerCase());
   });
+
+  const dealerFeedTargetAccounts = useMemo(
+    () =>
+      accounts
+        .filter((account) => ['dealer', 'pro_dealer'].includes(account.role))
+        .sort((left, right) => {
+          const leftLabel = `${left.displayName || left.name || ''} ${left.company || ''}`.trim().toLowerCase();
+          const rightLabel = `${right.displayName || right.name || ''} ${right.company || ''}`.trim().toLowerCase();
+          return leftLabel.localeCompare(rightLabel);
+        }),
+    [accounts]
+  );
 
   const exportUsersCSV = () => {
     const headers = [
@@ -2936,20 +2970,193 @@ export function AdminDashboard() {
   );
 
   const renderDealerFeeds = () => {
+    const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
+    const currentDfCurlSnippet = dfActiveProfile?.ingestUrl
+      ? buildDealerFeedApiCurlSnippet({
+          ingestUrl: dfActiveProfile.ingestUrl,
+          apiKey: dfActiveProfile.apiKey || '',
+          sourceType: dfActiveProfile.sourceType === 'csv' ? 'csv' : 'json',
+        })
+      : '';
+    const resetDfPreview = () => {
+      setDfPreviewItems([]);
+      setDfPreviewCount(0);
+      setDfPreviewType('');
+      setDfResult(null);
+      setDfError('');
+    };
+
+    const handleDealerFeedFileSelected = async (file?: File | null) => {
+      if (!file) return;
+
+      try {
+        const inferredMode = inferDealerFeedSetupModeFromFileName(file.name, dfMode === 'url' ? 'json' : dfMode);
+        const text = await file.text();
+        setDfMode(inferredMode);
+        setDfPayload(text);
+        setDfFileName(file.name);
+        setDfError('');
+        setDfCredentialError('');
+        setDfCredentialNotice('');
+        resetDfPreview();
+        if (!dfSource.trim()) {
+          setDfSource(file.name.replace(/\.[^.]+$/u, '') || 'Dealer Feed');
+        }
+      } catch (error) {
+        setDfError(error instanceof Error ? error.message : 'Unable to read the selected feed file.');
+      }
+    };
+
+    const handleUseSampleFeed = (mode: DealerFeedSetupMode) => {
+      setDfMode(mode);
+      setDfFileName('');
+      setDfError('');
+      setDfCredentialError('');
+      setDfCredentialNotice('');
+      setDfResult(null);
+      if (!dfSource.trim()) {
+        setDfSource(mode === 'url' ? 'Sample Feed URL' : `Sample ${DEALER_FEED_SETUP_META[mode].label}`);
+      }
+      if (mode === 'url') {
+        setDfFeedUrl(buildDealerFeedSampleUrl(appOrigin, 'json'));
+        setDfPayload('');
+      } else {
+        setDfPayload(getDealerFeedSamplePayload(mode));
+        setDfFeedUrl('');
+      }
+      resetDfPreview();
+    };
+
+    const handleSaveFeedProfile = async () => {
+      if (!dfSource.trim()) {
+        setDfError('Source name is required.');
+        return;
+      }
+      if (!dfDealerId.trim()) {
+        setDfError('Dealer UID / ID is required.');
+        return;
+      }
+      if (dfMode === 'url' && !dfFeedUrl.trim()) {
+        setDfError('Feed URL is required.');
+        return;
+      }
+      if (dfMode !== 'url' && !dfPayload.trim()) {
+        setDfError('Feed payload is required.');
+        return;
+      }
+
+      setDfProfileSaving(true);
+      setDfError('');
+      setDfCredentialError('');
+      setDfCredentialNotice('');
+      try {
+        const savedProfile = await dealerFeedService.saveProfile({
+          id: dfCurrentProfileId || undefined,
+          sellerUid: dfDealerId.trim(),
+          sourceName: dfSource.trim(),
+          sourceType: DEALER_FEED_SETUP_META[dfMode].sourceType,
+          rawInput: dfMode === 'url' ? '' : dfPayload,
+          feedUrl: dfMode === 'url' ? dfFeedUrl.trim() : '',
+          nightlySyncEnabled: true,
+        });
+        setDfCurrentProfileId(savedProfile.id);
+        setDfActiveProfile(savedProfile);
+        setDfCredentialNotice('Feed profile saved. Reveal credentials to copy the direct ingest URL, API key, and webhook secret.');
+      } catch (error) {
+        setDfCredentialError(error instanceof Error ? error.message : 'Unable to save this dealer feed profile.');
+      } finally {
+        setDfProfileSaving(false);
+      }
+    };
+
+    const handleRevealFeedCredentials = async () => {
+      if (!dfCurrentProfileId) {
+        setDfCredentialError('Save a feed profile first to generate direct API credentials.');
+        setDfCredentialNotice('');
+        return;
+      }
+
+      setDfRevealingCredentials(true);
+      setDfCredentialError('');
+      setDfCredentialNotice('');
+      try {
+        const detailedProfile = await dealerFeedService.getProfile(dfCurrentProfileId, { includeSecrets: true });
+        setDfActiveProfile(detailedProfile);
+        setDfCredentialNotice('Direct API credentials loaded for copy/paste setup.');
+      } catch (error) {
+        setDfCredentialError(error instanceof Error ? error.message : 'Unable to load API credentials for this dealer feed.');
+      } finally {
+        setDfRevealingCredentials(false);
+      }
+    };
+
+    const handleCopyDealerFeedCredential = async (value: string, label: string) => {
+      if (!value) {
+        setDfCredentialError(`${label} is not available yet.`);
+        setDfCredentialNotice('');
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(value);
+        setDfCredentialNotice(`${label} copied.`);
+        setDfCredentialError('');
+      } catch (error) {
+        setDfCredentialError(error instanceof Error ? error.message : `Unable to copy ${label.toLowerCase()}.`);
+        setDfCredentialNotice('');
+      }
+    };
+
+    const handleResolveFeed = async (): Promise<Parameters<typeof dealerFeedService.ingest>[0]['items']> => {
+      if (!dfSource.trim()) {
+        setDfError('Source name is required.');
+        return [];
+      }
+      if (!dfDealerId.trim()) {
+        setDfError('Dealer UID / ID is required.');
+        return [];
+      }
+      if (dfMode === 'url' && !dfFeedUrl.trim()) {
+        setDfError('Feed URL is required.');
+        return [];
+      }
+      if (dfMode !== 'url' && !dfPayload.trim()) {
+        setDfError('Feed payload is required.');
+        return [];
+      }
+
+      setDfLoading(true);
+      setDfError('');
+      setDfResult(null);
+      try {
+        const resolved = await dealerFeedService.resolveSource({
+          sourceName: dfSource.trim(),
+          sourceType: DEALER_FEED_SETUP_META[dfMode].sourceType,
+          rawInput: dfMode === 'url' ? undefined : dfPayload,
+          feedUrl: dfMode === 'url' ? dfFeedUrl.trim() : undefined,
+        });
+
+        setDfPreviewItems(resolved.items);
+        setDfPreviewCount(resolved.itemCount);
+        setDfPreviewType(resolved.detectedType);
+        return resolved.items;
+      } catch (error) {
+        setDfPreviewItems([]);
+        setDfPreviewCount(0);
+        setDfPreviewType('');
+        setDfError(error instanceof Error ? error.message : 'Unable to parse this feed source.');
+        return [];
+      } finally {
+        setDfLoading(false);
+      }
+    };
+
     const handleIngest = async () => {
       setDfError('');
       setDfResult(null);
 
-      let items: unknown[];
-      try {
-        items = JSON.parse(dfItemsJson);
-        if (!Array.isArray(items)) throw new Error('Items must be a JSON array');
-      } catch (e) {
-        setDfError(e instanceof Error ? e.message : 'Invalid JSON');
-        return;
-      }
-      if (!dfSource.trim()) { setDfError('Source name is required'); return; }
-      if (!dfDealerId.trim()) { setDfError('Dealer ID is required'); return; }
+      const items = dfPreviewItems.length > 0 ? dfPreviewItems : await handleResolveFeed();
+      if (items.length === 0) return;
 
       setDfLoading(true);
       try {
@@ -2957,11 +3164,11 @@ export function AdminDashboard() {
           sourceName: dfSource.trim(),
           dealerId: dfDealerId.trim(),
           dryRun: dfDryRun,
-          items: items as Parameters<typeof dealerFeedService.ingest>[0]['items'],
+          items,
         });
         setDfResult(result);
-      } catch (e) {
-        setDfError(e instanceof Error ? e.message : 'Ingest failed');
+      } catch (error) {
+        setDfError(error instanceof Error ? error.message : 'Feed import failed.');
       } finally {
         setDfLoading(false);
       }
@@ -2969,39 +3176,58 @@ export function AdminDashboard() {
 
     const handleLoadLogs = async () => {
       setDfLogsLoading(true);
+      setDfError('');
       try {
-        setDfLogs(await dealerFeedService.getRecentLogs(20));
-      } catch (e) {
-        console.error('Failed to load dealer feed logs:', e);
+        setDfLogs(await dealerFeedService.getRecentLogs(20, dfDealerId.trim() || undefined));
+      } catch (error) {
+        setDfError(error instanceof Error ? error.message : 'Unable to load dealer feed logs.');
       } finally {
         setDfLogsLoading(false);
       }
     };
 
-    const formatLogTime = (ts: DealerFeedLog['processedAt']) => {
+    const formatLogTime = (timestamp: DealerFeedLog['processedAt']) => {
+      const ts = timestamp;
       if (!ts) return '—';
-      if (typeof ts === 'object' && 'toDate' in ts && typeof ts.toDate === 'function') {
-        return ts.toDate().toLocaleString();
+      if (typeof timestamp === 'object' && 'toDate' in timestamp && typeof timestamp.toDate === 'function') {
+        return timestamp.toDate().toLocaleString();
       }
-      return new Date(ts as string | number).toLocaleString();
+      return new Date(timestamp as string | number).toLocaleString();
     };
 
     return (
       <div className="space-y-6">
-        {/* Sub-tab nav */}
-        <div className="flex space-x-1 bg-surface border border-line p-2 rounded-sm w-fit">
-          {(['ingest', 'logs'] as const).map(tab => (
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-sm border border-line bg-surface p-6">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Dealer Feed Intake</h2>
+            <p className="mt-2 max-w-3xl text-sm text-muted">
+              Configure JSON array, CSV upload, XML paste, or live API URL imports for any dealer account. Resolve first,
+              confirm the preview, then run a dry import or live ingest.
+            </p>
+          </div>
+          <div className="rounded-sm border border-line bg-bg px-4 py-3 text-right">
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Setup Flow</div>
+            <div className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-ink">
+              1. Select format 2. Resolve 3. Preview 4. Import
+            </div>
+          </div>
+        </div>
+
+        <div className="flex space-x-1 rounded-sm border border-line bg-surface p-2 w-fit">
+          {(['ingest', 'logs'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => {
                 setDfSubTab(tab);
-                if (tab === 'logs' && dfLogs.length === 0) handleLoadLogs();
+                if (tab === 'logs' && dfLogs.length === 0) {
+                  void handleLoadLogs();
+                }
               }}
-              className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-colors ${
+              className={`rounded-sm px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
                 dfSubTab === tab ? 'bg-ink text-bg' : 'text-muted hover:text-ink'
               }`}
             >
-              {tab === 'ingest' ? 'Ingest Feed' : 'Ingest Logs'}
+              {tab === 'ingest' ? 'Resolve + Import' : 'Import Logs'}
             </button>
           ))}
         </div>
@@ -3021,7 +3247,10 @@ export function AdminDashboard() {
                   <input
                     type="text"
                     value={dfSource}
-                    onChange={e => setDfSource(e.target.value)}
+                    onChange={(event) => {
+                      setDfSource(event.target.value);
+                      resetDfPreview();
+                    }}
                     placeholder="e.g. JohnDeereDealerFeed"
                     className="input-industrial w-full text-xs"
                   />
@@ -3032,10 +3261,131 @@ export function AdminDashboard() {
                   <input
                     type="text"
                     value={dfDealerId}
-                    onChange={e => setDfDealerId(e.target.value)}
+                    onChange={(event) => {
+                      setDfDealerId(event.target.value);
+                      setDfCurrentProfileId('');
+                      setDfActiveProfile(null);
+                      setDfCredentialError('');
+                      setDfCredentialNotice('');
+                      resetDfPreview();
+                    }}
                     placeholder="Firebase UID or dealer identifier"
                     className="input-industrial w-full text-xs"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Dealer Account Picker</label>
+                  <select
+                    value={dfDealerId}
+                    onChange={(event) => {
+                      setDfDealerId(event.target.value);
+                      setDfCurrentProfileId('');
+                      setDfActiveProfile(null);
+                      setDfCredentialError('');
+                      setDfCredentialNotice('');
+                      resetDfPreview();
+                    }}
+                    className="input-industrial w-full text-xs"
+                  >
+                    <option value="">Select dealer or pro dealer account</option>
+                    {dealerFeedTargetAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {`${account.displayName || account.name || account.email} ${account.company ? `- ${account.company}` : ''} (${account.role === 'pro_dealer' ? 'Pro Dealer' : 'Dealer'})`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-[11px] text-muted">
+                    Super admins can pick the dealer account here instead of manually looking up a UID.
+                  </p>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  {setupModes.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setDfMode(mode);
+                        setDfFileName('');
+                        resetDfPreview();
+                      }}
+                      className={`rounded-sm border px-4 py-3 text-left transition-colors ${
+                        dfMode === mode ? 'border-ink bg-bg text-ink' : 'border-line bg-surface text-muted hover:text-ink'
+                      }`}
+                    >
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em]">{DEALER_FEED_SETUP_META[mode].label}</div>
+                      <div className="mt-2 text-xs leading-relaxed">{DEALER_FEED_SETUP_META[mode].helper}</div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleUseSampleFeed('json')}
+                    className="btn-industrial px-3 py-2 text-[10px]"
+                  >
+                    Load Sample JSON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUseSampleFeed('csv')}
+                    className="btn-industrial px-3 py-2 text-[10px]"
+                  >
+                    Load Sample CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUseSampleFeed('url')}
+                    className="btn-industrial px-3 py-2 text-[10px]"
+                  >
+                    Use Sample Feed URL
+                  </button>
+                </div>
+
+                <div className="rounded-sm border border-line bg-bg p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">API Push Setup</div>
+                      <div className="mt-1 text-xs text-muted">
+                        Save a dealer feed profile once, then reveal the direct ingest URL, API key, webhook secret, and starter cURL command for server-to-server setup.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveFeedProfile()}
+                        disabled={dfProfileSaving}
+                        className="btn-industrial flex items-center gap-2 px-3 py-2 text-[10px] disabled:opacity-50"
+                      >
+                        {dfProfileSaving ? <RefreshCw size={12} className="animate-spin" /> : <Database size={12} />}
+                        {dfCurrentProfileId ? 'Update Feed Profile' : 'Save Feed Profile'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRevealFeedCredentials()}
+                        disabled={dfRevealingCredentials || !dfCurrentProfileId}
+                        className="btn-industrial flex items-center gap-2 px-3 py-2 text-[10px] disabled:opacity-50"
+                      >
+                        {dfRevealingCredentials ? <RefreshCw size={12} className="animate-spin" /> : <Eye size={12} />}
+                        {dfActiveProfile?.apiKey ? 'Refresh Credentials' : 'Reveal Credentials'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {dfCredentialError ? (
+                    <div className="mt-4 flex items-start gap-2 rounded-sm border border-accent/30 bg-accent/10 p-3">
+                      <AlertCircle size={14} className="text-accent mt-0.5 shrink-0" />
+                      <p className="text-[10px] font-bold text-accent">{dfCredentialError}</p>
+                    </div>
+                  ) : null}
+
+                  {dfCredentialNotice ? (
+                    <div className="mt-4 rounded-sm border border-line bg-surface px-3 py-3 text-[10px] font-bold text-ink">
+                      {dfCredentialNotice}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -3051,19 +3401,62 @@ export function AdminDashboard() {
                   </span>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">
-                    Items JSON Array
-                  </label>
-                  <textarea
-                    rows={12}
-                    value={dfItemsJson}
-                    onChange={e => setDfItemsJson(e.target.value)}
-                    spellCheck={false}
-                    className="input-industrial w-full text-[11px] font-mono resize-y"
-                    placeholder={`[\n  {\n    "externalId": "JD-1234",\n    "title": "2022 John Deere 748L Skidder",\n    "price": 185000,\n    "year": 2022,\n    "manufacturer": "John Deere",\n    "category": "Skidder"\n  }\n]`}
-                  />
-                </div>
+                {dfMode === 'url' ? (
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Feed URL</label>
+                    <input
+                      value={dfFeedUrl}
+                      onChange={(event) => {
+                        setDfFeedUrl(event.target.value);
+                        resetDfPreview();
+                      }}
+                      placeholder={DEALER_FEED_SETUP_META.url.placeholder}
+                      className="input-industrial w-full text-xs"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-muted">
+                        Feed Payload
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          ref={dfFileInputRef}
+                          type="file"
+                          accept={DEALER_FEED_SETUP_META[dfMode].accept}
+                          className="hidden"
+                          onChange={(event) => {
+                            void handleDealerFeedFileSelected(event.target.files?.[0] || null);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => dfFileInputRef.current?.click()}
+                          className="btn-industrial px-3 py-2 text-[10px]"
+                        >
+                          {DEALER_FEED_SETUP_META[dfMode].uploadLabel}
+                        </button>
+                        {dfFileName ? (
+                          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">{dfFileName}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <textarea
+                      rows={12}
+                      value={dfPayload}
+                      onChange={(event) => {
+                        setDfPayload(event.target.value);
+                        if (dfFileName) setDfFileName('');
+                        resetDfPreview();
+                      }}
+                      spellCheck={false}
+                      className="input-industrial w-full resize-y font-mono text-[11px]"
+                      placeholder={DEALER_FEED_SETUP_META[dfMode].placeholder}
+                    />
+                  </div>
+                )}
 
                 {dfError && (
                   <div className="flex items-start gap-2 bg-accent/10 border border-accent/30 rounded-sm p-3">
@@ -3072,21 +3465,153 @@ export function AdminDashboard() {
                   </div>
                 )}
 
-                <button
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleResolveFeed()}
+                    disabled={dfLoading}
+                    className="btn-industrial flex items-center gap-2 px-5 py-3 disabled:opacity-50"
+                  >
+                    {dfLoading ? <RefreshCw size={14} className="animate-spin" /> : <Database size={14} />}
+                    Resolve Feed
+                  </button>
+                  <button
                   onClick={handleIngest}
                   disabled={dfLoading}
                   className="btn-industrial btn-accent py-3 px-8 flex items-center gap-2 w-full justify-center disabled:opacity-50"
                 >
                   {dfLoading
                     ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Processing…</>
-                    : <><Database size={14} /> {dfDryRun ? 'Run Dry Run Preview' : 'Run Ingest'}</>
+                    : <><Upload size={14} /> {dfDryRun ? 'Run Dry Import' : 'Import Inventory'}</>
                   }
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDfFileName('');
+                      resetDfPreview();
+                    }}
+                    className="btn-industrial px-5 py-3 text-[10px]"
+                  >
+                    Reset Preview
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Result panel */}
             <div>
+              <div className="mb-4 rounded-sm border border-line bg-surface p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Direct API Credentials</h3>
+                    <p className="mt-1 text-xs text-muted">
+                      Use these values for dealer and vendor automations that push inventory directly into TimberEquip.
+                    </p>
+                  </div>
+                  {dfCurrentProfileId ? (
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                      Feed ID: {dfCurrentProfileId}
+                    </div>
+                  ) : null}
+                </div>
+
+                {!dfCurrentProfileId ? (
+                  <div className="mt-4 rounded-sm border border-dashed border-line px-4 py-4 text-xs text-muted">
+                    Save a feed profile first. That enables direct API setup for the selected dealer account.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {[
+                      { label: 'Direct Ingest URL', value: dfActiveProfile?.ingestUrl || '', copyLabel: 'Direct ingest URL' },
+                      { label: 'Direct Webhook URL', value: dfActiveProfile?.webhookUrl || '', copyLabel: 'Direct webhook URL' },
+                      { label: 'API Key', value: dfActiveProfile?.apiKey || dfActiveProfile?.apiKeyMasked || '', copyLabel: 'API key' },
+                      { label: 'Webhook Secret', value: dfActiveProfile?.webhookSecret || dfActiveProfile?.webhookSecretMasked || '', copyLabel: 'Webhook secret' },
+                    ].map((entry) => (
+                      <div key={entry.label} className="rounded-sm border border-line bg-bg p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">{entry.label}</div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyDealerFeedCredential(entry.value, entry.copyLabel)}
+                            className="btn-industrial flex items-center gap-1 px-2 py-1 text-[10px]"
+                          >
+                            <Copy size={12} /> Copy
+                          </button>
+                        </div>
+                        <div className="mt-2 break-all font-mono text-[11px] text-ink">{entry.value || 'Not available yet'}</div>
+                      </div>
+                    ))}
+
+                    <div className="rounded-sm border border-line bg-bg p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Server-to-Server cURL</div>
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyDealerFeedCredential(currentDfCurlSnippet, 'Sample cURL command')}
+                          className="btn-industrial flex items-center gap-1 px-2 py-1 text-[10px]"
+                        >
+                          <Copy size={12} /> Copy
+                        </button>
+                      </div>
+                      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-sm border border-line bg-surface p-3 font-mono text-[11px] text-ink">
+                        {currentDfCurlSnippet || 'Reveal credentials to generate the starter cURL example.'}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {dfPreviewCount > 0 ? (
+                <div className="mb-4 rounded-sm border border-line bg-surface p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Resolved Feed Preview</h3>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                      {dfPreviewCount} items detected
+                    </div>
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-4">
+                    <div className="rounded-sm border border-line bg-bg p-4">
+                      <div className="text-[9px] font-black uppercase tracking-[0.18em] text-muted">Detected Format</div>
+                      <div className="mt-2 text-xl font-black uppercase tracking-tight text-ink">{dfPreviewType || dfMode}</div>
+                    </div>
+                    <div className="rounded-sm border border-line bg-bg p-4">
+                      <div className="text-[9px] font-black uppercase tracking-[0.18em] text-muted">Preview Items</div>
+                      <div className="mt-2 text-xl font-black tracking-tight text-ink">{dfPreviewCount}</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 overflow-x-auto rounded-sm border border-line">
+                    <table className="w-full text-left text-[10px]">
+                      <thead>
+                        <tr className="border-b border-line bg-bg text-[9px] font-black uppercase text-muted">
+                          <th className="px-4 py-3">External ID</th>
+                          <th className="px-4 py-3">Title</th>
+                          <th className="px-4 py-3">Make / Model</th>
+                          <th className="px-4 py-3">Category</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line">
+                        {dfPreviewItems.slice(0, 10).map((item, index) => (
+                          <tr key={`${String(item.externalId || item.title || index)}-${index}`}>
+                            <td className="px-4 py-3 font-mono text-muted">{String(item.externalId || '-')}</td>
+                            <td className="px-4 py-3 font-bold text-ink">{String(item.title || 'Untitled listing')}</td>
+                            <td className="px-4 py-3 text-muted">
+                              {[item.manufacturer || item.make, item.model].filter(Boolean).join(' ') || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-muted">{String(item.category || '-')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {dfPreviewCount > 10 ? (
+                    <div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                      Showing first 10 preview records of {dfPreviewCount}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {dfResult ? (
                 <div className="space-y-4">
                   <div className="bg-surface border border-line p-6 rounded-sm">
