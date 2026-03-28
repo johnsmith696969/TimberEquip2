@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { updateEmail, updateProfile as updateFirebaseProfile } from 'firebase/auth';
 import { 
   LayoutDashboard, Package, MessageSquare, 
   Users, Settings, TrendingUp, Plus,
@@ -24,16 +26,31 @@ import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
+import { auth } from '../firebase';
 import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
 type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
 
 const LISTINGS_PAGE_SIZE = 50;
+const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
+  'overview',
+  'listings',
+  'inquiries',
+  'calls',
+  'accounts',
+  'settings',
+  'tracking',
+  'users',
+  'billing',
+  'content',
+  'dealer_feeds',
+]);
 
 export function AdminDashboard() {
   const { user: authUser, logout: authLogout } = useAuth();
   const { formatPrice } = useLocale();
+  const [searchParams, setSearchParams] = useSearchParams();
   const profileName = authUser?.displayName || 'Caleb Happy';
   const roleLabel = getUserRoleDisplayLabel(authUser?.role);
   const assignableRoleOptions = getAssignableUserRoleOptions(authUser?.role);
@@ -105,6 +122,15 @@ export function AdminDashboard() {
     company: '',
     phoneNumber: ''
   });
+  const [adminSettingsForm, setAdminSettingsForm] = useState({
+    displayName: '',
+    email: '',
+    phoneNumber: '',
+    company: '',
+    emailNotificationsEnabled: true,
+  });
+  const [savingAdminSettings, setSavingAdminSettings] = useState(false);
+  const [adminSettingsError, setAdminSettingsError] = useState('');
   const listingsInitializedRef = useRef(false);
 
   // ── Dealer Feed state ──────────────────────────────────────────────
@@ -155,6 +181,39 @@ export function AdminDashboard() {
     const timeoutId = window.setTimeout(() => setUserFeedback(null), 9000);
     return () => window.clearTimeout(timeoutId);
   }, [userFeedback]);
+
+  useEffect(() => {
+    setAdminSettingsForm({
+      displayName: authUser?.displayName || '',
+      email: authUser?.email || '',
+      phoneNumber: authUser?.phoneNumber || '',
+      company: authUser?.company || '',
+      emailNotificationsEnabled: authUser?.emailNotificationsEnabled !== false,
+    });
+    setAdminSettingsError('');
+  }, [authUser?.company, authUser?.displayName, authUser?.email, authUser?.emailNotificationsEnabled, authUser?.phoneNumber]);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab && DASHBOARD_TAB_IDS.has(requestedTab as DashboardTab) && requestedTab !== activeTab) {
+      setActiveTab(requestedTab as DashboardTab);
+    }
+  }, [activeTab, searchParams]);
+
+  useEffect(() => {
+    const currentTab = searchParams.get('tab') || 'overview';
+    if (currentTab === activeTab) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    if (activeTab === 'overview') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', activeTab);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [activeTab, searchParams, setSearchParams]);
 
   const downloadCsv = (filenamePrefix: string, headers: string[], rows: string[][]) => {
     const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
@@ -266,15 +325,41 @@ export function AdminDashboard() {
     setBillingLoading(true);
     setBillingLoadError('');
     try {
-      const [invoicesData, subscriptionsData, logsData] = await Promise.all([
+      const [invoicesResult, subscriptionsResult, logsResult] = await Promise.allSettled([
         billingService.getAdminInvoices(),
         billingService.getAdminSubscriptions(),
         billingService.getAdminAuditLogs()
       ]);
-      setInvoices(invoicesData);
-      setSubscriptions(subscriptionsData);
-      setBillingLogs(logsData);
-      setBillingLoaded(true);
+
+      const errorMessages: string[] = [];
+
+      if (invoicesResult.status === 'fulfilled') {
+        setInvoices(invoicesResult.value);
+      } else {
+        setInvoices([]);
+        errorMessages.push('Invoices are temporarily unavailable.');
+      }
+
+      if (subscriptionsResult.status === 'fulfilled') {
+        setSubscriptions(subscriptionsResult.value);
+      } else {
+        setSubscriptions([]);
+        errorMessages.push('Subscriptions are temporarily unavailable.');
+      }
+
+      if (logsResult.status === 'fulfilled') {
+        setBillingLogs(logsResult.value);
+      } else {
+        setBillingLogs([]);
+        errorMessages.push('Audit logs are temporarily unavailable.');
+      }
+
+      setBillingLoaded(
+        invoicesResult.status === 'fulfilled' ||
+          subscriptionsResult.status === 'fulfilled' ||
+          logsResult.status === 'fulfilled'
+      );
+      setBillingLoadError(errorMessages.join(' '));
     } catch (billingError) {
       console.warn('Billing data not available:', billingError);
       setBillingLoadError(billingError instanceof Error ? billingError.message : 'Billing data is not available right now.');
@@ -291,20 +376,119 @@ export function AdminDashboard() {
     setContentLoading(true);
     setContentLoadError('');
     try {
-      const [postsData, mediaData, blocksData] = await Promise.all([
+      const [postsResult, mediaResult, blocksResult] = await Promise.allSettled([
         cmsService.getBlogPosts(),
         cmsService.getMedia(),
         cmsService.getContentBlocks()
       ]);
-      setBlogPosts(postsData);
-      setMediaItems(mediaData);
-      setContentBlocks(blocksData);
-      setContentLoaded(true);
+
+      const errorMessages: string[] = [];
+
+      if (postsResult.status === 'fulfilled') {
+        setBlogPosts(postsResult.value);
+      } else {
+        setBlogPosts([]);
+        errorMessages.push('Blog posts are temporarily unavailable.');
+      }
+
+      if (mediaResult.status === 'fulfilled') {
+        setMediaItems(mediaResult.value);
+      } else {
+        setMediaItems([]);
+        errorMessages.push('Media assets are temporarily unavailable.');
+      }
+
+      if (blocksResult.status === 'fulfilled') {
+        setContentBlocks(blocksResult.value);
+      } else {
+        setContentBlocks([]);
+        errorMessages.push('Content blocks are temporarily unavailable.');
+      }
+
+      setContentLoaded(
+        postsResult.status === 'fulfilled' ||
+          mediaResult.status === 'fulfilled' ||
+          blocksResult.status === 'fulfilled'
+      );
+      setContentLoadError(errorMessages.join(' '));
     } catch (cmsErr) {
       console.warn('CMS data not available:', cmsErr);
       setContentLoadError(cmsErr instanceof Error ? cmsErr.message : 'Content data is not available right now.');
     } finally {
       setContentLoading(false);
+    }
+  };
+
+  const handleAdminSettingsInputChange = (key: keyof typeof adminSettingsForm, value: string | boolean) => {
+    setAdminSettingsError('');
+    setAdminSettingsForm((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  };
+
+  const handleSaveAdminSettings = async () => {
+    if (!authUser?.uid) {
+      setAdminSettingsError('A signed-in account is required before settings can be saved.');
+      return;
+    }
+
+    const nextDisplayName = adminSettingsForm.displayName.trim();
+    const nextEmail = adminSettingsForm.email.trim().toLowerCase();
+    const nextPhoneNumber = adminSettingsForm.phoneNumber.trim();
+    const nextCompany = adminSettingsForm.company.trim();
+
+    if (!nextDisplayName) {
+      setAdminSettingsError('Display name is required.');
+      return;
+    }
+
+    if (!nextEmail) {
+      setAdminSettingsError('Email address is required.');
+      return;
+    }
+
+    setSavingAdminSettings(true);
+    setAdminSettingsError('');
+
+    try {
+      const currentAuthUser = auth.currentUser;
+      let successMessage = 'Account settings saved successfully.';
+      let emailForProfile = nextEmail;
+
+      if (currentAuthUser && (currentAuthUser.email || '').toLowerCase() !== nextEmail) {
+        try {
+          await updateEmail(currentAuthUser, nextEmail);
+        } catch (emailError) {
+          console.warn('Auth email update requires reauthentication:', emailError);
+          successMessage = 'Profile settings saved, but email changes need a recent sign-in before they can update your login email.';
+          emailForProfile = (currentAuthUser.email || authUser.email || nextEmail).toLowerCase();
+        }
+      }
+
+      await userService.updateProfile(authUser.uid, {
+        displayName: nextDisplayName,
+        email: emailForProfile,
+        phoneNumber: nextPhoneNumber,
+        company: nextCompany,
+        emailNotificationsEnabled: adminSettingsForm.emailNotificationsEnabled,
+      });
+
+      if (currentAuthUser) {
+        if ((currentAuthUser.displayName || '') !== nextDisplayName) {
+          await updateFirebaseProfile(currentAuthUser, { displayName: nextDisplayName });
+        }
+      }
+
+      setUserFeedback({
+        tone: successMessage.includes('recent sign-in') ? 'warning' : 'success',
+        message: successMessage,
+      });
+    } catch (error) {
+      console.error('Error saving admin settings:', error);
+      setAdminSettingsError(error instanceof Error ? error.message : 'Unable to save account settings right now.');
+    } finally {
+      setSavingAdminSettings(false);
     }
   };
 
@@ -1988,7 +2172,7 @@ export function AdminDashboard() {
             value={userSearchQuery}
             onChange={(e) => setUserSearchQuery(e.target.value)}
             placeholder="Search all users..." 
-            className="input-industrial w-full pl-10"
+            className="input-industrial w-full pl-10 placeholder:text-muted/70"
           />
         </div>
         <div className="flex items-center gap-3">
@@ -2606,44 +2790,79 @@ export function AdminDashboard() {
     );
   };
 
-  const renderSettings = () => (    <div className="max-w-3xl space-y-8">
+  const renderSettings = () => (
+    <div className="max-w-3xl space-y-8">
       <section className="bg-surface border border-line rounded-sm overflow-hidden">
         <div className="p-6 border-b border-line bg-bg">
           <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Profile Settings</h3>
         </div>
         <div className="p-8 space-y-6">
           <div className="flex items-center space-x-6 pb-6 border-b border-line">
-            <div className="w-20 h-20 rounded-full bg-ink/10 flex items-center justify-center text-ink border-2 border-line relative group">
-              <User size={32} />
-              <button className="absolute inset-0 bg-ink/60 text-white text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
-                Change
-              </button>
+            <div className="w-20 h-20 rounded-full bg-ink/10 flex items-center justify-center text-ink border-2 border-line overflow-hidden">
+              {authUser?.photoURL ? (
+                <img src={authUser.photoURL} alt={profileName} className="w-full h-full object-cover" />
+              ) : (
+                <User size={32} />
+              )}
             </div>
             <div className="flex-1 space-y-1">
               <h4 className="text-lg font-black uppercase tracking-tighter text-ink">{profileName}</h4>
-              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">{roleLabel} • Member since 2024</p>
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest">{roleLabel}</p>
             </div>
           </div>
+
+          {adminSettingsError ? (
+            <div className="rounded-sm border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent">
+              {adminSettingsError}
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
               <label className="label-micro">Display Name</label>
-              <input type="text" defaultValue={profileName} className="input-industrial w-full" />
+              <input
+                type="text"
+                value={adminSettingsForm.displayName}
+                onChange={(e) => handleAdminSettingsInputChange('displayName', e.target.value)}
+                className="input-industrial w-full"
+              />
             </div>
             <div className="space-y-1">
               <label className="label-micro">Email Address</label>
-              <input type="email" defaultValue={authUser?.email || "caleb@forestryequipmentsales.com"} className="input-industrial w-full" />
+              <input
+                type="email"
+                value={adminSettingsForm.email}
+                onChange={(e) => handleAdminSettingsInputChange('email', e.target.value)}
+                className="input-industrial w-full"
+              />
             </div>
             <div className="space-y-1">
               <label className="label-micro">Phone Number</label>
-              <input type="tel" defaultValue="541-555-0199" className="input-industrial w-full" />
+              <input
+                type="tel"
+                value={adminSettingsForm.phoneNumber}
+                onChange={(e) => handleAdminSettingsInputChange('phoneNumber', e.target.value)}
+                className="input-industrial w-full"
+              />
             </div>
             <div className="space-y-1">
               <label className="label-micro">Company Name</label>
-              <input type="text" defaultValue="Happy Logging Co." className="input-industrial w-full" />
+              <input
+                type="text"
+                value={adminSettingsForm.company}
+                onChange={(e) => handleAdminSettingsInputChange('company', e.target.value)}
+                className="input-industrial w-full"
+              />
             </div>
           </div>
-          <button className="btn-industrial btn-accent py-3 px-8">Save Changes</button>
+          <button
+            type="button"
+            onClick={() => void handleSaveAdminSettings()}
+            disabled={savingAdminSettings}
+            className="btn-industrial btn-accent py-3 px-8 disabled:opacity-60"
+          >
+            {savingAdminSettings ? 'Saving...' : 'Save Changes'}
+          </button>
         </div>
       </section>
 
@@ -2652,26 +2871,65 @@ export function AdminDashboard() {
           <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Security & Preferences</h3>
         </div>
         <div className="p-8 space-y-6">
-          {[
-            { label: 'Email Notifications', desc: 'Receive alerts for new inquiries and market news', icon: Bell, active: true },
-            { label: 'Two-Factor Authentication', desc: 'Add an extra layer of security to your account', icon: Shield, active: false },
-            { label: 'Payment Methods', desc: 'Manage your billing information for ad programs', icon: CreditCard, active: false }
-          ].map((pref, i) => (
-            <div key={i} className="flex items-center justify-between py-4 border-b border-line last:border-0">
-              <div className="flex items-center space-x-4">
-                <div className="p-2 bg-bg border border-line rounded-sm text-muted">
-                  <pref.icon size={18} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-tight text-ink">{pref.label}</h4>
-                  <p className="text-[10px] font-bold text-muted uppercase">{pref.desc}</p>
-                </div>
+          <div className="flex items-center justify-between py-4 border-b border-line">
+            <div className="flex items-center space-x-4">
+              <div className="p-2 bg-bg border border-line rounded-sm text-muted">
+                <Bell size={18} />
               </div>
-              <button className={`w-10 h-5 rounded-full relative transition-colors ${pref.active ? 'bg-accent' : 'bg-line'}`}>
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${pref.active ? 'right-1' : 'left-1'}`} />
-              </button>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Email Notifications</h4>
+                <p className="text-[10px] font-bold text-muted uppercase">Receive alerts for new inquiries and market news</p>
+              </div>
             </div>
-          ))}
+            <button
+              type="button"
+              onClick={() => handleAdminSettingsInputChange('emailNotificationsEnabled', !adminSettingsForm.emailNotificationsEnabled)}
+              className={`w-10 h-5 rounded-full relative transition-colors ${adminSettingsForm.emailNotificationsEnabled ? 'bg-accent' : 'bg-line'}`}
+              aria-pressed={adminSettingsForm.emailNotificationsEnabled}
+            >
+              <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${adminSettingsForm.emailNotificationsEnabled ? 'right-1' : 'left-1'}`} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between py-4 border-b border-line">
+            <div className="flex items-center space-x-4">
+              <div className="p-2 bg-bg border border-line rounded-sm text-muted">
+                <Shield size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Two-Factor Authentication</h4>
+                <p className="text-[10px] font-bold text-muted uppercase">
+                  {authUser?.mfaEnabled ? 'SMS multi-factor authentication is active.' : 'Add an extra layer of security to your account.'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.assign('/profile?tab=Account%20Settings')}
+              className="btn-industrial py-2 px-4 text-[10px]"
+            >
+              Manage
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between py-4">
+            <div className="flex items-center space-x-4">
+              <div className="p-2 bg-bg border border-line rounded-sm text-muted">
+                <CreditCard size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Payment Methods</h4>
+                <p className="text-[10px] font-bold text-muted uppercase">Open billing tools and subscription activity</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('billing')}
+              className="btn-industrial py-2 px-4 text-[10px]"
+            >
+              Open Billing
+            </button>
+          </div>
         </div>
       </section>
     </div>

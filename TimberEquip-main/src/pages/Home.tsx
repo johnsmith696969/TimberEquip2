@@ -85,15 +85,37 @@ const CATEGORY_SINGULAR_LABELS: Record<string, string> = {
 
 const toSingularCategoryLabel = (category: string) => CATEGORY_SINGULAR_LABELS[category] || category;
 
+const buildCategoryMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
+  (marketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, item) => {
+    acc[item.category] = {
+      activeCount: item.activeCount,
+      weeklyChangePercent: item.weeklyChangePercent,
+      averagePrice: item.averagePrice,
+    };
+    return acc;
+  }, {});
+
+const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
+  (marketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
+    acc[item.category] = {
+      activeCount: item.activeCount,
+      weeklyChangePercent: item.weeklyChangePercent,
+      averagePrice: item.averagePrice,
+      previousWeekCount: item.previousWeekCount,
+    };
+    return acc;
+  }, {});
+
 export function Home() {
+  const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const { theme } = useTheme();
   const { t, formatNumber, formatCurrency } = useLocale();
   const { user, isAuthenticated } = useAuth();
-  const [featuredListings, setFeaturedListings] = useState<Listing[]>([]);
-  const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>([]);
-  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>({});
-  const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>({});
-  const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>({ totalActive: 0, totalMarketValue: 0 });
+  const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
+  const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
+  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
+  const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildTopLevelMetricMap(cachedMarketplaceData));
+  const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
 
   useEffect(() => {
@@ -101,28 +123,10 @@ export function Home() {
       try {
         const marketplaceData = await equipmentService.getHomeMarketplaceData();
 
-        const metricMap = marketplaceData.categoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, item) => {
-          acc[item.category] = {
-            activeCount: item.activeCount,
-            weeklyChangePercent: item.weeklyChangePercent,
-            averagePrice: item.averagePrice
-          };
-          return acc;
-        }, {});
-        const topLevelMetricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
-          acc[item.category] = {
-            activeCount: item.activeCount,
-            weeklyChangePercent: item.weeklyChangePercent,
-            averagePrice: item.averagePrice,
-            previousWeekCount: item.previousWeekCount,
-          };
-          return acc;
-        }, {});
-
         setFeaturedListings(marketplaceData.featuredListings);
         setRecentSoldListings(marketplaceData.recentSoldListings);
-        setCategoryMetrics(metricMap);
-        setTopLevelCategoryMetrics(topLevelMetricMap);
+        setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
+        setTopLevelCategoryMetrics(buildTopLevelMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
       } catch (error) {
         console.error('Error fetching home data:', error);

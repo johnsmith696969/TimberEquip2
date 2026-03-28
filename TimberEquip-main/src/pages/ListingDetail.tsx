@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate, useLocation } from 'react-router-dom';
 import { 
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
@@ -17,7 +17,7 @@ import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
-import { buildListingPath } from '../utils/listingPath';
+import { buildListingPath, decodeListingPublicKey, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import {
   buildCategoryPath,
   buildDealerPath,
@@ -35,12 +35,14 @@ import {
 const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
 
 export function ListingDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id, publicKey } = useParams<{ id?: string; publicKey?: string }>();
+  const location = useLocation();
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
   const [listing, setListing] = useState<Listing | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [activeImage, setActiveImage] = useState(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showInquiryModal, setShowInquiryModal] = useState(false);
@@ -191,14 +193,20 @@ export function ListingDetail() {
   };
 
   const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
-  const isFavorite = id ? favoriteIds.includes(id) : false;
+  const resolvedListingId = String(listing?.id || id || decodeListingPublicKey(publicKey || '')).trim();
+  const isFavorite = resolvedListingId ? favoriteIds.includes(resolvedListingId) : false;
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!id) return;
+      const requestedListingId = String(id || decodeListingPublicKey(publicKey || '')).trim();
+      if (!requestedListingId) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
+      setLoadError('');
       try {
-        const listingData = await equipmentService.getListing(id);
+        const listingData = await equipmentService.getListing(requestedListingId);
         if (listingData) {
           const computedAmv = await equipmentService.getMarketValue({
             listingId: listingData.id,
@@ -230,15 +238,18 @@ export function ListingDetail() {
           setAiSpecs(specs);
           setAmvExplanation(explanation || null);
           setLoadingAiData(false);
+        } else {
+          setLoadError('This equipment record is temporarily unavailable. Please return to inventory and try again shortly.');
         }
       } catch (error) {
         console.error('Error fetching listing detail:', error);
+        setLoadError(error instanceof Error ? error.message : 'This equipment record is temporarily unavailable right now.');
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [id]);
+  }, [id, publicKey]);
 
   useEffect(() => {
     if (!listing) return;
@@ -341,8 +352,8 @@ export function ListingDetail() {
       setShowLoginModal(true);
       return;
     }
-    if (id) {
-      await toggleFavorite(id);
+    if (resolvedListingId) {
+      await toggleFavorite(resolvedListingId);
     }
   };
 
@@ -560,6 +571,7 @@ export function ListingDetail() {
   if (!listing) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg">
       <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">{t('listingDetail.notFound', 'Equipment Not Found')}</h2>
+      {loadError ? <p className="text-muted mb-6 max-w-xl text-center">{loadError}</p> : null}
       <Link to="/search" className="btn-industrial btn-accent">{t('listingDetail.returnToInventory', 'Return to Inventory')}</Link>
     </div>
   );
@@ -604,8 +616,6 @@ export function ListingDetail() {
   const hasGallery = detailImages.length > 0;
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
-  const detailSeoTitle = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''}`.replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
-  const detailSeoDescription = `${detailSeoTitle} listed on Forestry Equipment Sales. View price, hours, specs, seller information, financing, and logistics options.`;
   const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
   const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
   const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
@@ -616,6 +626,32 @@ export function ListingDetail() {
   const dealerPath = seller?.id && (seller.storefrontSlug || isDealerRole(seller.role))
     ? buildDealerPath({ id: seller.id, storefrontSlug: seller.storefrontSlug || seller.id })
     : '';
+  const detailSeoHeadline = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''}`.replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
+  const detailSeoTitle = safeCityState
+    ? `${detailSeoHeadline} for Sale in ${safeCityState} | Forestry Equipment Sales`
+    : `${detailSeoHeadline} for Sale | Forestry Equipment Sales`;
+  const detailSeoDescription = [
+    `Used ${detailSeoHeadline} ${routeCategory ? `${routeCategory.toLowerCase()} ` : ''}for sale${safeCityState ? ` in ${safeCityState}` : ''}`.replace(/\s+/g, ' ').trim(),
+    safeHours > 0 ? `with ${formatNumber(safeHours)} hours.` : 'View photos, specs, and pricing details.',
+    'Request pricing, financing, inspection, and logistics support from Forestry Equipment Sales.',
+  ].join(' ');
+  const isLiveApprovedListing =
+    String(listing.approvalStatus || '').toLowerCase() === 'approved' &&
+    String(listing.paymentStatus || '').toLowerCase() === 'paid' &&
+    !['sold', 'expired', 'archived', 'pending'].includes(String(listing.status || 'active').toLowerCase());
+  const isQaOrTestListing = isPublicQaOrTestRecord(
+    listing.id,
+    listing.title,
+    listing.stockNumber,
+    routeManufacturer,
+    routeModel,
+    seller?.storefrontName,
+    seller?.storefrontSlug,
+    seller?.name,
+  );
+  const detailRobots = !isLiveApprovedListing || isQaOrTestListing ? NOINDEX_ROBOTS : undefined;
+  const normalizedCurrentPath = location.pathname.replace(/\/+$/, '') || '/';
+  const normalizedCanonicalPath = listingPath.replace(/\/+$/, '') || '/';
   const routeLinks = [
     routeCategory ? { label: `${routeCategory} For Sale`, path: buildCategoryPath(routeCategory) } : null,
     routeManufacturer ? { label: `${routeManufacturer} Inventory`, path: buildManufacturerPath(routeManufacturer) } : null,
@@ -662,7 +698,7 @@ export function ListingDetail() {
     {
       '@type': 'ListItem',
       position: routeManufacturer && routeModel ? (routeCategory ? 5 : 4) : routeManufacturer ? (routeCategory ? 4 : 3) : routeCategory ? 3 : 2,
-      name: listing.title || detailSeoTitle,
+      name: detailSeoHeadline,
       item: `https://timberequip.com${listingPath}`,
     },
   ].filter(Boolean);
@@ -675,7 +711,7 @@ export function ListingDetail() {
       },
       {
         '@type': 'Product',
-        name: listing.title || detailSeoTitle,
+        name: detailSeoHeadline,
         description: safeDescription,
         category: routeCategory,
         model: routeModel || undefined,
@@ -732,12 +768,17 @@ export function ListingDetail() {
   const openFullscreenImage = () => setShowFullscreenImage(true);
   const closeFullscreenImage = () => setShowFullscreenImage(false);
 
+  if (normalizedCurrentPath !== normalizedCanonicalPath) {
+    return <Navigate replace to={`${listingPath}${location.search || ''}${location.hash || ''}`} />;
+  }
+
   return (
     <div className="min-h-screen bg-bg pb-24">
       <Seo
-        title={`Forestry Equipment Sales | ${detailSeoTitle}`}
+        title={detailSeoTitle}
         description={detailSeoDescription}
         canonicalPath={listingPath}
+        robots={detailRobots}
         jsonLd={detailJsonLd}
         ogType="product"
         imagePath={galleryImages[0]}
@@ -1106,7 +1147,7 @@ export function ListingDetail() {
                   </div>
                 </div>
 
-                <Link to={`/seller/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
+                <Link to={dealerPath || `/seller/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
                   {t('listingDetail.viewFullProfile', 'View Full Profile')}
                 </Link>
               </div>
@@ -1597,7 +1638,7 @@ export function ListingDetail() {
       <LoginPromptModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
-        onSuccess={() => { if (id) toggleFavorite(id); }}
+        onSuccess={() => { if (resolvedListingId) toggleFavorite(resolvedListingId); }}
         message="Sign in to bookmark this equipment and save it for later."
       />
 

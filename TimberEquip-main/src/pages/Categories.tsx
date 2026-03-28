@@ -22,7 +22,18 @@ const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: numb
 };
 
 export function Categories() {
-  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>({});
+  const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
+  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() =>
+    (cachedMarketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
+      acc[metric.category] = {
+        activeCount: metric.activeCount,
+        weeklyChangePercent: metric.weeklyChangePercent,
+        averagePrice: metric.averagePrice,
+        previousWeekCount: metric.previousWeekCount,
+      };
+      return acc;
+    }, {})
+  );
 
   const { formatNumber } = useLocale();
   useEffect(() => {

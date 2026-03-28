@@ -136,6 +136,7 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('accountAccessSource' in payload) sanitized.accountAccessSource = sanitizeAccountAccessSource(payload.accountAccessSource) ?? null;
   if ('currentSubscriptionId' in payload) sanitized.currentSubscriptionId = sanitizeOptionalString(payload.currentSubscriptionId, 200) || null;
   if ('currentPeriodEnd' in payload) sanitized.currentPeriodEnd = payload.currentPeriodEnd ? String(payload.currentPeriodEnd) : null;
+  if ('emailNotificationsEnabled' in payload) sanitized.emailNotificationsEnabled = Boolean(payload.emailNotificationsEnabled);
   if ('mfaEnabled' in payload) sanitized.mfaEnabled = Boolean(payload.mfaEnabled);
   if ('mfaMethod' in payload) {
     const normalizedMethod = String(payload.mfaMethod || '').trim().toLowerCase();

@@ -254,14 +254,17 @@ const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey):
 };
 
 const PAGE_SIZE = 18;
+const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
 export function Search() {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [allListings, setAllListings] = useState<Listing[]>([]);
+  const [allListings, setAllListings] = useState<Listing[]>(() => getInitialCachedListings());
   const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => getInitialCachedListings().length === 0);
+  const [inventoryNotice, setInventoryNotice] = useState('');
+  const [inventoryError, setInventoryError] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [pendingFavoriteId, setPendingFavoriteId] = useState<string | null>(null);
   const [pendingSaveSearch, setPendingSaveSearch] = useState(false);
@@ -296,16 +299,48 @@ export function Search() {
 
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      const cachedListings = equipmentService.getCachedPublicListings();
+      if (cachedListings.length > 0) {
+        setAllListings(cachedListings);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+
+      setInventoryNotice('');
+      setInventoryError('');
+
       try {
-        const [listingsData, taxonomyData] = await Promise.all([
+        const [listingsResult, taxonomyResult] = await Promise.allSettled([
           equipmentService.getListings({ inStockOnly: false, sortBy: 'newest' }),
           taxonomyService.getTaxonomy()
         ]);
-        setAllListings(listingsData);
-        setTaxonomy(taxonomyData);
+
+        if (listingsResult.status === 'fulfilled') {
+          setAllListings(listingsResult.value);
+        } else if (cachedListings.length > 0) {
+          console.warn('Falling back to cached listings in search view:', listingsResult.reason);
+          setInventoryNotice('Showing the latest available inventory snapshot while live inventory recovers.');
+        } else {
+          const message =
+            listingsResult.reason instanceof Error
+              ? listingsResult.reason.message
+              : 'Live inventory is temporarily unavailable.';
+          setInventoryError(message);
+        }
+
+        if (taxonomyResult.status === 'fulfilled') {
+          setTaxonomy(taxonomyResult.value);
+        } else {
+          console.warn('Error fetching taxonomy for search view:', taxonomyResult.reason);
+        }
       } catch (error) {
         console.error('Error fetching listings:', error);
+        if (cachedListings.length > 0) {
+          setInventoryNotice('Showing the latest available inventory snapshot while live inventory recovers.');
+        } else {
+          setInventoryError(error instanceof Error ? error.message : 'Live inventory is temporarily unavailable.');
+        }
       } finally {
         setLoading(false);
       }
@@ -1226,6 +1261,18 @@ export function Search() {
             </div>
           </div>
 
+          {inventoryError ? (
+            <div className="mb-6 rounded-sm border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent">
+              {inventoryError}
+            </div>
+          ) : null}
+
+          {inventoryNotice ? (
+            <div className="mb-6 rounded-sm border border-data/20 bg-data/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-data">
+              {inventoryNotice}
+            </div>
+          ) : null}
+
           {loading ? (
             <div className="industrial-grid">
               {[...Array(6)].map((_, i) => (
@@ -1272,12 +1319,16 @@ export function Search() {
               <div className="w-20 h-20 bg-surface flex items-center justify-center rounded-full mb-8">
                 <SearchIcon size={40} className="text-muted" />
               </div>
-              <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">{t('search.noEquipmentFound', 'No Equipment Found')}</h3>
+              <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">
+                {inventoryError ? 'Inventory Temporarily Unavailable' : t('search.noEquipmentFound', 'No Equipment Found')}
+              </h3>
               <p className="text-muted max-w-md mb-12">
-                {t('search.noResultsMessage', 'We could not find in-stock assets matching your current filter criteria. Try widening year, price, or radius, or clear your filters.')}
+                {inventoryError
+                  ? 'Live inventory is temporarily unavailable because the catalog is recovering from a data service issue. Please retry shortly or clear your filters to try again.'
+                  : t('search.noResultsMessage', 'We could not find in-stock assets matching your current filter criteria. Try widening year, price, or radius, or clear your filters.')}
               </p>
-              <button onClick={resetFilters} className="btn-industrial btn-accent">
-                {t('search.clearAllFilters', 'Clear All Filters')}
+              <button onClick={inventoryError ? () => window.location.reload() : resetFilters} className="btn-industrial btn-accent">
+                {inventoryError ? 'Retry Inventory Search' : t('search.clearAllFilters', 'Clear All Filters')}
               </button>
             </div>
           )}

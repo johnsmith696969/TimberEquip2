@@ -503,6 +503,7 @@ export interface UserProfile {
   email: string;
   displayName: string;
   role: UserRole;
+  emailNotificationsEnabled?: boolean;
   preferredLanguage?: Language;
   preferredCurrency?: Currency;
   photoURL?: string;

@@ -658,6 +658,82 @@ async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): P
   return payload as T;
 }
 
+const PUBLIC_LISTINGS_CACHE_KEY = 'te-public-listings-cache-v1';
+const HOME_MARKETPLACE_CACHE_KEY = 'te-home-marketplace-cache-v1';
+
+type BrowserCacheEnvelope<T> = {
+  savedAt: string;
+  data: T;
+};
+
+function readBrowserCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as BrowserCacheEnvelope<T> | T;
+    if (parsed && typeof parsed === 'object' && 'data' in (parsed as BrowserCacheEnvelope<T>)) {
+      return ((parsed as BrowserCacheEnvelope<T>).data ?? null) as T | null;
+    }
+
+    return parsed as T;
+  } catch (error) {
+    console.warn(`Unable to read browser cache for ${key}:`, error);
+    return null;
+  }
+}
+
+function writeBrowserCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const envelope: BrowserCacheEnvelope<T> = {
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    window.localStorage.setItem(key, JSON.stringify(envelope));
+  } catch (error) {
+    console.warn(`Unable to write browser cache for ${key}:`, error);
+  }
+}
+
+function getCachedPublicListingsSnapshot(): Listing[] {
+  const cached = readBrowserCache<Listing[]>(PUBLIC_LISTINGS_CACHE_KEY);
+  return Array.isArray(cached) ? cached.map((listing) => normalizeListingImages(listing as Listing)) : [];
+}
+
+function normalizeHomeMarketplacePayload(payload?: Partial<HomeMarketplaceData> | null): HomeMarketplaceData {
+  return {
+    featuredListings: Array.isArray(payload?.featuredListings)
+      ? payload.featuredListings.map((listing) => normalizeListingImages(listing as Listing))
+      : [],
+    recentSoldListings: Array.isArray(payload?.recentSoldListings)
+      ? payload.recentSoldListings.map((listing) => normalizeListingImages(listing as Listing))
+      : [],
+    categoryMetrics: Array.isArray(payload?.categoryMetrics) ? payload.categoryMetrics : [],
+    topLevelCategoryMetrics: Array.isArray(payload?.topLevelCategoryMetrics) ? payload.topLevelCategoryMetrics : [],
+    heroStats: payload?.heroStats || { totalActive: 0, totalMarketValue: 0 },
+    asOf: payload?.asOf,
+  };
+}
+
+function getCachedHomeMarketplaceSnapshot(): HomeMarketplaceData | null {
+  const cached = readBrowserCache<Partial<HomeMarketplaceData>>(HOME_MARKETPLACE_CACHE_KEY);
+  if (!cached) return null;
+  return normalizeHomeMarketplacePayload(cached);
+}
+
+function isCacheablePublicListingsRequest(filters?: ListingFilters): boolean {
+  if (!filters) return true;
+
+  return !Object.entries(filters).some(([key, value]) => {
+    if (value === undefined || value === null || value === '') return false;
+    return !['sortBy', 'inStockOnly'].includes(key);
+  });
+}
+
 function buildListingFilterSearchParams(filters?: ListingFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (!filters) return params;
@@ -671,6 +747,14 @@ function buildListingFilterSearchParams(filters?: ListingFilters): URLSearchPara
 }
 
 export const equipmentService = {
+  getCachedPublicListings(): Listing[] {
+    return getCachedPublicListingsSnapshot();
+  },
+
+  getCachedHomeMarketplaceData(): HomeMarketplaceData | null {
+    return getCachedHomeMarketplaceSnapshot();
+  },
+
   async getListings(filters?: ListingFilters): Promise<Listing[]> {
     const path = 'listings';
     try {
@@ -689,8 +773,22 @@ export const equipmentService = {
       } else if (!includeUnapproved) {
         const params = buildListingFilterSearchParams(filters);
         const queryString = params.toString();
-        const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings${queryString ? `?${queryString}` : ''}`);
-        listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+        try {
+          const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings${queryString ? `?${queryString}` : ''}`);
+          listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+
+          if (isCacheablePublicListingsRequest(filters) && listings.length > 0) {
+            writeBrowserCache(PUBLIC_LISTINGS_CACHE_KEY, listings);
+          }
+        } catch (publicError) {
+          const cachedListings = getCachedPublicListingsSnapshot();
+          if (cachedListings.length > 0) {
+            console.warn('Using cached public listings snapshot because live listings are unavailable:', publicError);
+            listings = cachedListings;
+          } else {
+            throw publicError;
+          }
+        }
       } else {
         const q = query(collection(db, path));
         const querySnapshot = await getDocs(q);
@@ -936,19 +1034,29 @@ export const equipmentService = {
   },
 
   async getHomeMarketplaceData(): Promise<HomeMarketplaceData> {
-    const payload = await getPublicJson<HomeMarketplaceData>('/api/public/home-data');
-    return {
-      featuredListings: Array.isArray(payload.featuredListings)
-        ? payload.featuredListings.map((listing) => normalizeListingImages(listing as Listing))
-        : [],
-      recentSoldListings: Array.isArray(payload.recentSoldListings)
-        ? payload.recentSoldListings.map((listing) => normalizeListingImages(listing as Listing))
-        : [],
-      categoryMetrics: Array.isArray(payload.categoryMetrics) ? payload.categoryMetrics : [],
-      topLevelCategoryMetrics: Array.isArray(payload.topLevelCategoryMetrics) ? payload.topLevelCategoryMetrics : [],
-      heroStats: payload.heroStats || { totalActive: 0, totalMarketValue: 0 },
-      asOf: payload.asOf,
-    };
+    try {
+      const payload = await getPublicJson<HomeMarketplaceData>('/api/public/home-data');
+      const normalized = normalizeHomeMarketplacePayload(payload);
+      const hasMeaningfulData =
+        normalized.featuredListings.length > 0 ||
+        normalized.recentSoldListings.length > 0 ||
+        normalized.categoryMetrics.length > 0 ||
+        normalized.topLevelCategoryMetrics.length > 0 ||
+        normalized.heroStats.totalActive > 0;
+
+      if (hasMeaningfulData) {
+        writeBrowserCache(HOME_MARKETPLACE_CACHE_KEY, normalized);
+      }
+
+      return normalized;
+    } catch (error) {
+      const cachedSnapshot = getCachedHomeMarketplaceSnapshot();
+      if (cachedSnapshot) {
+        console.warn('Using cached home marketplace snapshot because live home data is unavailable:', error);
+        return cachedSnapshot;
+      }
+      throw error;
+    }
   },
 
   async getAdminListingsPage(options?: {
@@ -1024,6 +1132,11 @@ export const equipmentService = {
       const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings/by-id?${params.toString()}`);
       return Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
     } catch (error) {
+      const cachedListings = getCachedPublicListingsSnapshot().filter((listing) => ids.includes(listing.id));
+      if (cachedListings.length > 0) {
+        console.warn('Using cached listings-by-id fallback because the live request is unavailable:', error);
+        return cachedListings;
+      }
       handleFirestoreError(error, OperationType.LIST, 'public/listings/by-id');
       return [];
     }
@@ -1116,22 +1229,26 @@ export const equipmentService = {
   async getListing(id: string): Promise<Listing | undefined> {
     const path = `listings/${id}`;
     try {
+      const cachedPublicListing = getCachedPublicListingsSnapshot().find((listing) => listing.id === id);
+      if (cachedPublicListing) {
+        return cachedPublicListing;
+      }
+
+      const [publicListing] = await this.getListingsByIds([id]);
+      if (publicListing) {
+        return publicListing;
+      }
+
       const docRef = doc(db, 'listings', id);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         return normalizeListingImages({ id: docSnap.id, ...docSnap.data() } as Listing);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
+      console.warn('Unable to load listing directly from Firestore:', error, { path });
     }
 
-    try {
-      const [publicListing] = await this.getListingsByIds([id]);
-      return publicListing;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'public/listings/by-id');
-      return undefined;
-    }
+    return undefined;
   },
 
   async addListing(
