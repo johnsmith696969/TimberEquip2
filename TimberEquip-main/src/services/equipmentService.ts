@@ -56,6 +56,82 @@ function normalize(value?: string | null): string {
   return (value || '').trim().toLowerCase();
 }
 
+type MarketComparableSpecs = {
+  listingId?: string;
+  category?: string;
+  manufacturer?: string;
+  make?: string;
+  model?: string;
+  price?: number;
+  year?: number;
+  hours?: number;
+};
+
+type ResolvedMarketComparableSpecs = {
+  listingId?: string;
+  category?: string;
+  manufacturer: string;
+  model: string;
+  price: number;
+  year: number;
+  hours: number;
+};
+
+function resolveMarketComparableSpecs(specs: MarketComparableSpecs): ResolvedMarketComparableSpecs | null {
+  const manufacturer = normalize(specs.make || specs.manufacturer);
+  const model = normalize(specs.model);
+  const price = Number(specs.price);
+  const year = Number(specs.year);
+  const hours = Number(specs.hours);
+
+  if (
+    !manufacturer ||
+    !model ||
+    !Number.isFinite(price) ||
+    price <= 0 ||
+    !Number.isFinite(year) ||
+    !Number.isFinite(hours)
+  ) {
+    return null;
+  }
+
+  return {
+    listingId: specs.listingId,
+    category: normalize(specs.category),
+    manufacturer,
+    model,
+    price,
+    year,
+    hours,
+  };
+}
+
+function isMarketComparableListing(listing: Listing, specs: ResolvedMarketComparableSpecs): boolean {
+  if (specs.listingId && listing.id === specs.listingId) return false;
+
+  const listingManufacturer = normalize(listing.make || listing.manufacturer || listing.brand);
+  const listingModel = normalize(listing.model);
+  if (listingManufacturer !== specs.manufacturer) return false;
+  if (listingModel !== specs.model) return false;
+
+  if (specs.category && normalize(listing.category) !== specs.category) return false;
+
+  if (!Number.isFinite(listing.price) || listing.price <= 0) return false;
+  if (!Number.isFinite(listing.year) || Math.abs(listing.year - specs.year) > AMV_MATCH_YEAR_RANGE) return false;
+  if (!Number.isFinite(listing.hours) || !isWithinPercentRange(listing.hours, specs.hours, AMV_MATCH_HOURS_PERCENT)) return false;
+  if (!isWithinPercentRange(listing.price, specs.price, AMV_MATCH_PRICE_PERCENT)) return false;
+
+  return true;
+}
+
+function scoreMarketComparableListing(listing: Listing, specs: ResolvedMarketComparableSpecs): number {
+  const yearDelta = Math.abs(listing.year - specs.year);
+  const hoursDeltaPercent = Math.abs(((listing.hours - specs.hours) / Math.max(specs.hours, 1)) * 100);
+  const priceDeltaPercent = Math.abs(((listing.price - specs.price) / Math.max(specs.price, 1)) * 100);
+
+  return yearDelta * 100 + hoursDeltaPercent * 10 + priceDeltaPercent * 10;
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -2048,51 +2124,18 @@ export const equipmentService = {
     }
   },
 
-  async getMarketValue(specs: {
-    listingId?: string;
-    category?: string;
-    manufacturer?: string;
-    make?: string;
-    model?: string;
-    price?: number;
-    year?: number;
-    hours?: number;
-  }): Promise<number | null> {
-    const targetManufacturer = normalize(specs.make || specs.manufacturer);
-    const targetModel = normalize(specs.model);
-    const targetPrice = Number(specs.price);
-    const targetYear = Number(specs.year);
-    const targetHours = Number(specs.hours);
-
-    if (
-      !targetManufacturer ||
-      !targetModel ||
-      !Number.isFinite(targetPrice) ||
-      targetPrice <= 0 ||
-      !Number.isFinite(targetYear) ||
-      !Number.isFinite(targetHours)
-    ) {
+  async getMarketValue(specs: MarketComparableSpecs): Promise<number | null> {
+    const resolvedSpecs = resolveMarketComparableSpecs(specs);
+    if (!resolvedSpecs) {
       return null;
     }
 
-    const listings = await this.getListings({ inStockOnly: false });
-    const comparables = listings.filter((listing) => {
-      if (specs.listingId && listing.id === specs.listingId) return false;
-
-      const listingManufacturer = normalize(listing.make || listing.manufacturer || listing.brand);
-      const listingModel = normalize(listing.model);
-      if (listingManufacturer !== targetManufacturer) return false;
-      if (listingModel !== targetModel) return false;
-
-      if (specs.category && normalize(listing.category) !== normalize(specs.category)) return false;
-
-      if (!Number.isFinite(listing.price) || listing.price <= 0) return false;
-      if (!Number.isFinite(listing.year) || Math.abs(listing.year - targetYear) > AMV_MATCH_YEAR_RANGE) return false;
-      if (!Number.isFinite(listing.hours) || !isWithinPercentRange(listing.hours, targetHours, AMV_MATCH_HOURS_PERCENT)) return false;
-      if (!isWithinPercentRange(listing.price, targetPrice, AMV_MATCH_PRICE_PERCENT)) return false;
-
-      return true;
+    const listings = await this.getListings({
+      inStockOnly: false,
+      manufacturer: specs.make || specs.manufacturer,
+      model: specs.model,
     });
+    const comparables = listings.filter((listing) => isMarketComparableListing(listing, resolvedSpecs));
 
     if (comparables.length < AMV_MIN_COMPARABLES) {
       return null;
@@ -2100,6 +2143,24 @@ export const equipmentService = {
 
     const total = comparables.reduce((sum, listing) => sum + listing.price, 0);
     return Math.round(total / comparables.length);
+  },
+
+  async getMarketMatchRecommendations(specs: MarketComparableSpecs, limit = 3): Promise<Listing[]> {
+    const resolvedSpecs = resolveMarketComparableSpecs(specs);
+    if (!resolvedSpecs || limit <= 0) {
+      return [];
+    }
+
+    const listings = await this.getListings({
+      inStockOnly: true,
+      manufacturer: specs.make || specs.manufacturer,
+      model: specs.model,
+    });
+
+    return listings
+      .filter((listing) => isMarketComparableListing(listing, resolvedSpecs))
+      .sort((a, b) => scoreMarketComparableListing(a, resolvedSpecs) - scoreMarketComparableListing(b, resolvedSpecs))
+      .slice(0, limit);
   },
 
   async getCategoryInventoryMetrics(): Promise<CategoryInventoryMetric[]> {

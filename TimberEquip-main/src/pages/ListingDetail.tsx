@@ -11,6 +11,9 @@ import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
 import { geminiService } from '../services/geminiService';
 import {
+  AMV_MATCH_HOURS_PERCENT,
+  AMV_MATCH_PRICE_PERCENT,
+  AMV_MATCH_YEAR_RANGE,
   AMV_MIN_COMPARABLES,
   getAmvMatchRulesSummary,
 } from '../utils/amvMatching';
@@ -58,9 +61,11 @@ export function ListingDetail() {
   const [inquirySent, setInquirySent] = useState(false);
   const [financingSent, setFinancingSent] = useState(false);
   const [shippingSent, setShippingSent] = useState(false);
+  const [marketMatchRecommendations, setMarketMatchRecommendations] = useState<Listing[]>([]);
   const [amvExplanation, setAmvExplanation] = useState<string | null>(null);
   const [aiSpecs, setAiSpecs] = useState<any>(null);
   const [loadingAiData, setLoadingAiData] = useState(false);
+  const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
   
@@ -209,9 +214,12 @@ export function ListingDetail() {
       }
       setLoading(true);
       setLoadError('');
+      setMarketMatchRecommendations([]);
+      setLoadingMarketMatches(false);
       try {
         const listingData = await equipmentService.getListing(requestedListingId);
         if (listingData) {
+          setLoadingMarketMatches(true);
           const computedAmv = await equipmentService.getMarketValue({
             listingId: listingData.id,
             category: listingData.category,
@@ -238,17 +246,29 @@ export function ListingDetail() {
             computedAmv !== null
               ? geminiService.explainAMV(listingData.title, listingData.price, computedAmv, listingData.specs)
               : Promise.resolve<string | null>(null);
+          const marketMatchPromise = equipmentService.getMarketMatchRecommendations({
+            listingId: listingData.id,
+            category: listingData.category,
+            manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
+            model: listingData.model,
+            price: listingData.price,
+            year: listingData.year,
+            hours: listingData.hours,
+          });
 
-          const [specs, explanation] = await Promise.all([specsPromise, explanationPromise]);
+          const [specs, explanation, recommendations] = await Promise.all([specsPromise, explanationPromise, marketMatchPromise]);
           setAiSpecs(specs);
           setAmvExplanation(explanation || null);
+          setMarketMatchRecommendations(recommendations);
           setLoadingAiData(false);
+          setLoadingMarketMatches(false);
         } else {
           setLoadError('This equipment record is temporarily unavailable. Please return to inventory and try again shortly.');
         }
       } catch (error) {
         console.error('Error fetching listing detail:', error);
         setLoadError(error instanceof Error ? error.message : 'This equipment record is temporarily unavailable right now.');
+        setLoadingMarketMatches(false);
       } finally {
         setLoading(false);
       }
@@ -1000,6 +1020,110 @@ export function ListingDetail() {
                 </div>
               </div>
             )}
+
+            {/* Market Match Recommendations */}
+            <div className="flex flex-col space-y-6">
+              <div className="flex flex-col gap-3 border-b border-line pb-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-tighter">Market Match Recommendations</h3>
+                  <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-muted">
+                    Live listings matching {getAmvMatchRulesSummary().toLowerCase()}
+                  </p>
+                </div>
+                {!loadingMarketMatches && marketMatchRecommendations.length > 0 ? (
+                  <span className="label-micro">{formatNumber(marketMatchRecommendations.length)} live matches</span>
+                ) : null}
+              </div>
+
+              {loadingMarketMatches ? (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className="overflow-hidden border border-line bg-surface">
+                      <div className="aspect-[4/3] animate-pulse bg-line" />
+                      <div className="space-y-3 p-5">
+                        <div className="h-3 w-24 animate-pulse bg-line" />
+                        <div className="h-6 w-3/4 animate-pulse bg-line" />
+                        <div className="h-4 w-1/2 animate-pulse bg-line" />
+                        <div className="h-10 w-full animate-pulse bg-line" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : marketMatchRecommendations.length > 0 ? (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                  {marketMatchRecommendations.map((match) => {
+                    const matchImage =
+                      match.imageVariants?.[0]?.thumbnailUrl ||
+                      match.images?.find(Boolean) ||
+                      LISTING_IMAGE_PLACEHOLDER;
+                    const matchPath = buildListingPath(match);
+                    const yearDelta = Math.abs((match.year || 0) - safeYear);
+                    const hoursDeltaPercent = safeHours > 0
+                      ? Math.abs((((match.hours || 0) - safeHours) / safeHours) * 100)
+                      : 0;
+                    const priceDeltaPercent = safePrice > 0
+                      ? Math.abs((((match.price || 0) - safePrice) / safePrice) * 100)
+                      : 0;
+
+                    return (
+                      <Link
+                        key={match.id}
+                        to={matchPath}
+                        className="group overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
+                      >
+                        <div className="aspect-[4/3] overflow-hidden bg-bg">
+                          <img
+                            src={matchImage}
+                            alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div className="space-y-4 p-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="label-micro">{match.make || match.manufacturer || match.brand || 'Market Match'}</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-accent">
+                              {priceDeltaPercent.toFixed(1)}% price
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
+                              {match.year || 'Unknown Year'} {match.make || match.manufacturer || match.brand || 'Unknown Make'} {match.model || 'Unknown Model'}
+                            </h4>
+                            <p className="mt-2 text-sm font-medium text-muted">{match.location || 'Location pending'}</p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 border border-line bg-bg p-3 text-center">
+                            <div>
+                              <p className="label-micro">Price</p>
+                              <p className="mt-2 text-sm font-black tracking-tight">{formatPrice(match.price || 0, match.currency || 'USD', 0)}</p>
+                            </div>
+                            <div>
+                              <p className="label-micro">Year Delta</p>
+                              <p className="mt-2 text-sm font-black tracking-tight">{yearDelta} yr</p>
+                            </div>
+                            <div>
+                              <p className="label-micro">Hours Delta</p>
+                              <p className="mt-2 text-sm font-black tracking-tight">{hoursDeltaPercent.toFixed(1)}%</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-muted">
+                            <span>{formatNumber(match.hours || 0)} hrs</span>
+                            <span className="flex items-center gap-1 text-accent">
+                              View listing <ChevronRight size={12} />
+                            </span>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="border border-dashed border-line bg-surface p-6 text-sm font-medium leading-relaxed text-muted">
+                  No live listings currently meet the market-match thresholds for this machine. We only recommend listings that match
+                  {' '}same manufacturer and model, stay within {AMV_MATCH_YEAR_RANGE} years, and stay within {AMV_MATCH_PRICE_PERCENT}% of price and {AMV_MATCH_HOURS_PERCENT}% of hours.
+                </div>
+              )}
+            </div>
 
             {/* Description */}
             <div className="flex flex-col space-y-6">
