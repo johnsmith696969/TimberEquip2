@@ -25,6 +25,7 @@ import {
   titleCaseSlug,
 } from '../utils/seoRoutes';
 import { evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } from '../utils/seoRouteQuality';
+import { buildListingPath } from '../utils/listingPath';
 
 type CountLink = {
   label: string;
@@ -83,7 +84,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
         itemListElement: listings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://timberequip.com/listing/${listing.id}`,
+          url: `https://timberequip.com${buildListingPath(listing)}`,
           item: {
             '@type': 'Product',
             name: `${listing.year} ${getListingManufacturer(listing)} ${listing.model}`.trim(),

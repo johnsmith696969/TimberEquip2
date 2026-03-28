@@ -42,7 +42,7 @@ import {
 const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
 
 export function ListingDetail() {
-  const { id, publicKey } = useParams<{ id?: string; publicKey?: string }>();
+  const { id, publicKey } = useParams<{ id?: string; publicKey?: string; slug?: string }>();
   const location = useLocation();
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
@@ -202,12 +202,12 @@ export function ListingDetail() {
   };
 
   const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
-  const resolvedListingId = String(listing?.id || id || decodeListingPublicKey(publicKey || '')).trim();
+  const resolvedListingId = String(listing?.id || decodeListingPublicKey(publicKey || '') || id || '').trim();
   const isFavorite = resolvedListingId ? favoriteIds.includes(resolvedListingId) : false;
 
   useEffect(() => {
     const fetchData = async () => {
-      const requestedListingId = String(id || decodeListingPublicKey(publicKey || '')).trim();
+      const requestedListingId = String(decodeListingPublicKey(publicKey || '') || id || '').trim();
       if (!requestedListingId) {
         setLoading(false);
         return;

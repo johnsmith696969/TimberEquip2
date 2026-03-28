@@ -76,6 +76,8 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/search" element={<Search />} />
+                    <Route path="/equipment/:slug" element={<ListingDetail />} />
+                    <Route path="/equipment/:slug/:publicKey" element={<ListingDetail />} />
                     <Route path="/listing/:id" element={<ListingDetail />} />
                     <Route path="/listing/:id/:slug" element={<ListingDetail />} />
                     <Route path="/seller/:id" element={<SellerProfile />} />

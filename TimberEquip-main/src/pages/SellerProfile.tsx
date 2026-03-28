@@ -28,6 +28,7 @@ import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
 import { evaluateRouteQuality } from '../utils/seoRouteQuality';
+import { buildListingPath } from '../utils/listingPath';
 
 const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
@@ -371,7 +372,7 @@ export function SellerProfile() {
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://timberequip.com/listing/${listing.id}`,
+          url: `https://timberequip.com${buildListingPath(listing)}`,
           item: {
             '@type': 'Product',
             name: `${listing.year} ${listing.make || listing.manufacturer || listing.brand || ''} ${listing.model || ''}`.trim(),

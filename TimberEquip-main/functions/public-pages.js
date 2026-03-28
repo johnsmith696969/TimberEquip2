@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const { THIN_ROUTE_ROBOTS, evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { PUBLIC_SEO_COLLECTIONS } = require('./public-seo-read-model.js');
+const { buildListingPublicPath } = require('./listing-public-paths.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -287,8 +288,8 @@ function pickManufacturer(listing) {
   return normalizeText(listing.make || listing.manufacturer || listing.brand);
 }
 
-function buildListingUrl(id) {
-  return `/listing/${encodeURIComponent(id)}`;
+function buildListingUrl(listing) {
+  return buildListingPublicPath(listing);
 }
 
 function buildDealerPath(seller) {
@@ -497,7 +498,18 @@ async function loadPublicInventoryFromRawListings() {
         status: normalizeText(data.status, 'active'),
         createdAtIso: timestampToIso(data.createdAt),
         updatedAtIso: timestampToIso(data.updatedAt),
-        listingUrl: buildListingUrl(docSnap.id),
+        listingUrl: buildListingUrl({
+          id: docSnap.id,
+          title: normalizeText(data.title, 'Equipment Listing'),
+          year: Number(data.year || 0) || null,
+          model: normalizeText(data.model),
+          category: normalizeText(data.category, 'Equipment'),
+          subcategory: normalizeText(data.subcategory || data.category, 'Equipment'),
+          location: normalizeText(data.location, 'Location pending'),
+          make: pickManufacturer(data),
+          manufacturer: pickManufacturer(data),
+          brand: normalizeText(data.brand),
+        }),
       };
     })
     .filter((listing) => listing.sellerUid)
