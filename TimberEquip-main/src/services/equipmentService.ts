@@ -645,6 +645,11 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function isQuotaExceededRequestError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /quota limit exceeded|free daily read units per project|quota exceeded|daily read quota is exhausted/i.test(message);
+}
+
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   if (typeof auth.authStateReady === 'function') {
     await auth.authStateReady();
@@ -1121,16 +1126,34 @@ export const equipmentService = {
         console.warn('Using cached account listings because the live account listings request failed:', error);
         return cachedListings.map((listing) => normalizeListingImages(listing as Listing));
       }
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Account listings are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
+      }
       handleFirestoreError(error, OperationType.LIST, 'account/listings');
       return [];
     }
   },
 
   async getMyStorefront(): Promise<Seller | undefined> {
+    const cacheKey = 'account-storefront:self';
     try {
       const payload = await getAuthorizedJson<{ seller?: Seller | null }>('/api/account/storefront');
-      return payload.seller || undefined;
+      const seller = payload.seller || undefined;
+      if (seller) {
+        writePrivateBrowserCache(cacheKey, seller);
+      }
+      return seller;
     } catch (error) {
+      const cachedStorefront = readPrivateBrowserCache<Seller>(cacheKey);
+      if (cachedStorefront) {
+        console.warn('Using cached account storefront because the live storefront request failed:', error);
+        return cachedStorefront;
+      }
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Account storefront is temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return undefined;
+      }
       handleFirestoreError(error, OperationType.GET, 'account/storefront');
       return undefined;
     }
@@ -1149,6 +1172,10 @@ export const equipmentService = {
       if (Array.isArray(cachedInquiries) && cachedInquiries.length > 0) {
         console.warn('Using cached account inquiries because the live account inquiries request failed:', error);
         return cachedInquiries;
+      }
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Account inquiries are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
       }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1587,6 +1614,10 @@ export const equipmentService = {
         console.warn('Using cached inquiries because the live inquiries request failed:', error);
         return cachedInquiries;
       }
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Inquiries are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -1614,6 +1645,10 @@ export const equipmentService = {
         } as Account;
       });
     } catch (error) {
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Inspection requests are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -1803,6 +1838,10 @@ export const equipmentService = {
         console.warn('Using cached account calls because the live account calls request failed:', error);
         return cachedCalls;
       }
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Account calls are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -1830,6 +1869,10 @@ export const equipmentService = {
       if (Array.isArray(cachedCalls) && cachedCalls.length > 0) {
         console.warn('Using cached calls because the live calls request failed:', error);
         return cachedCalls;
+      }
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Calls are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
       }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -2273,6 +2316,10 @@ export const equipmentService = {
       const payload = await getAuthorizedJson<{ financingRequests?: FinancingRequest[] }>(`/api/account/financing-requests?${params.toString()}`);
       return Array.isArray(payload.financingRequests) ? payload.financingRequests : [];
     } catch (error) {
+      if (isQuotaExceededRequestError(error)) {
+        console.warn('Financing requests are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
+      }
       handleFirestoreError(error, OperationType.LIST, 'account/financing-requests');
       return [];
     }

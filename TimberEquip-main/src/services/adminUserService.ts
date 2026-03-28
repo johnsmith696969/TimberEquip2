@@ -8,6 +8,11 @@ type AdminUserCacheEnvelope<T> = {
   data: T;
 };
 
+function isQuotaExceededAdminUserError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /quota limit exceeded|free daily read units per project|quota exceeded|daily read quota is exhausted/i.test(message);
+}
+
 function readAdminUserCache<T>(): T | null {
   if (typeof window === 'undefined') return null;
 
@@ -105,6 +110,10 @@ export const adminUserService = {
       if (Array.isArray(cachedUsers) && cachedUsers.length > 0) {
         console.warn('Using cached admin users because the live admin user directory request failed:', error);
         return cachedUsers;
+      }
+      if (isQuotaExceededAdminUserError(error)) {
+        console.warn('Admin user directory is temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
       }
       throw error;
     }

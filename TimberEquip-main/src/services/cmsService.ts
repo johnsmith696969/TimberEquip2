@@ -12,6 +12,11 @@ type CmsCacheEnvelope<T> = {
   data: T;
 };
 
+function isQuotaExceededCmsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /quota limit exceeded|free daily read units per project|quota exceeded|daily read quota is exhausted/i.test(message);
+}
+
 function readCmsCache<T>(scope: string): T | null {
   if (typeof window === 'undefined') return null;
 
@@ -96,6 +101,10 @@ export const cmsService = {
       if (Array.isArray(cachedPosts) && cachedPosts.length > 0) {
         console.warn('Using cached blog posts because the live CMS request failed:', error);
         return cachedPosts;
+      }
+      if (isQuotaExceededCmsError(error)) {
+        console.warn('Blog posts are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
       }
       throw error;
     }
@@ -211,6 +220,10 @@ export const cmsService = {
         console.warn('Using cached media assets because the live CMS request failed:', error);
         return cachedMedia;
       }
+      if (isQuotaExceededCmsError(error)) {
+        console.warn('Media assets are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
+      }
       throw error;
     }
   },
@@ -252,6 +265,10 @@ export const cmsService = {
       if (Array.isArray(cachedBlocks) && cachedBlocks.length > 0) {
         console.warn('Using cached content blocks because the live CMS request failed:', error);
         return cachedBlocks;
+      }
+      if (isQuotaExceededCmsError(error)) {
+        console.warn('Content blocks are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+        return [];
       }
       throw error;
     }

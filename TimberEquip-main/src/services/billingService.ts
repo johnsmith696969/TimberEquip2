@@ -114,6 +114,11 @@ type BillingCacheEnvelope<T> = {
   data: T;
 };
 
+function isQuotaExceededBillingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /quota limit exceeded|free daily read units per project|quota exceeded|daily read quota is exhausted/i.test(message);
+}
+
 function getBillingCacheKey(scope: string): string {
   const uid = auth.currentUser?.uid || 'anonymous';
   return `${PRIVATE_BILLING_CACHE_PREFIX}:${uid}:${scope}`;
@@ -334,6 +339,10 @@ export const billingService = {
         console.warn('Using cached admin invoices because the live billing invoices request failed.');
         return cached;
       }
+      if (isQuotaExceededBillingError(await response.text().catch(() => ''))) {
+        console.warn('Admin invoices are temporarily unavailable because the Firestore daily read quota is exhausted.');
+        return [];
+      }
       throw new Error('Failed to fetch invoices');
     }
 
@@ -361,6 +370,10 @@ export const billingService = {
         console.warn('Using cached admin subscriptions because the live billing subscriptions request failed.');
         return cached;
       }
+      if (isQuotaExceededBillingError(await response.text().catch(() => ''))) {
+        console.warn('Admin subscriptions are temporarily unavailable because the Firestore daily read quota is exhausted.');
+        return [];
+      }
       throw new Error('Failed to fetch subscriptions');
     }
 
@@ -387,6 +400,10 @@ export const billingService = {
       if (Array.isArray(cached) && cached.length > 0) {
         console.warn('Using cached billing audit logs because the live billing audit request failed.');
         return cached;
+      }
+      if (isQuotaExceededBillingError(await response.text().catch(() => ''))) {
+        console.warn('Billing audit logs are temporarily unavailable because the Firestore daily read quota is exhausted.');
+        return [];
       }
       throw new Error('Failed to fetch audit logs');
     }

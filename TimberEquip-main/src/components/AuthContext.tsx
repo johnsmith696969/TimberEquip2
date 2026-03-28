@@ -343,6 +343,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const billingRefreshAttemptsRef = useRef<Set<string>>(new Set());
+  const currentUserRef = useRef<UserProfile | null>(null);
 
   const normalizeProfile = (profile: UserProfile): UserProfile => withResolvedAccountEntitlement({
     ...profile,
@@ -362,159 +363,147 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
+    currentUserRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
     let authStateVersion = 0;
 
     const unsubscribeAuth = onIdTokenChanged(auth, (firebaseUser) => {
       authStateVersion += 1;
       const currentVersion = authStateVersion;
 
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
-
       if (firebaseUser) {
         setLoading(true);
-        // User is signed in, subscribe to their profile in Firestore
-        unsubscribeProfile = userService.subscribeToProfile(firebaseUser.uid, (profile, meta) => {
-          void (async () => {
-            if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
+        void (async () => {
+          const isStaleSession = () => currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid;
+
+          const persistResolvedProfile = (nextProfile: UserProfile) => {
+            if (isStaleSession()) return;
+            const normalizedProfile = normalizeProfile(nextProfile);
+            writeCachedProfile(normalizedProfile);
+            currentUserRef.current = normalizedProfile;
+            setUser(normalizedProfile);
+          };
+
+          const scheduleBillingRefresh = (baseProfile: UserProfile, suffix = '') => {
+            const billingRefreshKey = `${firebaseUser.uid}:${currentVersion}${suffix}`;
+            if (!shouldRefreshBillingAccess(baseProfile) || billingRefreshAttemptsRef.current.has(billingRefreshKey)) {
               return;
             }
 
-            if (meta?.error) {
-              const fallbackProfile = await buildFallbackProfile(firebaseUser, user);
-              setUser(normalizeProfile(fallbackProfile));
-              const billingRefreshKey = `${firebaseUser.uid}:${currentVersion}:fallback`;
-              if (shouldRefreshBillingAccess(fallbackProfile) && !billingRefreshAttemptsRef.current.has(billingRefreshKey)) {
-                billingRefreshAttemptsRef.current.add(billingRefreshKey);
-                void (async () => {
-                  try {
-                    const refreshedAccess = await billingService.refreshAccountAccess();
-                    if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
-                      return;
-                    }
-
-                    setUser((currentUser) => {
-                      const baseProfile = currentUser && currentUser.uid === firebaseUser.uid
-                        ? currentUser
-                        : fallbackProfile;
-                      const nextUser = normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
-                      writeCachedProfile(nextUser);
-                      return nextUser;
-                    });
-                  } catch (error) {
-                    console.error('Unable to refresh billing access from Stripe:', error);
-                  }
-                })();
-              }
-              setLoading(false);
-              return;
-            }
-
-            if (profile) {
-              const mergedProfile = normalizeProfile({
-                ...profile,
-                displayName: profile.displayName || firebaseUser.displayName || 'Anonymous User',
-                email: profile.email || firebaseUser.email || '',
-                photoURL: firebaseUser.photoURL || profile.photoURL || '',
-                emailVerified: firebaseUser.emailVerified,
-              });
-              const accessSnapshot = await resolveAuthAccessSnapshot(firebaseUser, mergedProfile);
-              const effectiveAccessSource = accessSnapshot.accountAccessSource ?? mergedProfile.accountAccessSource ?? null;
-              const effectivePlanId = accessSnapshot.activeSubscriptionPlanId ?? mergedProfile.activeSubscriptionPlanId ?? null;
-              const effectiveRole = accessSnapshot.role || mergedProfile.role;
-              const effectiveAccountStatus = accessSnapshot.accountStatus ?? mergedProfile.accountStatus ?? 'active';
-              const accessAwareProfile = normalizeProfile({
-                ...mergedProfile,
-                role: effectiveRole,
-                activeSubscriptionPlanId: effectivePlanId,
-                subscriptionStatus: accessSnapshot.subscriptionStatus ?? mergedProfile.subscriptionStatus ?? null,
-                listingCap: accessSnapshot.listingCap ?? mergedProfile.listingCap ?? 0,
-                managedAccountCap: accessSnapshot.managedAccountCap ?? mergedProfile.managedAccountCap ?? 0,
-                accountAccessSource: effectiveAccessSource,
-                accountStatus: effectiveAccountStatus,
-                onboardingIntent: deriveOnboardingIntent(
-                  effectiveRole,
-                  effectiveAccessSource,
-                  effectivePlanId,
-                  mergedProfile.onboardingIntent
-                ),
-              });
-
-              // Auto-promote known admin emails to super admin role
-              const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-              if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && accessAwareProfile.role !== 'super_admin') {
-                try {
-                  const promoted = await bootstrapPrivilegedAdminProfile(firebaseUser);
-                  if (!promoted) {
-                    await userService.updateProfile(firebaseUser.uid, { role: 'super_admin' });
-                  }
-                } catch (_) {
-                  // Ignore update failure; still use email-based admin access
-                }
-                if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
+            billingRefreshAttemptsRef.current.add(billingRefreshKey);
+            void (async () => {
+              try {
+                const refreshedAccess = await billingService.refreshAccountAccess();
+                if (isStaleSession()) {
                   return;
                 }
-                const nextProfile = normalizeProfile({ ...accessAwareProfile, role: 'super_admin' });
-                writeCachedProfile(nextProfile);
-                setUser(nextProfile);
-              } else {
-                writeCachedProfile(accessAwareProfile);
-                setUser(accessAwareProfile);
-              }
 
-              const billingRefreshKey = `${firebaseUser.uid}:${currentVersion}`;
-              if (shouldRefreshBillingAccess(accessAwareProfile) && !billingRefreshAttemptsRef.current.has(billingRefreshKey)) {
-                billingRefreshAttemptsRef.current.add(billingRefreshKey);
-                void (async () => {
-                  try {
-                    const refreshedAccess = await billingService.refreshAccountAccess();
-                    if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
-                      return;
-                    }
-
-                    setUser((currentUser) => {
-                      const baseProfile = currentUser && currentUser.uid === firebaseUser.uid
-                        ? currentUser
-                        : accessAwareProfile;
-                      const nextUser = normalizeProfile(applyBillingRefreshToProfile(baseProfile, refreshedAccess));
-                      writeCachedProfile(nextUser);
-                      return nextUser;
-                    });
-                  } catch (error) {
-                    console.error('Unable to refresh billing access from Stripe:', error);
-                  }
-                })();
+                setUser((currentUser) => {
+                  const resolvedBaseProfile = currentUser && currentUser.uid === firebaseUser.uid
+                    ? currentUser
+                    : baseProfile;
+                  const nextUser = normalizeProfile(applyBillingRefreshToProfile(resolvedBaseProfile, refreshedAccess));
+                  writeCachedProfile(nextUser);
+                  currentUserRef.current = nextUser;
+                  return nextUser;
+                });
+              } catch (error) {
+                console.error('Unable to refresh billing access from Stripe:', error);
               }
-            } else if (meta?.exists === false) {
-              // Create profile if it doesn't exist
-              const newProfile: UserProfile = await buildFallbackProfile(firebaseUser, null);
+            })();
+          };
+
+          try {
+            const profileResponse = await userService.getCurrentProfile();
+            if (isStaleSession()) {
+              return;
+            }
+
+            let resolvedProfile = profileResponse.profile
+              ? normalizeProfile({
+                  ...profileResponse.profile,
+                  displayName: profileResponse.profile.displayName || firebaseUser.displayName || 'Anonymous User',
+                  email: profileResponse.profile.email || firebaseUser.email || '',
+                  photoURL: firebaseUser.photoURL || profileResponse.profile.photoURL || '',
+                  emailVerified: firebaseUser.emailVerified,
+                })
+              : await buildFallbackProfile(firebaseUser, currentUserRef.current);
+
+            const accessSnapshot = await resolveAuthAccessSnapshot(firebaseUser, resolvedProfile);
+            const effectiveAccessSource = accessSnapshot.accountAccessSource ?? resolvedProfile.accountAccessSource ?? null;
+            const effectivePlanId = accessSnapshot.activeSubscriptionPlanId ?? resolvedProfile.activeSubscriptionPlanId ?? null;
+            const effectiveRole = accessSnapshot.role || resolvedProfile.role;
+            const effectiveAccountStatus = accessSnapshot.accountStatus ?? resolvedProfile.accountStatus ?? 'active';
+
+            resolvedProfile = normalizeProfile({
+              ...resolvedProfile,
+              role: effectiveRole,
+              activeSubscriptionPlanId: effectivePlanId,
+              subscriptionStatus: accessSnapshot.subscriptionStatus ?? resolvedProfile.subscriptionStatus ?? null,
+              listingCap: accessSnapshot.listingCap ?? resolvedProfile.listingCap ?? 0,
+              managedAccountCap: accessSnapshot.managedAccountCap ?? resolvedProfile.managedAccountCap ?? 0,
+              accountAccessSource: effectiveAccessSource,
+              accountStatus: effectiveAccountStatus,
+              onboardingIntent: deriveOnboardingIntent(
+                effectiveRole,
+                effectiveAccessSource,
+                effectivePlanId,
+                resolvedProfile.onboardingIntent
+              ),
+            });
+
+            const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
+            if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && resolvedProfile.role !== 'super_admin') {
               try {
-                await userService.createProfile(newProfile);
-                if (newProfile.role === 'super_admin') {
-                  await bootstrapPrivilegedAdminProfile(firebaseUser);
+                const promoted = await bootstrapPrivilegedAdminProfile(firebaseUser);
+                if (!promoted) {
+                  await userService.updateProfile(firebaseUser.uid, { role: 'super_admin' });
                 }
               } catch (_) {
-                // Non-blocking; continue with local profile representation.
+                // Ignore update failure; still use email-based admin access.
               }
 
-              if (currentVersion !== authStateVersion || auth.currentUser?.uid !== firebaseUser.uid) {
+              if (isStaleSession()) {
                 return;
               }
 
-              setUser(normalizeProfile(newProfile));
-              writeCachedProfile(normalizeProfile(newProfile));
+              resolvedProfile = normalizeProfile({ ...resolvedProfile, role: 'super_admin' });
             }
 
-            if (currentVersion === authStateVersion && auth.currentUser?.uid === firebaseUser.uid) {
+            persistResolvedProfile(resolvedProfile);
+
+            if (profileResponse.profileDocExists === false && !profileResponse.firestoreQuotaLimited) {
+              try {
+                await userService.createProfile(resolvedProfile);
+                if (resolvedProfile.role === 'super_admin') {
+                  await bootstrapPrivilegedAdminProfile(firebaseUser);
+                }
+              } catch (_) {
+                // Non-blocking; continue with normalized auth-backed profile.
+              }
+            }
+
+            scheduleBillingRefresh(resolvedProfile, profileResponse.profile ? '' : ':fallback');
+          } catch (error) {
+            console.error('Unable to bootstrap profile via account API:', error);
+            const fallbackProfile = await buildFallbackProfile(firebaseUser, currentUserRef.current);
+            if (isStaleSession()) {
+              return;
+            }
+
+            persistResolvedProfile(fallbackProfile);
+            scheduleBillingRefresh(fallbackProfile, ':fallback');
+          } finally {
+            if (!isStaleSession()) {
               setLoading(false);
             }
-          })();
-        });
+          }
+        })();
       } else {
         billingRefreshAttemptsRef.current.clear();
+        currentUserRef.current = null;
         setUser(null);
         setLoading(false);
       }
@@ -522,10 +511,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       authStateVersion += 1;
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
       unsubscribeAuth();
     };
   }, []);

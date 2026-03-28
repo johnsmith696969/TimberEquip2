@@ -55,10 +55,19 @@ const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
   'dealer_feeds',
 ]);
 
+function resolveDashboardTab(tab: string | null | undefined): DashboardTab {
+  if (tab && DASHBOARD_TAB_IDS.has(tab as DashboardTab)) {
+    return tab as DashboardTab;
+  }
+
+  return 'overview';
+}
+
 export function AdminDashboard() {
   const { user: authUser, logout: authLogout, patchCurrentUserProfile } = useAuth();
   const { formatPrice } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const profileName = authUser?.displayName || 'Caleb Happy';
   const roleLabel = getUserRoleDisplayLabel(authUser?.role);
   const assignableRoleOptions = getAssignableUserRoleOptions(authUser?.role);
@@ -79,7 +88,7 @@ export function AdminDashboard() {
   const [contentLoaded, setContentLoaded] = useState(false);
   const [contentLoadError, setContentLoadError] = useState('');
   const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => resolveDashboardTab(requestedTab));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,6 +150,24 @@ export function AdminDashboard() {
   const [savingAdminPreferenceKey, setSavingAdminPreferenceKey] = useState('');
   const [adminSettingsError, setAdminSettingsError] = useState('');
   const listingsInitializedRef = useRef(false);
+  const operationalLoadKeyRef = useRef('');
+  const userDirectoryLoadKeyRef = useRef('');
+  const requestedTabRef = useRef(requestedTab);
+
+  const selectAdminTab = useCallback((nextTab: DashboardTab) => {
+    if (nextTab === activeTab) {
+      return;
+    }
+
+    setActiveTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === 'overview') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+  }, [activeTab, searchParams, setSearchParams]);
 
   // ── Dealer Feed state ──────────────────────────────────────────────
   const [dfSubTab,     setDfSubTab]     = useState<'ingest' | 'logs'>('ingest');
@@ -217,14 +244,15 @@ export function AdminDashboard() {
   }, [authUser?.company, authUser?.displayName, authUser?.email, authUser?.emailNotificationsEnabled, authUser?.phoneNumber]);
 
   useEffect(() => {
-    const requestedTab = searchParams.get('tab');
-    if (requestedTab && DASHBOARD_TAB_IDS.has(requestedTab as DashboardTab) && requestedTab !== activeTab) {
-      setActiveTab(requestedTab as DashboardTab);
+    requestedTabRef.current = requestedTab;
+    const resolvedRequestedTab = resolveDashboardTab(requestedTab);
+    if (resolvedRequestedTab !== activeTab) {
+      setActiveTab(resolvedRequestedTab);
     }
-  }, [activeTab, searchParams]);
+  }, [activeTab, requestedTab]);
 
   useEffect(() => {
-    const currentTab = searchParams.get('tab') || 'overview';
+    const currentTab = resolveDashboardTab(requestedTab);
     if (currentTab === activeTab) {
       return;
     }
@@ -235,8 +263,8 @@ export function AdminDashboard() {
     } else {
       nextParams.set('tab', activeTab);
     }
-    setSearchParams(nextParams, { replace: true });
-  }, [activeTab, searchParams, setSearchParams]);
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+  }, [activeTab, requestedTab, searchParams, setSearchParams]);
 
   const downloadCsv = (filenamePrefix: string, headers: string[], rows: string[][]) => {
     const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
@@ -260,13 +288,6 @@ export function AdminDashboard() {
   };
 
   // ── Real-time inquiry subscription ─────────────────────────────
-  useEffect(() => {
-    const unsubscribe = equipmentService.subscribeToInquiries((live) => {
-      setInquiries(live);
-    });
-    return () => unsubscribe();
-  }, []);
-
   const exportInquiriesCSV = () => {
     const headers = ['ID', 'Buyer Name', 'Email', 'Phone', 'Status', 'Assigned To', 'Listing', 'Type', 'Spam Score', 'Response Time (min)', 'Message', 'Created At'];
     const rows = inquiries.map((inq) => [
@@ -327,6 +348,12 @@ export function AdminDashboard() {
   };
 
   const fetchUsers = async () => {
+    const requestKey = `${authUser?.uid || 'anonymous'}:${activeTab}`;
+    if (userDirectoryLoadKeyRef.current === requestKey) {
+      return;
+    }
+
+    userDirectoryLoadKeyRef.current = requestKey;
     setUsersLoading(true);
     setUsersLoadError('');
     try {
@@ -336,6 +363,9 @@ export function AdminDashboard() {
       console.error('Error fetching users:', err);
       setUsersLoadError(err instanceof Error ? err.message : 'Failed to load users.');
     } finally {
+      if (userDirectoryLoadKeyRef.current === requestKey) {
+        userDirectoryLoadKeyRef.current = '';
+      }
       setUsersLoading(false);
     }
   };
@@ -654,16 +684,18 @@ export function AdminDashboard() {
   const fetchData = async () => {
     if (!authUser?.uid) {
       listingsInitializedRef.current = false;
+      operationalLoadKeyRef.current = '';
       setLoading(false);
       return;
     }
 
-    setLoading(true);
     const shouldLoadOperationalData = ['overview', 'listings', 'inquiries', 'calls'].includes(activeTab);
     const shouldLoadUserDirectory = ['overview', 'accounts', 'users'].includes(activeTab);
+    const operationalLoadKey = `${authUser.uid}:${activeTab}:${showDemoListings ? 'demo' : 'live'}`;
 
     if (!shouldLoadOperationalData) {
       listingsInitializedRef.current = false;
+      operationalLoadKeyRef.current = '';
     }
 
     if (!['billing', 'tracking'].includes(activeTab)) {
@@ -689,8 +721,17 @@ export function AdminDashboard() {
 
     if (!shouldLoadOperationalData) {
       setLoading(false);
+      operationalLoadKeyRef.current = '';
       return;
     }
+
+    if (operationalLoadKeyRef.current === operationalLoadKey) {
+      setLoading(false);
+      return;
+    }
+
+    operationalLoadKeyRef.current = operationalLoadKey;
+    setLoading(true);
 
     try {
       const [listingsPage, inquiriesData, callsData] = await Promise.all([
@@ -713,7 +754,13 @@ export function AdminDashboard() {
       listingsInitializedRef.current = true;
     } catch (error) {
       console.error('Error fetching admin data:', error);
+      if (operationalLoadKeyRef.current === operationalLoadKey) {
+        operationalLoadKeyRef.current = '';
+      }
     } finally {
+      if (operationalLoadKeyRef.current === operationalLoadKey) {
+        operationalLoadKeyRef.current = '';
+      }
       setLoading(false);
     }
   };
@@ -1439,7 +1486,7 @@ export function AdminDashboard() {
         <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
           <div className="p-6 border-b border-line flex justify-between items-center bg-surface/50">
             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Recent Inventory</h3>
-            <button onClick={() => setActiveTab('listings')} className="text-[10px] font-bold text-muted uppercase hover:text-ink">View All</button>
+            <button onClick={() => selectAdminTab('listings')} className="text-[10px] font-bold text-muted uppercase hover:text-ink">View All</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -1480,7 +1527,7 @@ export function AdminDashboard() {
         <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
           <div className="p-6 border-b border-line flex justify-between items-center bg-surface/50">
             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Recent Calls</h3>
-            <button onClick={() => setActiveTab('calls')} className="text-[10px] font-bold text-muted uppercase hover:text-ink">View All</button>
+            <button onClick={() => selectAdminTab('calls')} className="text-[10px] font-bold text-muted uppercase hover:text-ink">View All</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -1817,8 +1864,9 @@ export function AdminDashboard() {
             onClick={async () => {
               try {
                 await equipmentService.seedDemoInventory();
-                await loadListingsPage(null, 1, showDemoListings);
-                alert('Demo inventory seeded: 3 listings in every taxonomy subcategory.');
+                setShowDemoListings(true);
+                await loadListingsPage(null, 1, true);
+                alert('Demo inventory seeded and revealed for lifecycle QA.');
               } catch (error) {
                 console.error('Failed to seed demo inventory:', error);
                 alert(error instanceof Error ? error.message : 'Unable to seed demo inventory.');
@@ -2287,7 +2335,7 @@ export function AdminDashboard() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('accounts')}
+            onClick={() => selectAdminTab('accounts')}
             className="btn-industrial btn-accent py-2 px-6 text-[10px]"
           >
             Invite User
@@ -3020,7 +3068,7 @@ export function AdminDashboard() {
             </div>
             <button
               type="button"
-              onClick={() => setActiveTab('billing')}
+              onClick={() => selectAdminTab('billing')}
               className="btn-industrial py-2 px-4 text-[10px]"
             >
               Open Billing
@@ -3858,7 +3906,7 @@ export function AdminDashboard() {
           {visibleTabs.map(item => (
             <button 
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => selectAdminTab(item.id)}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-sm text-xs font-bold uppercase tracking-widest transition-colors ${
                 activeTab === item.id ? 'bg-ink text-bg' : 'text-muted hover:bg-ink/5 hover:text-ink'
               }`}
@@ -3910,7 +3958,7 @@ export function AdminDashboard() {
               {visibleTabs.map(item => (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => selectAdminTab(item.id)}
                   className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
                     activeTab === item.id
                       ? 'bg-ink text-bg border-ink'
@@ -4001,8 +4049,7 @@ export function AdminDashboard() {
             </div>
           ) : (
             <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
             >

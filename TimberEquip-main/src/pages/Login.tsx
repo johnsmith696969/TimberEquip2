@@ -31,6 +31,7 @@ import {
 } from '../services/mfaService';
 
 const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
+const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -53,7 +54,7 @@ export function Login() {
   const mfaRecaptchaRef = useRef<RecaptchaVerifier | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail } = useAuth();
+  const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail, isAuthenticated } = useAuth();
   const stateReason = (location.state as { reason?: string; email?: string } | null)?.reason || '';
   const stateEmail = (location.state as { reason?: string; email?: string } | null)?.email || '';
   const queryRedirectTargetRaw = new URLSearchParams(location.search).get('redirect') || '';
@@ -98,6 +99,14 @@ export function Login() {
       navigate('/profile', { replace: true });
     }
   };
+
+  useEffect(() => {
+    if (!isAuthenticated || mfaResolver) {
+      return;
+    }
+
+    navigateAfterSignIn();
+  }, [isAuthenticated, mfaResolver]);
 
   const resetMfaChallenge = (notice = '') => {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
@@ -252,7 +261,7 @@ export function Login() {
 
       await login(email, password);
       const currentUser = auth.currentUser;
-      if (currentUser && !currentUser.emailVerified) {
+      if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
         const verificationEmailSent = await sendVerificationEmail();
         await signOut(auth);
         setError(
@@ -289,7 +298,7 @@ export function Login() {
     try {
       await loginWithGoogle();
       const currentUser = auth.currentUser;
-      if (currentUser && !currentUser.emailVerified) {
+      if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
         const verificationEmailSent = await sendVerificationEmail();
         await signOut(auth);
         setError(

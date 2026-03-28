@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
@@ -43,6 +43,7 @@ const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'supe
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
 const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
 const CURRENCY_OPTIONS: Currency[] = ['USD', 'CAD', 'EUR', 'GBP', 'NOK', 'SEK', 'CHF', 'PLN', 'CZK', 'RON', 'DKK', 'HUF'];
+const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
 
 function isValidHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -443,7 +444,7 @@ export function Profile() {
       return;
     }
 
-    if (!user.emailVerified) {
+    if (REQUIRE_EMAIL_VERIFICATION && !user.emailVerified) {
       setMfaError('Verify your email before enabling SMS multi-factor authentication.');
       return;
     }
@@ -785,12 +786,34 @@ export function Profile() {
     [myListings]
   );
 
+  const selectProfileTab = useCallback((nextTab: string) => {
+    if (nextTab === activeTab) {
+      return;
+    }
+
+    setActiveTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === 'Overview') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
+  }, [activeTab, searchParams, setSearchParams]);
+
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
-    if (requestedTab && profileTabs.includes(requestedTab as (typeof profileTabs)[number])) {
-      setActiveTab(requestedTab);
+    if (requestedTab && profileTabs.includes(requestedTab)) {
+      if (requestedTab !== activeTab) {
+        setActiveTab(requestedTab);
+      }
+      return;
     }
-  }, [profileTabs, searchParams]);
+
+    if (!profileTabs.includes(activeTab)) {
+      setActiveTab('Overview');
+    }
+  }, [activeTab, profileTabs, searchParams]);
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -2322,7 +2345,7 @@ export function Profile() {
           </div>
           <div className="flex gap-3 flex-shrink-0">
             <button 
-              onClick={() => setActiveTab('Account Settings')}
+              onClick={() => selectProfileTab('Account Settings')}
               className="btn-industrial bg-surface py-2 px-4 text-[10px]"
             >
               Edit Profile
@@ -2377,7 +2400,7 @@ export function Profile() {
             {profileTabItems.map((item) => (
             <button
               key={item.label}
-              onClick={() => setActiveTab(item.label)}
+              onClick={() => selectProfileTab(item.label)}
               className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
                 activeTab === item.label
                   ? 'bg-ink text-white border-ink'
@@ -2415,7 +2438,7 @@ export function Profile() {
             {profileTabItems.map((item, i) => (
               <button 
                 key={i}
-                onClick={() => setActiveTab(item.label)}
+                onClick={() => selectProfileTab(item.label)}
                 className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-white shadow-lg' : 'hover:bg-surface text-muted'}`}
               >
                 <item.icon size={18} />
@@ -2427,8 +2450,7 @@ export function Profile() {
           {/* Main Content */}
           <div className="lg:col-span-9">
             <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
             >
