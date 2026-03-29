@@ -312,6 +312,10 @@ export interface Inquiry {
   responseTimeMinutes?: number | null;
   spamScore?: number;
   spamFlags?: string[];
+  contactConsentAccepted?: boolean;
+  contactConsentVersion?: string;
+  contactConsentScope?: string;
+  contactConsentAt?: string;
   updatedAt?: string;
   duration?: number; // For calls
   recordingUrl?: string; // For calls
@@ -329,6 +333,10 @@ export interface FinancingRequest {
   company?: string;
   requestedAmount?: number;
   message?: string;
+  contactConsentAccepted?: boolean;
+  contactConsentVersion?: string;
+  contactConsentScope?: string;
+  contactConsentAt?: string;
   status: 'New' | 'Contacted' | 'Qualified' | 'Won' | 'Lost' | 'Closed';
   createdAt: string;
   updatedAt?: string;

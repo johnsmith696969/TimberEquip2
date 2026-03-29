@@ -24,7 +24,7 @@ export function Privacy() {
               Privacy Policy
             </h1>
             <p className="text-muted font-medium uppercase tracking-widest text-xs">
-              Last Updated: March 29, 2026 | Version 4.0.0
+              Last Updated: March 29, 2026 | Version 4.1.0
             </p>
           </div>
 
@@ -113,6 +113,7 @@ export function Privacy() {
                     <li>Subscription plan, status, start date, and renewal/expiration date</li>
                     <li>Invoice history, payment amounts, and receipt records</li>
                     <li>Equipment listings created, inquiries sent or received, and lead activity</li>
+                    <li>Call-routing events for tracked dealer numbers, including calling number, called tracking number, timestamps, call duration, disposition, and recording URL when call recording is enabled</li>
                     <li>Financing applications submitted through our partners</li>
                     <li>Stripe customer ID and subscription metadata (payment card details are stored exclusively by Stripe — we never see or store full card numbers)</li>
                   </ul>
@@ -194,7 +195,8 @@ export function Privacy() {
                 <li><strong>Account Management:</strong> Creating and maintaining your account, authenticating your identity, and managing subscription entitlements.</li>
                 <li><strong>Billing &amp; Payments:</strong> Processing subscription charges, generating invoices, managing refunds, and communicating about billing events.</li>
                 <li><strong>Financing:</strong> Forwarding financing applications to approved lending partners (with your explicit consent).</li>
-                <li><strong>Communication:</strong> Sending transactional emails (inquiry confirmations, payment receipts, listing status updates), and optional marketing communications.</li>
+                <li><strong>Communication:</strong> Sending transactional emails (inquiry confirmations, payment receipts, listing status updates), forwarding calls to tracked dealer numbers, and optional marketing communications.</li>
+                <li><strong>Lead Attribution &amp; Call Routing:</strong> Measuring inquiry volume, call clicks, connected calls, missed calls, and response quality for dealer reporting and platform operations.</li>
                 <li><strong>Security &amp; Fraud Prevention:</strong> Detecting and preventing unauthorized access, bot activity, payment fraud, listing fraud, and abuse of the platform.</li>
                 <li><strong>Platform Improvement:</strong> Analyzing usage patterns to improve search algorithms, user experience, and feature development.</li>
                 <li><strong>AI-Powered Features:</strong> Providing equipment specification lookups and market value context via Google Gemini AI (no personal data is sent to AI services — only equipment-related queries).</li>
@@ -224,6 +226,10 @@ export function Privacy() {
                 <div className="border border-line p-6 space-y-2">
                   <h4 className="text-xs font-black uppercase tracking-widest text-ink">SendGrid (Twilio)</h4>
                   <p className="text-sm">Transactional email delivery (inquiry confirmations, payment receipts, listing status notifications, subscription alerts) and optional marketing email delivery. <em>Data shared: email address, display name, email content.</em></p>
+                </div>
+                <div className="border border-line p-6 space-y-2">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-ink">Twilio, Inc. (Voice)</h4>
+                  <p className="text-sm">Dealer call-tracking numbers, inbound voice routing, forwarding to seller destination phones, call-event webhooks, and optional call recordings when enabled for a tracked line. <em>Data shared: caller phone number, tracking number, destination phone number, call timestamps, duration, and recording URL when recording is enabled.</em></p>
                 </div>
                 <div className="border border-line p-6 space-y-2">
                   <h4 className="text-xs font-black uppercase tracking-widest text-ink">Google reCAPTCHA Enterprise</h4>
@@ -566,6 +572,12 @@ export function Privacy() {
               <p className="text-white/60">
                 If you have questions about this policy, wish to exercise your rights, or want to file a
                 privacy-related complaint, contact our Data Protection Center:
+              </p>
+              <p className="text-white/60">
+                If your concern involves voice-call metadata, forwarding numbers, or telephone privacy information similar to customer proprietary network information (CPNI), you may also file a privacy complaint with the FCC through the{' '}
+                <a href="https://consumercomplaints.fcc.gov/hc/en-us/articles/8824334151572-Privacy-Complaints" target="_blank" rel="noopener noreferrer" className="text-accent underline">
+                  FCC Privacy Complaints Center
+                </a>.
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
                 <span>privacy@timberequip.com</span>

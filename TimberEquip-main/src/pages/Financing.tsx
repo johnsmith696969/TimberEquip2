@@ -15,11 +15,13 @@ import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService
 import { Seo } from '../components/Seo';
 
 export function Financing() {
+  const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
   const { user } = useAuth();
   const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [contactConsentAccepted, setContactConsentAccepted] = useState(false);
   const [formData, setFormData] = useState({
     businessStructure: '',
     legalEntityName: '',
@@ -66,6 +68,12 @@ export function Financing() {
     setSubmitError('');
 
     try {
+      if (!contactConsentAccepted) {
+        setSubmitError('Review and accept the financing contact consent notice before submitting your application.');
+        setLoading(false);
+        return;
+      }
+
       const rcToken = await getRecaptchaToken('FINANCING_CENTER');
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'FINANCING_CENTER');
@@ -82,7 +90,11 @@ export function Financing() {
         applicantPhone: formData.contactPhone,
         company: formData.legalEntityName,
         requestedAmount: formData.requestedAmount ? Number(formData.requestedAmount) : undefined,
-        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Annual revenue: ${formData.annualRevenue}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`
+        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Annual revenue: ${formData.annualRevenue}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`,
+        contactConsentAccepted: true,
+        contactConsentVersion: FINANCING_CONTACT_CONSENT_VERSION,
+        contactConsentScope: 'financing_request_specific',
+        contactConsentAt: new Date().toISOString(),
       });
 
       setLoading(false);
@@ -270,10 +282,15 @@ export function Financing() {
                       </div>
 
                       <div className="bg-surface/30 border border-line p-6 flex items-start space-x-4">
-                        <input type="checkbox" className="w-5 h-5 border-line rounded-sm accent-accent mt-1" id="consent" />
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 border-line rounded-sm accent-accent mt-1"
+                          id="consent"
+                          checked={contactConsentAccepted}
+                          onChange={(e) => setContactConsentAccepted(e.target.checked)}
+                        />
                         <label htmlFor="consent" className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest cursor-pointer">
-                          I authorize Forestry Equipment Sales Financing and its partners to perform a credit inquiry and verify all provided entity information. 
-                          I understand that this is an initial application and subject to final approval.
+                          I authorize Forestry Equipment Sales Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
                         </label>
                       </div>
 

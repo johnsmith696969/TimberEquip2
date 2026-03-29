@@ -24,7 +24,7 @@ export function Terms() {
               Terms of Service
             </h1>
             <p className="text-muted font-medium uppercase tracking-widest text-xs">
-              Last Updated: March 29, 2026 | Version 3.0.0
+              Last Updated: March 29, 2026 | Version 3.1.0
             </p>
           </div>
 
@@ -245,6 +245,19 @@ export function Terms() {
                 storefront. The primary account holder is responsible for all activity performed by managed seat users
                 and for ensuring that managed seat users comply with these Terms.
               </p>
+              <p>
+                Dealer and Pro Dealer accounts may be assigned platform-managed forwarding numbers for call tracking, lead attribution,
+                and routing. These numbers may forward to the destination phone number you provide. You are responsible for keeping
+                destination numbers accurate, ensuring you have authority to receive forwarded calls on those numbers, and complying with
+                all laws that apply to calls, texts, telemarketing, privacy, recording, and call-disclosure requirements in the
+                jurisdictions where you operate.
+              </p>
+              <p>
+                FES requires seller-specific or lender-specific contact consent for platform-generated outreach requests and does not
+                permit blanket consent language that authorizes unrelated sellers, lenders, or telemarketing campaigns to contact a user.
+                Where your use of the Platform involves calls or texts, you are solely responsible for any legally required notices,
+                opt-out handling, and consent records tied to that outreach.
+              </p>
             </section>
 
             {/* Section 8: Data, Leads, and Platform Records */}
@@ -261,6 +274,11 @@ export function Terms() {
                 relevant seller or dealer as part of the subscription service. FES may retain aggregated, anonymized lead data for
                 analytics and platform improvement purposes. Individual lead data is subject to our
                 {' '}<Link to="/privacy" className="text-accent underline">Privacy Policy</Link>.
+              </p>
+              <p>
+                When call-tracking numbers are enabled, platform records may also include call routing logs, connected or missed call
+                status, timestamps, duration, and recording references when recording is enabled. These records are part of the platform's
+                operational audit trail and may be used for dealer reporting, fraud review, entitlement support, and dispute resolution.
               </p>
             </section>
 

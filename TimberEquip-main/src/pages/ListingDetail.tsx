@@ -41,6 +41,8 @@ import {
 } from '../utils/seoRoutes';
 
 const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
+const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
+const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
 
 export function ListingDetail() {
   const { id, publicKey } = useParams<{ id?: string; publicKey?: string; slug?: string }>();
@@ -63,6 +65,8 @@ export function ListingDetail() {
   const [inquirySent, setInquirySent] = useState(false);
   const [financingSent, setFinancingSent] = useState(false);
   const [shippingSent, setShippingSent] = useState(false);
+  const [inquiryConsentAccepted, setInquiryConsentAccepted] = useState(false);
+  const [financingConsentAccepted, setFinancingConsentAccepted] = useState(false);
   const [marketMatchRecommendations, setMarketMatchRecommendations] = useState<Listing[]>([]);
   const [amvExplanation, setAmvExplanation] = useState<string | null>(null);
   const [aiSpecs, setAiSpecs] = useState<any>(null);
@@ -441,12 +445,14 @@ export function ListingDetail() {
     if (hasDirtyInquiryForm && !inquirySent && !confirmDiscardChanges()) return;
     setShowInquiryModal(false);
     setInquiryForm(createInitialInquiryForm());
+    setInquiryConsentAccepted(false);
   };
 
   const dismissFinancingModal = () => {
     if (hasDirtyFinancingForm && !financingSent && !confirmDiscardChanges()) return;
     setShowFinancingModal(false);
     setFinancingForm(createInitialFinancingForm());
+    setFinancingConsentAccepted(false);
   };
 
   const dismissShippingModal = () => {
@@ -468,6 +474,7 @@ export function ListingDetail() {
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!listing) return;
+    if (!inquiryConsentAccepted) return;
     
     try {
       if (!(await runRecaptchaCheck('DETAIL_INQUIRY'))) return;
@@ -480,13 +487,18 @@ export function ListingDetail() {
         buyerEmail: inquiryForm.email,
         buyerPhone: inquiryForm.phone,
         message: inquiryForm.message,
-        type: 'Inquiry'
+        type: 'Inquiry',
+        contactConsentAccepted: true,
+        contactConsentVersion: SELLER_CONTACT_CONSENT_VERSION,
+        contactConsentScope: 'listing_seller_specific',
+        contactConsentAt: new Date().toISOString(),
       });
       setInquirySent(true);
       setTimeout(() => {
         setShowInquiryModal(false);
         setInquirySent(false);
         setInquiryForm(createInitialInquiryForm());
+        setInquiryConsentAccepted(false);
       }, 2000);
     } catch (error) {
       console.error('Error submitting inquiry:', error);
@@ -496,6 +508,7 @@ export function ListingDetail() {
   const handleFinancingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!listing) return;
+    if (!financingConsentAccepted) return;
 
     try {
       if (!(await runRecaptchaCheck('DETAIL_FINANCING'))) return;
@@ -508,7 +521,11 @@ export function ListingDetail() {
         buyerEmail: financingForm.email,
         buyerPhone: financingForm.phone,
         message: financingForm.message || `Financing request for ${listing.title}. Requested amount: ${financingForm.requestedAmount || 'Not provided'}`,
-        type: 'Financing'
+        type: 'Financing',
+        contactConsentAccepted: true,
+        contactConsentVersion: FINANCING_CONTACT_CONSENT_VERSION,
+        contactConsentScope: 'financing_request_specific',
+        contactConsentAt: new Date().toISOString(),
       });
 
       await equipmentService.submitFinancingRequest({
@@ -519,7 +536,11 @@ export function ListingDetail() {
         applicantPhone: financingForm.phone,
         company: financingForm.company,
         requestedAmount: financingForm.requestedAmount ? Number(financingForm.requestedAmount) : undefined,
-        message: financingForm.message
+        message: financingForm.message,
+        contactConsentAccepted: true,
+        contactConsentVersion: FINANCING_CONTACT_CONSENT_VERSION,
+        contactConsentScope: 'financing_request_specific',
+        contactConsentAt: new Date().toISOString(),
       });
 
       setFinancingSent(true);
@@ -527,6 +548,7 @@ export function ListingDetail() {
         setShowFinancingModal(false);
         setFinancingSent(false);
         setFinancingForm(createInitialFinancingForm());
+        setFinancingConsentAccepted(false);
       }, 2000);
     } catch (error) {
       console.error('Error submitting financing request:', error);
@@ -1602,6 +1624,18 @@ export function ListingDetail() {
                         placeholder="I'm interested in this asset. Please provide more details regarding..."
                       ></textarea>
                     </div>
+                    <label className="flex items-start gap-3 border border-line bg-surface/30 p-4 text-[10px] font-medium uppercase tracking-widest text-muted">
+                      <input
+                        required
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent"
+                        checked={inquiryConsentAccepted}
+                        onChange={(e) => setInquiryConsentAccepted(e.target.checked)}
+                      />
+                      <span>
+                        I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
+                      </span>
+                    </label>
                     <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                       Protected by reCAPTCHA Enterprise before submission.
                     </p>
@@ -1739,6 +1773,19 @@ export function ListingDetail() {
                     </div>
 
                     <textarea rows={3} className="input-industrial w-full" placeholder="FINANCING NOTES..." value={financingForm.message} onChange={(e) => setFinancingForm({ ...financingForm, message: e.target.value })}></textarea>
+
+                    <label className="flex items-start gap-3 border border-line bg-surface/30 p-4 text-[10px] font-medium uppercase tracking-widest text-muted">
+                      <input
+                        required
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent"
+                        checked={financingConsentAccepted}
+                        onChange={(e) => setFinancingConsentAccepted(e.target.checked)}
+                      />
+                      <span>
+                        I authorize Forestry Equipment Sales Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
+                      </span>
+                    </label>
 
                     <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                       Protected by reCAPTCHA Enterprise before submission.

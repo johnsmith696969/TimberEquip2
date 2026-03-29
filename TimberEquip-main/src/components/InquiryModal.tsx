@@ -5,6 +5,8 @@ import { Listing } from '../types';
 import { equipmentService } from '../services/equipmentService';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 
+const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
+
 interface InquiryModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -22,6 +24,7 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
     message: initialMessage
   });
   const [inquiryError, setInquiryError] = useState('');
+  const [contactConsentAccepted, setContactConsentAccepted] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -34,6 +37,7 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
       phone: '',
       message: initialMessage
     });
+    setContactConsentAccepted(false);
   }, [initialMessage, isOpen, listing.id]);
 
   const hasUnsavedChanges =
@@ -60,6 +64,11 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
         return;
       }
 
+      if (!contactConsentAccepted) {
+        setInquiryError('Review and accept the seller-specific contact consent notice before sending your inquiry.');
+        return;
+      }
+
       const rcToken = await getRecaptchaToken('INQUIRY');
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'INQUIRY');
@@ -77,7 +86,11 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
         buyerEmail: inquiryForm.email.trim().toLowerCase(),
         buyerPhone: inquiryForm.phone.trim(),
         message: inquiryForm.message.trim(),
-        type: 'Inquiry'
+        type: 'Inquiry',
+        contactConsentAccepted: true,
+        contactConsentVersion: SELLER_CONTACT_CONSENT_VERSION,
+        contactConsentScope: 'listing_seller_specific',
+        contactConsentAt: new Date().toISOString(),
       });
 
       if (!inquiryId) {
@@ -179,6 +192,18 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                       onChange={(e) => setInquiryForm({...inquiryForm, message: e.target.value})}
                     ></textarea>
                   </div>
+                  <label className="flex items-start gap-3 border border-line bg-surface/30 p-4 text-[10px] font-medium uppercase tracking-widest text-muted">
+                    <input
+                      required
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent"
+                      checked={contactConsentAccepted}
+                      onChange={(e) => setContactConsentAccepted(e.target.checked)}
+                    />
+                    <span>
+                      I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
+                    </span>
+                  </label>
                   <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                     Protected by reCAPTCHA Enterprise before submission.
                   </p>

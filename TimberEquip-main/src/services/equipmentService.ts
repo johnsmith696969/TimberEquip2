@@ -2400,6 +2400,10 @@ export const equipmentService = {
     company?: string;
     requestedAmount?: number;
     message?: string;
+    contactConsentAccepted?: boolean;
+    contactConsentVersion?: string;
+    contactConsentScope?: string;
+    contactConsentAt?: string;
   }): Promise<string> {
     const path = 'financingRequests';
     try {

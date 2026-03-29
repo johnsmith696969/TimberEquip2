@@ -304,7 +304,7 @@ service cloud.firestore {
     }
 
     function isValidInquiryCreate(data) {
-      return data.keys().hasOnly(['id', 'listingId', 'sellerUid', 'sellerId', 'buyerUid', 'buyerName', 'buyerEmail', 'buyerPhone', 'message', 'type', 'status', 'assignedToUid', 'assignedToName', 'internalNotes', 'firstResponseAt', 'responseTimeMinutes', 'spamScore', 'spamFlags', 'updatedAt', 'createdAt']) &&
+      return data.keys().hasOnly(['id', 'listingId', 'sellerUid', 'sellerId', 'buyerUid', 'buyerName', 'buyerEmail', 'buyerPhone', 'message', 'type', 'status', 'assignedToUid', 'assignedToName', 'internalNotes', 'firstResponseAt', 'responseTimeMinutes', 'spamScore', 'spamFlags', 'contactConsentAccepted', 'contactConsentVersion', 'contactConsentScope', 'contactConsentAt', 'updatedAt', 'createdAt']) &&
              data.id is string &&
              (!('listingId' in data) || data.listingId is string) &&
              (!('sellerUid' in data) || data.sellerUid is string) &&
@@ -323,12 +323,16 @@ service cloud.firestore {
              (!('responseTimeMinutes' in data) || data.responseTimeMinutes == null || data.responseTimeMinutes is number) &&
              (!('spamScore' in data) || data.spamScore is number) &&
              (!('spamFlags' in data) || data.spamFlags is list) &&
+             (!('contactConsentAccepted' in data) || data.contactConsentAccepted is bool) &&
+             (!('contactConsentVersion' in data) || (data.contactConsentVersion is string && data.contactConsentVersion.size() <= 80)) &&
+             (!('contactConsentScope' in data) || (data.contactConsentScope is string && data.contactConsentScope.size() <= 80)) &&
+             (!('contactConsentAt' in data) || (data.contactConsentAt is string && data.contactConsentAt.size() <= 80)) &&
              data.updatedAt is timestamp &&
              data.createdAt is timestamp;
     }
 
     function isValidFinancingRequest(data) {
-      return data.keys().hasOnly(['listingId', 'sellerUid', 'applicantName', 'applicantEmail', 'applicantPhone', 'company', 'requestedAmount', 'message', 'buyerUid', 'status', 'id', 'createdAt', 'updatedAt']) &&
+      return data.keys().hasOnly(['listingId', 'sellerUid', 'applicantName', 'applicantEmail', 'applicantPhone', 'company', 'requestedAmount', 'message', 'buyerUid', 'contactConsentAccepted', 'contactConsentVersion', 'contactConsentScope', 'contactConsentAt', 'status', 'id', 'createdAt', 'updatedAt']) &&
              data.id is string &&
              (!('listingId' in data) || data.listingId is string) &&
              (!('sellerUid' in data) || data.sellerUid is string) &&
@@ -339,6 +343,10 @@ service cloud.firestore {
              (!('requestedAmount' in data) || (data.requestedAmount is number && data.requestedAmount >= 0)) &&
              (!('message' in data) || (data.message is string && data.message.size() <= 5000)) &&
              (!('buyerUid' in data) || data.buyerUid == null || data.buyerUid is string) &&
+             (!('contactConsentAccepted' in data) || data.contactConsentAccepted is bool) &&
+             (!('contactConsentVersion' in data) || (data.contactConsentVersion is string && data.contactConsentVersion.size() <= 80)) &&
+             (!('contactConsentScope' in data) || (data.contactConsentScope is string && data.contactConsentScope.size() <= 80)) &&
+             (!('contactConsentAt' in data) || (data.contactConsentAt is string && data.contactConsentAt.size() <= 80)) &&
              data.status == 'New' &&
              data.createdAt is timestamp &&
              data.updatedAt is timestamp;

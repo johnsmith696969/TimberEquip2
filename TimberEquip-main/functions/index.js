@@ -78,6 +78,8 @@ const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 const TWILIO_ACCOUNT_SID = defineSecret('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = defineSecret('TWILIO_AUTH_TOKEN');
+const TWILIO_API_KEY_SID = defineSecret('TWILIO_API_KEY_SID');
+const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
@@ -7135,8 +7137,18 @@ function createStripeClient() {
 function createTwilioClient() {
   const sid = String(TWILIO_ACCOUNT_SID.value() || '').trim();
   const token = String(TWILIO_AUTH_TOKEN.value() || '').trim();
-  if (!sid || !token) return null;
-  return require('twilio')(sid, token);
+  const apiKeySid = String(TWILIO_API_KEY_SID.value() || '').trim();
+  const apiKeySecret = String(TWILIO_API_KEY_SECRET.value() || '').trim();
+
+  if (sid && apiKeySid && apiKeySecret) {
+    return require('twilio')(apiKeySid, apiKeySecret, { accountSid: sid });
+  }
+
+  if (sid && token) {
+    return require('twilio')(sid, token);
+  }
+
+  return null;
 }
 
 function extractAreaCode(phoneNumber) {
@@ -7147,6 +7159,7 @@ function extractAreaCode(phoneNumber) {
 }
 
 function validateTwilioRequest(req) {
+  // Twilio webhook signature validation still relies on the account auth token.
   const token = String(TWILIO_AUTH_TOKEN.value() || '').trim();
   if (!token) return false;
   const twilio = require('twilio');
@@ -8758,6 +8771,8 @@ exports.apiProxy = onRequest(
       STRIPE_WEBHOOK_SECRET,
       TWILIO_ACCOUNT_SID,
       TWILIO_AUTH_TOKEN,
+      TWILIO_API_KEY_SID,
+      TWILIO_API_KEY_SECRET,
     ],
   },
   async (req, res) => {
