@@ -1203,6 +1203,82 @@ export function Profile() {
     });
   };
 
+  const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const downloadCsv = (filenamePrefix: string, headers: string[], rows: string[][]) => {
+    const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportMyListingsCSV = () => {
+    const headers = ['Title', 'Category', 'Manufacturer', 'Model', 'Year', 'Price', 'Hours', 'Location', 'Status', 'Approval', 'Stock #', 'Views', 'Leads', 'Created At'];
+    const rows = myListings.map((l) => [
+      l.title,
+      l.category || '',
+      l.manufacturer || l.make || '',
+      l.model || '',
+      String(l.year || ''),
+      String(l.price || 0),
+      String(l.hours || ''),
+      l.location || '',
+      l.status || '',
+      l.approvalStatus || '',
+      l.stockNumber || '',
+      String(l.views || 0),
+      String(l.leads || 0),
+      l.createdAt || '',
+    ]);
+    downloadCsv('my-inventory', headers, rows);
+  };
+
+  const exportMyInquiriesCSV = () => {
+    const headers = ['Buyer Name', 'Email', 'Phone', 'Type', 'Status', 'Listing', 'Message', 'Created At'];
+    const rows = inquiries.map((inq) => [
+      inq.buyerName,
+      inq.buyerEmail,
+      inq.buyerPhone,
+      inq.type,
+      inq.status,
+      inq.listingId || '',
+      inq.message,
+      inq.createdAt,
+    ]);
+    downloadCsv('my-inquiries', headers, rows);
+  };
+
+  const exportMyCallsCSV = () => {
+    const headers = ['Caller Name', 'Caller Phone', 'Caller Email', 'Listing ID', 'Listing Title', 'Status', 'Duration (s)', 'Source', 'Recording URL', 'Date'];
+    const rows = calls.map((call) => [
+      call.callerName,
+      call.callerPhone || '',
+      call.callerEmail || '',
+      call.listingId,
+      call.listingTitle || '',
+      call.status,
+      String(call.duration),
+      call.source || '',
+      call.recordingUrl || '',
+      call.createdAt,
+    ]);
+    downloadCsv('my-calls', headers, rows);
+  };
+
+  const downloadSampleMachineCSV = () => {
+    const headers = ['Title', 'Category', 'Manufacturer', 'Model', 'Year', 'Price', 'Hours', 'Location', 'Condition', 'Stock Number', 'Description'];
+    const sampleRows = [
+      ['2019 John Deere 748L-II Grapple Skidder', 'Skidders', 'John Deere', '748L-II', '2019', '185000', '6200', 'Duluth, MN', 'Used - Good', 'JD748-001', 'Well-maintained grapple skidder with new tires and recent service.'],
+      ['2021 Tigercat 635H Feller Buncher', 'Feller Bunchers', 'Tigercat', '635H', '2021', '425000', '3800', 'Portland, OR', 'Used - Excellent', 'TC635-002', 'Low hour Tigercat 635H with 5702 head. Owner-operator machine.'],
+      ['2020 CAT 535D Skidder', 'Skidders', 'Caterpillar', '535D', '2020', '210000', '5100', 'Bangor, ME', 'Used - Good', 'CAT535-003', 'CAT 535D dual-arch grapple skidder. Undercarriage at 60%.'],
+    ];
+    downloadCsv('sample-machine-import-template', headers, sampleRows);
+  };
+
   const getInspectionStatusClasses = (status: InspectionRequest['status']) => {
     switch (status) {
       case 'Accepted':
@@ -1509,15 +1585,27 @@ export function Profile() {
 
   const renderMyListings = () => (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3 flex-wrap">
         <h3 className="text-sm font-black uppercase tracking-widest">My Inventory</h3>
-        <button 
-          onClick={() => { setSelectedListing(null); setIsListingModalOpen(true); }}
-          className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
-        >
-          <Plus size={14} className="mr-2" />
-          Add Machine
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {myListings.length > 0 && (
+            <button onClick={exportMyListingsCSV} className="btn-industrial py-2 px-4 flex items-center text-[10px]">
+              <Download size={14} className="mr-2" />
+              Export CSV
+            </button>
+          )}
+          <button onClick={downloadSampleMachineCSV} className="btn-industrial py-2 px-4 flex items-center text-[10px]">
+            <FileText size={14} className="mr-2" />
+            Sample CSV
+          </button>
+          <button
+            onClick={() => { setSelectedListing(null); setIsListingModalOpen(true); }}
+            className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
+          >
+            <Plus size={14} className="mr-2" />
+            Add Machine
+          </button>
+        </div>
       </div>
       {listingActionError && (
         <div className="rounded-sm border border-accent/30 bg-accent/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent">
@@ -1743,11 +1831,19 @@ export function Profile() {
 
   const renderInquiries = () => (
     <div className="space-y-8">
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-black uppercase tracking-widest">Inquiry Logs</h3>
-        <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-          Review buyer inquiries submitted on your listings and keep lead follow-up visible.
-        </p>
+      <div className="flex justify-between items-start gap-3 flex-wrap">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-black uppercase tracking-widest">Inquiry Logs</h3>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            Review buyer inquiries submitted on your listings and keep lead follow-up visible.
+          </p>
+        </div>
+        {inquiries.length > 0 && (
+          <button onClick={exportMyInquiriesCSV} className="btn-industrial py-2 px-4 flex items-center text-[10px] flex-shrink-0">
+            <Download size={14} className="mr-2" />
+            Export CSV
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1831,11 +1927,19 @@ export function Profile() {
 
   const renderCalls = () => (
     <div className="space-y-8">
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-black uppercase tracking-widest">Call Logs</h3>
-        <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-          Review callers, phone numbers, and the exact ad they clicked.
-        </p>
+      <div className="flex justify-between items-start gap-3 flex-wrap">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-black uppercase tracking-widest">Call Logs</h3>
+          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+            Review callers, phone numbers, and the exact ad they clicked.
+          </p>
+        </div>
+        {calls.length > 0 && (
+          <button onClick={exportMyCallsCSV} className="btn-industrial py-2 px-4 flex items-center text-[10px] flex-shrink-0">
+            <Download size={14} className="mr-2" />
+            Export CSV
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

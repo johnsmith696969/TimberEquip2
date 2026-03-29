@@ -1488,6 +1488,30 @@ export function AdminDashboard() {
     downloadCsv('performance', headers, rows);
   };
 
+  const exportListingsCSV = () => {
+    const headers = ['ID', 'Title', 'Category', 'Manufacturer', 'Model', 'Year', 'Price', 'Hours', 'Location', 'Status', 'Approval', 'Payment', 'Seller UID', 'Stock #', 'Views', 'Leads', 'Created At'];
+    const rows = filteredListings.map((l) => [
+      l.id,
+      l.title,
+      l.category || '',
+      l.manufacturer || l.make || '',
+      l.model || '',
+      String(l.year || ''),
+      String(l.price || 0),
+      String(l.hours || ''),
+      l.location || '',
+      l.status || '',
+      l.approvalStatus || '',
+      l.paymentStatus || '',
+      l.sellerUid || l.sellerId || '',
+      l.stockNumber || '',
+      String(l.views || 0),
+      String(l.leads || 0),
+      l.createdAt || '',
+    ]);
+    downloadCsv('inventory', headers, rows);
+  };
+
   const stats = [
     { label: 'Visible Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
     { label: 'Total Leads', value: inquiries.length, change: '+24%', icon: MessageSquare, color: 'text-secondary' },
@@ -1963,11 +1987,15 @@ export function AdminDashboard() {
           >
             Seed Demo Inventory
           </button>
+          <button onClick={exportListingsCSV} className="btn-industrial py-2 px-4 flex items-center">
+            <Download size={14} className="mr-2" />
+            Export CSV
+          </button>
           <button className="btn-industrial py-2 px-4 flex items-center">
             <Filter size={14} className="mr-2" />
             Filter
           </button>
-          <button 
+          <button
             onClick={() => { setEditingListing(null); setIsModalOpen(true); }}
             className="btn-industrial btn-accent py-2 px-6 flex items-center"
           >
