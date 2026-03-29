@@ -1842,6 +1842,7 @@ export function AdminDashboard() {
                 <th className="px-6 py-4">Seller</th>
                 <th className="px-6 py-4">Duration</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Audio</th>
                 <th className="px-6 py-4">Timestamp</th>
                 <th className="px-6 py-4 text-right">Authenticated</th>
               </tr>
@@ -1875,6 +1876,25 @@ export function AdminDashboard() {
                     <span className={`text-[9px] font-black uppercase tracking-widest ${call.status === 'Completed' ? 'text-data' : call.status === 'Initiated' ? 'text-ink' : 'text-accent'}`}>
                       {call.status}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 normal-case">
+                    {call.recordingUrl ? (
+                      <div className="flex flex-col gap-2">
+                        <audio controls preload="none" className="max-w-[220px]">
+                          <source src={`/api/admin/calls/${encodeURIComponent(call.id)}/recording`} type="audio/mpeg" />
+                        </audio>
+                        <a
+                          href={`/api/admin/calls/${encodeURIComponent(call.id)}/recording`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] font-bold text-accent hover:text-ink transition-colors"
+                        >
+                          Open audio
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] font-bold text-muted">No audio</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-[10px] font-bold text-muted uppercase">
                     {formatTimestamp(call.createdAt)}

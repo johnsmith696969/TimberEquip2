@@ -832,6 +832,44 @@ async function sendPasswordResetEmailMessage({ email, displayName, requestedBy, 
   });
 }
 
+async function sendVoicemailNotificationEmailMessage({
+  email,
+  sellerName,
+  callerNumber,
+  callTimestamp,
+  dashboardUrl,
+}) {
+  const safeSellerName = String(sellerName || 'there').trim() || 'there';
+  const safeCallerNumber = String(callerNumber || 'Unknown caller').trim() || 'Unknown caller';
+  const safeCallTimestamp = String(callTimestamp || '').trim() || new Date().toLocaleString('en-US');
+  const safeDashboardUrl = String(dashboardUrl || `${APP_URL}/profile?tab=Calls`).trim() || `${APP_URL}/profile?tab=Calls`;
+
+  await sendEmail({
+    to: email,
+    subject: 'New voicemail on Forestry Equipment Sales',
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+        <h2 style="margin-bottom: 16px;">New voicemail received</h2>
+        <p>Hello ${safeSellerName},</p>
+        <p>A caller left a voicemail on your Forestry Equipment Sales tracking number.</p>
+        <ul style="padding-left: 18px;">
+          <li><strong>Caller:</strong> ${safeCallerNumber}</li>
+          <li><strong>Received:</strong> ${safeCallTimestamp}</li>
+        </ul>
+        <p>
+          <a
+            href="${safeDashboardUrl}"
+            style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;"
+          >
+            Review Voicemail
+          </a>
+        </p>
+        <p>You can listen to the voicemail from your Calls tab inside Forestry Equipment Sales.</p>
+      </div>
+    `,
+  });
+}
+
 async function sendVerificationEmailMessage({ email, displayName }) {
   const verificationLink = await buildEmailVerificationLink(email);
   const payload = templates.welcomeVerification({
@@ -7188,6 +7226,79 @@ function mapTwilioStatusToCallLogStatus(twilioStatus) {
   }
 }
 
+function shouldOfferTwilioVoicemailFallback(twilioStatus) {
+  const normalizedStatus = String(twilioStatus || '').trim().toLowerCase();
+  return ['busy', 'no-answer', 'canceled', 'failed'].includes(normalizedStatus);
+}
+
+function buildTwilioVoicemailTwiml(voicemailUrl) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">We could not reach the seller. Please leave a voicemail after the tone and Forestry Equipment Sales will deliver it to the seller.</Say>
+  <Record action="${voicemailUrl}" method="POST" recordingStatusCallback="${voicemailUrl}" recordingStatusCallbackMethod="POST" maxLength="120" playBeep="true" trim="trim-silence" />
+  <Say voice="Polly.Joanna">We did not receive a voicemail. Goodbye.</Say>
+  <Hangup/>
+</Response>`;
+}
+
+function buildTwilioBasicAuthHeader() {
+  const sid = String(TWILIO_ACCOUNT_SID.value() || '').trim();
+  const token = String(TWILIO_AUTH_TOKEN.value() || '').trim();
+  if (!sid || !token) {
+    return '';
+  }
+
+  return `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`;
+}
+
+function normalizeTwilioRecordingUrl(recordingUrl) {
+  const value = String(recordingUrl || '').trim();
+  if (!value) return '';
+  return value.endsWith('.mp3') ? value : `${value}.mp3`;
+}
+
+function isAllowedTwilioRecordingUrl(recordingUrl) {
+  const value = String(recordingUrl || '').trim();
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    return /^https:$/i.test(url.protocol) && /(^|\.)twilio\.com$/i.test(url.hostname);
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function streamTwilioRecordingToResponse(recordingUrl, res) {
+  const normalizedRecordingUrl = normalizeTwilioRecordingUrl(recordingUrl);
+  if (!normalizedRecordingUrl || !isAllowedTwilioRecordingUrl(normalizedRecordingUrl)) {
+    return res.status(404).json({ error: 'Recording not available.' });
+  }
+
+  const authorization = buildTwilioBasicAuthHeader();
+  if (!authorization) {
+    return res.status(503).json({ error: 'Twilio recording access is not configured.' });
+  }
+
+  const upstreamResponse = await fetch(normalizedRecordingUrl, {
+    method: 'GET',
+    headers: {
+      Authorization: authorization,
+    },
+  });
+
+  if (!upstreamResponse.ok) {
+    const statusCode = upstreamResponse.status === 404 ? 404 : 502;
+    return res.status(statusCode).json({ error: 'Unable to retrieve voicemail recording right now.' });
+  }
+
+  const contentType = upstreamResponse.headers.get('content-type') || 'audio/mpeg';
+  const body = Buffer.from(await upstreamResponse.arrayBuffer());
+  res.set('Content-Type', contentType);
+  res.set('Cache-Control', 'private, max-age=0, no-store');
+  return res.status(200).send(body);
+}
+
 async function provisionTwilioNumberForSeller(userUid, planId) {
   if (!isSellerSubscriptionRole(getSellerRoleForPlan(planId))) return;
 
@@ -7405,7 +7516,7 @@ async function handleTwilioInboundCall(req, res) {
 async function handleTwilioCallStatus(req, res) {
   // Status callbacks don't always have valid signatures when sent as action callbacks
   const callSid = String(req.body?.CallSid || '').trim();
-  const callStatus = String(req.body?.CallStatus || req.body?.DialCallStatus || '').trim();
+  const callStatus = String(req.body?.DialCallStatus || req.body?.CallStatus || '').trim();
   const callDuration = parseInt(req.body?.CallDuration || req.body?.Duration || '0', 10) || 0;
   const recordingUrl = String(req.body?.RecordingUrl || '').trim() || null;
 
@@ -7431,7 +7542,95 @@ async function handleTwilioCallStatus(req, res) {
   }
 
   res.set('Content-Type', 'text/xml');
+  if (String(req.body?.DialCallStatus || '').trim() && shouldOfferTwilioVoicemailFallback(callStatus)) {
+    const voicemailUrl = `${resolveConfiguredAppUrl()}/api/twilio/voice/voicemail`;
+    return res.status(200).send(buildTwilioVoicemailTwiml(voicemailUrl));
+  }
+
   return res.status(200).send('<Response/>');
+}
+
+async function handleTwilioVoicemail(req, res) {
+  const callSid = String(req.body?.CallSid || '').trim();
+  const recordingUrl = String(req.body?.RecordingUrl || '').trim();
+  const recordingStatus = String(req.body?.RecordingStatus || '').trim();
+  const recordingDuration = parseInt(req.body?.RecordingDuration || req.body?.CallDuration || '0', 10) || 0;
+
+  if (!callSid) {
+    res.set('Content-Type', 'text/xml');
+    return res.status(200).send('<Response><Hangup/></Response>');
+  }
+
+  const callsSnap = await getDb().collection('calls')
+    .where('twilioCallSid', '==', callSid)
+    .limit(1)
+    .get();
+
+  if (callsSnap.empty) {
+    res.set('Content-Type', 'text/xml');
+    return res.status(200).send('<Response><Hangup/></Response>');
+  }
+
+  const callDoc = callsSnap.docs[0];
+  const callData = callDoc.data() || {};
+  const normalizedRecordingUrl = normalizeTwilioRecordingUrl(recordingUrl);
+  const updates = {
+    status: normalizedRecordingUrl ? 'Voicemail' : (callData.status || 'Missed'),
+    duration: recordingDuration || Number(callData.duration || 0) || 0,
+    recordingUrl: normalizedRecordingUrl || callData.recordingUrl || null,
+    twilioCallStatus: recordingStatus || callData.twilioCallStatus || 'voicemail',
+    voicemailCapturedAt: normalizedRecordingUrl
+      ? admin.firestore.FieldValue.serverTimestamp()
+      : (callData.voicemailCapturedAt || null),
+    completedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  await callDoc.ref.set(updates, { merge: true });
+
+  const shouldNotifyByEmail =
+    Boolean(normalizedRecordingUrl)
+    && String(recordingStatus || '').trim().toLowerCase() === 'completed'
+    && !callData.voicemailEmailSentAt;
+
+  if (shouldNotifyByEmail) {
+    const sellerUid = normalizeNonEmptyString(callData.sellerUid || callData.sellerId);
+    const appUrl = resolveConfiguredAppUrl();
+    let sellerEmail = '';
+    let sellerName = normalizeNonEmptyString(callData.sellerName);
+
+    if (sellerUid) {
+      const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
+      const sellerData = sellerSnap.data() || {};
+      sellerEmail = normalizeNonEmptyString(sellerData.email);
+      sellerName = sellerName || normalizeNonEmptyString(sellerData.displayName || sellerData.storefrontName);
+    }
+
+    if (sellerEmail && !/@example\.com$/i.test(sellerEmail)) {
+      try {
+        await sendVoicemailNotificationEmailMessage({
+          email: sellerEmail,
+          sellerName,
+          callerNumber: normalizeNonEmptyString(callData.callerPhone || callData.twilioFromNumber, 'Unknown caller'),
+          callTimestamp: timestampValueToIso(callData.createdAt) || new Date().toISOString(),
+          dashboardUrl: `${appUrl}/profile?tab=Calls`,
+        });
+        await callDoc.ref.set({
+          voicemailEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (error) {
+        logger.error('Failed to send voicemail notification email.', {
+          sellerUid,
+          email: sellerEmail,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } else if (sellerEmail) {
+      logger.info('Skipping voicemail notification email for staging/example mailbox.', { sellerUid, email: sellerEmail });
+    }
+  }
+
+  res.set('Content-Type', 'text/xml');
+  return res.status(200).send('<Response><Say voice="Polly.Joanna">Thank you. Your message has been recorded.</Say><Hangup/></Response>');
 }
 
 function getRequestBaseUrl(req) {
@@ -8833,6 +9032,9 @@ exports.apiProxy = onRequest(
       }
       if (req.method === 'POST' && path === '/twilio/voice/status') {
         return handleTwilioCallStatus(req, res);
+      }
+      if (req.method === 'POST' && path === '/twilio/voice/voicemail') {
+        return handleTwilioVoicemail(req, res);
       }
 
       applyApiResponseCachePolicy(res, req, path);
@@ -10647,6 +10849,34 @@ exports.apiProxy = onRequest(
         }
       }
 
+      const accountCallRecordingMatch = path.match(/^\/account\/calls\/([^/]+)\/recording$/i);
+      if (req.method === 'GET' && accountCallRecordingMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const callId = decodeURIComponent(accountCallRecordingMatch[1] || '').trim();
+        if (!callId) {
+          return res.status(400).json({ error: 'A call ID is required.' });
+        }
+
+        const callSnapshot = await getDb().collection('calls').doc(callId).get();
+        if (!callSnapshot.exists) {
+          return res.status(404).json({ error: 'Call recording not found.' });
+        }
+
+        const callData = callSnapshot.data() || {};
+        const sellerUid = normalizeNonEmptyString(callData.sellerUid || callData.sellerId);
+        if (sellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        return streamTwilioRecordingToResponse(callData.recordingUrl, res);
+      }
+
       if (req.method === 'GET' && path === '/account/storefront') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -10998,6 +11228,26 @@ exports.apiProxy = onRequest(
         const snapshot = await getDb().collection('calls').orderBy('createdAt', 'desc').get();
         const calls = snapshot.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
         return res.status(200).json({ calls });
+      }
+
+      const adminCallRecordingMatch = path.match(/^\/admin\/calls\/([^/]+)\/recording$/i);
+      if (req.method === 'GET' && adminCallRecordingMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const callId = decodeURIComponent(adminCallRecordingMatch[1] || '').trim();
+        if (!callId) {
+          return res.status(400).json({ error: 'A call ID is required.' });
+        }
+
+        const callSnapshot = await getDb().collection('calls').doc(callId).get();
+        if (!callSnapshot.exists) {
+          return res.status(404).json({ error: 'Call recording not found.' });
+        }
+
+        return streamTwilioRecordingToResponse(callSnapshot.data()?.recordingUrl, res);
       }
 
       if (req.method === 'GET' && path === '/admin/billing/invoices') {
