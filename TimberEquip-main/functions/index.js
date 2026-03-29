@@ -32,10 +32,8 @@ const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 
-const RUNTIME_PROJECT_ID = String(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID || 'mobile-app-equipment-sales').trim();
-const RECAPTCHA_PROJECT_ID = String(process.env.RECAPTCHA_PROJECT_ID || RUNTIME_PROJECT_ID || 'mobile-app-equipment-sales').trim();
-const RECAPTCHA_SITE_KEY = String(process.env.RECAPTCHA_SITE_KEY || '').trim()
-  || (RECAPTCHA_PROJECT_ID === 'mobile-app-equipment-sales' ? '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0' : '');
+const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
+const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -161,6 +159,88 @@ function getAdminRecipients() {
 }
 
 const APP_URL = 'https://timberequip.com';
+const STAGING_APP_URL = 'https://timberequip-staging.web.app';
+const PRIVILEGED_ADMIN_EMAILS = new Set([
+  'caleb@forestryequipmentsales.com',
+  'calebhappy@gmail.com',
+]);
+const FEATURED_LISTING_CAPS = Object.freeze({
+  dealer: 3,
+  pro_dealer: 6,
+});
+const ACCOUNT_LISTING_CREATE_ALLOWED_KEYS = new Set([
+  'id',
+  'title',
+  'category',
+  'subcategory',
+  'make',
+  'manufacturer',
+  'brand',
+  'model',
+  'year',
+  'hours',
+  'condition',
+  'price',
+  'salePrice',
+  'currency',
+  'location',
+  'city',
+  'state',
+  'country',
+  'latitude',
+  'longitude',
+  'serialNumber',
+  'stockNumber',
+  'description',
+  'images',
+  'imageVariants',
+  'videoUrls',
+  'features',
+  'specs',
+  'specifications',
+  'conditionChecklist',
+  'featured',
+  'featuredRank',
+  'metaTitle',
+  'metaDescription',
+  'canonicalSlug',
+  'contactPhone',
+  'contactEmail',
+]);
+const ACCOUNT_LISTING_UPDATE_ALLOWED_KEYS = new Set(
+  [...ACCOUNT_LISTING_CREATE_ALLOWED_KEYS].filter((key) => key !== 'id')
+);
+const ACCOUNT_LISTING_QUALITY_KEYS = new Set([
+  'title',
+  'category',
+  'subcategory',
+  'make',
+  'manufacturer',
+  'brand',
+  'model',
+  'year',
+  'hours',
+  'condition',
+  'price',
+  'salePrice',
+  'currency',
+  'location',
+  'city',
+  'state',
+  'country',
+  'images',
+  'imageVariants',
+  'videoUrls',
+  'features',
+  'specs',
+  'specifications',
+  'conditionChecklist',
+  'metaTitle',
+  'metaDescription',
+  'canonicalSlug',
+  'contactPhone',
+  'contactEmail',
+]);
 
 function getDirectApiProxyUrl() {
   const projectId = resolveProjectId();
@@ -325,7 +405,7 @@ function deriveManualAccountAccessSource(actorRole, requestedRole, existingSourc
 }
 
 function isPrivilegedAdminEmail(email) {
-  return normalize(email) === 'caleb@forestryequipmentsales.com';
+  return PRIVILEGED_ADMIN_EMAILS.has(normalize(email));
 }
 
 function includesNormalized(haystack, needle) {
@@ -345,6 +425,26 @@ function normalizeFiniteNumber(value, fallback = 0) {
 function toFiniteNumberOrUndefined(value) {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function stripUndefinedDeep(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => stripUndefinedDeep(entry))
+      .filter((entry) => entry !== undefined);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.entries(value).reduce((accumulator, [key, entryValue]) => {
+    const sanitizedValue = stripUndefinedDeep(entryValue);
+    if (sanitizedValue !== undefined) {
+      accumulator[key] = sanitizedValue;
+    }
+    return accumulator;
+  }, {});
 }
 
 function toRadians(degrees) {
@@ -671,6 +771,54 @@ async function buildEmailVerificationLink(email) {
     logger.warn(`Could not generate verification link for ${email}: ${error.message}`);
     return `${APP_URL}/login`;
   }
+}
+
+function resolveAppUrlFromRequest(req) {
+  const origin = String(req.headers.origin || '').trim();
+  if (/^https:\/\/timberequip-staging\.(web\.app|firebaseapp\.com)$/i.test(origin)) {
+    return STAGING_APP_URL;
+  }
+
+  const host = String(req.headers.host || '').trim().toLowerCase();
+  if (host === 'timberequip-staging.web.app' || host === 'timberequip-staging.firebaseapp.com') {
+    return STAGING_APP_URL;
+  }
+
+  return APP_URL;
+}
+
+async function buildPasswordResetLink(email, continueUrl = `${APP_URL}/login`) {
+  try {
+    return await admin.auth().generatePasswordResetLink(email, {
+      url: continueUrl,
+    });
+  } catch (error) {
+    logger.warn(`Could not generate password reset link for ${email}: ${error.message}`);
+    return continueUrl;
+  }
+}
+
+async function sendPasswordResetEmailMessage({ email, displayName, requestedBy, continueUrl = `${APP_URL}/login` }) {
+  const resetLink = await buildPasswordResetLink(email, continueUrl);
+  const safeDisplayName = String(displayName || 'there').trim() || 'there';
+  const safeRequestedBy = String(requestedBy || '').trim();
+  const intro = safeRequestedBy
+    ? `${safeRequestedBy} requested a password reset for your Forestry Equipment Sales account.`
+    : 'We received a request to reset your Forestry Equipment Sales password.';
+
+  await sendEmail({
+    to: email,
+    subject: 'Reset your Forestry Equipment Sales password',
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+        <h2 style="margin-bottom: 16px;">Password reset requested</h2>
+        <p>Hello ${safeDisplayName},</p>
+        <p>${intro}</p>
+        <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
+        <p>If you did not expect this email, you can ignore it.</p>
+      </div>
+    `,
+  });
 }
 
 async function sendVerificationEmailMessage({ email, displayName }) {
@@ -1238,6 +1386,76 @@ async function listDealerFeedIngestLogs({ sellerUid = '', limitCount = 20 } = {}
       return rightValue - leftValue;
     })
     .slice(0, Math.max(1, Math.min(Number(limitCount || 20), 100)));
+}
+
+async function listDealerFeedsForSeller(sellerUid) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  if (!normalizedSellerUid) {
+    return [];
+  }
+
+  await migrateLegacyDealerFeedProfilesForSeller(normalizedSellerUid);
+  const feedsSnap = await getDb()
+    .collection('dealerFeeds')
+    .where('sellerUid', '==', normalizedSellerUid)
+    .get();
+
+  return feedsSnap.docs
+    .map((doc) => serializeDealerFeed(doc.id, doc.data() || {}))
+    .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+}
+
+async function buildDealerFeedBootstrapPayload({ sellerUid = '', limitCount = 20 } = {}) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  const errors = {};
+  const degradedSections = [];
+  let firestoreQuotaLimited = false;
+
+  const [feedsResult, logsResult] = await Promise.allSettled([
+    listDealerFeedsForSeller(normalizedSellerUid),
+    listDealerFeedIngestLogs({
+      sellerUid: normalizedSellerUid,
+      limitCount,
+    }),
+  ]);
+
+  const feeds =
+    feedsResult.status === 'fulfilled'
+      ? feedsResult.value
+      : [];
+  if (feedsResult.status !== 'fulfilled') {
+    degradedSections.push('feeds');
+    if (isFirestoreQuotaExceeded(feedsResult.reason)) {
+      firestoreQuotaLimited = true;
+      errors.feeds = 'Dealer feed profiles are temporarily unavailable because the Firestore daily read quota is exhausted.';
+    } else {
+      throw feedsResult.reason;
+    }
+  }
+
+  const logs =
+    logsResult.status === 'fulfilled'
+      ? logsResult.value
+      : [];
+  if (logsResult.status !== 'fulfilled') {
+    degradedSections.push('logs');
+    if (isFirestoreQuotaExceeded(logsResult.reason)) {
+      firestoreQuotaLimited = true;
+      errors.logs = 'Dealer feed ingest logs are temporarily unavailable because the Firestore daily read quota is exhausted.';
+    } else {
+      throw logsResult.reason;
+    }
+  }
+
+  return {
+    feeds,
+    logs,
+    partial: degradedSections.length > 0,
+    degradedSections: Array.from(new Set(degradedSections)),
+    errors,
+    firestoreQuotaLimited,
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
 function getDealerFeedApiKeyFromRequest(req) {
@@ -2579,12 +2797,12 @@ async function notifySavedSearchSoldStatus(listingId, listing) {
   );
 }
 
-const THUMB_MAX_BYTES = 50 * 1024;
-const DETAIL_MAX_BYTES = 100 * 1024;
+const THUMB_MAX_BYTES = 50 * 1024;       // 50KB thumbnails (card grids)
+const DETAIL_MAX_BYTES = 120 * 1024;     // 120KB detail images (listing pages)
 const THUMB_MAX_WIDTH = 480;
 const DETAIL_MAX_WIDTH = 1600;
 
-const AVIF_QUALITIES = [55, 50, 45, 40, 35, 30, 25];
+const AVIF_QUALITIES = [60, 55, 50, 45, 40, 35, 30, 25];
 
 function buildFirebaseDownloadUrl(bucket, path, token) {
   return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
@@ -3117,6 +3335,7 @@ exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
         after,
       }),
       syncListingGovernanceArtifactsForWrite({
+        db: getDb(),
         listingId,
         before,
         after,
@@ -3808,16 +4027,6 @@ let publicSoldListingsCache = null;
 let publicCategoryMetricsCache = null;
 let publicHomeDataCache = null;
 const PUBLIC_LISTINGS_TTL_MS = 60 * 1000;
-const PUBLIC_MARKETPLACE_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
-let publicMarketplaceQuotaCooldownUntil = 0;
-
-function isPublicMarketplaceQuotaCooldownActive(now = Date.now()) {
-  return publicMarketplaceQuotaCooldownUntil > now;
-}
-
-function activatePublicMarketplaceQuotaCooldown(now = Date.now()) {
-  publicMarketplaceQuotaCooldownUntil = now + PUBLIC_MARKETPLACE_QUOTA_COOLDOWN_MS;
-}
 
 function invalidateMarketplaceCaches() {
   publicActiveListingsCache = null;
@@ -3825,7 +4034,6 @@ function invalidateMarketplaceCaches() {
   publicCategoryMetricsCache = null;
   publicHomeDataCache = null;
   marketplaceStatsCache = null;
-  publicMarketplaceQuotaCooldownUntil = 0;
 }
 
 function parseCreatedAt(value) {
@@ -4054,169 +4262,6 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
   };
 }
 
-function isDemoListing(listing) {
-  const id = normalizeMarketplaceText(listing?.id);
-  const seller = normalizeMarketplaceText(listing?.sellerUid || listing?.sellerId);
-  return id.startsWith('demo-') || id.startsWith('catalog-') || seller.includes('demo');
-}
-
-function sanitizeListingWritePayload(input = {}) {
-  const title = normalizeNonEmptyString(input.title, 'Equipment Listing');
-  const category = normalizeNonEmptyString(input.category, 'Equipment');
-  const make = normalizeNonEmptyString(input.make || input.manufacturer || input.brand);
-  const manufacturer = normalizeNonEmptyString(input.manufacturer || make);
-  const model = normalizeNonEmptyString(input.model);
-  const year = toFiniteNumberOrUndefined(input.year) || null;
-  const price = toFiniteNumberOrUndefined(input.price) || 0;
-  const hours = toFiniteNumberOrUndefined(input.hours) || 0;
-  const imageVariants = Array.isArray(input.imageVariants)
-    ? input.imageVariants
-        .filter((entry) => entry && typeof entry === 'object')
-        .slice(0, 20)
-        .map((entry) => ({
-          detailUrl: normalizeNonEmptyString(entry.detailUrl || entry.url),
-          thumbnailUrl: normalizeNonEmptyString(entry.thumbnailUrl || entry.thumbUrl || entry.detailUrl || entry.url),
-          format: normalizeNonEmptyString(entry.format, 'image/jpeg'),
-        }))
-        .filter((entry) => entry.detailUrl)
-    : [];
-
-  return {
-    title,
-    description: normalizeNonEmptyString(input.description, `${title} listed on Forestry Equipment Sales.`),
-    category,
-    subcategory: normalizeNonEmptyString(input.subcategory || category, category),
-    make,
-    manufacturer,
-    model,
-    year,
-    price,
-    currency: normalizeNonEmptyString(input.currency, 'USD'),
-    hours,
-    condition: normalizeNonEmptyString(input.condition, 'Used'),
-    location: normalizeNonEmptyString(input.location),
-    city: normalizeNonEmptyString(input.city),
-    state: normalizeNonEmptyString(input.state),
-    country: normalizeNonEmptyString(input.country),
-    serialNumber: normalizeNonEmptyString(input.serialNumber),
-    stockNumber: normalizeNonEmptyString(input.stockNumber),
-    images: normalizeImageUrls(Array.isArray(input.images) ? input.images : []),
-    imageVariants,
-    videoUrls: Array.isArray(input.videoUrls)
-      ? input.videoUrls.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 10)
-      : [],
-    specifications: input.specifications && typeof input.specifications === 'object' ? input.specifications : {},
-    specs: input.specs && typeof input.specs === 'object'
-      ? input.specs
-      : (input.specifications && typeof input.specifications === 'object' ? input.specifications : {}),
-    conditionChecklist: input.conditionChecklist && typeof input.conditionChecklist === 'object' ? input.conditionChecklist : {},
-    features: Array.isArray(input.features)
-      ? input.features.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 20)
-      : [],
-    featured: Boolean(input.featured),
-    featuredRank: toFiniteNumberOrUndefined(input.featuredRank) || 0,
-    metaTitle: normalizeNonEmptyString(input.metaTitle),
-    metaDescription: normalizeNonEmptyString(input.metaDescription),
-    canonicalSlug: normalizeNonEmptyString(input.canonicalSlug),
-    contactPhone: normalizeNonEmptyString(input.contactPhone),
-    contactEmail: normalizeNonEmptyString(input.contactEmail).toLowerCase(),
-    latitude: toFiniteNumberOrUndefined(input.latitude),
-    longitude: toFiniteNumberOrUndefined(input.longitude),
-  };
-}
-
-function buildSeedDemoListingsForSeller(sellerUid) {
-  const seedId = Date.now();
-  const baseRecords = [
-    {
-      key: 'pending',
-      title: '2021 John Deere 853M Demo',
-      category: 'Forestry',
-      subcategory: 'Feller Bunchers',
-      manufacturer: 'John Deere',
-      model: '853M',
-      year: 2021,
-      price: 289500,
-      hours: 4280,
-      condition: 'Used',
-      location: 'Grand Rapids, MN',
-      stockNumber: `DEM-${seedId}-P`,
-      description: 'Pending review demo listing for staging lifecycle validation.',
-      approvalStatus: 'pending',
-      paymentStatus: 'pending',
-      status: 'pending',
-    },
-    {
-      key: 'approved-unpaid',
-      title: '2020 Tigercat 620E Demo',
-      category: 'Forestry',
-      subcategory: 'Skidders',
-      manufacturer: 'Tigercat',
-      model: '620E',
-      year: 2020,
-      price: 219000,
-      hours: 5010,
-      condition: 'Used',
-      location: 'Duluth, MN',
-      stockNumber: `DEM-${seedId}-A`,
-      description: 'Approved but unpaid demo listing for staging lifecycle validation.',
-      approvalStatus: 'approved',
-      paymentStatus: 'pending',
-      status: 'active',
-    },
-    {
-      key: 'live',
-      title: '2022 Caterpillar 535 Demo',
-      category: 'Forestry',
-      subcategory: 'Log Loaders',
-      manufacturer: 'Caterpillar',
-      model: '535',
-      year: 2022,
-      price: 332000,
-      hours: 1780,
-      condition: 'Used',
-      location: 'Bemidji, MN',
-      stockNumber: `DEM-${seedId}-L`,
-      description: 'Live demo listing for staging lifecycle validation.',
-      approvalStatus: 'approved',
-      paymentStatus: 'paid',
-      status: 'active',
-      publishedAt: admin.firestore.FieldValue.serverTimestamp(),
-      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-  ];
-
-  return baseRecords.map((record) => ({
-    ...record,
-    id: `demo-${record.key}-${seedId}`,
-    sellerUid,
-    sellerId: sellerUid,
-    currency: 'USD',
-    images: [
-      `https://picsum.photos/seed/${record.key}-${seedId}-1/1200/800`,
-      `https://picsum.photos/seed/${record.key}-${seedId}-2/1200/800`,
-    ],
-    imageVariants: [
-      {
-        detailUrl: `https://picsum.photos/seed/${record.key}-${seedId}-detail-1/1600/1000`,
-        thumbnailUrl: `https://picsum.photos/seed/${record.key}-${seedId}-thumb-1/480/320`,
-        format: 'image/jpeg',
-      },
-    ],
-    features: ['Staging QA', 'Lifecycle Validation', 'Demo Inventory'],
-    sellerVerified: true,
-    qualityValidated: true,
-    approvedBy: record.approvalStatus === 'approved' ? sellerUid : null,
-    publishedAt: record.publishedAt || null,
-    approvedAt: record.approvedAt || null,
-    rejectedAt: null,
-    rejectedBy: null,
-    rejectionReason: null,
-    views: 0,
-    leads: 0,
-  }));
-}
-
 function toMarketplaceNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -4228,6 +4273,222 @@ function toMarketplaceNumber(value) {
 
 function normalizeMarketplaceText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function isVerifiedSellerRole(role) {
+  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalizeUserRole(role));
+}
+
+function getFeaturedListingCapForRole(role) {
+  const normalizedRole = normalizeUserRole(role);
+  if (canAdministrateAccount(normalizedRole)) return Number.POSITIVE_INFINITY;
+  return FEATURED_LISTING_CAPS[normalizedRole] || 0;
+}
+
+function sanitizeListingCreateImages(value) {
+  return normalizeImageUrls(Array.isArray(value) ? value : []);
+}
+
+function sanitizeListingCreateImageVariants(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => ({
+      thumbnailUrl: normalizeNonEmptyString(entry.thumbnailUrl),
+      detailUrl: normalizeNonEmptyString(entry.detailUrl),
+      format: normalizeNonEmptyString(entry.format),
+    }))
+    .filter((entry) => entry.thumbnailUrl || entry.detailUrl)
+    .slice(0, 40);
+}
+
+function sanitizeListingConditionChecklist(value) {
+  if (!value || typeof value !== 'object') {
+    return {
+      engineChecked: false,
+      undercarriageChecked: false,
+      hydraulicsLeakStatus: '',
+      serviceRecordsAvailable: false,
+      partsManualAvailable: false,
+      serviceManualAvailable: false,
+    };
+  }
+
+  return {
+    engineChecked: Boolean(value.engineChecked),
+    undercarriageChecked: Boolean(value.undercarriageChecked),
+    hydraulicsLeakStatus: normalizeNonEmptyString(value.hydraulicsLeakStatus),
+    serviceRecordsAvailable: Boolean(value.serviceRecordsAvailable),
+    partsManualAvailable: Boolean(value.partsManualAvailable),
+    serviceManualAvailable: Boolean(value.serviceManualAvailable),
+  };
+}
+
+function sanitizeListingCreatePayload(rawListing = {}) {
+  const listingInput = rawListing && typeof rawListing === 'object' ? rawListing : {};
+  const picked = {};
+
+  for (const [key, value] of Object.entries(listingInput)) {
+    if (!ACCOUNT_LISTING_CREATE_ALLOWED_KEYS.has(key)) continue;
+    picked[key] = value;
+  }
+
+  const manufacturer = normalizeNonEmptyString(picked.manufacturer || picked.make || picked.brand);
+  const specs = picked.specs && typeof picked.specs === 'object'
+    ? picked.specs
+    : (picked.specifications && typeof picked.specifications === 'object' ? picked.specifications : {});
+
+  return stripUndefinedDeep({
+    id: normalizeNonEmptyString(picked.id),
+    title: normalizeNonEmptyString(picked.title),
+    category: normalizeNonEmptyString(picked.category),
+    subcategory: normalizeNonEmptyString(picked.subcategory),
+    make: manufacturer,
+    manufacturer,
+    brand: normalizeNonEmptyString(picked.brand || manufacturer),
+    model: normalizeNonEmptyString(picked.model),
+    year: toFiniteNumberOrUndefined(picked.year) || 0,
+    hours: toFiniteNumberOrUndefined(picked.hours) || 0,
+    condition: normalizeNonEmptyString(picked.condition),
+    price: toFiniteNumberOrUndefined(picked.price) || 0,
+    salePrice: toFiniteNumberOrUndefined(picked.salePrice) ?? null,
+    currency: normalizeNonEmptyString(picked.currency, 'USD'),
+    location: normalizeNonEmptyString(picked.location),
+    city: normalizeNonEmptyString(picked.city),
+    state: normalizeNonEmptyString(picked.state),
+    country: normalizeNonEmptyString(picked.country),
+    latitude: toFiniteNumberOrUndefined(picked.latitude),
+    longitude: toFiniteNumberOrUndefined(picked.longitude),
+    serialNumber: normalizeNonEmptyString(picked.serialNumber),
+    stockNumber: normalizeNonEmptyString(picked.stockNumber),
+    description: normalizeNonEmptyString(picked.description),
+    images: sanitizeListingCreateImages(picked.images),
+    imageVariants: sanitizeListingCreateImageVariants(picked.imageVariants),
+    videoUrls: Array.isArray(picked.videoUrls)
+      ? picked.videoUrls.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 6)
+      : [],
+    features: Array.isArray(picked.features)
+      ? picked.features.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 40)
+      : [],
+    specs,
+    conditionChecklist: sanitizeListingConditionChecklist(picked.conditionChecklist),
+    featured: Boolean(picked.featured),
+    featuredRank: toFiniteNumberOrUndefined(picked.featuredRank) ?? null,
+    metaTitle: normalizeNonEmptyString(picked.metaTitle),
+    metaDescription: normalizeNonEmptyString(picked.metaDescription),
+    canonicalSlug: normalizeNonEmptyString(picked.canonicalSlug),
+    contactPhone: normalizeNonEmptyString(picked.contactPhone),
+    contactEmail: normalizeNonEmptyString(picked.contactEmail).toLowerCase(),
+  });
+}
+
+function validateListingCreatePayload(listing) {
+  const errors = [];
+
+  if (!listing.category) errors.push('Category is required.');
+  if (!listing.subcategory) errors.push('Subcategory is required.');
+  if (!listing.title) errors.push('Listing title is required.');
+  if (!String(listing.make || listing.manufacturer || '').trim()) errors.push('Manufacturer is required.');
+  if (!listing.model) errors.push('Model is required.');
+  if (!listing.year || Number(listing.year) <= 0) errors.push('Year is required.');
+  if (!Number.isFinite(Number(listing.hours)) || Number(listing.hours) < 0) errors.push('Operating hours are required.');
+  if (!listing.condition) errors.push('Condition is required.');
+  if (!Number.isFinite(Number(listing.price)) || Number(listing.price) < 0) errors.push('Price is required.');
+  if (!listing.location) errors.push('Location is required.');
+
+  const imageCount = Array.isArray(listing.images) ? listing.images.length : 0;
+  if (imageCount < 5) errors.push('Minimum 5 images are required.');
+  if (imageCount > 40) errors.push('Maximum 40 images are allowed.');
+
+  if (Array.isArray(listing.videoUrls) && !listing.videoUrls.every((url) => /^https?:\/\//i.test(String(url || '')))) {
+    errors.push('All video URLs must be valid http/https links.');
+  }
+
+  const hydraulicsLeakStatus = normalize(listing?.conditionChecklist?.hydraulicsLeakStatus);
+  if (hydraulicsLeakStatus && !['yes', 'no'].includes(hydraulicsLeakStatus)) {
+    errors.push('Hydraulics leak status must be set to yes or no when provided.');
+  }
+
+  return errors;
+}
+
+function sanitizeListingUpdatePayload(existingListing = {}, rawUpdates = {}) {
+  const requestedUpdates = rawUpdates && typeof rawUpdates === 'object' ? rawUpdates : {};
+  const requestedKeys = new Set(Object.keys(requestedUpdates));
+  const mergedSanitized = sanitizeListingCreatePayload({
+    ...existingListing,
+    ...requestedUpdates,
+  });
+
+  if (
+    !requestedKeys.has('location') &&
+    (requestedKeys.has('city') || requestedKeys.has('state') || requestedKeys.has('country'))
+  ) {
+    mergedSanitized.location = [
+      normalizeNonEmptyString(requestedUpdates.city, normalizeNonEmptyString(existingListing.city)),
+      normalizeNonEmptyString(requestedUpdates.state, normalizeNonEmptyString(existingListing.state)),
+      normalizeNonEmptyString(requestedUpdates.country, normalizeNonEmptyString(existingListing.country)),
+    ].filter(Boolean).join(', ');
+  }
+
+  const sanitizedUpdates = {};
+
+  for (const key of requestedKeys) {
+    if (!ACCOUNT_LISTING_UPDATE_ALLOWED_KEYS.has(key)) continue;
+
+    if (key === 'specifications' || key === 'specs') {
+      sanitizedUpdates.specs = mergedSanitized.specs;
+      sanitizedUpdates.specifications = mergedSanitized.specs;
+      continue;
+    }
+
+    if (key === 'make' || key === 'manufacturer' || key === 'brand') {
+      sanitizedUpdates.make = mergedSanitized.make;
+      sanitizedUpdates.manufacturer = mergedSanitized.manufacturer;
+      sanitizedUpdates.brand = mergedSanitized.brand;
+      continue;
+    }
+
+    sanitizedUpdates[key] = mergedSanitized[key];
+  }
+
+  if (
+    requestedKeys.has('city') ||
+    requestedKeys.has('state') ||
+    requestedKeys.has('country') ||
+    requestedKeys.has('location')
+  ) {
+    sanitizedUpdates.city = mergedSanitized.city;
+    sanitizedUpdates.state = mergedSanitized.state;
+    sanitizedUpdates.country = mergedSanitized.country;
+    sanitizedUpdates.location = mergedSanitized.location;
+  }
+
+  if (requestedKeys.has('featured')) {
+    sanitizedUpdates.featured = Boolean(mergedSanitized.featured);
+  }
+
+  return {
+    sanitizedUpdates: stripUndefinedDeep(sanitizedUpdates),
+    mergedSanitized,
+    shouldValidateQuality: [...requestedKeys].some((key) => ACCOUNT_LISTING_QUALITY_KEYS.has(key)),
+  };
+}
+
+async function countSellerListingsForCapacity(sellerUid, options = {}) {
+  const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+  if (!normalizedSellerUid) return 0;
+
+  const snapshot = options.featuredOnly
+    ? await getDb().collection('listings').where('sellerUid', '==', normalizedSellerUid).where('featured', '==', true).get()
+    : await getDb().collection('listings').where('sellerUid', '==', normalizedSellerUid).get();
+
+  return snapshot.docs.filter((docSnapshot) => {
+    if (options.excludeListingId && docSnapshot.id === options.excludeListingId) return false;
+    const data = docSnapshot.data() || {};
+    return normalizeNonEmptyString(data.status, 'active').toLowerCase() !== 'sold';
+  }).length;
 }
 
 function toMarketplaceMillis(value) {
@@ -4459,9 +4720,6 @@ async function loadActivePublicListings() {
   if (publicActiveListingsCache && now - publicActiveListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
     return publicActiveListingsCache.value;
   }
-  if (isPublicMarketplaceQuotaCooldownActive(now)) {
-    return publicActiveListingsCache?.value || getFallbackMarketplaceListings();
-  }
 
   try {
     const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.listings).get();
@@ -4473,7 +4731,6 @@ async function loadActivePublicListings() {
       throw error;
     }
 
-    activatePublicMarketplaceQuotaCooldown(now);
     logger.warn('Serving emergency public listings snapshot because Firestore public read quota is exhausted.', {
       collection: PUBLIC_SEO_COLLECTIONS.listings,
     });
@@ -4487,9 +4744,6 @@ async function loadSoldMarketplaceListings() {
   const now = Date.now();
   if (publicSoldListingsCache && now - publicSoldListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
     return publicSoldListingsCache.value;
-  }
-  if (isPublicMarketplaceQuotaCooldownActive(now)) {
-    return publicSoldListingsCache?.value || getFallbackMarketplaceHomeData().recentSoldListings || [];
   }
 
   try {
@@ -4505,7 +4759,6 @@ async function loadSoldMarketplaceListings() {
       throw error;
     }
 
-    activatePublicMarketplaceQuotaCooldown(now);
     logger.warn('Serving empty sold-listings snapshot because Firestore public read quota is exhausted.', {
       collection: 'listings',
     });
@@ -4686,9 +4939,6 @@ async function getMarketplaceStatsPayload() {
   if (marketplaceStatsCache && now - marketplaceStatsCache.fetchedAt < MARKETPLACE_STATS_TTL_MS) {
     return marketplaceStatsCache.value;
   }
-  if (isPublicMarketplaceQuotaCooldownActive(now)) {
-    return marketplaceStatsCache?.value || getFallbackMarketplaceStats();
-  }
 
   try {
     const [listingsSnap, inquiriesSnap] = await Promise.all([
@@ -4749,7 +4999,6 @@ async function getMarketplaceStatsPayload() {
       throw error;
     }
 
-    activatePublicMarketplaceQuotaCooldown(now);
     logger.warn('Serving emergency marketplace stats snapshot because Firestore public read quota is exhausted.');
     const payload = getFallbackMarketplaceStats();
     marketplaceStatsCache = { value: payload, fetchedAt: now };
@@ -4758,11 +5007,6 @@ async function getMarketplaceStatsPayload() {
 }
 
 async function assessRecaptchaToken(token, action) {
-  if (!RECAPTCHA_SITE_KEY) {
-    logger.warn('reCAPTCHA Enterprise site key is not configured for this environment. Allowing request.');
-    return { valid: true, score: null };
-  }
-
   const client = new RecaptchaEnterpriseServiceClient();
   const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID);
   const request = {
@@ -5467,6 +5711,83 @@ function deriveAccountProfileOnboardingIntent(userData = {}, accountState = {}) 
   return null;
 }
 
+function buildStorefrontSlugValue(value, fallback = 'timber-equip-storefront') {
+  const slug = String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+
+  return slug || fallback;
+}
+
+function supportsEnterpriseStorefrontRole(role) {
+  return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalizeUserRole(role));
+}
+
+function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
+  const payload = rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : {};
+  const sanitized = {};
+
+  const assignString = (key, maxLength = 255, { lower = false } = {}) => {
+    if (!(key in payload)) return;
+    let value = String(payload[key] ?? '').trim();
+    if (lower) value = value.toLowerCase();
+    sanitized[key] = value.slice(0, maxLength);
+  };
+
+  assignString('displayName', 100);
+  assignString('email', 320, { lower: true });
+  assignString('phoneNumber', 80);
+  assignString('company', 200);
+  assignString('website', 240);
+  assignString('about', 5000);
+  assignString('bio', 1200);
+  assignString('location', 240);
+  assignString('photoURL', 2000);
+  assignString('coverPhotoUrl', 2000);
+  assignString('preferredLanguage', 16);
+  assignString('preferredCurrency', 12);
+  assignString('storefrontName', 180);
+  assignString('storefrontSlug', 200);
+  assignString('storefrontTagline', 240);
+  assignString('storefrontDescription', 5000);
+  assignString('seoTitle', 200);
+  assignString('seoDescription', 600);
+  assignString('mfaPhoneNumber', 80);
+  assignString('mfaDisplayName', 120);
+
+  if ('emailNotificationsEnabled' in payload) {
+    sanitized.emailNotificationsEnabled = Boolean(payload.emailNotificationsEnabled);
+  }
+
+  if ('mfaEnabled' in payload) {
+    sanitized.mfaEnabled = Boolean(payload.mfaEnabled);
+  }
+
+  if ('mfaMethod' in payload) {
+    const normalizedMethod = normalizeNonEmptyString(payload.mfaMethod).toLowerCase();
+    sanitized.mfaMethod = normalizedMethod === 'sms' ? 'sms' : null;
+  }
+
+  if ('mfaEnrolledAt' in payload) {
+    sanitized.mfaEnrolledAt = normalizeNonEmptyString(payload.mfaEnrolledAt) || null;
+  }
+
+  if ('seoKeywords' in payload) {
+    sanitized.seoKeywords = Array.isArray(payload.seoKeywords)
+      ? payload.seoKeywords
+        .map((keyword) => String(keyword || '').trim())
+        .filter(Boolean)
+        .slice(0, 30)
+      : [];
+  }
+
+  return sanitized;
+}
+
 function serializeAccountProfileData(uid, userData = {}, authRecord = null, overrides = {}) {
   const normalizedUid = normalizeNonEmptyString(uid);
   const normalizedEmail = normalizeNonEmptyString(
@@ -5554,49 +5875,32 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
   };
 }
 
-function normalizeAccountBootstrapSummarySource(results = []) {
-  const availableCount = results.filter((result) => result?.available).length;
-  if (availableCount === 0) {
-    return 'unavailable';
-  }
-  if (availableCount === results.length) {
-    return 'live';
-  }
-  return 'partial';
-}
-
-async function getAggregateCountSafe(queryRef, description, context = {}) {
-  const result = await runFirestoreTaskWithQuotaTolerance(async () => {
-    if (typeof queryRef?.count === 'function') {
-      const aggregateSnapshot = await queryRef.count().get();
-      return Number(aggregateSnapshot.data()?.count || 0);
-    }
-
-    const snapshot = await queryRef.get();
-    return snapshot.size;
-  }, description, context);
-
+function buildSeatContextProfileFallback(actorUid, profile = {}) {
+  const activePlanId = normalizeNonEmptyString(profile.activeSubscriptionPlanId).toLowerCase();
+  const activePlanIds = MANAGED_ACCOUNT_PLAN_IDS.includes(activePlanId) ? [activePlanId] : [];
   return {
-    count: Number(result.value || 0),
-    available: Boolean(result.ok),
-    firestoreQuotaLimited: Boolean(result.skipped),
+    ownerUid: actorUid,
+    seatLimit: Number(profile.managedAccountCap) || (activePlanIds.length > 0 ? DEALER_MANAGED_ACCOUNT_LIMIT : 0),
+    seatCount: 0,
+    activePlanIds,
   };
 }
 
-async function loadAccountProfileState(decodedToken) {
-  const actorUid = normalizeNonEmptyString(decodedToken.uid);
-  const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+async function buildAccountBootstrapPayload(decodedToken, options = {}) {
+  const stripe = options?.stripe || null;
+  const actorUid = normalizeNonEmptyString(decodedToken?.uid);
+  const actorEmail = normalizeNonEmptyString(decodedToken?.email);
   const actorDisplayName =
-    normalizeNonEmptyString(decodedToken.name)
-    || normalizeNonEmptyString(decodedToken.displayName)
-    || 'Forestry Equipment Sales User';
-  const actorPhotoUrl = normalizeNonEmptyString(decodedToken.picture);
+    normalizeNonEmptyString(decodedToken?.name) ||
+    normalizeNonEmptyString(decodedToken?.displayName) ||
+    'Forestry Equipment Sales User';
+  const actorPhotoUrl = normalizeNonEmptyString(decodedToken?.picture);
 
   let authRecord = null;
   try {
     authRecord = await getAuthUserRecordSafe(actorUid);
   } catch (error) {
-    logger.warn('Unable to load auth record for account profile API.', {
+    logger.warn('Unable to load auth record for account bootstrap API.', {
       actorUid,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -5620,293 +5924,474 @@ async function loadAccountProfileState(decodedToken) {
     }
 
     firestoreQuotaLimited = true;
-    logger.warn('Account profile API falling back to auth-only data because Firestore quota is exhausted.', {
+    logger.warn('Account bootstrap API falling back to auth-only data because Firestore quota is exhausted.', {
       actorUid,
     });
   }
 
+  const baseAccountState = buildAccountStateFromSources(userData, authRecord);
+  const stripeCustomerId = normalizeNonEmptyString(userData.stripeCustomerId);
+  let subscriptionSummary = emptyAccountSubscriptionAccessSummary();
+  try {
+    subscriptionSummary = await resolveAccountSubscriptionAccessSummary(actorUid, {
+      stripe,
+      customerId: stripeCustomerId,
+      skipFirestore: firestoreQuotaLimited || !!stripeCustomerId,
+    });
+  } catch (error) {
+    logger.warn('Account bootstrap API could not resolve live subscription summary.', {
+      actorUid,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const subscriptionOverrides = {};
+  const effectivePlanId = normalizeNonEmptyString(subscriptionSummary.planId);
+  if (effectivePlanId) {
+    subscriptionOverrides.activeSubscriptionPlanId = effectivePlanId;
+    subscriptionOverrides.subscriptionStatus = normalizeNonEmptyString(subscriptionSummary.subscriptionStatus) || 'active';
+    subscriptionOverrides.listingCap = Number.isFinite(Number(subscriptionSummary.listingCap))
+      ? Number(subscriptionSummary.listingCap)
+      : baseAccountState.listingCap;
+    subscriptionOverrides.managedAccountCap = Number.isFinite(Number(subscriptionSummary.managedAccountCap))
+      ? Number(subscriptionSummary.managedAccountCap)
+      : baseAccountState.managedAccountCap;
+    subscriptionOverrides.currentSubscriptionId = normalizeNonEmptyString(subscriptionSummary.currentSubscriptionId) || null;
+    subscriptionOverrides.currentPeriodEnd = subscriptionSummary.currentPeriodEndIso || null;
+    if (!isSubscriptionExemptRole(baseAccountState.role)) {
+      subscriptionOverrides.role = getSellerRoleForPlan(effectivePlanId);
+      subscriptionOverrides.accountAccessSource = 'subscription';
+      subscriptionOverrides.accountStatus = 'active';
+    }
+  }
+
+  const profile = serializeAccountProfileData(actorUid, userData, authRecord, {
+    uid: actorUid,
+    email: actorEmail,
+    displayName: authRecord?.displayName || actorDisplayName,
+    photoURL: authRecord?.photoURL || actorPhotoUrl || null,
+    emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken?.email_verified),
+    ...subscriptionOverrides,
+  });
+
+  const normalizedRole = normalizeNonEmptyString(profile.role).toLowerCase();
+  const shouldLoadSeatContext =
+    Number(profile.managedAccountCap) > 0 ||
+    ['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
+
+  let seatContext = null;
+  let seatContextSource = 'not_applicable';
+  if (shouldLoadSeatContext) {
+    try {
+      seatContext = await getManagedAccountSeatContext(actorUid);
+      seatContextSource = 'firestore';
+    } catch (error) {
+      if (!isFirestoreQuotaExceeded(error)) {
+        throw error;
+      }
+
+      firestoreQuotaLimited = true;
+      seatContext = buildSeatContextProfileFallback(actorUid, profile);
+      seatContextSource = 'profile_fallback';
+      logger.warn('Account bootstrap API falling back to profile-derived seat context because Firestore quota is exhausted.', {
+        actorUid,
+      });
+    }
+  }
+
   return {
-    actorUid,
-    actorEmail,
-    actorDisplayName,
-    actorPhotoUrl,
-    authRecord,
-    userData,
+    profile,
+    source: profileSource,
     profileDocExists,
     firestoreQuotaLimited,
-    profileSource,
-    profile: serializeAccountProfileData(actorUid, userData, authRecord, {
-      uid: actorUid,
-      email: actorEmail,
-      displayName: authRecord?.displayName || actorDisplayName,
-      photoURL: authRecord?.photoURL || actorPhotoUrl || null,
-      emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
-    }),
+    seatContext,
+    seatContextSource,
+    fetchedAt: new Date().toISOString(),
   };
 }
 
-async function buildAccountBootstrapSummaries(profileState) {
-  const actorRole = normalizeUserRole(profileState?.profile?.role || '');
-  const actorEmail = normalizeNonEmptyString(profileState?.actorEmail).toLowerCase();
-  const actorUid = normalizeNonEmptyString(profileState?.actorUid);
-  if (!canAdministrateAccount(actorRole) && !isPrivilegedAdminEmail(actorEmail)) {
+async function listAdminDirectoryUsersPayload() {
+  const authUsers = [];
+  let nextPageToken;
+  do {
+    const listResult = await admin.auth().listUsers(1000, nextPageToken);
+    authUsers.push(...listResult.users);
+    nextPageToken = listResult.pageToken;
+  } while (nextPageToken);
+
+  if (authUsers.length === 0) {
     return {
-      adminUsers: null,
-      billing: null,
-      content: null,
+      users: [],
+      firestoreQuotaLimited: false,
+      degradedSections: [],
+      errors: {},
     };
   }
 
-  const summaryContext = { actorUid, actorRole };
+  const db = getDb();
+  const uidChunks = [];
+  for (let i = 0; i < authUsers.length; i += 500) {
+    uidChunks.push(authUsers.slice(i, i + 500));
+  }
+
+  const profileDocMap = {};
+  let firestoreProfilesAvailable = true;
+  try {
+    await Promise.all(
+      uidChunks.map(async (chunk) => {
+        const refs = chunk.map((authUserRecord) => db.collection('users').doc(authUserRecord.uid));
+        const snaps = await db.getAll(...refs);
+        snaps.forEach((snap) => {
+          profileDocMap[snap.id] = snap;
+        });
+      })
+    );
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+    firestoreProfilesAvailable = false;
+    logger.warn('Admin user directory falling back to auth-only data because Firestore quota is exhausted.', {
+      authUserCount: authUsers.length,
+    });
+  }
+
+  const users = authUsers.map((authRecord) => {
+    const snap = profileDocMap[authRecord.uid];
+    const data = snap && snap.exists ? (snap.data() || {}) : {};
+
+    const authDisabled = Boolean(authRecord.disabled);
+    const rawAccountStatus = normalize(String(data.accountStatus || 'active'));
+    const accountStatus = ['active', 'pending', 'suspended'].includes(rawAccountStatus)
+      ? rawAccountStatus
+      : (authDisabled ? 'suspended' : 'active');
+    const displayName = String(data.displayName || data.name || authRecord.displayName || '').trim();
+    const email = String(data.email || authRecord.email || '').trim().toLowerCase();
+    const phone = String(data.phoneNumber || '').trim();
+    const createdAt = timestampValueToIso(data.createdAt) || timestampValueToIso(authRecord.metadata?.creationTime);
+    const updatedAt = timestampValueToIso(data.updatedAt);
+    const lastLogin =
+      timestampValueToIso(authRecord.metadata?.lastSignInTime) ||
+      timestampValueToIso(data.lastLogin) ||
+      updatedAt ||
+      createdAt;
+    const fallbackRole = isPrivilegedAdminEmail(email)
+      ? 'super_admin'
+      : normalizeUserRole(String(authRecord.customClaims?.role || 'buyer'));
+    const role = firestoreProfilesAvailable && isSupportedUserRole(String(data.role || ''))
+      ? String(data.role)
+      : fallbackRole;
+    const fallbackAccountStatus = authDisabled ? 'suspended' : 'active';
+
+    return {
+      id: authRecord.uid,
+      uid: authRecord.uid,
+      name: displayName || email || 'Unknown User',
+      displayName: displayName || email || 'Unknown User',
+      email,
+      phone,
+      phoneNumber: phone,
+      company: String(data.company || '').trim(),
+      role,
+      status: toAccountStatusLabel(accountStatus, authDisabled),
+      accountStatus: firestoreProfilesAvailable ? accountStatus : fallbackAccountStatus,
+      authDisabled,
+      emailVerified: Boolean(authRecord.emailVerified),
+      lastLogin,
+      lastActive: lastLogin,
+      memberSince: createdAt,
+      createdAt,
+      updatedAt,
+      totalListings: Number(data.totalListings || 0),
+      totalLeads: Number(data.totalLeads || 0),
+      parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+    };
+  });
+
+  users.sort((left, right) => {
+    const leftTime = Date.parse(left.lastLogin || left.memberSince || '') || 0;
+    const rightTime = Date.parse(right.lastLogin || right.memberSince || '') || 0;
+    return rightTime - leftTime;
+  });
+
+  return {
+    users,
+    firestoreQuotaLimited: !firestoreProfilesAvailable,
+    degradedSections: firestoreProfilesAvailable ? [] : ['users_profile_enrichment'],
+    errors: firestoreProfilesAvailable
+      ? {}
+      : {
+          users: 'User profile enrichment is temporarily unavailable because the Firestore daily read quota is exhausted.',
+      },
+  };
+}
+
+async function getFirestoreQueryCount(query) {
+  if (query && typeof query.count === 'function') {
+    const aggregateSnapshot = await query.count().get();
+    const aggregateData = typeof aggregateSnapshot?.data === 'function' ? aggregateSnapshot.data() : {};
+    return Number(aggregateData?.count || 0);
+  }
+
+  const snapshot = await query.get();
+  return snapshot.size;
+}
+
+function computeAdminOverviewMarketSentiment({ conversionRate, inventoryTurnoverRate, liveListings }) {
+  if (liveListings <= 0) {
+    return 'Idle';
+  }
+
+  if (conversionRate >= 12 || inventoryTurnoverRate >= 18) {
+    return 'Bullish';
+  }
+
+  if (conversionRate >= 5 || inventoryTurnoverRate >= 8) {
+    return 'Stable';
+  }
+
+  return 'Cautious';
+}
+
+async function buildAdminOverviewBootstrapPayload() {
+  const db = getDb();
   const [
-    totalUsersResult,
+    totalListingsResult,
+    liveListingsResult,
+    pendingReviewResult,
+    rejectedListingsResult,
+    soldListingsResult,
+    recentListingsResult,
+    inquiriesResult,
+    recentCallsResult,
+    callCountResult,
     activeUsersResult,
-    suspendedUsersResult,
-    pendingUsersResult,
-    invoiceCountResult,
-    paidInvoiceCountResult,
-    subscriptionCountResult,
-    activeSubscriptionCountResult,
-    trialingSubscriptionCountResult,
-    auditLogCountResult,
-    blogPostCountResult,
-    publishedBlogPostCountResult,
-    mediaCountResult,
-    contentBlockCountResult,
-  ] = await Promise.all([
-    getAggregateCountSafe(getDb().collection('users'), 'Account bootstrap total user summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('users').where('accountStatus', '==', 'active'), 'Account bootstrap active user summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('users').where('accountStatus', '==', 'suspended'), 'Account bootstrap suspended user summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('users').where('accountStatus', '==', 'pending'), 'Account bootstrap pending user summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('invoices'), 'Account bootstrap invoice summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('invoices').where('status', '==', 'paid'), 'Account bootstrap paid invoice summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('subscriptions'), 'Account bootstrap subscription summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('subscriptions').where('status', '==', 'active'), 'Account bootstrap active subscription summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('subscriptions').where('status', '==', 'trialing'), 'Account bootstrap trialing subscription summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('billingAuditLogs'), 'Account bootstrap billing audit summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('blogPosts'), 'Account bootstrap blog post summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('blogPosts').where('status', '==', 'published'), 'Account bootstrap published blog post summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('mediaLibrary'), 'Account bootstrap media summary', summaryContext),
-    getAggregateCountSafe(getDb().collection('contentBlocks'), 'Account bootstrap content block summary', summaryContext),
+  ] = await Promise.allSettled([
+    getFirestoreQueryCount(db.collection('listings')),
+    getFirestoreQueryCount(
+      db.collection('listings')
+        .where('approvalStatus', '==', 'approved')
+        .where('paymentStatus', '==', 'paid')
+        .where('status', '==', 'active')
+    ),
+    getFirestoreQueryCount(db.collection('listings').where('approvalStatus', '==', 'pending')),
+    getFirestoreQueryCount(db.collection('listings').where('approvalStatus', '==', 'rejected')),
+    getFirestoreQueryCount(db.collection('listings').where('status', '==', 'sold')),
+    db.collection('listings').orderBy('createdAt', 'desc').limit(5).get(),
+    db.collection('inquiries').orderBy('createdAt', 'desc').limit(250).get(),
+    db.collection('calls').orderBy('createdAt', 'desc').limit(5).get(),
+    getFirestoreQueryCount(db.collection('calls')),
+    getFirestoreQueryCount(db.collection('users').where('accountStatus', '==', 'active')),
   ]);
 
-  const adminResults = [totalUsersResult, activeUsersResult, suspendedUsersResult, pendingUsersResult];
-  const billingResults = [invoiceCountResult, paidInvoiceCountResult, subscriptionCountResult, activeSubscriptionCountResult, trialingSubscriptionCountResult, auditLogCountResult];
-  const contentResults = [blogPostCountResult, publishedBlogPostCountResult, mediaCountResult, contentBlockCountResult];
+  const errors = {};
+  const degradedSections = [];
+  let firestoreQuotaLimited = false;
 
-  return {
-    adminUsers: {
-      totalUsers: totalUsersResult.count,
-      activeUsers: activeUsersResult.count,
-      suspendedUsers: suspendedUsersResult.count,
-      pendingUsers: pendingUsersResult.count,
-      source: normalizeAccountBootstrapSummarySource(adminResults),
-      firestoreQuotaLimited: adminResults.some((result) => result.firestoreQuotaLimited),
-    },
-    billing: {
-      invoiceCount: invoiceCountResult.count,
-      paidInvoiceCount: paidInvoiceCountResult.count,
-      subscriptionCount: subscriptionCountResult.count,
-      activeSubscriptionCount: activeSubscriptionCountResult.count + trialingSubscriptionCountResult.count,
-      auditLogCount: auditLogCountResult.count,
-      source: normalizeAccountBootstrapSummarySource(billingResults),
-      firestoreQuotaLimited: billingResults.some((result) => result.firestoreQuotaLimited),
-    },
-    content: {
-      blogPostCount: blogPostCountResult.count,
-      publishedBlogPostCount: publishedBlogPostCountResult.count,
-      mediaCount: mediaCountResult.count,
-      contentBlockCount: contentBlockCountResult.count,
-      source: normalizeAccountBootstrapSummarySource(contentResults),
-      firestoreQuotaLimited: contentResults.some((result) => result.firestoreQuotaLimited),
-    },
+  const resolveCount = (label, result, fallbackValue = 0) => {
+    if (result.status === 'fulfilled') {
+      return Number.isFinite(result.value) ? result.value : fallbackValue;
+    }
+
+    degradedSections.push(label);
+    if (isFirestoreQuotaExceeded(result.reason)) {
+      firestoreQuotaLimited = true;
+      errors[label] = 'Temporarily unavailable because the Firestore daily read quota is exhausted.';
+      return fallbackValue;
+    }
+
+    throw result.reason;
   };
-}
 
-function trimAccountText(value, maxLength = 5000) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim().slice(0, maxLength);
-}
+  const totalListings = resolveCount('listings_total', totalListingsResult);
+  const liveListings = resolveCount('listings_live', liveListingsResult);
+  const pendingReview = resolveCount('listings_pending', pendingReviewResult);
+  const rejectedListings = resolveCount('listings_rejected', rejectedListingsResult);
+  const soldListings = resolveCount('listings_sold', soldListingsResult);
+  const callVolume = resolveCount('calls_total', callCountResult);
+  const activeUsers = resolveCount('users_active', activeUsersResult);
 
-function normalizeOptionalAccountUrl(value) {
-  const normalized = trimAccountText(value, 500);
-  return normalized || '';
-}
-
-function normalizeAccountSeoKeywords(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((keyword) => trimAccountText(keyword, 80))
-    .filter(Boolean)
-    .slice(0, 30);
-}
-
-function sanitizeAccountProfileUpdatePayload(input = {}) {
-  const payload = {};
-
-  if ('displayName' in input) payload.displayName = trimAccountText(input.displayName, 120);
-  if ('email' in input) payload.email = trimAccountText(input.email, 320).toLowerCase();
-  if ('phoneNumber' in input) payload.phoneNumber = trimAccountText(input.phoneNumber, 60);
-  if ('company' in input) payload.company = trimAccountText(input.company, 200);
-  if ('website' in input) payload.website = normalizeOptionalAccountUrl(input.website);
-  if ('about' in input) payload.about = trimAccountText(input.about, 5000);
-  if ('bio' in input) payload.bio = trimAccountText(input.bio, 1000);
-  if ('location' in input) payload.location = trimAccountText(input.location, 200);
-  if ('photoURL' in input) payload.photoURL = normalizeOptionalAccountUrl(input.photoURL);
-  if ('coverPhotoUrl' in input) payload.coverPhotoUrl = normalizeOptionalAccountUrl(input.coverPhotoUrl);
-  if ('preferredLanguage' in input) payload.preferredLanguage = trimAccountText(input.preferredLanguage, 16).toUpperCase();
-  if ('preferredCurrency' in input) payload.preferredCurrency = trimAccountText(input.preferredCurrency, 16).toUpperCase();
-  if ('emailNotificationsEnabled' in input) payload.emailNotificationsEnabled = Boolean(input.emailNotificationsEnabled);
-  if ('mfaEnabled' in input) payload.mfaEnabled = Boolean(input.mfaEnabled);
-  if ('mfaMethod' in input) {
-    const normalizedMethod = trimAccountText(input.mfaMethod, 24).toLowerCase();
-    payload.mfaMethod = normalizedMethod === 'sms' ? 'sms' : null;
+  let recentListings = [];
+  if (recentListingsResult.status === 'fulfilled') {
+    recentListings = recentListingsResult.value.docs.map((docSnapshot) => (
+      buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {})
+    ));
+  } else if (isFirestoreQuotaExceeded(recentListingsResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('recent_listings');
+    errors.recent_listings = 'Recent inventory is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  } else {
+    throw recentListingsResult.reason;
   }
-  if ('mfaPhoneNumber' in input) payload.mfaPhoneNumber = trimAccountText(input.mfaPhoneNumber, 80) || null;
-  if ('mfaDisplayName' in input) payload.mfaDisplayName = trimAccountText(input.mfaDisplayName, 120) || null;
-  if ('mfaEnrolledAt' in input) payload.mfaEnrolledAt = trimAccountText(input.mfaEnrolledAt, 80) || null;
-  if ('storefrontSlug' in input) payload.storefrontSlug = trimAccountText(input.storefrontSlug, 180);
-  if ('storefrontName' in input) payload.storefrontName = trimAccountText(input.storefrontName, 180);
-  if ('storefrontTagline' in input) payload.storefrontTagline = trimAccountText(input.storefrontTagline, 240);
-  if ('storefrontDescription' in input) payload.storefrontDescription = trimAccountText(input.storefrontDescription, 5000);
-  if ('seoTitle' in input) payload.seoTitle = trimAccountText(input.seoTitle, 200);
-  if ('seoDescription' in input) payload.seoDescription = trimAccountText(input.seoDescription, 600);
-  if ('seoKeywords' in input) payload.seoKeywords = normalizeAccountSeoKeywords(input.seoKeywords);
 
-  return payload;
-}
+  let recentCalls = [];
+  if (recentCallsResult.status === 'fulfilled') {
+    recentCalls = recentCallsResult.value.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
+  } else if (isFirestoreQuotaExceeded(recentCallsResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('recent_calls');
+    errors.recent_calls = 'Recent calls are temporarily unavailable because the Firestore daily read quota is exhausted.';
+  } else {
+    throw recentCallsResult.reason;
+  }
 
-function sanitizeSavedSearchFilters(input = {}) {
-  const filters = {};
-  Object.entries(input || {}).forEach(([key, value]) => {
-    const normalizedKey = trimAccountText(key, 80);
-    const normalizedValue = trimAccountText(value, 240);
-    if (!normalizedKey || !normalizedValue) return;
-    filters[normalizedKey] = normalizedValue;
-  });
-  return filters;
-}
+  let totalInquiries = 0;
+  let wonInquiries = 0;
+  let avgResponseTimeMinutes = null;
+  if (inquiriesResult.status === 'fulfilled') {
+    const inquiries = inquiriesResult.value.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
+    totalInquiries = inquiries.length;
+    wonInquiries = inquiries.filter((inquiry) => inquiry.status === 'Won').length;
+    const responseSamples = inquiries
+      .map((inquiry) => Number(inquiry.responseTimeMinutes))
+      .filter((value) => Number.isFinite(value) && value > 0);
 
-function sanitizeAlertPreferences(input = {}) {
+    if (responseSamples.length > 0) {
+      const totalResponseTime = responseSamples.reduce((sum, value) => sum + value, 0);
+      avgResponseTimeMinutes = Number((totalResponseTime / responseSamples.length).toFixed(1));
+    }
+  } else if (isFirestoreQuotaExceeded(inquiriesResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('inquiries_summary');
+    errors.inquiries_summary = 'Inquiry summary is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  } else {
+    throw inquiriesResult.reason;
+  }
+
+  const conversionRate = totalInquiries > 0
+    ? Number(((wonInquiries / totalInquiries) * 100).toFixed(1))
+    : 0;
+  const inventoryTurnoverRate = totalListings > 0
+    ? Number(((soldListings / totalListings) * 100).toFixed(1))
+    : 0;
+
   return {
-    newListingAlerts: Boolean(input?.newListingAlerts),
-    priceDropAlerts: Boolean(input?.priceDropAlerts),
-    soldStatusAlerts: Boolean(input?.soldStatusAlerts),
-    restockSimilarAlerts: Boolean(input?.restockSimilarAlerts),
+    metrics: {
+      visibleEquipment: liveListings,
+      totalLeads: totalInquiries,
+      callVolume,
+      activeUsers,
+      conversionRate,
+      avgResponseTimeMinutes,
+      marketSentiment: computeAdminOverviewMarketSentiment({
+        conversionRate,
+        inventoryTurnoverRate,
+        liveListings,
+      }),
+      inventoryTurnoverRate,
+    },
+    listingSummary: {
+      totalListings,
+      liveListings,
+      pendingReview,
+      rejectedListings,
+      soldListings,
+    },
+    recentListings,
+    recentCalls,
+    partial: degradedSections.length > 0,
+    degradedSections: Array.from(new Set(degradedSections)),
+    errors,
+    firestoreQuotaLimited,
+    fetchedAt: new Date().toISOString(),
   };
 }
 
-function serializeSavedSearchDoc(docSnapshot) {
-  const data = docSnapshot.data() || {};
-  return {
-    id: docSnapshot.id,
-    userUid: normalizeNonEmptyString(data.userUid),
-    name: normalizeNonEmptyString(data.name, 'Saved Search'),
-    filters: sanitizeSavedSearchFilters(data.filters || {}),
-    alertEmail: normalizeNonEmptyString(data.alertEmail),
-    alertPreferences: sanitizeAlertPreferences(data.alertPreferences || {}),
-    status: normalizeNonEmptyString(data.status, 'active') === 'paused' ? 'paused' : 'active',
-    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    updatedAt: timestampValueToIso(data.updatedAt) || null,
-  };
-}
+async function buildAdminOperationsBootstrapPayload(options = {}) {
+  const includeOverview = options.includeOverview === true;
+  const overviewPromise = includeOverview
+    ? buildAdminOverviewBootstrapPayload()
+    : Promise.resolve(null);
 
-function serializeBlogPostRevision(revision = {}) {
-  return {
-    id: normalizeNonEmptyString(revision.id) || String(Date.now()),
-    title: normalizeNonEmptyString(revision.title),
-    content: normalizeNonEmptyString(revision.content),
-    authorUid: normalizeNonEmptyString(revision.authorUid),
-    authorName: normalizeNonEmptyString(revision.authorName),
-    savedAt: timestampValueToIso(revision.savedAt) || normalizeNonEmptyString(revision.savedAt) || new Date().toISOString(),
-    note: normalizeNonEmptyString(revision.note) || undefined,
-  };
-}
+  const [usersResult, inquiriesResult, callsResult, overviewResult] = await Promise.allSettled([
+    listAdminDirectoryUsersPayload(),
+    getDb().collection('inquiries').orderBy('createdAt', 'desc').get(),
+    getDb().collection('calls').orderBy('createdAt', 'desc').get(),
+    overviewPromise,
+  ]);
 
-function serializeAdminBlogPostDoc(docSnapshot) {
-  const data = docSnapshot.data() || {};
-  return {
-    id: docSnapshot.id,
-    title: normalizeNonEmptyString(data.title),
-    excerpt: normalizeNonEmptyString(data.excerpt) || undefined,
-    content: normalizeNonEmptyString(data.content),
-    authorUid: normalizeNonEmptyString(data.authorUid),
-    authorName: normalizeNonEmptyString(data.authorName),
-    category: normalizeNonEmptyString(data.category),
-    tags: Array.isArray(data.tags) ? data.tags.map((tag) => normalizeNonEmptyString(tag)).filter(Boolean) : [],
-    image: normalizeNonEmptyString(data.image) || undefined,
-    status: normalizeNonEmptyString(data.status, 'draft') === 'published' ? 'published' : 'draft',
-    reviewStatus: normalizeNonEmptyString(data.reviewStatus || data.status || 'draft') || 'draft',
-    scheduledAt: timestampValueToIso(data.scheduledAt) || normalizeNonEmptyString(data.scheduledAt) || null,
-    seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
-    seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
-    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.map((keyword) => normalizeNonEmptyString(keyword)).filter(Boolean) : [],
-    seoSlug: normalizeNonEmptyString(data.seoSlug) || undefined,
-    blocks: Array.isArray(data.blocks) ? data.blocks : [],
-    revisions: Array.isArray(data.revisions) ? data.revisions.map((revision) => serializeBlogPostRevision(revision)) : [],
-    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    updatedAt: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-  };
-}
+  const errors = {};
+  const degradedSections = [];
+  let firestoreQuotaLimited = false;
 
-function serializeAdminMediaDoc(docSnapshot) {
-  const data = docSnapshot.data() || {};
-  return {
-    id: docSnapshot.id,
-    url: normalizeNonEmptyString(data.url),
-    filename: normalizeNonEmptyString(data.filename),
-    mimeType: normalizeNonEmptyString(data.mimeType),
-    sizeBytes: toFiniteNumberOrUndefined(data.sizeBytes),
-    altText: normalizeNonEmptyString(data.altText) || undefined,
-    tags: Array.isArray(data.tags) ? data.tags.map((tag) => normalizeNonEmptyString(tag)).filter(Boolean) : [],
-    uploadedBy: normalizeNonEmptyString(data.uploadedBy),
-    uploadedByName: normalizeNonEmptyString(data.uploadedByName) || undefined,
-    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-  };
-}
+  let users = [];
+  if (usersResult.status === 'fulfilled') {
+    users = Array.isArray(usersResult.value.users) ? usersResult.value.users : [];
+    if (usersResult.value.firestoreQuotaLimited) {
+      firestoreQuotaLimited = true;
+    }
+    if (Array.isArray(usersResult.value.degradedSections)) {
+      degradedSections.push(...usersResult.value.degradedSections);
+    }
+    if (usersResult.value.errors && typeof usersResult.value.errors === 'object') {
+      Object.assign(errors, usersResult.value.errors);
+    }
+  } else {
+    throw usersResult.reason;
+  }
 
-function serializeInspectionRequestDoc(docSnapshot) {
-  const data = docSnapshot.data() || {};
-  return {
-    id: docSnapshot.id,
-    listingId: normalizeNonEmptyString(data.listingId) || undefined,
-    listingTitle: normalizeNonEmptyString(data.listingTitle) || undefined,
-    listingUrl: normalizeNonEmptyString(data.listingUrl) || undefined,
-    reference: normalizeNonEmptyString(data.reference) || undefined,
-    requesterUid: data.requesterUid == null ? null : normalizeNonEmptyString(data.requesterUid) || null,
-    requesterName: normalizeNonEmptyString(data.requesterName),
-    requesterEmail: normalizeNonEmptyString(data.requesterEmail),
-    requesterPhone: normalizeNonEmptyString(data.requesterPhone),
-    requesterCompany: normalizeNonEmptyString(data.requesterCompany) || undefined,
-    equipment: normalizeNonEmptyString(data.equipment),
-    inspectionLocation: normalizeNonEmptyString(data.inspectionLocation),
-    timeline: normalizeNonEmptyString(data.timeline) || undefined,
-    notes: normalizeNonEmptyString(data.notes) || undefined,
-    matchedDealerUid: data.matchedDealerUid == null ? null : normalizeNonEmptyString(data.matchedDealerUid) || null,
-    matchedDealerName: normalizeNonEmptyString(data.matchedDealerName) || undefined,
-    matchedDealerLocation: normalizeNonEmptyString(data.matchedDealerLocation) || undefined,
-    matchedDealerDistanceMiles: toFiniteNumberOrUndefined(data.matchedDealerDistanceMiles) ?? null,
-    assignedToUid: data.assignedToUid == null ? null : normalizeNonEmptyString(data.assignedToUid) || null,
-    assignedToName: normalizeNonEmptyString(data.assignedToName) || undefined,
-    quotedPrice: toFiniteNumberOrUndefined(data.quotedPrice) ?? null,
-    status: normalizeNonEmptyString(data.status, 'New'),
-    reviewedAt: timestampValueToIso(data.reviewedAt) || normalizeNonEmptyString(data.reviewedAt) || null,
-    respondedAt: timestampValueToIso(data.respondedAt) || normalizeNonEmptyString(data.respondedAt) || null,
-    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    updatedAt: timestampValueToIso(data.updatedAt) || null,
-  };
-}
+  const inquiries =
+    inquiriesResult.status === 'fulfilled'
+      ? inquiriesResult.value.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot))
+      : [];
+  if (inquiriesResult.status !== 'fulfilled') {
+    degradedSections.push('inquiries');
+    if (isFirestoreQuotaExceeded(inquiriesResult.reason)) {
+      firestoreQuotaLimited = true;
+      errors.inquiries = 'Admin inquiries are temporarily unavailable because the Firestore daily read quota is exhausted.';
+    } else {
+      throw inquiriesResult.reason;
+    }
+  }
 
-function serializeAdminContentBlockDoc(docSnapshot) {
-  const data = docSnapshot.data() || {};
+  const calls =
+    callsResult.status === 'fulfilled'
+      ? callsResult.value.docs.map((docSnapshot) => serializeCallDoc(docSnapshot))
+      : [];
+  if (callsResult.status !== 'fulfilled') {
+    degradedSections.push('calls');
+    if (isFirestoreQuotaExceeded(callsResult.reason)) {
+      firestoreQuotaLimited = true;
+      errors.calls = 'Admin calls are temporarily unavailable because the Firestore daily read quota is exhausted.';
+    } else {
+      throw callsResult.reason;
+    }
+  }
+
+  let overview = null;
+  if (overviewResult.status === 'fulfilled' && overviewResult.value) {
+    overview = overviewResult.value;
+    if (overviewResult.value.firestoreQuotaLimited) {
+      firestoreQuotaLimited = true;
+    }
+    if (Array.isArray(overviewResult.value.degradedSections)) {
+      degradedSections.push(...overviewResult.value.degradedSections.map((section) => `overview:${section}`));
+    }
+    if (overviewResult.value.errors && typeof overviewResult.value.errors === 'object') {
+      Object.entries(overviewResult.value.errors).forEach(([key, value]) => {
+        if (!errors[`overview_${key}`] && value) {
+          errors[`overview_${key}`] = value;
+        }
+      });
+    }
+  } else if (includeOverview && overviewResult.status === 'rejected' && isFirestoreQuotaExceeded(overviewResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('overview');
+    errors.overview = 'Admin overview is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  } else if (includeOverview && overviewResult.status === 'rejected') {
+    throw overviewResult.reason;
+  }
+
   return {
-    id: docSnapshot.id,
-    type: normalizeNonEmptyString(data.type, 'text'),
-    content: normalizeNonEmptyString(data.content),
-    caption: normalizeNonEmptyString(data.caption) || undefined,
-    title: normalizeNonEmptyString(data.title) || undefined,
-    label: normalizeNonEmptyString(data.label) || undefined,
-    order: Number.isFinite(Number(data.order)) ? Number(data.order) : 0,
+    users,
+    inquiries,
+    calls,
+    overview,
+    partial: degradedSections.length > 0,
+    degradedSections: Array.from(new Set(degradedSections)),
+    errors,
+    firestoreQuotaLimited,
+    fetchedAt: new Date().toISOString(),
   };
 }
 
@@ -5974,19 +6459,7 @@ async function applyListingLifecycleAction({
   });
 
   await listingRef.set(patch, { merge: true });
-  const updatedSnapshot = await listingRef.get();
-  const updatedListing = updatedSnapshot.exists ? (updatedSnapshot.data() || {}) : { ...listing, ...patch };
-
-  await syncListingGovernanceArtifactsForWrite({
-    db: getDb(),
-    listingId: normalizedListingId,
-    before: listing,
-    after: updatedListing,
-    source: 'listing_lifecycle_api',
-    emitInitializationTransition: true,
-  });
-
-  return { patch, currentLifecycleState, updatedListing };
+  return { patch, currentLifecycleState };
 }
 
 async function upsertSellerProgramAgreementAcceptance({
@@ -6584,6 +7057,41 @@ async function getOrCreateStripeCustomer(stripe, userUid, email, name) {
   return customer.id;
 }
 
+async function resolveExistingStripeCustomerId(stripe, userUid, email) {
+  if (!stripe) return '';
+
+  let storedCustomerId = '';
+
+  try {
+    const userSnap = await getDb().collection('users').doc(String(userUid || '').trim()).get();
+    storedCustomerId = String(userSnap.data()?.stripeCustomerId || '').trim();
+  } catch (error) {
+    if (!isFirestoreQuotaExceeded(error)) {
+      throw error;
+    }
+    logger.warn('Skipping stored Stripe customer lookup because Firestore quota is exhausted.', {
+      userUid,
+    });
+  }
+
+  if (storedCustomerId) {
+    try {
+      const existingCustomer = await stripe.customers.retrieve(storedCustomerId);
+      if (existingCustomer && !existingCustomer.deleted) {
+        return storedCustomerId;
+      }
+    } catch (error) {
+      logger.warn('Stored Stripe customer id could not be retrieved; falling back to email lookup.', {
+        userUid,
+        storedCustomerId,
+        error: String(error?.message || error || ''),
+      });
+    }
+  }
+
+  return findExistingStripeCustomerId(stripe, userUid, email);
+}
+
 async function finalizeListingPaymentFromCheckoutSession(session, source) {
   const listingId = String(session.metadata?.listingId || '');
   const planId = String(session.metadata?.planId || '');
@@ -6899,6 +7407,8 @@ async function syncSubscriptionStateFromStripeObject(stripe, rawSubscription, so
           status: subscriptionStatus,
           cancelAtPeriodEnd,
           currentPeriodEnd,
+          ...(typeof rawSubscription?.created === 'number' ? { createdAt: admin.firestore.Timestamp.fromMillis(rawSubscription.created * 1000) } : {}),
+          ...(typeof rawSubscription?.start_date === 'number' ? { startDate: admin.firestore.Timestamp.fromMillis(rawSubscription.start_date * 1000) } : {}),
           subscriptionQuantity,
           listingCap,
           statementLabel,
@@ -7016,14 +7526,6 @@ function canAdministrateAccount(role) {
   return ['super_admin', 'admin', 'developer'].includes(role);
 }
 
-function canReadAllInspectionRequests(role) {
-  return ['super_admin', 'admin', 'developer'].includes(normalizeUserRole(role));
-}
-
-function canManageAssignedInspectionRequests(role) {
-  return ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalizeUserRole(role));
-}
-
 function getActorRoleFromDecodedToken(decodedToken) {
   return normalizeUserRole(String(decodedToken?.role || decodedToken?.claims?.role || ''));
 }
@@ -7094,6 +7596,16 @@ function getQuotaExceededApiMessage(path) {
     return 'This admin action is temporarily unavailable because the Firestore daily read quota is exhausted.';
   }
   return 'This action is temporarily unavailable because the Firestore daily read quota is exhausted.';
+}
+
+function buildQuotaLimitedPayload(key, fallbackValue, warning, extra = {}) {
+  return {
+    [key]: fallbackValue,
+    firestoreQuotaLimited: true,
+    source: 'quota_fallback',
+    warning,
+    ...extra,
+  };
 }
 
 function isCacheablePublicApiRoute(method, path) {
@@ -7240,6 +7752,78 @@ function serializeListingLifecycleTransitionRecord(docSnapshot) {
     anomalyCodes: Array.isArray(data.anomalyCodes) ? data.anomalyCodes.map((code) => normalizeNonEmptyString(code)).filter(Boolean) : [],
     fromState: serializeLifecycleStateSnapshot(data.fromState),
     toState: serializeLifecycleStateSnapshot(data.toState),
+  };
+}
+
+function serializeListingLifecycleReviewSummaryRecord(docSnapshot) {
+  if (!docSnapshot?.exists) return null;
+  const data = docSnapshot.data() || {};
+
+  return {
+    listingId: docSnapshot.id,
+    status: normalizeNonEmptyString(data.status, 'pending'),
+    summary: normalizeNonEmptyString(data.summary),
+    anomalyCodes: Array.isArray(data.anomalyCodes) ? data.anomalyCodes.map((code) => normalizeNonEmptyString(code)).filter(Boolean) : [],
+    anomalyCount: normalizeFiniteNumber(data.anomalyCount, 0),
+    shadowState: serializeLifecycleStateSnapshot(data.shadowState),
+    rawState: data.rawState && typeof data.rawState === 'object'
+      ? {
+          ...data.rawState,
+          publishedAt: timestampValueToIso(data.rawState.publishedAt) || null,
+          expiresAt: timestampValueToIso(data.rawState.expiresAt) || null,
+          soldAt: timestampValueToIso(data.rawState.soldAt) || null,
+        }
+      : null,
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+  };
+}
+
+function serializeAccountAuditLogRecord(docSnapshot) {
+  if (!docSnapshot?.exists) return null;
+  const data = docSnapshot.data() || {};
+
+  return {
+    id: docSnapshot.id,
+    eventType: normalizeNonEmptyString(data.eventType, 'ACCOUNT_EVENT'),
+    actorUid: normalizeNonEmptyString(data.actorUid) || null,
+    targetUid: normalizeNonEmptyString(data.targetUid),
+    source: normalizeNonEmptyString(data.source) || null,
+    reason: normalizeNonEmptyString(data.reason) || null,
+    previousState: data.previousState && typeof data.previousState === 'object' ? data.previousState : null,
+    nextState: data.nextState && typeof data.nextState === 'object' ? data.nextState : null,
+    metadata: data.metadata && typeof data.metadata === 'object' ? data.metadata : {},
+    createdAt: timestampValueToIso(data.createdAt) || null,
+  };
+}
+
+function serializeSellerProgramAgreementAcceptanceRecord(docSnapshot) {
+  if (!docSnapshot?.exists) return null;
+  const data = docSnapshot.data() || {};
+
+  return {
+    id: docSnapshot.id,
+    userUid: normalizeNonEmptyString(data.userUid),
+    actorUid: normalizeNonEmptyString(data.actorUid) || null,
+    planId: normalizeNonEmptyString(data.planId),
+    statementLabel: normalizeNonEmptyString(data.statementLabel) || null,
+    legalScope: normalizeNonEmptyString(data.legalScope) || null,
+    agreementVersion: normalizeNonEmptyString(data.agreementVersion) || null,
+    checkoutSessionId: normalizeNonEmptyString(data.checkoutSessionId) || null,
+    stripeCustomerId: normalizeNonEmptyString(data.stripeCustomerId) || null,
+    stripeSubscriptionId: normalizeNonEmptyString(data.stripeSubscriptionId) || null,
+    source: normalizeNonEmptyString(data.source) || null,
+    acceptedAtIso: normalizeNonEmptyString(data.acceptedAtIso) || null,
+    status: normalizeNonEmptyString(data.status) || null,
+    checkoutState: normalizeNonEmptyString(data.checkoutState) || null,
+    acceptedTerms: Boolean(data.acceptedTerms),
+    acceptedPrivacy: Boolean(data.acceptedPrivacy),
+    acceptedRecurringBilling: Boolean(data.acceptedRecurringBilling),
+    acceptedVisibilityPolicy: Boolean(data.acceptedVisibilityPolicy),
+    acceptedAuthority: Boolean(data.acceptedAuthority),
+    createdAt: timestampValueToIso(data.createdAt) || null,
+    updatedAt: timestampValueToIso(data.updatedAt) || null,
+    finalizedAt: timestampValueToIso(data.finalizedAt) || null,
+    metadata: data.metadata && typeof data.metadata === 'object' ? data.metadata : {},
   };
 }
 
@@ -7794,6 +8378,36 @@ exports.apiProxy = onRequest(
             }
           }
 
+          // Handle charge refunds: cancel the associated subscription and enforce listing visibility
+          if (event.type === 'charge.refunded') {
+            const charge = event.data.object || {};
+            const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+            if (invoiceId) {
+              try {
+                const invoice = await stripe.invoices.retrieve(invoiceId);
+                const subId = typeof invoice.subscription === 'string'
+                  ? invoice.subscription
+                  : invoice.subscription?.id;
+                if (subId) {
+                  // Cancel the subscription immediately (not at period end) since a refund was issued
+                  const canceledSub = await stripe.subscriptions.cancel(subId);
+                  await syncSubscriptionStateFromStripeObject(stripe, canceledSub, `webhook:${event.type}`);
+                  logger.info('Charge refund triggered subscription cancellation and visibility enforcement.', {
+                    chargeId: charge.id,
+                    invoiceId,
+                    subscriptionId: subId,
+                  });
+                }
+              } catch (refundSyncErr) {
+                logger.error('Failed to enforce subscription cancellation after charge refund.', {
+                  chargeId: charge.id,
+                  invoiceId,
+                  error: refundSyncErr?.message || refundSyncErr,
+                });
+              }
+            }
+          }
+
           return res.status(200).json({ received: true });
         } catch (processingError) {
           logger.error('Stripe webhook processing failed', processingError);
@@ -7948,6 +8562,45 @@ exports.apiProxy = onRequest(
         });
 
         return res.status(200).json({ sent: true });
+      }
+
+      if (req.method === 'POST' && path === '/auth/password-reset') {
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        if (!/.+@.+\..+/.test(email)) {
+          return res.status(400).json({
+            error: 'Please enter a valid email address.',
+            code: 'auth/invalid-email',
+          });
+        }
+
+        const continueUrl = `${resolveAppUrlFromRequest(req)}/login`;
+
+        try {
+          let displayName = 'there';
+          try {
+            const userRecord = await admin.auth().getUserByEmail(email);
+            displayName = String(userRecord.displayName || 'there').trim() || 'there';
+          } catch (error) {
+            if (isAuthUserNotFound(error)) {
+              return res.status(200).json({ sent: true });
+            }
+            throw error;
+          }
+
+          await sendPasswordResetEmailMessage({
+            email,
+            displayName,
+            continueUrl,
+          });
+
+          return res.status(200).json({ sent: true });
+        } catch (error) {
+          logger.error('Failed to send self-service password reset email', error);
+          return res.status(500).json({
+            error: 'Unable to send password reset email right now.',
+            code: 'auth/internal-error',
+          });
+        }
       }
 
       if (req.method === 'POST' && path === '/auth/bootstrap-profile-role') {
@@ -8273,10 +8926,6 @@ exports.apiProxy = onRequest(
         }
 
         const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
         const sessionId = path.replace('/billing/checkout-session/', '').trim();
         if (!sessionId) {
           return res.status(400).json({ error: 'Session id is required.' });
@@ -8286,7 +8935,7 @@ exports.apiProxy = onRequest(
           expand: ['subscription'],
         });
 
-        if (String(session.metadata?.userUid || '') !== decodedToken.uid) {
+        if (decodedToken && String(session.metadata?.userUid || '') !== decodedToken.uid) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -8299,6 +8948,63 @@ exports.apiProxy = onRequest(
           listingId: finalized.listingId,
           planId: finalized.planId,
           scope: finalized.scope,
+        });
+      }
+
+      if (req.method === 'POST' && path === '/billing/create-portal-session') {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const uid = String(decodedToken.uid || '').trim();
+        const email = String(decodedToken.email || '').trim().toLowerCase();
+        const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
+        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
+        const baseUrl = getRequestBaseUrl(req);
+        const separator = returnPath.includes('?') ? '&' : '?';
+
+        const customerId = await resolveExistingStripeCustomerId(stripe, uid, email);
+        if (!customerId) {
+          return res.status(409).json({
+            error: 'No active billing profile was found for this account yet. Choose an ad program before opening billing management.',
+          });
+        }
+
+        const portalSession = await stripe.billingPortal.sessions.create({
+          customer: customerId,
+          return_url: `${baseUrl}${returnPath}${separator}billingPortal=return`,
+        });
+
+        if (!portalSession?.url) {
+          return res.status(500).json({ error: 'Stripe billing portal URL was not returned.' });
+        }
+
+        void writeAccountAuditLog({
+          eventType: 'BILLING_PORTAL_SESSION_CREATED',
+          actorUid: uid,
+          targetUid: uid,
+          source: 'billing_portal',
+          reason: 'Customer opened secure Stripe billing portal.',
+          metadata: {
+            stripeCustomerId: customerId,
+            returnPath,
+          },
+        }).catch((error) => {
+          logger.warn('Continuing billing portal response before account audit log completed.', {
+            uid,
+            stripeCustomerId: customerId,
+            error: String(error?.message || error || ''),
+          });
+        });
+
+        return res.status(200).json({
+          url: portalSession.url,
+          stripeCustomerId: customerId,
         });
       }
 
@@ -8359,12 +9065,20 @@ exports.apiProxy = onRequest(
           accountStatus: claimedAccountStatus || 'active',
           activeSubscriptionPlanId: claimedPlanId || summary.planId || null,
           subscriptionStatus: claimedSubscriptionStatus || summary.subscriptionStatus || null,
-          listingCap: Number.isFinite(Number(claims.listingCap))
-            ? Number(claims.listingCap)
-            : summary.listingCap,
-          managedAccountCap: Number.isFinite(Number(claims.managedAccountCap))
-            ? Number(claims.managedAccountCap)
-            : summary.managedAccountCap,
+          listingCap: summary.planId
+            ? summary.listingCap
+            : (
+              Number.isFinite(Number(claims.listingCap))
+                ? Number(claims.listingCap)
+                : summary.listingCap
+            ),
+          managedAccountCap: summary.planId
+            ? summary.managedAccountCap
+            : (
+              Number.isFinite(Number(claims.managedAccountCap))
+                ? Number(claims.managedAccountCap)
+                : summary.managedAccountCap
+            ),
           currentSubscriptionId: summary.currentSubscriptionId || null,
           currentPeriodEnd: summary.currentPeriodEndIso || null,
         });
@@ -8527,6 +9241,42 @@ exports.apiProxy = onRequest(
         }
       }
 
+      if (req.method === 'GET' && path === '/admin/listings/review-summaries') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const ids = normalizeNonEmptyString(req.query?.ids)
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(0, 50);
+
+        if (ids.length === 0) {
+          return res.status(200).json({ summaries: [] });
+        }
+
+        try {
+          const reports = await Promise.all(
+            ids.map((listingId) => getDb().collection('listingAuditReports').doc(listingId).get())
+          );
+
+          return res.status(200).json({
+            summaries: reports
+              .map((docSnapshot) => serializeListingLifecycleReviewSummaryRecord(docSnapshot))
+              .filter(Boolean),
+          });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Listing review summaries are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
       if (req.method === 'GET' && path === '/marketplace-stats') {
         const payload = await getMarketplaceStatsPayload();
         res.set('Cache-Control', 'public, max-age=600');
@@ -8582,7 +9332,6 @@ exports.apiProxy = onRequest(
         return res.status(200).json(payload);
       }
 
-      const accountListingMatch = path.match(/^\/account\/listings\/([^/]+)$/i);
       if (req.method === 'POST' && path === '/account/listings') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -8590,67 +9339,149 @@ exports.apiProxy = onRequest(
         }
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestBody = req.body && typeof req.body === 'object' ? req.body : {};
-        const requestedSellerUid = normalizeNonEmptyString(requestBody.sellerUid || requestBody.sellerId, actorUid);
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
-          return res.status(403).json({ error: 'Forbidden' });
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        const isAdminActor = canAdministrateAccount(tokenRole);
+        const rawListing = req.body?.listing && typeof req.body.listing === 'object'
+          ? req.body.listing
+          : (req.body && typeof req.body === 'object' ? req.body : {});
+        const requestedSellerUid = normalizeNonEmptyString(rawListing.sellerUid || rawListing.sellerId, actorUid);
+
+        if (requestedSellerUid !== actorUid && !isAdminActor) {
+          return res.status(403).json({ error: 'You can only create listings for your own account.' });
         }
 
-        const listingInput = sanitizeListingWritePayload(requestBody);
-        const listingRef = getDb().collection('listings').doc();
-        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
-        const effectiveRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : actorRole;
-        const sellerVerified = ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller'].includes(effectiveRole);
-        const paymentStatus = normalizeNonEmptyString(requestBody.paymentStatus, 'pending') === 'paid' ? 'paid' : 'pending';
+        let sellerAccountState = buildAccountStateFromSources({}, { customClaims: decodedToken }, {
+          ...(isPrivilegedAdminEmail(actorEmail)
+            ? {
+                role: 'super_admin',
+                accountStatus: 'active',
+                accountAccessSource: 'admin_override',
+              }
+            : {}),
+        });
 
-        const createPayload = {
+        if (requestedSellerUid !== actorUid) {
+          const sellerRef = getDb().collection('users').doc(requestedSellerUid);
+          const [sellerSnap, sellerAuthRecord] = await Promise.all([
+            sellerRef.get(),
+            getAuthUserRecordSafe(requestedSellerUid),
+          ]);
+
+          if (!sellerSnap.exists && !sellerAuthRecord) {
+            return res.status(404).json({ error: 'Seller account was not found.' });
+          }
+
+          sellerAccountState = buildAccountStateFromSources(sellerSnap.data() || {}, sellerAuthRecord);
+        }
+
+        const sellerEntitlement = buildAccountEntitlementSnapshot(sellerAccountState);
+        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'buyer');
+
+        if (!isAdminActor && !sellerEntitlement.canPostListings) {
+          return res.status(403).json({ error: 'An active seller subscription is required before creating listings.' });
+        }
+
+        const listingInput = sanitizeListingCreatePayload(rawListing);
+        const qualityErrors = validateListingCreatePayload(listingInput);
+        if (qualityErrors.length > 0) {
+          return res.status(400).json({ error: `Listing quality validation failed: ${qualityErrors.join(' ')}` });
+        }
+
+        const requestedId = normalizeNonEmptyString(listingInput.id);
+        const listingRef = requestedId
+          ? getDb().collection('listings').doc(requestedId)
+          : getDb().collection('listings').doc();
+
+        if (requestedId) {
+          const existingListingSnap = await listingRef.get();
+          if (existingListingSnap.exists) {
+            return res.status(409).json({ error: 'A listing with that id already exists.' });
+          }
+        }
+
+        if (sellerEntitlement.listingCap > 0) {
+          const activeListingCount = await countSellerListingsForCapacity(requestedSellerUid);
+          if (activeListingCount >= sellerEntitlement.listingCap) {
+            return res.status(409).json({
+              error: `This account includes up to ${sellerEntitlement.listingCap} active ${sellerEntitlement.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+            });
+          }
+        }
+
+        if (listingInput.featured) {
+          const featuredCap = getFeaturedListingCapForRole(sellerRole);
+          if (!Number.isFinite(featuredCap) && featuredCap !== Number.POSITIVE_INFINITY) {
+            return res.status(403).json({ error: 'This account role cannot mark listings as featured.' });
+          }
+          if (featuredCap <= 0) {
+            return res.status(403).json({ error: 'This account role cannot mark listings as featured.' });
+          }
+
+          const featuredCount = await countSellerListingsForCapacity(requestedSellerUid, { featuredOnly: true });
+          if (featuredCount >= featuredCap) {
+            return res.status(409).json({
+              error: `This account can feature up to ${featuredCap} active ${featuredCap === 1 ? 'listing' : 'listings'}. Unfeature one before selecting another.`,
+            });
+          }
+        }
+
+        const draftListing = {
           ...listingInput,
           id: listingRef.id,
           sellerUid: requestedSellerUid,
           sellerId: requestedSellerUid,
-          sellerVerified,
+          sellerVerified: isVerifiedSellerRole(sellerRole),
           qualityValidated: true,
+          status: 'draft',
           approvalStatus: 'pending',
           approvedBy: null,
-          status: 'pending',
-          paymentStatus,
-          publishedAt: null,
           approvedAt: null,
           rejectedAt: null,
           rejectedBy: null,
           rejectionReason: null,
+          submittedAt: null,
+          paymentStatus: sellerEntitlement.canPostListings ? 'paid' : 'pending',
+          subscriptionPlanId: sellerEntitlement.activeSubscriptionPlanId || null,
+          publishedAt: null,
+          archivedAt: null,
+          soldAt: null,
+          expiredAt: null,
+          relistedAt: null,
+          paidAt: null,
+          paymentConfirmedAt: null,
+          marketValueEstimate: null,
+          views: 0,
+          leads: 0,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        await listingRef.set(createPayload);
-
-        await writeAccountAuditLog({
-          eventType: 'listing_created',
-          actorUid,
-          actorEmail,
-          targetUid: requestedSellerUid,
-          source: 'account_listing_api',
-          previousState: null,
-          nextState: {
-            listingId: listingRef.id,
-            title: createPayload.title,
-            category: createPayload.category,
-            manufacturer: createPayload.manufacturer,
-            model: createPayload.model,
-            approvalStatus: createPayload.approvalStatus,
-            paymentStatus: createPayload.paymentStatus,
-            status: createPayload.status,
+        await listingRef.set(draftListing, { merge: false });
+        await applyListingLifecycleAction({
+          listingRef,
+          listingId: listingRef.id,
+          listing: {
+            ...draftListing,
+            id: listingRef.id,
           },
+          action: 'submit',
+          actorUid,
+          actorRole: tokenRole,
+          reason: requestedSellerUid === actorUid
+            ? 'Submitted by seller during listing creation.'
+            : 'Submitted by administrator during listing creation.',
         });
 
-        const createdSnapshot = await listingRef.get();
+        const createdListingSnap = await listingRef.get();
         return res.status(201).json({
-          listing: buildMarketplaceListingPayload(createdSnapshot.id, createdSnapshot.data() || {}),
+          message: 'Listing created and submitted for review.',
+          lifecycleAction: 'submit',
+          listing: buildMarketplaceListingPayload(createdListingSnap.id, createdListingSnap.data() || {}),
         });
       }
 
+      const accountListingMatch = path.match(/^\/account\/listings\/([^/]+)$/i);
       if (accountListingMatch && req.method === 'PATCH') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -8658,7 +9489,9 @@ exports.apiProxy = onRequest(
         }
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        const isAdminActor = canAdministrateAccount(tokenRole);
         const listingId = normalizeNonEmptyString(decodeURIComponent(accountListingMatch[1]));
         if (!listingId) {
           return res.status(400).json({ error: 'Listing id is required.' });
@@ -8672,61 +9505,95 @@ exports.apiProxy = onRequest(
 
         const existingData = listingSnapshot.data() || {};
         const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
-        if (listingSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        if (listingSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
         const requestUpdates = req.body && typeof req.body === 'object' ? req.body : {};
-        const allowedKeys = new Set([
-          'title',
-          'description',
-          'category',
-          'subcategory',
-          'make',
-          'manufacturer',
-          'model',
-          'year',
-          'hours',
-          'condition',
-          'price',
-          'salePrice',
-          'location',
-          'city',
-          'state',
-          'country',
-          'serialNumber',
-          'stockNumber',
-          'images',
-          'imageVariants',
-          'videoUrls',
-          'specifications',
-          'conditionChecklist',
-          'featured',
-          'featuredRank',
-          'metaTitle',
-          'metaDescription',
-          'canonicalSlug',
-          'contactPhone',
-          'contactEmail',
-        ]);
 
-        const updates = {};
-        for (const [key, value] of Object.entries(requestUpdates)) {
-          if (!allowedKeys.has(key)) continue;
-          updates[key] = value;
-        }
+        const { sanitizedUpdates, mergedSanitized, shouldValidateQuality } = sanitizeListingUpdatePayload(
+          {
+            ...existingData,
+            sellerUid: listingSellerUid,
+            sellerId: listingSellerUid,
+          },
+          requestUpdates
+        );
 
-        if (Object.keys(updates).length === 0) {
+        if (Object.keys(sanitizedUpdates).length === 0) {
           return res.status(400).json({ error: 'No supported listing updates were provided.' });
         }
 
-        if (Object.prototype.hasOwnProperty.call(updates, 'featured')) {
-          updates.featured = Boolean(updates.featured);
+        if (shouldValidateQuality) {
+          const qualityErrors = validateListingCreatePayload(mergedSanitized);
+          if (qualityErrors.length > 0) {
+            return res.status(400).json({ error: `Listing quality validation failed: ${qualityErrors.join(' ')}` });
+          }
         }
 
-        updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        let sellerAccountState = buildAccountStateFromSources(existingData, { customClaims: decodedToken }, {
+          ...(isPrivilegedAdminEmail(actorEmail)
+            ? {
+                role: 'super_admin',
+                accountStatus: 'active',
+                accountAccessSource: 'admin_override',
+              }
+            : {}),
+        });
 
-        await listingRef.update(updates);
+        if (listingSellerUid && listingSellerUid !== actorUid) {
+          const sellerRef = getDb().collection('users').doc(listingSellerUid);
+          const [sellerSnap, sellerAuthRecord] = await Promise.all([
+            sellerRef.get(),
+            getAuthUserRecordSafe(listingSellerUid),
+          ]);
+
+          if (sellerSnap.exists || sellerAuthRecord) {
+            sellerAccountState = buildAccountStateFromSources(sellerSnap.data() || {}, sellerAuthRecord);
+          }
+        }
+
+        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'buyer');
+
+        if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'featured') && sanitizedUpdates.featured) {
+          const featuredCap = getFeaturedListingCapForRole(sellerRole);
+          if (!Number.isFinite(featuredCap) && featuredCap !== Number.POSITIVE_INFINITY) {
+            return res.status(403).json({ error: 'This account role cannot mark listings as featured.' });
+          }
+          if (featuredCap <= 0) {
+            return res.status(403).json({ error: 'This account role cannot mark listings as featured.' });
+          }
+
+          const featuredCount = await countSellerListingsForCapacity(listingSellerUid, {
+            featuredOnly: true,
+            excludeListingId: listingId,
+          });
+          if (featuredCount >= featuredCap) {
+            return res.status(409).json({
+              error: `This account can feature up to ${featuredCap} active ${featuredCap === 1 ? 'listing' : 'listings'}. Unfeature one before selecting another.`,
+            });
+          }
+        }
+
+        const nextApprovalStatus = normalizeMarketplaceText(existingData.approvalStatus || 'pending');
+        const nextStatus = normalizeMarketplaceText(existingData.status || 'draft');
+
+        sanitizedUpdates.qualityValidated = true;
+        sanitizedUpdates.sellerVerified = isVerifiedSellerRole(sellerRole);
+        sanitizedUpdates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+        if (shouldValidateQuality && nextApprovalStatus === 'approved' && nextStatus !== 'sold' && nextStatus !== 'archived') {
+          sanitizedUpdates.approvalStatus = 'pending';
+          sanitizedUpdates.status = 'pending';
+          sanitizedUpdates.approvedAt = null;
+          sanitizedUpdates.approvedBy = null;
+          sanitizedUpdates.rejectionReason = null;
+          sanitizedUpdates.rejectedAt = null;
+          sanitizedUpdates.rejectedBy = null;
+          sanitizedUpdates.submittedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+
+        await listingRef.update(sanitizedUpdates);
         const updatedSnapshot = await listingRef.get();
         return res.status(200).json({
           listing: buildMarketplaceListingPayload(updatedSnapshot.id, updatedSnapshot.data() || {}),
@@ -8740,8 +9607,9 @@ exports.apiProxy = onRequest(
         }
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorRole = getActorRoleFromDecodedToken(decodedToken);
         const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        const isAdminActor = canAdministrateAccount(tokenRole);
         const listingId = normalizeNonEmptyString(decodeURIComponent(accountListingMatch[1]));
         if (!listingId) {
           return res.status(400).json({ error: 'Listing id is required.' });
@@ -8755,29 +9623,15 @@ exports.apiProxy = onRequest(
 
         const existingData = listingSnapshot.data() || {};
         const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
-        if (listingSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        if (listingSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
         await listingRef.delete();
-
-        await writeAccountAuditLog({
-          eventType: 'listing_deleted',
-          actorUid,
-          actorEmail,
-          targetUid: listingSellerUid || actorUid,
-          source: 'account_listing_api',
-          previousState: {
-            listingId,
-            title: normalizeNonEmptyString(existingData.title),
-            category: normalizeNonEmptyString(existingData.category),
-            manufacturer: normalizeNonEmptyString(existingData.manufacturer || existingData.make),
-            model: normalizeNonEmptyString(existingData.model),
-          },
-          nextState: { listingId, deleted: true },
+        return res.status(200).json({
+          success: true,
+          listingId,
         });
-
-        return res.status(200).json({ deleted: true, id: listingId });
       }
 
       if (req.method === 'GET' && path === '/account/listings') {
@@ -8796,24 +9650,36 @@ exports.apiProxy = onRequest(
           ...req.query,
           sellerUid: requestedSellerUid,
         });
+        const quotaWarning = 'Account listings are temporarily unavailable because the Firestore daily read quota is exhausted.';
 
-        const primarySnapshot = await getDb()
-          .collection('listings')
-          .where('sellerUid', '==', requestedSellerUid)
-          .get();
-
-        let listings = primarySnapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
-
-        if (listings.length === 0) {
-          const legacySnapshot = await getDb()
+        try {
+          const primarySnapshot = await getDb()
             .collection('listings')
-            .where('sellerId', '==', requestedSellerUid)
+            .where('sellerUid', '==', requestedSellerUid)
             .get();
-          listings = legacySnapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
-        }
 
-        const filteredListings = filterMarketplaceListings(listings, filters, { includeUnapproved: true });
-        return res.status(200).json({ listings: filteredListings });
+          let listings = primarySnapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+
+          if (listings.length === 0) {
+            const legacySnapshot = await getDb()
+              .collection('listings')
+              .where('sellerId', '==', requestedSellerUid)
+              .get();
+            listings = legacySnapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+          }
+
+          const filteredListings = filterMarketplaceListings(listings, filters, { includeUnapproved: true });
+          return res.status(200).json({ listings: filteredListings });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Account listings API is returning quota fallback payload.', {
+              actorUid,
+              requestedSellerUid,
+            });
+            return res.status(200).json(buildQuotaLimitedPayload('listings', [], quotaWarning));
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/account/bootstrap') {
@@ -8822,18 +9688,7 @@ exports.apiProxy = onRequest(
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const profileState = await loadAccountProfileState(decodedToken);
-        const summaries = await buildAccountBootstrapSummaries(profileState);
-        const summaryQuotaLimited = Object.values(summaries).some((summary) => summary?.firestoreQuotaLimited);
-
-        return res.status(200).json({
-          profile: profileState.profile,
-          source: profileState.profileSource,
-          profileDocExists: profileState.profileDocExists,
-          firestoreQuotaLimited: profileState.firestoreQuotaLimited || summaryQuotaLimited,
-          fetchedAt: new Date().toISOString(),
-          summaries,
-        });
+        return res.status(200).json(await buildAccountBootstrapPayload(decodedToken, { stripe }));
       }
 
       if (req.method === 'GET' && path === '/account/profile') {
@@ -8842,133 +9697,12 @@ exports.apiProxy = onRequest(
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const profileState = await loadAccountProfileState(decodedToken);
-
+          const bootstrap = await buildAccountBootstrapPayload(decodedToken, { stripe });
         return res.status(200).json({
-          profile: profileState.profile,
-          source: profileState.profileSource,
-          profileDocExists: profileState.profileDocExists,
-          firestoreQuotaLimited: profileState.firestoreQuotaLimited,
-          fetchedAt: new Date().toISOString(),
-        });
-      }
-
-      if (req.method === 'POST' && path === '/account/profile/bootstrap') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
-        const actorDisplayName =
-          normalizeNonEmptyString(decodedToken.name)
-          || normalizeNonEmptyString(decodedToken.displayName)
-          || 'Forestry Equipment Sales User';
-        const seed = sanitizeAccountProfileUpdatePayload(req.body || {});
-        const userRef = getDb().collection('users').doc(actorUid);
-
-        let authRecord = null;
-        try {
-          authRecord = await getAuthUserRecordSafe(actorUid);
-        } catch (error) {
-          logger.warn('Unable to load auth record while bootstrapping account profile.', {
-            actorUid,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-
-        let existingSnapshot = null;
-        let existingData = {};
-        try {
-          existingSnapshot = await userRef.get();
-          if (existingSnapshot.exists) {
-            existingData = existingSnapshot.data() || {};
-          }
-        } catch (error) {
-          if (!isFirestoreQuotaExceeded(error)) {
-            throw error;
-          }
-          logger.warn('Account profile bootstrap is continuing without a Firestore pre-read because the daily read quota is exhausted.', {
-            actorUid,
-          });
-        }
-
-        const accountState = buildAccountStateFromSources(existingData, authRecord, {
-          uid: actorUid,
-          email: actorEmail,
-          displayName: actorDisplayName,
-          photoURL: normalizeNonEmptyString(authRecord?.photoURL),
-          emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
-        });
-
-        const nextData = {
-          uid: actorUid,
-          email: seed.email || normalizeNonEmptyString(existingData.email || actorEmail || authRecord?.email).toLowerCase(),
-          displayName: seed.displayName || normalizeNonEmptyString(existingData.displayName || authRecord?.displayName || actorDisplayName, actorDisplayName),
-          photoURL: seed.photoURL !== undefined ? seed.photoURL : normalizeNonEmptyString(existingData.photoURL || authRecord?.photoURL),
-          coverPhotoUrl: seed.coverPhotoUrl !== undefined ? seed.coverPhotoUrl : normalizeNonEmptyString(existingData.coverPhotoUrl),
-          phoneNumber: seed.phoneNumber !== undefined ? seed.phoneNumber : normalizeNonEmptyString(existingData.phoneNumber || authRecord?.phoneNumber),
-          company: seed.company !== undefined ? seed.company : normalizeNonEmptyString(existingData.company),
-          website: seed.website !== undefined ? seed.website : normalizeNonEmptyString(existingData.website),
-          about: seed.about !== undefined ? seed.about : normalizeNonEmptyString(existingData.about),
-          bio: seed.bio !== undefined ? seed.bio : normalizeNonEmptyString(existingData.bio),
-          location: seed.location !== undefined ? seed.location : normalizeNonEmptyString(existingData.location),
-          preferredLanguage: seed.preferredLanguage || normalizeNonEmptyString(existingData.preferredLanguage),
-          preferredCurrency: seed.preferredCurrency || normalizeNonEmptyString(existingData.preferredCurrency),
-          emailNotificationsEnabled:
-            seed.emailNotificationsEnabled !== undefined
-              ? Boolean(seed.emailNotificationsEnabled)
-              : existingData.emailNotificationsEnabled !== false,
-          favorites: Array.isArray(existingData.favorites)
-            ? existingData.favorites.filter((favorite) => typeof favorite === 'string')
-            : [],
-          role: accountState.role || normalizeUserRole(String(existingData.role || 'buyer')),
-          accountStatus: accountState.accountStatus || normalizeAccountStatus(String(existingData.accountStatus || 'active')),
-          accountAccessSource: accountState.accountAccessSource ?? existingData.accountAccessSource ?? null,
-          activeSubscriptionPlanId: accountState.activeSubscriptionPlanId,
-          subscriptionStatus: accountState.subscriptionStatus,
-          listingCap: accountState.listingCap,
-          managedAccountCap: accountState.managedAccountCap,
-          currentSubscriptionId: accountState.currentSubscriptionId,
-          currentPeriodEnd: accountState.currentPeriodEnd,
-          emailVerified: authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        if (!existingSnapshot?.exists) {
-          nextData.createdAt = admin.firestore.FieldValue.serverTimestamp();
-        }
-
-        await userRef.set(nextData, { merge: true });
-
-        await writeAccountAuditLog({
-          eventType: existingSnapshot?.exists ? 'account_profile_bootstrap_refreshed' : 'account_profile_bootstrapped',
-          actorUid,
-          targetUid: actorUid,
-          source: 'account_profile_bootstrap_api',
-          previousState: existingSnapshot?.exists ? { profileDocExists: true } : { profileDocExists: false },
-          nextState: {
-            role: nextData.role,
-            accountStatus: nextData.accountStatus,
-            accountAccessSource: nextData.accountAccessSource,
-          },
-        });
-
-        return res.status(200).json({
-          profile: serializeAccountProfileData(actorUid, {
-            ...existingData,
-            ...nextData,
-          }, authRecord, {
-            email: nextData.email,
-            displayName: nextData.displayName,
-            photoURL: nextData.photoURL,
-            emailVerified: nextData.emailVerified,
-          }),
-          source: existingSnapshot?.exists ? 'bootstrap_refresh' : 'bootstrap_create',
-          profileDocExists: true,
-          firestoreQuotaLimited: false,
-          fetchedAt: new Date().toISOString(),
+          profile: bootstrap.profile,
+          source: bootstrap.source,
+          profileDocExists: bootstrap.profileDocExists,
+          firestoreQuotaLimited: bootstrap.firestoreQuotaLimited,
         });
       }
 
@@ -8980,199 +9714,176 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
-        const userRef = getDb().collection('users').doc(actorUid);
-        const updates = sanitizeAccountProfileUpdatePayload(req.body || {});
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        const sanitizedUpdates = sanitizeAccountProfilePatchPayload(req.body || {});
+        const updatedFields = Object.keys(sanitizedUpdates);
+
+        if (updatedFields.length === 0) {
+          return res.status(400).json({ error: 'No supported profile updates were provided.' });
+        }
 
         let authRecord = null;
         try {
           authRecord = await getAuthUserRecordSafe(actorUid);
         } catch (error) {
-          logger.warn('Unable to load auth record for account profile update.', {
+          logger.warn('Unable to load auth record for account profile patch.', {
             actorUid,
             error: error instanceof Error ? error.message : String(error),
           });
         }
 
-        let existingData = {};
-        let userSnapshot = null;
+        let currentData = {};
+        let profileDocExists = false;
+        let firestoreQuotaLimited = false;
+
         try {
-          userSnapshot = await userRef.get();
+          const userSnapshot = await getDb().collection('users').doc(actorUid).get();
           if (userSnapshot.exists) {
-            existingData = userSnapshot.data() || {};
+            currentData = userSnapshot.data() || {};
+            profileDocExists = true;
           }
         } catch (error) {
           if (!isFirestoreQuotaExceeded(error)) {
             throw error;
           }
-          logger.warn('Account profile update is continuing without a Firestore pre-read because the daily read quota is exhausted.', {
+
+          firestoreQuotaLimited = true;
+          logger.warn('Account profile patch is applying without pre-read because the Firestore daily read quota is exhausted.', {
             actorUid,
+            updatedFields,
           });
         }
 
-        const nextData = {
+        const nextUserData = {
+          ...currentData,
+          ...sanitizedUpdates,
           uid: actorUid,
-          ...updates,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        if (!userSnapshot?.exists) {
-          nextData.createdAt = admin.firestore.FieldValue.serverTimestamp();
-          nextData.email = updates.email || normalizeNonEmptyString(existingData.email || actorEmail || authRecord?.email).toLowerCase();
-          nextData.displayName = updates.displayName || normalizeNonEmptyString(existingData.displayName || authRecord?.displayName || decodedToken.name, 'Forestry Equipment Sales User');
-          nextData.role = normalizeUserRole(String(existingData.role || decodedToken.role || 'buyer'));
-          nextData.accountStatus = normalizeAccountStatus(String(existingData.accountStatus || 'active'));
-          nextData.accountAccessSource = existingData.accountAccessSource ?? null;
-          nextData.emailVerified = authRecord ? Boolean(authRecord.emailVerified) : Boolean(decodedToken.email_verified);
+        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'buyer');
+        const quotaSafeProfileFields = new Set([
+          'emailNotificationsEnabled',
+          'preferredLanguage',
+          'preferredCurrency',
+          'mfaEnabled',
+          'mfaMethod',
+          'mfaPhoneNumber',
+          'mfaDisplayName',
+          'mfaEnrolledAt',
+        ]);
+        const canUseQuotaSafeFallback =
+          firestoreQuotaLimited &&
+          updatedFields.length > 0 &&
+          updatedFields.every((field) => quotaSafeProfileFields.has(field));
+
+        if (canUseQuotaSafeFallback) {
+          return res.status(200).json({
+            profile: serializeAccountProfileData(actorUid, nextUserData, authRecord, {
+              role: nextRole,
+            }),
+            source: 'quota_fallback_local',
+            profileDocExists,
+            firestoreQuotaLimited: true,
+            warning: 'Profile changes were accepted locally and will fully sync after the Firestore quota window resets.',
+            fetchedAt: new Date().toISOString(),
+          });
         }
 
-        await userRef.set(nextData, { merge: true });
+        await getDb().collection('users').doc(actorUid).set(
+          {
+            uid: actorUid,
+            ...sanitizedUpdates,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (authRecord && ('displayName' in sanitizedUpdates || 'photoURL' in sanitizedUpdates)) {
+          const authPatch = {};
+          if ('displayName' in sanitizedUpdates) {
+            authPatch.displayName = normalizeNonEmptyString(
+              sanitizedUpdates.displayName,
+              normalizeNonEmptyString(authRecord.displayName)
+            ) || null;
+          }
+          if ('photoURL' in sanitizedUpdates) {
+            authPatch.photoURL = normalizeNonEmptyString(
+              sanitizedUpdates.photoURL,
+              normalizeNonEmptyString(authRecord.photoURL)
+            ) || null;
+          }
+
+          if (Object.keys(authPatch).length > 0) {
+            try {
+              await admin.auth().updateUser(actorUid, authPatch);
+            } catch (error) {
+              if (!isAuthUserNotFound(error)) {
+                logger.error(`Failed to update auth profile for ${actorUid}`, error);
+              }
+            }
+          }
+        }
+
+        if (supportsEnterpriseStorefrontRole(nextRole)) {
+          const storefrontName = normalizeNonEmptyString(
+            nextUserData.storefrontName || nextUserData.displayName || nextUserData.company,
+            'Forestry Equipment Sales Storefront'
+          );
+          const storefrontSlug = buildStorefrontSlugValue(
+            nextUserData.storefrontSlug || storefrontName,
+            actorUid
+          );
+
+          await getDb().collection('storefronts').doc(actorUid).set(
+            {
+              uid: actorUid,
+              role: nextRole,
+              storefrontEnabled: true,
+              storefrontSlug,
+              canonicalPath: `/seller/${storefrontSlug}`,
+              displayName: normalizeNonEmptyString(nextUserData.displayName || nextUserData.company, storefrontName),
+              storefrontName,
+              storefrontTagline: normalizeNonEmptyString(nextUserData.storefrontTagline),
+              storefrontDescription: normalizeNonEmptyString(nextUserData.storefrontDescription || nextUserData.about),
+              location: normalizeNonEmptyString(nextUserData.location),
+              phone: normalizeNonEmptyString(nextUserData.phoneNumber),
+              email: normalizeNonEmptyString(nextUserData.email || authRecord?.email),
+              website: normalizeNonEmptyString(nextUserData.website),
+              logo: normalizeNonEmptyString(nextUserData.photoURL),
+              coverPhotoUrl: normalizeNonEmptyString(nextUserData.coverPhotoUrl),
+              seoTitle: normalizeNonEmptyString(nextUserData.seoTitle),
+              seoDescription: normalizeNonEmptyString(nextUserData.seoDescription),
+              seoKeywords: Array.isArray(nextUserData.seoKeywords)
+                ? nextUserData.seoKeywords.filter((keyword) => typeof keyword === 'string').slice(0, 30)
+                : [],
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
 
         await writeAccountAuditLog({
-          eventType: 'account_profile_updated',
+          eventType: 'ACCOUNT_PROFILE_UPDATED',
           actorUid,
           targetUid: actorUid,
-          source: 'account_profile_api',
-          previousState: sanitizeAccountProfileUpdatePayload(existingData),
-          nextState: updates,
-        });
-
-        return res.status(200).json({
-          profile: serializeAccountProfileData(actorUid, {
-            ...existingData,
-            ...updates,
-            email: updates.email || existingData.email || actorEmail || authRecord?.email,
-          }, authRecord),
           source: 'account_profile_patch',
-          profileDocExists: true,
-          firestoreQuotaLimited: false,
-          fetchedAt: new Date().toISOString(),
-        });
-      }
-
-      if (req.method === 'GET' && path === '/account/saved-searches') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const snapshot = await getDb()
-          .collection('savedSearches')
-          .where('userUid', '==', actorUid)
-          .orderBy('createdAt', 'desc')
-          .get();
-
-        return res.status(200).json({
-          savedSearches: snapshot.docs.map((docSnapshot) => serializeSavedSearchDoc(docSnapshot)),
-        });
-      }
-
-      if (req.method === 'POST' && path === '/account/saved-searches') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
-        const name = trimAccountText(req.body?.name, 160);
-        const filters = sanitizeSavedSearchFilters(req.body?.filters || {});
-        const alertEmail = trimAccountText(req.body?.alertEmail || actorEmail, 320).toLowerCase();
-        const alertPreferences = sanitizeAlertPreferences(req.body?.alertPreferences || {});
-
-        if (!name) {
-          return res.status(400).json({ error: 'Search name is required.' });
-        }
-
-        const newDocRef = getDb().collection('savedSearches').doc();
-        await newDocRef.set({
-          userUid: actorUid,
-          name,
-          filters,
-          alertEmail,
-          alertPreferences,
-          status: 'active',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        await writeAccountAuditLog({
-          eventType: 'saved_search_created',
-          actorUid,
-          targetUid: actorUid,
-          source: 'account_saved_search_api',
-          nextState: {
-            savedSearchId: newDocRef.id,
-            name,
+          reason: `Account profile updated: ${updatedFields.join(', ')}`,
+          metadata: {
+            updatedFields,
+            firestoreQuotaLimited,
           },
         });
 
-        const createdSnapshot = await newDocRef.get();
-        return res.status(201).json({
-          savedSearch: serializeSavedSearchDoc(createdSnapshot),
-        });
-      }
-
-      if ((req.method === 'PATCH' || req.method === 'DELETE') && path.startsWith('/account/saved-searches/')) {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const savedSearchId = normalizeNonEmptyString(path.split('/').pop());
-        if (!savedSearchId) {
-          return res.status(400).json({ error: 'Saved search id is required.' });
-        }
-
-        const savedSearchRef = getDb().collection('savedSearches').doc(savedSearchId);
-        const savedSearchSnapshot = await savedSearchRef.get();
-        if (!savedSearchSnapshot.exists) {
-          return res.status(404).json({ error: 'Saved search not found.' });
-        }
-
-        const savedSearchData = savedSearchSnapshot.data() || {};
-        if (normalizeNonEmptyString(savedSearchData.userUid) !== actorUid) {
-          return res.status(403).json({ error: 'Forbidden' });
-        }
-
-        if (req.method === 'DELETE') {
-          await savedSearchRef.delete();
-          await writeAccountAuditLog({
-            eventType: 'saved_search_deleted',
-            actorUid,
-            targetUid: actorUid,
-            source: 'account_saved_search_api',
-            previousState: { savedSearchId, name: normalizeNonEmptyString(savedSearchData.name) },
-          });
-          return res.status(200).json({ id: savedSearchId, deleted: true });
-        }
-
-        const updates = {};
-        if ('name' in (req.body || {})) updates.name = trimAccountText(req.body?.name, 160);
-        if ('filters' in (req.body || {})) updates.filters = sanitizeSavedSearchFilters(req.body?.filters || {});
-        if ('alertEmail' in (req.body || {})) updates.alertEmail = trimAccountText(req.body?.alertEmail, 320).toLowerCase();
-        if ('alertPreferences' in (req.body || {})) updates.alertPreferences = sanitizeAlertPreferences(req.body?.alertPreferences || {});
-        if ('status' in (req.body || {})) {
-          updates.status = normalizeNonEmptyString(req.body?.status, 'active') === 'paused' ? 'paused' : 'active';
-        }
-
-        updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-
-        await savedSearchRef.set(updates, { merge: true });
-
-        await writeAccountAuditLog({
-          eventType: 'saved_search_updated',
-          actorUid,
-          targetUid: actorUid,
-          source: 'account_saved_search_api',
-          previousState: { savedSearchId, name: normalizeNonEmptyString(savedSearchData.name) },
-          nextState: { savedSearchId, ...updates },
+        const responseProfile = serializeAccountProfileData(actorUid, nextUserData, authRecord, {
+          role: nextRole,
         });
 
-        const updatedSnapshot = await savedSearchRef.get();
         return res.status(200).json({
-          savedSearch: serializeSavedSearchDoc(updatedSnapshot),
+          profile: responseProfile,
+          source: profileDocExists ? 'firestore' : 'auth_fallback',
+          profileDocExists,
+          firestoreQuotaLimited,
+          fetchedAt: new Date().toISOString(),
         });
       }
 
@@ -9189,217 +9900,45 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const snapshot = canAdministrateAccount(actorRole) && !requestedUserUid
-          ? await getDb().collection('financingRequests').orderBy('createdAt', 'desc').get()
-          : await getDb().collection('financingRequests').where('buyerUid', '==', requestedUserUid).get();
+        const quotaWarning = 'Financing requests are temporarily unavailable because the Firestore daily read quota is exhausted.';
 
-        const financingRequests = snapshot.docs
-          .map((docSnapshot) => {
-            const data = docSnapshot.data() || {};
-            return {
-              id: docSnapshot.id,
-              listingId: normalizeNonEmptyString(data.listingId) || undefined,
-              sellerUid: normalizeNonEmptyString(data.sellerUid) || undefined,
-              buyerUid: data.buyerUid == null ? null : normalizeNonEmptyString(data.buyerUid) || null,
-              applicantName: normalizeNonEmptyString(data.applicantName),
-              applicantEmail: normalizeNonEmptyString(data.applicantEmail),
-              applicantPhone: normalizeNonEmptyString(data.applicantPhone),
-              company: normalizeNonEmptyString(data.company) || undefined,
-              requestedAmount: toFiniteNumberOrUndefined(data.requestedAmount),
-              message: normalizeNonEmptyString(data.message) || undefined,
-              status: normalizeNonEmptyString(data.status, 'New'),
-              createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-              updatedAt: timestampValueToIso(data.updatedAt) || null,
-            };
-          })
-          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+        try {
+          const snapshot = canAdministrateAccount(actorRole) && !requestedUserUid
+            ? await getDb().collection('financingRequests').orderBy('createdAt', 'desc').get()
+            : await getDb().collection('financingRequests').where('buyerUid', '==', requestedUserUid).get();
 
-        return res.status(200).json({ financingRequests });
-      }
-
-      if (req.method === 'POST' && path === '/account/inspection-requests') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const listingId = normalizeNonEmptyString(req.body?.listingId);
-        const listingTitle = normalizeNonEmptyString(req.body?.listingTitle || req.body?.equipment);
-        const listingUrl = normalizeNonEmptyString(req.body?.listingUrl);
-        const reference = normalizeNonEmptyString(req.body?.reference);
-        const requesterName = normalizeNonEmptyString(req.body?.requesterName);
-        const requesterEmail = normalizeNonEmptyString(req.body?.requesterEmail);
-        const requesterPhone = normalizeNonEmptyString(req.body?.requesterPhone);
-        const requesterCompany = normalizeNonEmptyString(req.body?.requesterCompany);
-        const equipment = normalizeNonEmptyString(req.body?.equipment || listingTitle);
-        const inspectionLocation = normalizeNonEmptyString(req.body?.inspectionLocation);
-        const timeline = normalizeNonEmptyString(req.body?.timeline);
-        const notes = normalizeNonEmptyString(req.body?.notes);
-        const matchedDealerUid = normalizeNonEmptyString(req.body?.matchedDealerUid) || null;
-        const matchedDealerName = normalizeNonEmptyString(req.body?.matchedDealerName);
-        const matchedDealerLocation = normalizeNonEmptyString(req.body?.matchedDealerLocation);
-        const matchedDealerDistanceMiles = toFiniteNumberOrUndefined(req.body?.matchedDealerDistanceMiles);
-        const assignedToUid = normalizeNonEmptyString(req.body?.assignedToUid || matchedDealerUid) || null;
-        const assignedToName = normalizeNonEmptyString(req.body?.assignedToName || matchedDealerName);
-
-        if (!requesterName || !requesterEmail || !requesterPhone || !equipment || !inspectionLocation) {
-          return res.status(400).json({ error: 'Requester name, email, phone, equipment, and inspection location are required.' });
-        }
-
-        const requestRef = getDb().collection('inspectionRequests').doc();
-        await requestRef.set({
-          id: requestRef.id,
-          listingId,
-          listingTitle,
-          listingUrl,
-          reference,
-          requesterUid: actorUid || null,
-          requesterName,
-          requesterEmail,
-          requesterPhone,
-          requesterCompany,
-          equipment,
-          inspectionLocation,
-          timeline,
-          notes,
-          matchedDealerUid,
-          matchedDealerName,
-          matchedDealerLocation,
-          matchedDealerDistanceMiles: matchedDealerDistanceMiles ?? null,
-          assignedToUid,
-          assignedToName,
-          quotedPrice: null,
-          status: 'New',
-          reviewedAt: null,
-          respondedAt: null,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        const createdSnapshot = await requestRef.get();
-        return res.status(201).json({
-          inspectionRequest: serializeInspectionRequestDoc(createdSnapshot),
-        });
-      }
-
-      if (req.method === 'GET' && path === '/account/inspection-requests') {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, actorUid);
-
-        if (requestedUserUid !== actorUid && !canAdministrateAccount(actorRole)) {
-          return res.status(403).json({ error: 'Forbidden' });
-        }
-
-        if (canReadAllInspectionRequests(actorRole)) {
-          const snapshot = await getDb().collection('inspectionRequests').orderBy('createdAt', 'desc').get();
-          return res.status(200).json({
-            inspectionRequests: snapshot.docs.map((docSnapshot) => serializeInspectionRequestDoc(docSnapshot)),
-          });
-        }
-
-        if (canManageAssignedInspectionRequests(actorRole)) {
-          const [assignedSnapshot, matchedSnapshot] = await Promise.all([
-            getDb().collection('inspectionRequests').where('assignedToUid', '==', requestedUserUid).get(),
-            getDb().collection('inspectionRequests').where('matchedDealerUid', '==', requestedUserUid).get(),
-          ]);
-
-          const seen = new Set();
-          const inspectionRequests = [...assignedSnapshot.docs, ...matchedSnapshot.docs]
-            .filter((docSnapshot) => {
-              if (seen.has(docSnapshot.id)) return false;
-              seen.add(docSnapshot.id);
-              return true;
+          const financingRequests = snapshot.docs
+            .map((docSnapshot) => {
+              const data = docSnapshot.data() || {};
+              return {
+                id: docSnapshot.id,
+                listingId: normalizeNonEmptyString(data.listingId) || undefined,
+                sellerUid: normalizeNonEmptyString(data.sellerUid) || undefined,
+                buyerUid: data.buyerUid == null ? null : normalizeNonEmptyString(data.buyerUid) || null,
+                applicantName: normalizeNonEmptyString(data.applicantName),
+                applicantEmail: normalizeNonEmptyString(data.applicantEmail),
+                applicantPhone: normalizeNonEmptyString(data.applicantPhone),
+                company: normalizeNonEmptyString(data.company) || undefined,
+                requestedAmount: toFiniteNumberOrUndefined(data.requestedAmount),
+                message: normalizeNonEmptyString(data.message) || undefined,
+                status: normalizeNonEmptyString(data.status, 'New'),
+                createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+                updatedAt: timestampValueToIso(data.updatedAt) || null,
+              };
             })
-            .map((docSnapshot) => serializeInspectionRequestDoc(docSnapshot))
             .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
 
-          return res.status(200).json({ inspectionRequests });
-        }
-
-        const snapshot = await getDb().collection('inspectionRequests').where('requesterUid', '==', requestedUserUid).get();
-        const inspectionRequests = snapshot.docs
-          .map((docSnapshot) => serializeInspectionRequestDoc(docSnapshot))
-          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
-
-        return res.status(200).json({ inspectionRequests });
-      }
-
-      if (req.method === 'PATCH' && path.startsWith('/account/inspection-requests/')) {
-        const decodedToken = await getDecodedUserFromBearer(req);
-        if (!decodedToken) {
-          return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const inspectionRequestId = decodeURIComponent(path.split('/').pop() || '').trim();
-        if (!inspectionRequestId) {
-          return res.status(400).json({ error: 'Inspection request id is required.' });
-        }
-
-        const actorUid = normalizeNonEmptyString(decodedToken.uid);
-        const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestRef = getDb().collection('inspectionRequests').doc(inspectionRequestId);
-        const requestSnapshot = await requestRef.get();
-        if (!requestSnapshot.exists) {
-          return res.status(404).json({ error: 'Inspection request not found.' });
-        }
-
-        const currentData = requestSnapshot.data() || {};
-        const assignedToUid = normalizeNonEmptyString(currentData.assignedToUid);
-        const matchedDealerUid = normalizeNonEmptyString(currentData.matchedDealerUid);
-        const requesterUid = normalizeNonEmptyString(currentData.requesterUid);
-        const canUpdate = canReadAllInspectionRequests(actorRole)
-          || (canManageAssignedInspectionRequests(actorRole) && (assignedToUid === actorUid || matchedDealerUid === actorUid))
-          || requesterUid === actorUid;
-
-        if (!canUpdate) {
-          return res.status(403).json({ error: 'Forbidden' });
-        }
-
-        const nextStatus = normalizeNonEmptyString(req.body?.status);
-        const nextAssignedToUid = req.body?.assignedToUid === undefined ? undefined : normalizeNonEmptyString(req.body?.assignedToUid) || null;
-        const nextAssignedToName = req.body?.assignedToName === undefined ? undefined : normalizeNonEmptyString(req.body?.assignedToName) || null;
-        const requestedQuotedPrice = req.body?.quotedPrice;
-        const payload = {
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        if (nextStatus) {
-          payload.status = nextStatus;
-          payload.reviewedAt = admin.firestore.FieldValue.serverTimestamp();
-          if (['accepted', 'declined', 'quoted', 'completed'].includes(nextStatus)) {
-            payload.respondedAt = admin.firestore.FieldValue.serverTimestamp();
+          return res.status(200).json({ financingRequests });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Account financing requests API is returning quota fallback payload.', {
+              actorUid,
+              requestedUserUid,
+            });
+            return res.status(200).json(buildQuotaLimitedPayload('financingRequests', [], quotaWarning));
           }
+          throw error;
         }
-
-        if (requestedQuotedPrice === null) {
-          payload.quotedPrice = null;
-        } else {
-          const quotedPrice = toFiniteNumberOrUndefined(requestedQuotedPrice);
-          if (quotedPrice !== undefined) {
-            payload.quotedPrice = quotedPrice;
-          }
-        }
-
-        if (req.body?.assignedToUid !== undefined) {
-          payload.assignedToUid = nextAssignedToUid;
-        }
-
-        if (req.body?.assignedToName !== undefined) {
-          payload.assignedToName = nextAssignedToName;
-        }
-
-        await requestRef.set(payload, { merge: true });
-        const updatedSnapshot = await requestRef.get();
-        return res.status(200).json({
-          inspectionRequest: serializeInspectionRequestDoc(updatedSnapshot),
-        });
       }
 
       if (req.method === 'GET' && path === '/account/seat-context') {
@@ -9453,22 +9992,32 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
-          getDb().collection('inquiries').where('sellerUid', '==', requestedSellerUid).get(),
-          getDb().collection('inquiries').where('sellerId', '==', requestedSellerUid).get(),
-        ]);
+        const quotaWarning = 'Account inquiries are temporarily unavailable because the Firestore daily read quota is exhausted.';
 
-        const seen = new Set();
-        const inquiries = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs]
-          .filter((docSnapshot) => {
-            if (seen.has(docSnapshot.id)) return false;
-            seen.add(docSnapshot.id);
-            return true;
-          })
-          .map((docSnapshot) => serializeInquiryDoc(docSnapshot))
-          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+        try {
+          const sellerUidSnapshot = await getDb().collection('inquiries').where('sellerUid', '==', requestedSellerUid).get();
+          let inquiryDocs = sellerUidSnapshot.docs;
 
-        return res.status(200).json({ inquiries });
+          if (inquiryDocs.length === 0) {
+            const legacySnapshot = await getDb().collection('inquiries').where('sellerId', '==', requestedSellerUid).get();
+            inquiryDocs = legacySnapshot.docs;
+          }
+
+          const inquiries = inquiryDocs
+            .map((docSnapshot) => serializeInquiryDoc(docSnapshot))
+            .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
+
+          return res.status(200).json({ inquiries });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Account inquiries API is returning quota fallback payload.', {
+              actorUid,
+              requestedSellerUid,
+            });
+            return res.status(200).json(buildQuotaLimitedPayload('inquiries', [], quotaWarning));
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/account/calls') {
@@ -9484,22 +10033,32 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
-          getDb().collection('calls').where('sellerUid', '==', requestedSellerUid).get(),
-          getDb().collection('calls').where('sellerId', '==', requestedSellerUid).get(),
-        ]);
+        const quotaWarning = 'Account calls are temporarily unavailable because the Firestore daily read quota is exhausted.';
 
-        const seen = new Set();
-        const calls = [...sellerUidSnapshot.docs, ...sellerIdSnapshot.docs]
-          .filter((docSnapshot) => {
-            if (seen.has(docSnapshot.id)) return false;
-            seen.add(docSnapshot.id);
-            return true;
-          })
-          .map((docSnapshot) => serializeCallDoc(docSnapshot))
-          .sort((left, right) => timestampValueToSortableMs(right.createdAt) - timestampValueToSortableMs(left.createdAt));
+        try {
+          const sellerUidSnapshot = await getDb().collection('calls').where('sellerUid', '==', requestedSellerUid).get();
+          let callDocs = sellerUidSnapshot.docs;
 
-        return res.status(200).json({ calls });
+          if (callDocs.length === 0) {
+            const legacySnapshot = await getDb().collection('calls').where('sellerId', '==', requestedSellerUid).get();
+            callDocs = legacySnapshot.docs;
+          }
+
+          const calls = callDocs
+            .map((docSnapshot) => serializeCallDoc(docSnapshot))
+            .sort((left, right) => timestampValueToSortableMs(right.createdAt) - timestampValueToSortableMs(left.createdAt));
+
+          return res.status(200).json({ calls });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Account calls API is returning quota fallback payload.', {
+              actorUid,
+              requestedSellerUid,
+            });
+            return res.status(200).json(buildQuotaLimitedPayload('calls', [], quotaWarning));
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'GET' && path === '/account/storefront') {
@@ -9515,17 +10074,36 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const storefrontSnapshot = await getDb().collection('storefronts').doc(requestedUserUid).get();
-        if (storefrontSnapshot.exists) {
-          return res.status(200).json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
-        }
+        const quotaWarning = 'Storefront data is temporarily unavailable because the Firestore daily read quota is exhausted.';
 
-        const userSnapshot = await getDb().collection('users').doc(requestedUserUid).get();
-        if (userSnapshot.exists) {
-          return res.status(200).json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
-        }
+        try {
+          const storefrontSnapshot = await getDb().collection('storefronts').doc(requestedUserUid).get();
+          if (storefrontSnapshot.exists) {
+            return res.status(200).json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+          }
 
-        return res.status(200).json({ seller: null });
+          const userSnapshot = await getDb().collection('users').doc(requestedUserUid).get();
+          if (userSnapshot.exists) {
+            return res.status(200).json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+          }
+
+          return res.status(200).json({ seller: null });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Account storefront API is returning quota fallback payload.', {
+              actorUid,
+              requestedUserUid,
+            });
+            const bootstrap = await buildAccountBootstrapPayload(decodedToken, { stripe });
+            const fallbackSeller = bootstrap.profile
+              ? serializeSellerPayloadFromUser(requestedUserUid, bootstrap.profile)
+              : null;
+            return res.status(200).json(buildQuotaLimitedPayload('seller', fallbackSeller, quotaWarning, {
+              source: fallbackSeller ? 'bootstrap_profile_fallback' : 'quota_fallback',
+            }));
+          }
+          throw error;
+        }
       }
 
       if (req.method === 'POST' && path === '/admin/users/create-managed-account') {
@@ -9730,108 +10308,18 @@ exports.apiProxy = onRequest(
         if (actor.error) {
           return res.status(actor.status).json({ error: actor.error });
         }
+        const payload = await listAdminDirectoryUsersPayload();
+        return res.status(200).json(payload.users);
+      }
 
-        // 1. List ALL Firebase Auth users (source of truth - catches users with no Firestore doc)
-        const authUsers = [];
-        let nextPageToken;
-        do {
-          const listResult = await admin.auth().listUsers(1000, nextPageToken);
-          authUsers.push(...listResult.users);
-          nextPageToken = listResult.pageToken;
-        } while (nextPageToken);
-
-        if (authUsers.length === 0) {
-          return res.status(200).json([]);
+      if (req.method === 'GET' && path === '/admin/bootstrap') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
         }
 
-        // 2. Batch-fetch all Firestore profile docs at once
-        const db = getDb();
-        const uidChunks = [];
-        for (let i = 0; i < authUsers.length; i += 500) {
-          uidChunks.push(authUsers.slice(i, i + 500));
-        }
-        const profileDocMap = {};
-        let firestoreProfilesAvailable = true;
-        try {
-          await Promise.all(
-            uidChunks.map(async (chunk) => {
-              const refs = chunk.map((u) => db.collection('users').doc(u.uid));
-              const snaps = await db.getAll(...refs);
-              snaps.forEach((snap) => {
-                profileDocMap[snap.id] = snap;
-              });
-            })
-          );
-        } catch (error) {
-          if (!isFirestoreQuotaExceeded(error)) {
-            throw error;
-          }
-          firestoreProfilesAvailable = false;
-          logger.warn('Admin user directory falling back to auth-only data because Firestore quota is exhausted.', {
-            authUserCount: authUsers.length,
-          });
-        }
-
-        // 3. Merge auth record + Firestore profile for each user
-        const users = authUsers.map((authRecord) => {
-          const snap = profileDocMap[authRecord.uid];
-          const data = (snap && snap.exists) ? (snap.data() || {}) : {};
-
-          const authDisabled = Boolean(authRecord.disabled);
-          const rawAccountStatus = normalize(String(data.accountStatus || 'active'));
-          const accountStatus = ['active', 'pending', 'suspended'].includes(rawAccountStatus)
-            ? rawAccountStatus
-            : (authDisabled ? 'suspended' : 'active');
-          const displayName = String(data.displayName || data.name || authRecord.displayName || '').trim();
-          const email = String(data.email || authRecord.email || '').trim().toLowerCase();
-          const phone = String(data.phoneNumber || '').trim();
-          const createdAt = timestampValueToIso(data.createdAt) || timestampValueToIso(authRecord.metadata?.creationTime);
-          const updatedAt = timestampValueToIso(data.updatedAt);
-          const lastLogin =
-            timestampValueToIso(authRecord.metadata?.lastSignInTime) ||
-            timestampValueToIso(data.lastLogin) ||
-            updatedAt ||
-            createdAt;
-          const fallbackRole = isPrivilegedAdminEmail(email)
-            ? 'super_admin'
-            : normalizeUserRole(String(authRecord.customClaims?.role || 'buyer'));
-          const role = firestoreProfilesAvailable && isSupportedUserRole(String(data.role || ''))
-            ? String(data.role)
-            : fallbackRole;
-          const fallbackAccountStatus = authDisabled ? 'suspended' : 'active';
-
-          return {
-            id: authRecord.uid,
-            uid: authRecord.uid,
-            name: displayName || email || 'Unknown User',
-            displayName: displayName || email || 'Unknown User',
-            email,
-            phone,
-            phoneNumber: phone,
-            company: String(data.company || '').trim(),
-            role,
-            status: toAccountStatusLabel(accountStatus, authDisabled),
-            accountStatus: firestoreProfilesAvailable ? accountStatus : fallbackAccountStatus,
-            authDisabled,
-            emailVerified: Boolean(authRecord.emailVerified),
-            lastLogin,
-            lastActive: lastLogin,
-            memberSince: createdAt,
-            createdAt,
-            updatedAt,
-            totalListings: Number(data.totalListings || 0),
-            totalLeads: Number(data.totalLeads || 0),
-            parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
-          };
-        });
-
-        users.sort((left, right) => {
-          const leftTime = Date.parse(left.lastLogin || left.memberSince || '') || 0;
-          const rightTime = Date.parse(right.lastLogin || right.memberSince || '') || 0;
-          return rightTime - leftTime;
-        });
-
-        return res.status(200).json(users);
+        const includeOverview = ['1', 'true', 'yes'].includes(String(req.query?.includeOverview || '').trim().toLowerCase());
+        return res.status(200).json(await buildAdminOperationsBootstrapPayload({ includeOverview }));
       }
 
       if (req.method === 'GET' && path === '/admin/listings') {
@@ -9904,67 +10392,15 @@ exports.apiProxy = onRequest(
         });
       }
 
-      if (req.method === 'POST' && path === '/admin/listings/seed-demo') {
-        const actor = await getAdminActorContext(req);
-        if (actor.error) {
-          return res.status(actor.status).json({ error: actor.error });
-        }
-
-        const requestBody = req.body && typeof req.body === 'object' ? req.body : {};
-        const requestedSellerUid = normalizeNonEmptyString(requestBody.sellerUid, actor.ownerUid || actor.actorUid);
-        const sellerUid = requestedSellerUid || actor.ownerUid || actor.actorUid;
-        const seededListings = buildSeedDemoListingsForSeller(sellerUid);
-        const batch = getDb().batch();
-
-        for (const listing of seededListings) {
-          const listingRef = getDb().collection('listings').doc(listing.id);
-          batch.set(listingRef, {
-            ...listing,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          }, { merge: true });
-        }
-
-        await batch.commit();
-
-        await writeAccountAuditLog({
-          eventType: 'listing_demo_seeded',
-          actorUid: actor.actorUid,
-          actorEmail: actor.actorEmail,
-          targetUid: sellerUid,
-          source: 'admin_listing_seed_api',
-          previousState: null,
-          nextState: {
-            sellerUid,
-            seededListingIds: seededListings.map((listing) => listing.id),
-            count: seededListings.length,
-          },
-        });
-
-        return res.status(200).json({
-          seededCount: seededListings.length,
-          listingIds: seededListings.map((listing) => listing.id),
-        });
-      }
-
       if (req.method === 'GET' && path === '/admin/inquiries') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        try {
-          const snapshot = await getDb().collection('inquiries').orderBy('createdAt', 'desc').get();
-          const inquiries = snapshot.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
-          return res.status(200).json({ inquiries });
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Admin inquiries are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
+        const snapshot = await getDb().collection('inquiries').orderBy('createdAt', 'desc').get();
+        const inquiries = snapshot.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
+        return res.status(200).json({ inquiries });
       }
 
       if (req.method === 'GET' && path === '/admin/calls') {
@@ -9973,18 +10409,9 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        try {
-          const snapshot = await getDb().collection('calls').orderBy('createdAt', 'desc').get();
-          const calls = snapshot.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
-          return res.status(200).json({ calls });
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Admin calls are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
+        const snapshot = await getDb().collection('calls').orderBy('createdAt', 'desc').get();
+        const calls = snapshot.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
+        return res.status(200).json({ calls });
       }
 
       if (req.method === 'GET' && path === '/admin/billing/invoices') {
@@ -9993,18 +10420,82 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        try {
-          const snapshot = await getDb().collection('invoices').orderBy('createdAt', 'desc').get();
-          const invoices = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          return res.status(200).json(invoices);
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Admin invoices are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
+        const snapshot = await getDb().collection('invoices').orderBy('createdAt', 'desc').get();
+        const invoices = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.status(200).json(invoices);
+      }
+
+      if (req.method === 'GET' && path === '/admin/billing/bootstrap') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
         }
+
+        const sectionErrorMessages = {
+          invoices: 'Invoices are temporarily unavailable because the Firestore daily read quota is exhausted.',
+          subscriptions: 'Subscriptions are temporarily unavailable because the Firestore daily read quota is exhausted.',
+          auditLogs: 'Billing audit logs are temporarily unavailable because the Firestore daily read quota is exhausted.',
+          accountAuditLogs: 'Account audit logs are temporarily unavailable because the Firestore daily read quota is exhausted.',
+          sellerAgreementAcceptances: 'Seller legal acceptance records are temporarily unavailable because the Firestore daily read quota is exhausted.',
+        };
+
+        let firestoreQuotaLimited = false;
+        const degradedSections = [];
+        const errors = {};
+
+        const loadQuotaSafeSection = async (section, loader, fallbackValue = []) => {
+          try {
+            return await loader();
+          } catch (error) {
+            if (isFirestoreQuotaExceeded(error)) {
+              firestoreQuotaLimited = true;
+              degradedSections.push(section);
+              errors[section] = sectionErrorMessages[section] || 'This billing section is temporarily unavailable because the Firestore daily read quota is exhausted.';
+              return fallbackValue;
+            }
+            throw error;
+          }
+        };
+
+        const [invoices, subscriptions, auditLogs, accountAuditLogs, sellerAgreementAcceptances] = await Promise.all([
+          loadQuotaSafeSection('invoices', async () => {
+            const snapshot = await getDb().collection('invoices').orderBy('createdAt', 'desc').limit(50).get();
+            return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          }),
+          loadQuotaSafeSection('subscriptions', async () => {
+            const snapshot = await getDb().collection('subscriptions').limit(100).get();
+            return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          }),
+          loadQuotaSafeSection('auditLogs', async () => {
+            const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
+            return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          }),
+          loadQuotaSafeSection('accountAuditLogs', async () => {
+            const snapshot = await getDb().collection('accountAuditLogs').orderBy('createdAt', 'desc').limit(50).get();
+            return snapshot.docs
+              .map((docSnapshot) => serializeAccountAuditLogRecord(docSnapshot))
+              .filter(Boolean);
+          }),
+          loadQuotaSafeSection('sellerAgreementAcceptances', async () => {
+            const snapshot = await getDb().collection('sellerProgramAgreementAcceptances').orderBy('updatedAt', 'desc').limit(50).get();
+            return snapshot.docs
+              .map((docSnapshot) => serializeSellerProgramAgreementAcceptanceRecord(docSnapshot))
+              .filter(Boolean);
+          }),
+        ]);
+
+        return res.status(200).json({
+          invoices,
+          subscriptions,
+          auditLogs,
+          accountAuditLogs,
+          sellerAgreementAcceptances,
+          partial: degradedSections.length > 0,
+          degradedSections: Array.from(new Set(degradedSections)),
+          errors,
+          firestoreQuotaLimited,
+          fetchedAt: new Date().toISOString(),
+        });
       }
 
       if (req.method === 'GET' && path === '/admin/billing/subscriptions') {
@@ -10013,75 +10504,9 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        try {
-          const snapshot = await getDb().collection('subscriptions').get();
-          const subscriptions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          return res.status(200).json(subscriptions);
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Admin subscriptions are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
-      }
-
-      if (req.method === 'GET' && path === '/admin/content/blog-posts') {
-        const actor = await getAdminActorContext(req);
-        if (actor.error) {
-          return res.status(actor.status).json({ error: actor.error });
-        }
-
-        try {
-          const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').get();
-          return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeAdminBlogPostDoc(docSnapshot)));
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Blog posts are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
-      }
-
-      if (req.method === 'GET' && path === '/admin/content/media') {
-        const actor = await getAdminActorContext(req);
-        if (actor.error) {
-          return res.status(actor.status).json({ error: actor.error });
-        }
-
-        try {
-          const snapshot = await getDb().collection('mediaLibrary').orderBy('createdAt', 'desc').get();
-          return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeAdminMediaDoc(docSnapshot)));
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Media assets are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
-      }
-
-      if (req.method === 'GET' && path === '/admin/content/blocks') {
-        const actor = await getAdminActorContext(req);
-        if (actor.error) {
-          return res.status(actor.status).json({ error: actor.error });
-        }
-
-        try {
-          const snapshot = await getDb().collection('contentBlocks').orderBy('order', 'asc').get();
-          return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeAdminContentBlockDoc(docSnapshot)));
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Content blocks are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
+        const snapshot = await getDb().collection('subscriptions').get();
+        const subscriptions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.status(200).json(subscriptions);
       }
 
       if (req.method === 'GET' && path === '/admin/billing/audit-logs') {
@@ -10090,18 +10515,9 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        try {
-          const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
-          const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          return res.status(200).json(logs);
-        } catch (error) {
-          if (isFirestoreQuotaExceeded(error)) {
-            return res.status(503).json({
-              error: 'Billing audit logs are temporarily unavailable because the Firestore daily read quota is exhausted.',
-            });
-          }
-          throw error;
-        }
+        const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
+        const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.status(200).json(logs);
       }
 
       if (req.method === 'POST' && path === '/admin/email/test-send') {
@@ -10205,23 +10621,12 @@ exports.apiProxy = onRequest(
           }
 
           try {
-            const resetLink = await admin.auth().generatePasswordResetLink(email, {
-              url: `${APP_URL}/login`,
-            });
-
             const actorName = String(actor.actorDoc.data()?.displayName || actor.actorEmail || 'Forestry Equipment Sales Admin').trim();
-            await sendEmail({
-              to: email,
-              subject: 'Reset your Forestry Equipment Sales password',
-              html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-                  <h2 style="margin-bottom: 16px;">Password reset requested</h2>
-                  <p>Hello ${displayName},</p>
-                  <p>${actorName} requested a password reset for your Forestry Equipment Sales account.</p>
-                  <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
-                  <p>If you did not expect this email, you can ignore it.</p>
-                </div>
-              `,
+            await sendPasswordResetEmailMessage({
+              email,
+              displayName,
+              requestedBy: actorName,
+              continueUrl: `${resolveAppUrlFromRequest(req)}/login`,
             });
 
             return res.status(200).json({ message: 'Password reset email sent.' });
@@ -10567,6 +10972,24 @@ exports.apiProxy = onRequest(
         });
       }
 
+      if (req.method === 'GET' && path === '/admin/dealer-feeds/bootstrap') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, requestedSellerUid)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const payload = await buildDealerFeedBootstrapPayload({
+          sellerUid: requestedSellerUid,
+          limitCount: Number(req.query?.limit || 20),
+        });
+        return res.status(200).json(payload);
+      }
+
       if (req.method === 'GET' && path === '/admin/dealer-feeds/logs') {
         const actor = await getDealerFeedActorContext(req);
         if (actor.error) {
@@ -10596,15 +11019,7 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Forbidden' });
         }
 
-        await migrateLegacyDealerFeedProfilesForSeller(requestedSellerUid);
-        const feedsSnap = await getDb()
-          .collection('dealerFeeds')
-          .where('sellerUid', '==', requestedSellerUid)
-          .get();
-        const feeds = feedsSnap.docs
-          .map((doc) => serializeDealerFeed(doc.id, doc.data() || {}))
-          .sort((left, right) => timestampValueToSortableMs(right.updatedAt || right.createdAt) - timestampValueToSortableMs(left.updatedAt || left.createdAt));
-
+        const feeds = await listDealerFeedsForSeller(requestedSellerUid);
         return res.status(200).json({ feeds });
       }
 

@@ -104,7 +104,7 @@ export function SubscriptionSuccess() {
             </div>
             <div className="border border-line bg-bg p-4 rounded-sm">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Account</p>
-              <p className="text-sm font-black uppercase tracking-tight text-ink">{user?.email || 'Signed-in account'}</p>
+              <p className="text-sm font-black uppercase tracking-tight text-ink">{user?.email || 'Sign in to continue to your account'}</p>
             </div>
           </div>
 
@@ -118,14 +118,23 @@ export function SubscriptionSuccess() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Link to="/sell" className={`btn-industrial py-3 px-5 ${highlightListEquipment ? 'btn-accent' : ''}`}>
-              List Equipment
-              <ArrowRight size={16} className="ml-2" />
-            </Link>
-            <Link to="/profile" className={`btn-industrial py-3 px-5 ${!highlightListEquipment ? 'btn-accent' : ''}`}>
-              My Account
-              <LayoutDashboard size={16} className="ml-2" />
-            </Link>
+            {user ? (
+              <>
+                <Link to="/sell" className={`btn-industrial py-3 px-5 ${highlightListEquipment ? 'btn-accent' : ''}`}>
+                  List Equipment
+                  <ArrowRight size={16} className="ml-2" />
+                </Link>
+                <Link to="/profile" className={`btn-industrial py-3 px-5 ${!highlightListEquipment ? 'btn-accent' : ''}`}>
+                  My Account
+                  <LayoutDashboard size={16} className="ml-2" />
+                </Link>
+              </>
+            ) : (
+              <Link to={`/login?redirect=${encodeURIComponent('/profile')}`} className="btn-industrial btn-accent py-3 px-5">
+                Sign In To Continue
+                <ArrowRight size={16} className="ml-2" />
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => navigate(source === 'ad-programs' ? '/ad-programs' : '/profile')}

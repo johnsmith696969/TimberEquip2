@@ -557,45 +557,21 @@ export interface AccountEntitlement {
   overrideSource?: 'admin_override' | 'admin_role' | null;
 }
 
-export interface AccountBootstrapAdminSummary {
-  totalUsers: number;
-  activeUsers: number;
-  suspendedUsers: number;
-  pendingUsers: number;
-  source: 'live' | 'partial' | 'unavailable' | 'cache';
-  firestoreQuotaLimited: boolean;
-}
-
-export interface AccountBootstrapBillingSummary {
-  invoiceCount: number;
-  paidInvoiceCount: number;
-  subscriptionCount: number;
-  activeSubscriptionCount: number;
-  auditLogCount: number;
-  source: 'live' | 'partial' | 'unavailable' | 'cache';
-  firestoreQuotaLimited: boolean;
-}
-
-export interface AccountBootstrapContentSummary {
-  blogPostCount: number;
-  publishedBlogPostCount: number;
-  mediaCount: number;
-  contentBlockCount: number;
-  source: 'live' | 'partial' | 'unavailable' | 'cache';
-  firestoreQuotaLimited: boolean;
+export interface ManagedAccountSeatContext {
+  ownerUid?: string;
+  seatLimit: number;
+  seatCount: number;
+  activePlanIds: string[];
 }
 
 export interface AccountBootstrapResponse {
-  profile: UserProfile | null;
-  source: string;
-  profileDocExists: boolean;
-  firestoreQuotaLimited: boolean;
-  fetchedAt: string;
-  summaries?: {
-    adminUsers?: AccountBootstrapAdminSummary | null;
-    billing?: AccountBootstrapBillingSummary | null;
-    content?: AccountBootstrapContentSummary | null;
-  };
+  profile?: UserProfile | null;
+  source?: string;
+  profileDocExists?: boolean;
+  firestoreQuotaLimited?: boolean;
+  seatContext?: ManagedAccountSeatContext | null;
+  seatContextSource?: 'firestore' | 'profile_fallback' | 'not_applicable' | 'unavailable';
+  fetchedAt?: string;
 }
 
 export interface ManagedSubAccountInput {

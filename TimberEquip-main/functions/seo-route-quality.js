@@ -1,6 +1,6 @@
-const THIN_ROUTE_ROBOTS = 'noindex, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+const THIN_ROUTE_ROBOTS = 'noindex, follow';
 
-const ROUTE_MIN_LISTINGS = Object.freeze({
+const ROUTE_THRESHOLDS = {
   category: 2,
   manufacturer: 2,
   manufacturerModel: 2,
@@ -10,55 +10,57 @@ const ROUTE_MIN_LISTINGS = Object.freeze({
   stateCategory: 2,
   dealer: 3,
   dealerCategory: 2,
-});
+};
 
-function getRouteMinimumListings(routeType) {
-  return ROUTE_MIN_LISTINGS[routeType];
+function getRouteThreshold(routeType) {
+  return ROUTE_THRESHOLDS[String(routeType || '').trim()] || 2;
 }
 
-function meetsRouteThreshold(routeType, listingCount) {
-  return Number(listingCount || 0) >= getRouteMinimumListings(routeType);
+function meetsRouteThreshold(routeType, count) {
+  return Number(count || 0) >= getRouteThreshold(routeType);
 }
 
 function filterLinksByRouteThreshold(links, routeType) {
+  if (!Array.isArray(links)) return [];
   return links.filter((link) => meetsRouteThreshold(routeType, Number(link?.count || 0)));
 }
 
-function evaluateRouteQuality(routeType, listingCount, { fallbackPath }) {
-  const minimumListings = getRouteMinimumListings(routeType);
-  const normalizedCount = Number(listingCount || 0);
+function evaluateRouteQuality(routeType, count, options = {}) {
+  const numericCount = Number(count || 0);
+  const threshold = getRouteThreshold(routeType);
 
-  if (normalizedCount <= 0) {
+  if (numericCount <= 0) {
     return {
-      indexable: false,
-      minimumListings,
-      listingCount: normalizedCount,
-      redirectPath: fallbackPath,
+      threshold,
+      count: numericCount,
+      qualifies: false,
+      redirectPath: options.fallbackPath || null,
       robots: THIN_ROUTE_ROBOTS,
     };
   }
 
-  if (normalizedCount < minimumListings) {
+  if (numericCount < threshold) {
     return {
-      indexable: false,
-      minimumListings,
-      listingCount: normalizedCount,
+      threshold,
+      count: numericCount,
+      qualifies: false,
+      redirectPath: null,
       robots: THIN_ROUTE_ROBOTS,
     };
   }
 
   return {
-    indexable: true,
-    minimumListings,
-    listingCount: normalizedCount,
+    threshold,
+    count: numericCount,
+    qualifies: true,
+    redirectPath: null,
+    robots: undefined,
   };
 }
 
 module.exports = {
   THIN_ROUTE_ROBOTS,
-  ROUTE_MIN_LISTINGS,
   evaluateRouteQuality,
   filterLinksByRouteThreshold,
-  getRouteMinimumListings,
   meetsRouteThreshold,
 };

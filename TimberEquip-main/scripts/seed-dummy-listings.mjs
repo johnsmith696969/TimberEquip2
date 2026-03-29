@@ -1,6 +1,6 @@
 /**
  * seed-dummy-listings.mjs
- * Creates dummy machine listings under the caleb@forestryequipmentsales.com superadmin account.
+ * Creates dummy machine listings under the calebhappy@gmail.com superadmin account.
  * Uses the firebase-tools OAuth token — no service account key needed.
  *
  * Usage:  node scripts/seed-dummy-listings.mjs
@@ -13,7 +13,7 @@ import { join } from 'path';
 // ── Config ────────────────────────────────────────────────────────────────────
 const PROJECT_ID  = 'mobile-app-equipment-sales';
 const DATABASE_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
-const TARGET_EMAIL = 'caleb@forestryequipmentsales.com';
+const TARGET_EMAIL = 'calebhappy@gmail.com';
 
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents`;
 const AUTH_BASE = `https://identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:lookup`;

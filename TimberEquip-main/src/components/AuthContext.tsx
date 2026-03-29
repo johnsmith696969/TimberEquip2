@@ -16,8 +16,8 @@ import { AccountBootstrapResponse, UserProfile } from '../types';
 import { userService } from '../services/userService';
 import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
 import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../utils/accountEntitlement';
+import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
-const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
 
 interface AuthContextType {
@@ -222,7 +222,7 @@ async function resolveAuthAccessSnapshot(
   }
 
   const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-  if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail)) {
+  if (isPrivilegedAdminEmail(normalizedEmail)) {
     resolvedRole = 'super_admin';
     accountAccessSource = accountAccessSource || 'admin_override';
   }
@@ -319,7 +319,7 @@ async function buildFallbackProfile(
 async function bootstrapPrivilegedAdminProfile(firebaseUser: FirebaseUser | null | undefined): Promise<boolean> {
   const currentUser = firebaseUser || auth.currentUser;
   const normalizedEmail = (currentUser?.email || '').trim().toLowerCase();
-  if (!currentUser || !normalizedEmail || !ADMIN_EMAILS.includes(normalizedEmail)) {
+  if (!currentUser || !isPrivilegedAdminEmail(normalizedEmail)) {
     return false;
   }
 
@@ -496,7 +496,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               releaseInitialRender();
             }
 
-            const profileResponse = await userService.getCurrentProfile();
+            const profileResponse = await userService.getAccountBootstrap();
             if (isStaleSession()) {
               return;
             }
@@ -535,7 +535,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-            if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail) && resolvedProfile.role !== 'super_admin') {
+            if (isPrivilegedAdminEmail(normalizedEmail) && resolvedProfile.role !== 'super_admin') {
               try {
                 const promoted = await bootstrapPrivilegedAdminProfile(firebaseUser);
                 if (!promoted) {
@@ -645,7 +645,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Display name update warning after registration:', error);
     }
 
-    const isAdmin = ADMIN_EMAILS.includes(email.trim().toLowerCase());
+    const isAdmin = isPrivilegedAdminEmail(email);
     const nextRole = isAdmin ? 'super_admin' : onboardingIntent === 'free_member' ? 'member' : 'buyer';
     const nextAccountStatus = isAdmin || onboardingIntent === 'free_member' ? 'active' : 'pending';
     const nextAccessSource: UserProfile['accountAccessSource'] = isAdmin
@@ -720,6 +720,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendPasswordReset = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const response = await fetch('/api/auth/password-reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: normalizedEmail }),
+    });
+
+    if (response.ok) {
+      return;
+    }
+
+    let payload: { error?: string; code?: string } | null = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    const resetError = new Error(payload?.error || 'Failed to send reset email. Please try again.');
+    (resetError as Error & { code?: string }).code = payload?.code || '';
+    throw resetError;
+
     // Use the canonical domain so Firebase's authorized-domain check passes
     const continueUrl = 'https://timberequip.com/login';
     try {

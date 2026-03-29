@@ -67,7 +67,12 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const aliases = readFirebaseRc(rootDir);
 const { projectId } = resolveProjectId(environment, aliases);
-const scope = String(args.scope || process.env.FIREBASE_DEPLOY_SCOPE || 'hosting,functions,firestore:rules');
+const scope = String(
+  args.scope ||
+  process.env.FIREBASE_DEPLOY_SCOPE ||
+  process.env.npm_config_scope ||
+  'hosting,functions,firestore:rules',
+).trim();
 const seoMode = environment === 'production' ? 'indexable' : 'noindex';
 
 console.log(`Preparing ${environment} deploy for Firebase project ${projectId}`);

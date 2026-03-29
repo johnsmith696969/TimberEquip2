@@ -1,10 +1,9 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
-import { canAccessDealerOs } from '../utils/sellerAccess';
+import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
-const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -20,7 +19,14 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
   const hasAdminAccess = !!(
     user && (
       (user.role && ADMIN_ROLES.includes(user.role)) ||
-      (user.email && ADMIN_EMAILS.includes(user.email.trim().toLowerCase()))
+      isPrivilegedAdminEmail(user.email)
+    )
+  );
+
+  const hasDealerOsAccess = !!(
+    user && (
+      user.entitlement?.dealerOsAccess ||
+      ['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(String(user.role || '').trim().toLowerCase())
     )
   );
 
@@ -32,8 +38,8 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
     return <Navigate to="/" replace />;
   }
 
-  if (requireDealerOs && !canAccessDealerOs(user)) {
-    return <Navigate to="/profile" replace />;
+  if (requireDealerOs && !hasDealerOsAccess) {
+    return <Navigate to="/profile" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
   if (requireVerified && user && !user.emailVerified) {

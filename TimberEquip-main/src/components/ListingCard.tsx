@@ -8,6 +8,7 @@ import {
 import { Listing } from '../types';
 import { useLocale } from './LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
+import WatermarkOverlay from './WatermarkOverlay';
 
 interface ListingCardProps {
   listing: Listing;
@@ -46,7 +47,7 @@ export function ListingCard({
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
   const amvPercent = hasAmv ? Math.abs((amvDiff / safeMarketValueEstimate) * 100).toFixed(1) : null;
-  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/forestry-equipment-sales-placeholder/640/480';
+  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/timberequip-placeholder/640/480';
   const estimatedMonthlyPayment = Math.round(calcMonthlyPayment(safePrice, 6, 60));
   const displayMake = listing.make || listing.manufacturer || 'Unknown Make';
   const displayModel = listing.model || 'Unknown Model';
@@ -59,13 +60,16 @@ export function ListingCard({
     <div className="bg-bg border border-line group relative flex flex-col h-full hover:-translate-y-1 transition-transform duration-200 ease-out">
       {/* Image Section */}
       <div className="relative aspect-[4/3] overflow-hidden bg-surface">
-        <img 
-          src={heroImage} 
+        <img
+          src={heroImage}
           alt={displayTitle}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           referrerPolicy="no-referrer"
+          loading="lazy"
+          decoding="async"
         />
-        
+        <WatermarkOverlay />
+
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col space-y-2">
           {listing.featured && (

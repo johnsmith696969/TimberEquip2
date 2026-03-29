@@ -36,25 +36,30 @@ export const translateService = {
 
     const target = TARGET_LANG_MAP[language] || 'en';
 
-    const response = await fetch('/api/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        q: cleaned,
-        target,
-        source: 'en',
-      }),
-    });
+    try {
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          q: cleaned,
+          target,
+          source: 'en',
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Translation API failed with ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Translation API failed with ${response.status}`);
+      }
+
+      const json = (await response.json()) as TranslateBatchResponse;
+      if (!json || !Array.isArray(json.translations)) {
+        throw new Error('Invalid translation response');
+      }
+
+      return json.translations;
+    } catch (error) {
+      console.warn('Falling back to source language because translation is unavailable:', error);
+      return cleaned;
     }
-
-    const json = (await response.json()) as TranslateBatchResponse;
-    if (!json || !Array.isArray(json.translations)) {
-      throw new Error('Invalid translation response');
-    }
-
-    return json.translations;
   },
 };

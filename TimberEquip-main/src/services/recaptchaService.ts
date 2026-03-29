@@ -1,5 +1,11 @@
 const SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
 const SCRIPT_SRC = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(SITE_KEY)}`;
+const PRODUCTION_RECAPTCHA_HOSTS = new Set([
+  'timberequip.com',
+  'www.timberequip.com',
+  'mobile-app-equipment-sales.web.app',
+  'mobile-app-equipment-sales.firebaseapp.com',
+]);
 
 declare global {
   interface Window {
@@ -14,8 +20,21 @@ declare global {
 
 let recaptchaEnterpriseScriptPromise: Promise<void> | null = null;
 
+function shouldUseEnterpriseRecaptcha(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  return PRODUCTION_RECAPTCHA_HOSTS.has(hostname);
+}
+
 function loadEnterpriseRecaptchaScript(): Promise<void> {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve();
+  }
+
+  if (!shouldUseEnterpriseRecaptcha()) {
     return Promise.resolve();
   }
 
@@ -54,6 +73,10 @@ function loadEnterpriseRecaptchaScript(): Promise<void> {
 }
 
 export async function getRecaptchaToken(action: string): Promise<string | null> {
+  if (!shouldUseEnterpriseRecaptcha()) {
+    return null;
+  }
+
   try {
     await loadEnterpriseRecaptchaScript();
     if (!window.grecaptcha?.enterprise) return null;
@@ -75,6 +98,10 @@ export async function getRecaptchaToken(action: string): Promise<string | null> 
 
 /** Returns true if the submission should be allowed. Fails open on any error. */
 export async function assessRecaptcha(token: string, action: string): Promise<boolean> {
+  if (!shouldUseEnterpriseRecaptcha()) {
+    return true;
+  }
+
   try {
     const res = await fetch('/api/recaptcha-assess', {
       method: 'POST',

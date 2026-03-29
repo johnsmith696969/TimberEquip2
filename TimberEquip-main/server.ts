@@ -175,6 +175,215 @@ function normalizeImageUrls(value: unknown): string[] {
     .filter((entry) => /^https?:\/\//i.test(entry));
 }
 
+function timestampValueToIso(value: unknown): string | null {
+  const parsed = parseDate(value);
+  return parsed ? parsed.toISOString() : null;
+}
+
+function serializeInquiryDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot): Record<string, unknown> {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    listingId: normalizeNonEmptyString(data.listingId),
+    sellerUid: normalizeNonEmptyString(data.sellerUid || data.sellerId) || undefined,
+    sellerId: normalizeNonEmptyString(data.sellerId || data.sellerUid) || undefined,
+    buyerUid: normalizeNonEmptyString(data.buyerUid) || undefined,
+    buyerName: normalizeNonEmptyString(data.buyerName, 'Unknown Buyer'),
+    buyerEmail: normalizeNonEmptyString(data.buyerEmail),
+    buyerPhone: normalizeNonEmptyString(data.buyerPhone),
+    message: normalizeNonEmptyString(data.message),
+    type: normalizeNonEmptyString(data.type, 'Inquiry'),
+    status: normalizeNonEmptyString(data.status, 'New'),
+    assignedToUid: normalizeNonEmptyString(data.assignedToUid) || null,
+    assignedToName: normalizeNonEmptyString(data.assignedToName) || null,
+    responseTimeMinutes: typeof data.responseTimeMinutes === 'number' ? data.responseTimeMinutes : null,
+    spamScore: typeof data.spamScore === 'number' ? data.spamScore : 0,
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    updatedAt: timestampValueToIso(data.updatedAt) || undefined,
+  };
+}
+
+function serializeCallDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot): Record<string, unknown> {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    listingId: normalizeNonEmptyString(data.listingId),
+    listingTitle: normalizeNonEmptyString(data.listingTitle) || undefined,
+    sellerId: normalizeNonEmptyString(data.sellerId || data.sellerUid),
+    sellerUid: normalizeNonEmptyString(data.sellerUid || data.sellerId) || undefined,
+    sellerName: normalizeNonEmptyString(data.sellerName) || undefined,
+    sellerPhone: normalizeNonEmptyString(data.sellerPhone) || undefined,
+    callerUid: normalizeNonEmptyString(data.callerUid) || null,
+    callerName: normalizeNonEmptyString(data.callerName, 'Unknown Caller'),
+    callerEmail: normalizeNonEmptyString(data.callerEmail) || undefined,
+    callerPhone: normalizeNonEmptyString(data.callerPhone),
+    duration: normalizeFiniteNumber(data.duration, 0),
+    status: normalizeNonEmptyString(data.status, 'Completed'),
+    source: normalizeNonEmptyString(data.source) || undefined,
+    isAuthenticated: Boolean(data.isAuthenticated),
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function buildMarketplaceListingPayload(listingId: string, rawListing: Record<string, unknown>): Record<string, unknown> {
+  const listing = rawListing || {};
+  const make = normalizeNonEmptyString(listing.make || listing.manufacturer || listing.brand);
+  const images = normalizeImageUrls(Array.isArray(listing.images) ? listing.images : []);
+
+  return {
+    id: String(listingId),
+    sellerUid: normalizeNonEmptyString(listing.sellerUid || listing.sellerId) || undefined,
+    sellerId: normalizeNonEmptyString(listing.sellerId || listing.sellerUid) || undefined,
+    title: normalizeNonEmptyString(listing.title, 'Equipment Listing'),
+    category: normalizeNonEmptyString(listing.category, 'Equipment'),
+    subcategory: normalizeNonEmptyString(listing.subcategory || listing.category, 'Equipment'),
+    make,
+    manufacturer: normalizeNonEmptyString(listing.manufacturer || make),
+    model: normalizeNonEmptyString(listing.model),
+    year: normalizeFiniteNumber(listing.year, 0),
+    price: normalizeFiniteNumber(listing.price, 0),
+    currency: normalizeNonEmptyString(listing.currency, 'USD'),
+    hours: normalizeFiniteNumber(listing.hours, 0),
+    condition: normalizeNonEmptyString(listing.condition, 'Used'),
+    description: normalizeNonEmptyString(listing.description),
+    images,
+    location: normalizeNonEmptyString(listing.location),
+    status: normalizeNonEmptyString(listing.status, 'active'),
+    approvalStatus: normalizeNonEmptyString(listing.approvalStatus, 'pending'),
+    paymentStatus: normalizeNonEmptyString(listing.paymentStatus, 'pending'),
+    featured: Boolean(listing.featured),
+    views: normalizeFiniteNumber(listing.views, 0),
+    leads: normalizeFiniteNumber(listing.leads, 0),
+    createdAt: timestampValueToIso(listing.createdAt) || new Date().toISOString(),
+    updatedAt: timestampValueToIso(listing.updatedAt) || undefined,
+  };
+}
+
+async function getFirestoreQueryCount(query: FirebaseFirestore.Query): Promise<number> {
+  const countMethod = (query as FirebaseFirestore.Query & { count?: () => FirebaseFirestore.AggregateQuery }).count;
+  if (typeof countMethod === 'function') {
+    const aggregateSnapshot = await countMethod.call(query).get();
+    const aggregateData = typeof aggregateSnapshot?.data === 'function'
+      ? (aggregateSnapshot.data() as { count?: number })
+      : {};
+    return Number(aggregateData?.count || 0);
+  }
+
+  const snapshot = await query.get();
+  return snapshot.size;
+}
+
+function computeAdminOverviewMarketSentiment(input: {
+  conversionRate: number;
+  inventoryTurnoverRate: number;
+  liveListings: number;
+}): string {
+  if (input.liveListings <= 0) return 'Idle';
+  if (input.conversionRate >= 12 || input.inventoryTurnoverRate >= 18) return 'Bullish';
+  if (input.conversionRate >= 5 || input.inventoryTurnoverRate >= 8) return 'Stable';
+  return 'Cautious';
+}
+
+async function buildAdminOverviewBootstrapPayload() {
+  const [
+    totalListingsResult,
+    liveListingsResult,
+    pendingReviewResult,
+    rejectedListingsResult,
+    soldListingsResult,
+    recentListingsResult,
+    inquiriesResult,
+    recentCallsResult,
+    callCountResult,
+    activeUsersResult,
+  ] = await Promise.allSettled([
+    getFirestoreQueryCount(db.collection('listings')),
+    getFirestoreQueryCount(
+      db.collection('listings')
+        .where('approvalStatus', '==', 'approved')
+        .where('paymentStatus', '==', 'paid')
+        .where('status', '==', 'active')
+    ),
+    getFirestoreQueryCount(db.collection('listings').where('approvalStatus', '==', 'pending')),
+    getFirestoreQueryCount(db.collection('listings').where('approvalStatus', '==', 'rejected')),
+    getFirestoreQueryCount(db.collection('listings').where('status', '==', 'sold')),
+    db.collection('listings').orderBy('createdAt', 'desc').limit(5).get(),
+    db.collection('inquiries').orderBy('createdAt', 'desc').limit(250).get(),
+    db.collection('calls').orderBy('createdAt', 'desc').limit(5).get(),
+    getFirestoreQueryCount(db.collection('calls')),
+    getFirestoreQueryCount(db.collection('users').where('accountStatus', '==', 'active')),
+  ]);
+
+  const unwrapCount = (result: PromiseSettledResult<number>) => result.status === 'fulfilled' ? result.value : 0;
+
+  const totalListings = unwrapCount(totalListingsResult);
+  const liveListings = unwrapCount(liveListingsResult);
+  const pendingReview = unwrapCount(pendingReviewResult);
+  const rejectedListings = unwrapCount(rejectedListingsResult);
+  const soldListings = unwrapCount(soldListingsResult);
+  const callVolume = unwrapCount(callCountResult);
+  const activeUsers = unwrapCount(activeUsersResult);
+
+  const recentListings = recentListingsResult.status === 'fulfilled'
+    ? recentListingsResult.value.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
+    : [];
+
+  const recentCalls = recentCallsResult.status === 'fulfilled'
+    ? recentCallsResult.value.docs.map((docSnapshot) => serializeCallDoc(docSnapshot))
+    : [];
+
+  let totalLeads = 0;
+  let wonInquiries = 0;
+  let avgResponseTimeMinutes: number | null = null;
+  if (inquiriesResult.status === 'fulfilled') {
+    const inquiries = inquiriesResult.value.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
+    totalLeads = inquiries.length;
+    wonInquiries = inquiries.filter((inquiry) => inquiry.status === 'Won').length;
+    const responseSamples = inquiries
+      .map((inquiry) => Number(inquiry.responseTimeMinutes))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (responseSamples.length > 0) {
+      const totalResponseTime = responseSamples.reduce((sum, value) => sum + value, 0);
+      avgResponseTimeMinutes = Number((totalResponseTime / responseSamples.length).toFixed(1));
+    }
+  }
+
+  const conversionRate = totalLeads > 0 ? Number(((wonInquiries / totalLeads) * 100).toFixed(1)) : 0;
+  const inventoryTurnoverRate = totalListings > 0 ? Number(((soldListings / totalListings) * 100).toFixed(1)) : 0;
+
+  return {
+    metrics: {
+      visibleEquipment: liveListings,
+      totalLeads,
+      callVolume,
+      activeUsers,
+      conversionRate,
+      avgResponseTimeMinutes,
+      marketSentiment: computeAdminOverviewMarketSentiment({
+        conversionRate,
+        inventoryTurnoverRate,
+        liveListings,
+      }),
+      inventoryTurnoverRate,
+    },
+    listingSummary: {
+      totalListings,
+      liveListings,
+      pendingReview,
+      rejectedListings,
+      soldListings,
+    },
+    recentListings,
+    recentCalls,
+    partial: false,
+    degradedSections: [],
+    errors: {},
+    firestoreQuotaLimited: false,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sourceName: string) {
   const externalId = normalizeNonEmptyString(item.externalId);
   const make = normalizeNonEmptyString(item.make || item.manufacturer, 'Unknown');
@@ -518,6 +727,62 @@ async function getOrCreateStripeCustomer(userUid: string, email?: string, name?:
   return customer.id;
 }
 
+async function findExistingStripeCustomerId(userUid: string, email?: string): Promise<string> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured on this environment.');
+  }
+
+  const normalizedUserUid = String(userUid || '').trim();
+  const userRef = db.collection('users').doc(normalizedUserUid);
+  const userSnap = await userRef.get();
+  const storedCustomerId = String(userSnap.data()?.stripeCustomerId || '').trim();
+
+  if (storedCustomerId) {
+    try {
+      const existingCustomer = await stripe.customers.retrieve(storedCustomerId);
+      if (existingCustomer && !(existingCustomer as Stripe.DeletedCustomer).deleted) {
+        return storedCustomerId;
+      }
+    } catch {
+      // Fall through to email-based lookup if the stored customer no longer exists.
+    }
+  }
+
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return '';
+  }
+
+  let startingAfter = '';
+
+  do {
+    const page = await stripe.customers.list({
+      email: normalizedEmail,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    const exactMatch = page.data.find((customer) => {
+      if (customer.deleted) return false;
+      return String(customer.metadata?.userUid || '').trim() === normalizedUserUid;
+    });
+    if (exactMatch?.id) {
+      return exactMatch.id;
+    }
+
+    const fallbackMatch = page.data.find((customer) => !customer.deleted);
+    if (fallbackMatch?.id) {
+      return fallbackMatch.id;
+    }
+
+    startingAfter = page.has_more && page.data.length > 0
+      ? String(page.data[page.data.length - 1].id || '')
+      : '';
+  } while (startingAfter);
+
+  return '';
+}
+
 async function finalizeListingPaymentFromCheckoutSession(
   session: Stripe.Checkout.Session,
   source: 'webhook' | 'confirm'
@@ -741,7 +1006,43 @@ async function startServer() {
               status: subscription.status,
               currentPeriodEnd: admin.firestore.Timestamp.fromMillis((subscription as any).current_period_end * 1000),
               cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+              ...((subscription as any).created ? { createdAt: admin.firestore.Timestamp.fromMillis((subscription as any).created * 1000) } : {}),
+              ...((subscription as any).start_date ? { startDate: admin.firestore.Timestamp.fromMillis((subscription as any).start_date * 1000) } : {}),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             }, { merge: true });
+
+            // If subscription becomes past_due or unpaid, suppress listing visibility
+            const inactiveStatuses = ['past_due', 'unpaid', 'incomplete_expired'];
+            if (inactiveStatuses.includes(subscription.status)) {
+              const listingsSnap = await db.collection('listings')
+                .where('sellerUid', '==', userUid)
+                .get();
+              const batch = db.batch();
+              listingsSnap.docs.forEach((doc) => {
+                const data = doc.data();
+                if (!['sold', 'archived'].includes(String(data.status || '').toLowerCase())) {
+                  batch.update(doc.ref, {
+                    paymentStatus: 'pending',
+                    status: 'pending',
+                    lastLifecycleAction: 'billing_visibility_suppressed',
+                    lastLifecycleActorUid: 'system',
+                    lastLifecycleActorRole: 'system',
+                    lastLifecycleReason: `Subscription ${subscription.status} — listings hidden until payment resolved.`,
+                    lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  });
+                }
+              });
+              if (listingsSnap.docs.length > 0) await batch.commit();
+
+              await db.collection('billingAuditLogs').add({
+                action: 'SUBSCRIPTION_BILLING_LAPSE',
+                userUid,
+                subscriptionId: subscription.id,
+                details: `Subscription ${subscription.id} status changed to ${subscription.status}. Listings hidden.`,
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            }
           }
           break;
         }
@@ -751,6 +1052,50 @@ async function startServer() {
           if (userUid) {
             await db.collection('subscriptions').doc(subscription.id).update({
               status: 'canceled',
+              cancelAtPeriodEnd: true,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Hide all listings for this user and downgrade access
+            const listingsSnap = await db.collection('listings')
+              .where('sellerUid', '==', userUid)
+              .get();
+            const batch = db.batch();
+            listingsSnap.docs.forEach((doc) => {
+              const data = doc.data();
+              if (!['sold', 'archived'].includes(String(data.status || '').toLowerCase())) {
+                batch.update(doc.ref, {
+                  paymentStatus: 'pending',
+                  status: 'pending',
+                  lastLifecycleAction: 'billing_visibility_suppressed',
+                  lastLifecycleActorUid: 'system',
+                  lastLifecycleActorRole: 'system',
+                  lastLifecycleReason: 'Subscription deleted — listings hidden.',
+                  lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              }
+            });
+            if (listingsSnap.docs.length > 0) await batch.commit();
+
+            // Downgrade user role to member
+            const userDoc = await db.collection('users').doc(userUid).get();
+            if (userDoc.exists) {
+              await db.collection('users').doc(userUid).update({
+                role: 'member',
+                accountAccessSource: 'free_member',
+                activeSubscriptionPlanId: null,
+                subscriptionStatus: 'canceled',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            }
+
+            await db.collection('billingAuditLogs').add({
+              action: 'SUBSCRIPTION_DELETED',
+              userUid,
+              subscriptionId: subscription.id,
+              details: `Subscription ${subscription.id} deleted. Listings hidden and access downgraded.`,
+              timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
           }
           break;
@@ -759,6 +1104,80 @@ async function startServer() {
         case 'checkout.session.async_payment_succeeded': {
           const session = event.data.object as Stripe.Checkout.Session;
           await finalizeListingPaymentFromCheckoutSession(session, 'webhook');
+          break;
+        }
+        case 'charge.refunded': {
+          const charge = event.data.object as any;
+          const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+          if (invoiceId && stripe) {
+            try {
+              const invoice = await stripe.invoices.retrieve(invoiceId);
+              const subId = typeof invoice.subscription === 'string'
+                ? invoice.subscription
+                : (invoice.subscription as any)?.id;
+              if (subId) {
+                // Cancel the subscription immediately since a refund was issued
+                const canceledSub = await stripe.subscriptions.cancel(subId);
+                const refundUserUid = canceledSub.metadata?.userUid;
+
+                // Update subscription record
+                await db.collection('subscriptions').doc(subId).set({
+                  status: 'canceled',
+                  cancelAtPeriodEnd: true,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+
+                if (refundUserUid) {
+                  // Hide all listings
+                  const listingsSnap = await db.collection('listings')
+                    .where('sellerUid', '==', refundUserUid)
+                    .get();
+                  const batch = db.batch();
+                  listingsSnap.docs.forEach((doc) => {
+                    const data = doc.data();
+                    if (!['sold', 'archived'].includes(String(data.status || '').toLowerCase())) {
+                      batch.update(doc.ref, {
+                        paymentStatus: 'pending',
+                        status: 'pending',
+                        lastLifecycleAction: 'billing_visibility_suppressed',
+                        lastLifecycleActorUid: 'system',
+                        lastLifecycleActorRole: 'system',
+                        lastLifecycleReason: 'Charge refunded — subscription canceled and listings hidden.',
+                        lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                      });
+                    }
+                  });
+                  if (listingsSnap.docs.length > 0) await batch.commit();
+
+                  // Downgrade user role
+                  const userDoc = await db.collection('users').doc(refundUserUid).get();
+                  if (userDoc.exists) {
+                    await db.collection('users').doc(refundUserUid).update({
+                      role: 'member',
+                      accountAccessSource: 'free_member',
+                      activeSubscriptionPlanId: null,
+                      subscriptionStatus: 'canceled',
+                      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                  }
+
+                  await db.collection('billingAuditLogs').add({
+                    action: 'CHARGE_REFUNDED_SUBSCRIPTION_CANCELED',
+                    userUid: refundUserUid,
+                    subscriptionId: subId,
+                    chargeId: charge.id,
+                    details: `Charge ${charge.id} refunded. Subscription ${subId} canceled. Listings hidden and access downgraded.`,
+                    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                  });
+                }
+
+                console.log(`Charge refund processed: subscription ${subId} canceled, listings hidden.`);
+              }
+            } catch (refundErr: any) {
+              console.error(`Failed to process charge refund enforcement: ${refundErr.message}`);
+            }
+          }
           break;
         }
         default:
@@ -777,7 +1196,7 @@ async function startServer() {
   app.use(cookieParser());
 
   if (sharedDealerApiProxy) {
-    app.all(/^\/api\/(admin\/dealer-feeds(?:\/.*)?|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js)$/i, async (req, res, next) => {
+    app.all(/^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit)$/i, async (req, res, next) => {
       try {
         await sharedDealerApiProxy?.(req, res);
       } catch (error) {
@@ -817,18 +1236,20 @@ async function startServer() {
   }
 
   // 6. CSRF Protection
-  /*
   const csrfProtection = csurf({
     cookie: {
       httpOnly: true,
-      secure: true, // Required for SameSite=None
-      sameSite: 'none', // Required for cross-origin iframe
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
     },
   });
 
   // Apply CSRF to all non-webhook API routes
   app.use('/api', (req, res, next) => {
-    if (req.path === '/billing/webhook') return next();
+    // Skip CSRF for webhook endpoints (raw body needed for Stripe signature)
+    if (req.path === '/billing/webhook' || req.path === '/webhooks/stripe') return next();
+    // Skip CSRF for GET requests (read-only, no state mutation)
+    if (req.method === 'GET') return next();
     csrfProtection(req, res, next);
   });
 
@@ -836,14 +1257,52 @@ async function startServer() {
   app.get('/api/csrf-token', csrfProtection, (req, res) => {
     res.json({ csrfToken: req.csrfToken() });
   });
-  */
-  app.get('/api/csrf-token', (req, res) => {
-    res.json({ csrfToken: 'dummy-token' });
-  });
 
   // 7. API Routes
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // AI Proxy — keeps GEMINI_API_KEY server-side only
+  const aiRateLimit = rateLimit({ windowMs: 60_000, max: 20, message: { error: 'Too many AI requests. Try again later.' } });
+  app.post('/api/ai/generate', aiRateLimit, async (req, res) => {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      return res.status(503).json({ error: 'AI service is not configured.' });
+    }
+
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      await auth.verifyIdToken(idToken);
+    } catch {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const { prompt, responseSchema } = req.body;
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'prompt is required' });
+    }
+
+    try {
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const config: Record<string, unknown> = {};
+      if (responseSchema) {
+        config.responseMimeType = 'application/json';
+        config.responseSchema = responseSchema;
+      }
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: Object.keys(config).length > 0 ? config : undefined,
+      });
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error('AI proxy error:', error.message);
+      res.status(502).json({ error: 'AI service temporarily unavailable.' });
+    }
   });
 
   app.post('/api/billing/create-checkout-session', async (req, res) => {
@@ -979,6 +1438,78 @@ async function startServer() {
     } catch (error: any) {
       console.error('Failed to confirm Stripe checkout session:', error);
       return res.status(500).json({ error: error?.message || 'Failed to confirm checkout session.' });
+    }
+  });
+
+  app.post('/api/billing/create-portal-session', async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+    }
+
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const uid = String(decodedToken.uid || '').trim();
+      const email = String(decodedToken.email || '').trim().toLowerCase();
+      const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
+      const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
+      const baseUrl = getRequestBaseUrl(req);
+      const separator = returnPath.includes('?') ? '&' : '?';
+
+      const customerId = await findExistingStripeCustomerId(uid, email);
+      if (!customerId) {
+        return res.status(409).json({
+          error: 'No active billing profile was found for this account yet. Choose an ad program before opening billing management.',
+        });
+      }
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${baseUrl}${returnPath}${separator}billingPortal=return`,
+      });
+
+      if (!session.url) {
+        return res.status(500).json({ error: 'Stripe billing portal URL was not returned.' });
+      }
+
+      return res.json({
+        url: session.url,
+        stripeCustomerId: customerId,
+      });
+    } catch (error: any) {
+      console.error('Failed to create billing portal session:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to create billing portal session.' });
+    }
+  });
+
+  app.post('/api/billing/cancel-subscription', async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+    }
+
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const uid = String(decodedToken.uid || '').trim();
+
+      const userDoc = await db.collection('users').doc(uid).get();
+      const subscriptionId = userDoc.data()?.currentSubscriptionId;
+      if (!subscriptionId) {
+        return res.status(404).json({ error: 'No active subscription found for this account.' });
+      }
+
+      await stripe.subscriptions.update(subscriptionId, {
+        cancel_at_period_end: true,
+      });
+
+      return res.json({ success: true, message: 'Subscription will be canceled at the end of the current billing period.' });
+    } catch (error: any) {
+      console.error('Failed to cancel subscription:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to cancel subscription.' });
     }
   });
 
@@ -1297,6 +1828,94 @@ async function startServer() {
     }
   });
 
+  // Admin Operations Bootstrap
+  app.get('/api/admin/bootstrap', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const user = await db.collection('users').doc(decodedToken.uid).get();
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const authUsers: admin.auth.UserRecord[] = [];
+      let nextPageToken: string | undefined;
+      do {
+        const listResult = await auth.listUsers(1000, nextPageToken);
+        authUsers.push(...listResult.users);
+        nextPageToken = listResult.pageToken;
+      } while (nextPageToken);
+
+      const profileRefs = authUsers.map((authUserRecord) => db.collection('users').doc(authUserRecord.uid));
+      const profileSnaps = profileRefs.length > 0 ? await db.getAll(...profileRefs) : [];
+      const profileMap = new Map(profileSnaps.map((snap) => [snap.id, snap]));
+
+      const users = authUsers.map((authUserRecord) => {
+        const snap = profileMap.get(authUserRecord.uid);
+        const data = snap?.exists ? (snap.data() || {}) : {};
+        const displayName = String(data.displayName || data.name || authUserRecord.displayName || authUserRecord.email || 'Unknown User').trim();
+        const email = String(data.email || authUserRecord.email || '').trim().toLowerCase();
+        const createdAt = String(data.createdAt || authUserRecord.metadata.creationTime || '');
+        const updatedAt = String(data.updatedAt || '');
+        const lastLogin = String(authUserRecord.metadata.lastSignInTime || data.lastLogin || updatedAt || createdAt || '');
+        const authDisabled = Boolean(authUserRecord.disabled);
+        const accountStatus = authDisabled ? 'suspended' : String(data.accountStatus || 'active');
+
+        return {
+          id: authUserRecord.uid,
+          uid: authUserRecord.uid,
+          name: displayName,
+          displayName,
+          email,
+          phone: String(data.phoneNumber || '').trim(),
+          phoneNumber: String(data.phoneNumber || '').trim(),
+          company: String(data.company || '').trim(),
+          role: String(data.role || authUserRecord.customClaims?.role || 'buyer'),
+          status: authDisabled ? 'Suspended' : (accountStatus === 'pending' ? 'Pending' : 'Active'),
+          accountStatus,
+          authDisabled,
+          emailVerified: Boolean(authUserRecord.emailVerified),
+          lastLogin,
+          lastActive: lastLogin,
+          memberSince: createdAt,
+          createdAt,
+          updatedAt,
+          totalListings: Number(data.totalListings || 0),
+          totalLeads: Number(data.totalLeads || 0),
+          parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+        };
+      }).sort((left, right) => {
+        const leftTime = Date.parse(left.lastLogin || left.memberSince || '') || 0;
+        const rightTime = Date.parse(right.lastLogin || right.memberSince || '') || 0;
+        return rightTime - leftTime;
+      });
+
+      const [inquiriesSnapshot, callsSnapshot] = await Promise.all([
+        db.collection('inquiries').orderBy('createdAt', 'desc').get(),
+        db.collection('calls').orderBy('createdAt', 'desc').get(),
+      ]);
+      const includeOverview = ['1', 'true', 'yes'].includes(String(req.query?.includeOverview || '').trim().toLowerCase());
+      const overview = includeOverview ? await buildAdminOverviewBootstrapPayload() : null;
+
+      res.json({
+        users,
+        inquiries: inquiriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+        calls: callsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+        overview,
+        partial: false,
+        degradedSections: [],
+        errors: {},
+        firestoreQuotaLimited: false,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Admin Billing Endpoints
   app.get('/api/admin/billing/invoices', async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
@@ -1354,6 +1973,80 @@ async function startServer() {
       const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(logs);
     } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ── Content Studio (Blog Posts) ──────────────────────────────────────────────
+  const CONTENT_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+
+  app.get('/api/admin/content/blog-posts', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const role = String(userDoc.data()?.role || '').trim().toLowerCase();
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      if (!isPrivilegedAdminEmail(actorEmail) && !CONTENT_ROLES.includes(role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const snapshot = await db.collection('blogPosts').orderBy('updatedAt', 'desc').get();
+      const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(posts);
+    } catch (error: any) {
+      console.error('Failed to fetch blog posts:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/admin/content/bootstrap', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const role = String(userDoc.data()?.role || '').trim().toLowerCase();
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      if (!isPrivilegedAdminEmail(actorEmail) && !CONTENT_ROLES.includes(role)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const errors: Record<string, string> = {};
+      let posts: any[] = [];
+      let media: any[] = [];
+      let contentBlocks: any[] = [];
+
+      try {
+        const postsSnap = await db.collection('blogPosts').orderBy('updatedAt', 'desc').get();
+        posts = postsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e: any) { errors.posts = e.message; }
+
+      try {
+        const mediaSnap = await db.collection('media').orderBy('uploadedAt', 'desc').get();
+        media = mediaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e: any) { errors.media = e.message; }
+
+      try {
+        const blocksSnap = await db.collection('contentBlocks').get();
+        contentBlocks = blocksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e: any) { errors.contentBlocks = e.message; }
+
+      res.json({
+        posts,
+        media,
+        contentBlocks,
+        partial: Object.keys(errors).length > 0,
+        degradedSections: Object.keys(errors),
+        errors,
+        firestoreQuotaLimited: false,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('Failed to fetch content bootstrap:', error);
       res.status(500).json({ error: error.message });
     }
   });

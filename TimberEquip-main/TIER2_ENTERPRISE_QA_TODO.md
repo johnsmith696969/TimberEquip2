@@ -28,14 +28,17 @@
 - [x] Strengthen dealer storefront inventory/category filtering.
 
 ## SEO Cleanup Execution
-- [ ] Remove QA/test labeling from public listing/storefront surfaces.
-- [ ] Move listing URLs toward canonical `/equipment/...` structure.
-- [ ] Ensure only live listings are indexable; keep QA/drafts/previews out of the index.
-- [ ] Improve listing title/meta/description quality for public inventory pages.
+- [x] Remove QA/test labeling from public listing/storefront SEO surfaces.
+- [x] Move listing URLs toward canonical `/equipment/...` structure.
+- [x] Ensure only live listings are indexable; keep QA/drafts/previews out of the index.
+- [x] Improve listing title/meta/description quality for public inventory pages.
 - [ ] Strengthen internal linking across inventory, categories, manufacturers, dealers, and states.
 
 ## Tier 2 Enterprise Follow-Through
-- [ ] Keep seller/admin critical flows off brittle Firestore read dependencies.
-- [ ] Continue admin-facing lifecycle controls and audit views rollout.
-- [ ] Validate staging equivalents after production fixes land.
+- [x] Move the highest-value seller/admin critical first-load flows off brittle Firestore read dependencies, including overview analytics and the main operational summary surfaces.
+- [x] Promote the server-owned seller listing create plus submit lane through staging and production.
+- [ ] Finish editor/detail mutation parity so remaining signed-in write flows use the same server-owned, quota-safe lane.
+- [ ] Continue admin-facing lifecycle controls and audit views rollout with stronger operator evidence and review filters.
+- [ ] Run the listing governance backfill and capture create -> approve/reject -> pay -> live -> sold/archive evidence.
+- [x] Validate the consolidated account/bootstrap, admin operations, and dealer-feed bootstrap slices in staging before production promotion.
 - [ ] Document any remaining infra blockers for full Tier 2 completion.

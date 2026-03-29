@@ -17,7 +17,7 @@ import {
   onSnapshot,
   getDocFromServer
 } from 'firebase/firestore';
-import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
+import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, ListingLifecycleStateSnapshot, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   AMV_MATCH_HOURS_PERCENT,
@@ -26,6 +26,7 @@ import {
   AMV_MIN_COMPARABLES,
   isWithinPercentRange,
 } from '../utils/amvMatching';
+import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
   'Logging Equipment': ['Wisconsin, USA', 'Georgia, USA', 'Ontario, Canada'],
@@ -43,7 +44,6 @@ const DEMO_CATEGORY_BASE_PRICES: Record<string, number> = {
   'Trailers': 36000,
 };
 
-const SUPERADMIN_EMAIL = 'caleb@forestryequipmentsales.com';
 const FEATURED_LISTING_CAPS: Record<string, number> = {
   dealer: 3,
   pro_dealer: 6,
@@ -233,6 +233,17 @@ export interface AdminListingsPage {
   hasMore: boolean;
 }
 
+export interface ListingReviewSummary {
+  listingId: string;
+  status: string;
+  summary: string;
+  anomalyCodes: string[];
+  anomalyCount: number;
+  shadowState: ListingLifecycleStateSnapshot | null;
+  rawState?: Record<string, unknown> | null;
+  updatedAt?: string | null;
+}
+
 export interface HomeMarketplaceData {
   featuredListings: Listing[];
   recentSoldListings: Listing[];
@@ -403,7 +414,7 @@ async function resolveAuthSellerAccessSnapshot(): Promise<{ role: string; ownerU
     console.error('Unable to resolve auth seller access snapshot:', error);
   }
 
-  if (!role && email === SUPERADMIN_EMAIL) {
+  if (!role && isPrivilegedAdminEmail(email)) {
     role = 'super_admin';
   }
 
@@ -645,11 +656,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-function isQuotaExceededRequestError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error || '');
-  return /quota limit exceeded|free daily read units per project|quota exceeded|daily read quota is exhausted/i.test(message);
-}
-
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   if (typeof auth.authStateReady === 'function') {
     await auth.authStateReady();
@@ -745,7 +751,7 @@ async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): P
 
 const PUBLIC_LISTINGS_CACHE_KEY = 'te-public-listings-cache-v1';
 const HOME_MARKETPLACE_CACHE_KEY = 'te-home-marketplace-cache-v1';
-const PRIVATE_DATA_CACHE_PREFIX = 'te-private-data-cache-v1';
+const PRIVATE_ACCOUNT_CACHE_PREFIX = 'te-account-cache-v1';
 
 type BrowserCacheEnvelope<T> = {
   savedAt: string;
@@ -785,17 +791,79 @@ function writeBrowserCache<T>(key: string, data: T): void {
   }
 }
 
-function getPrivateCacheKey(scope: string): string {
+function getPrivateBrowserCacheKey(scope: string): string {
   const uid = auth.currentUser?.uid || 'anonymous';
-  return `${PRIVATE_DATA_CACHE_PREFIX}:${uid}:${scope}`;
+  return `${PRIVATE_ACCOUNT_CACHE_PREFIX}:${uid}:${scope}`;
 }
 
 function readPrivateBrowserCache<T>(scope: string): T | null {
-  return readBrowserCache<T>(getPrivateCacheKey(scope));
+  return readBrowserCache<T>(getPrivateBrowserCacheKey(scope));
 }
 
 function writePrivateBrowserCache<T>(scope: string, data: T): void {
-  writeBrowserCache(getPrivateCacheKey(scope), data);
+  writeBrowserCache(getPrivateBrowserCacheKey(scope), data);
+}
+
+function clearPrivateBrowserCacheScope(scope: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(getPrivateBrowserCacheKey(scope));
+  } catch (error) {
+    console.warn(`Unable to clear private browser cache for ${scope}:`, error);
+  }
+}
+
+function clearPrivateBrowserCachePrefix(scopePrefix: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const keyPrefix = getPrivateBrowserCacheKey(scopePrefix);
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith(keyPrefix)) {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+  } catch (error) {
+    console.warn(`Unable to clear private browser cache prefix for ${scopePrefix}:`, error);
+  }
+}
+
+type QuotaLimitedAccountPayload = {
+  firestoreQuotaLimited?: boolean;
+  source?: string;
+  warning?: string;
+};
+
+function isQuotaLimitedAccountPayload(payload: unknown): payload is QuotaLimitedAccountPayload {
+  return Boolean(payload)
+    && typeof payload === 'object'
+    && Boolean((payload as QuotaLimitedAccountPayload).firestoreQuotaLimited);
+}
+
+function invalidateListingRelatedCaches(listingId?: string): void {
+  clearPrivateBrowserCachePrefix('account-listings:');
+  clearPrivateBrowserCachePrefix('listing-lifecycle-audit:');
+  clearPrivateBrowserCachePrefix('admin-listing-review-summary:');
+  clearPrivateBrowserCachePrefix('seller-listings:');
+
+  if (listingId) {
+    clearPrivateBrowserCacheScope(`listing-lifecycle-audit:${listingId}`);
+    clearPrivateBrowserCacheScope(`admin-listing-review-summary:${listingId}`);
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(PUBLIC_LISTINGS_CACHE_KEY);
+      window.localStorage.removeItem(HOME_MARKETPLACE_CACHE_KEY);
+    } catch (error) {
+      console.warn('Unable to clear public marketplace caches after listing mutation:', error);
+    }
+  }
 }
 
 function getCachedPublicListingsSnapshot(): Listing[] {
@@ -856,7 +924,6 @@ export const equipmentService = {
 
   async getListings(filters?: ListingFilters): Promise<Listing[]> {
     const path = 'listings';
-    const ownInventoryCacheKey = `account-listings:${buildListingFilterSearchParams(filters).toString() || 'default'}`;
     try {
       const includeUnapproved = !!filters?.includeUnapproved;
       const normalizedCurrentUid = normalize(auth.currentUser?.uid || '');
@@ -1095,40 +1162,34 @@ export const equipmentService = {
 
       return listings;
     } catch (error) {
-      const cachedAccountListings = readPrivateBrowserCache<Listing[]>(ownInventoryCacheKey);
-      if (Array.isArray(cachedAccountListings) && cachedAccountListings.length > 0) {
-        console.warn('Using cached account listings because the live listings request failed:', error);
-        return cachedAccountListings.map((listing) => normalizeListingImages(listing as Listing));
-      }
-
-      const cachedListings = getCachedPublicListingsSnapshot();
-      if (cachedListings.length > 0 && isCacheablePublicListingsRequest(filters)) {
-        console.warn('Using cached public listings because the live listings request failed:', error);
-        return cachedListings;
-      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
 
   async getMyListings(filters?: ListingFilters): Promise<Listing[]> {
-    const cacheKey = `account-listings:${buildListingFilterSearchParams(filters).toString() || 'default'}`;
+    const params = buildListingFilterSearchParams(filters);
+    const queryString = params.toString();
+    const cacheScope = `account-listings:${queryString || 'all'}`;
     try {
-      const params = buildListingFilterSearchParams(filters);
-      const queryString = params.toString();
-      const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
+      const payload = await getAuthorizedJson<{ listings?: Listing[] } & QuotaLimitedAccountPayload>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
       const listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
-      writePrivateBrowserCache(cacheKey, listings);
+      if (isQuotaLimitedAccountPayload(payload)) {
+        const cached = readPrivateBrowserCache<Listing[]>(cacheScope);
+        if (Array.isArray(cached)) {
+          console.warn(payload.warning || 'Using cached account listings because the live request is quota-limited.');
+          return cached.map((listing) => normalizeListingImages(listing as Listing));
+        }
+        console.warn(payload.warning || 'Live account listings are temporarily unavailable.');
+        return listings;
+      }
+      writePrivateBrowserCache(cacheScope, listings);
       return listings;
     } catch (error) {
-      const cachedListings = readPrivateBrowserCache<Listing[]>(cacheKey);
-      if (Array.isArray(cachedListings) && cachedListings.length > 0) {
-        console.warn('Using cached account listings because the live account listings request failed:', error);
-        return cachedListings.map((listing) => normalizeListingImages(listing as Listing));
-      }
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Account listings are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
+      const cached = readPrivateBrowserCache<Listing[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn('Using cached account listings because the live request is unavailable:', error);
+        return cached.map((listing) => normalizeListingImages(listing as Listing));
       }
       handleFirestoreError(error, OperationType.LIST, 'account/listings');
       return [];
@@ -1136,23 +1197,28 @@ export const equipmentService = {
   },
 
   async getMyStorefront(): Promise<Seller | undefined> {
-    const cacheKey = 'account-storefront:self';
+    const cacheScope = 'account-storefront';
     try {
-      const payload = await getAuthorizedJson<{ seller?: Seller | null }>('/api/account/storefront');
-      const seller = payload.seller || undefined;
-      if (seller) {
-        writePrivateBrowserCache(cacheKey, seller);
-      }
-      return seller;
-    } catch (error) {
-      const cachedStorefront = readPrivateBrowserCache<Seller>(cacheKey);
-      if (cachedStorefront) {
-        console.warn('Using cached account storefront because the live storefront request failed:', error);
-        return cachedStorefront;
-      }
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Account storefront is temporarily unavailable because the Firestore daily read quota is exhausted:', error);
+      const payload = await getAuthorizedJson<{ seller?: Seller | null } & QuotaLimitedAccountPayload>('/api/account/storefront');
+      if (isQuotaLimitedAccountPayload(payload)) {
+        const cached = readPrivateBrowserCache<Seller | null>(cacheScope);
+        if (cached) {
+          console.warn(payload.warning || 'Using cached account storefront because the live request is quota-limited.');
+          return cached;
+        }
+        if (payload.seller) {
+          console.warn(payload.warning || 'Using reduced storefront fallback because the live request is quota-limited.');
+          return payload.seller;
+        }
         return undefined;
+      }
+      writePrivateBrowserCache(cacheScope, payload.seller || null);
+      return payload.seller || undefined;
+    } catch (error) {
+      const cached = readPrivateBrowserCache<Seller | null>(cacheScope);
+      if (cached) {
+        console.warn('Using cached account storefront because the live request is unavailable:', error);
+        return cached;
       }
       handleFirestoreError(error, OperationType.GET, 'account/storefront');
       return undefined;
@@ -1161,21 +1227,26 @@ export const equipmentService = {
 
   async getMyInquiries(): Promise<Inquiry[]> {
     const path = 'account/inquiries';
-    const cacheKey = 'account-inquiries:self';
+    const cacheScope = 'account-inquiries:mine';
     try {
-      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>('/api/account/inquiries');
+      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] } & QuotaLimitedAccountPayload>('/api/account/inquiries');
       const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
-      writePrivateBrowserCache(cacheKey, inquiries);
+      if (isQuotaLimitedAccountPayload(payload)) {
+        const cached = readPrivateBrowserCache<Inquiry[]>(cacheScope);
+        if (Array.isArray(cached)) {
+          console.warn(payload.warning || 'Using cached account inquiries because the live request is quota-limited.');
+          return cached;
+        }
+        console.warn(payload.warning || 'Live account inquiries are temporarily unavailable.');
+        return inquiries;
+      }
+      writePrivateBrowserCache(cacheScope, inquiries);
       return inquiries;
     } catch (error) {
-      const cachedInquiries = readPrivateBrowserCache<Inquiry[]>(cacheKey);
-      if (Array.isArray(cachedInquiries) && cachedInquiries.length > 0) {
-        console.warn('Using cached account inquiries because the live account inquiries request failed:', error);
-        return cachedInquiries;
-      }
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Account inquiries are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
+      const cached = readPrivateBrowserCache<Inquiry[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn('Using cached account inquiries because the live request is unavailable:', error);
+        return cached;
       }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1215,7 +1286,6 @@ export const equipmentService = {
   }): Promise<AdminListingsPage> {
     const path = 'admin/listings';
     const pageSize = Math.max(1, Math.min(options?.pageSize ?? 50, 100));
-    const cacheKey = `admin-listings:${options?.includeDemoListings ? 'demo' : 'live'}:${options?.cursor || 'first'}:${pageSize}`;
 
     try {
       const params = new URLSearchParams({
@@ -1232,25 +1302,14 @@ export const equipmentService = {
         hasMore?: boolean;
       }>(`/api/admin/listings?${params.toString()}`);
 
-      const page = {
+      return {
         listings: Array.isArray(payload.listings)
           ? payload.listings.map((listing) => normalizeListingImages(listing as Listing))
           : [],
         nextCursor: payload.nextCursor || null,
         hasMore: Boolean(payload.hasMore),
       };
-      writePrivateBrowserCache(cacheKey, page);
-      return page;
     } catch (error) {
-      const cachedPage = readPrivateBrowserCache<AdminListingsPage>(cacheKey);
-      if (cachedPage && Array.isArray(cachedPage.listings) && cachedPage.listings.length > 0) {
-        console.warn('Using cached admin listings page because the live admin listings request failed:', error);
-        return {
-          listings: cachedPage.listings.map((listing) => normalizeListingImages(listing as Listing)),
-          nextCursor: cachedPage.nextCursor || null,
-          hasMore: Boolean(cachedPage.hasMore),
-        };
-      }
       handleFirestoreError(error, OperationType.LIST, path);
       return {
         listings: [],
@@ -1315,7 +1374,6 @@ export const equipmentService = {
     if (!normalizedSellerUid) return [];
 
     const path = 'listings';
-    const cacheKey = `seller-listings:${normalizedSellerUid}:${options?.includeSold ? 'with-sold' : 'active-only'}`;
     try {
       if (auth.currentUser) {
         const params = new URLSearchParams({
@@ -1327,11 +1385,9 @@ export const equipmentService = {
         }
 
         const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings?${params.toString()}`);
-        const listings = Array.isArray(payload.listings)
+        return Array.isArray(payload.listings)
           ? payload.listings.map((listing) => normalizeListingImages(listing as Listing))
           : [];
-        writePrivateBrowserCache(cacheKey, listings);
-        return listings;
       }
 
       const [sellerUidSnapshot, sellerIdSnapshot] = await Promise.all([
@@ -1434,19 +1490,20 @@ export const equipmentService = {
       const nextPaymentStatus: Listing['paymentStatus'] = requestedPaymentStatus === 'paid' ? 'paid' : 'pending';
 
       if (auth.currentUser) {
-        const payload = await getAuthorizedJson<{ listing?: Listing | null }>('/api/account/listings', {
+        const payload = await getAuthorizedJson<{ listing?: Listing }>(`/api/account/listings`, {
           method: 'POST',
           body: JSON.stringify({
-            ...listing,
-            sellerUid: sellerScopeUid,
-            sellerId: sellerScopeUid,
-            sellerVerified,
-            approvalStatus: nextApprovalStatus,
-            status: nextStatus,
-            paymentStatus: nextPaymentStatus,
+            listing: {
+              ...listing,
+              sellerUid: sellerScopeUid,
+              sellerId: sellerScopeUid,
+            },
           }),
         });
-        return payload.listing?.id || '';
+
+        const createdListingId = String(payload.listing?.id || '').trim();
+        invalidateListingRelatedCaches(createdListingId);
+        return createdListingId;
       }
 
       const docRef = listing.id ? doc(db, path, listing.id) : doc(collection(db, path));
@@ -1469,6 +1526,7 @@ export const equipmentService = {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      invalidateListingRelatedCaches(docRef.id);
       return docRef.id;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -1507,6 +1565,7 @@ export const equipmentService = {
           method: 'PATCH',
           body: JSON.stringify(requestUpdates),
         });
+        invalidateListingRelatedCaches(id);
         return;
       }
 
@@ -1517,6 +1576,7 @@ export const equipmentService = {
         qualityValidated: true,
         updatedAt: serverTimestamp()
       });
+      invalidateListingRelatedCaches(id);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -1529,9 +1589,12 @@ export const equipmentService = {
         await getAuthorizedJson(`/api/account/listings/${encodeURIComponent(id)}`, {
           method: 'DELETE',
         });
+        invalidateListingRelatedCaches(id);
         return;
       }
+
       await deleteDoc(doc(db, 'listings', id));
+      invalidateListingRelatedCaches(id);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
@@ -1557,27 +1620,90 @@ export const equipmentService = {
       throw new Error('Lifecycle update response did not include listing data.');
     }
 
+    invalidateListingRelatedCaches(id);
     return payload.listing;
   },
 
   async getListingLifecycleAudit(id: string): Promise<ListingLifecycleAuditView> {
-    const payload = await getAuthorizedJson<ListingLifecycleAuditView>(
-      `/api/admin/listings/${encodeURIComponent(id)}/lifecycle-audit`,
-      {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      }
-    );
+    const cacheScope = `listing-lifecycle-audit:${id}`;
+    try {
+      const payload = await getAuthorizedJson<ListingLifecycleAuditView>(
+        `/api/admin/listings/${encodeURIComponent(id)}/lifecycle-audit`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        }
+      );
 
-    return {
-      listingId: payload.listingId || id,
-      listing: payload.listing,
-      report: payload.report || null,
-      mediaAudit: payload.mediaAudit || null,
-      transitions: Array.isArray(payload.transitions) ? payload.transitions : [],
-    };
+      const normalized = {
+        listingId: payload.listingId || id,
+        listing: payload.listing,
+        report: payload.report || null,
+        mediaAudit: payload.mediaAudit || null,
+        transitions: Array.isArray(payload.transitions) ? payload.transitions : [],
+      };
+      writePrivateBrowserCache(cacheScope, normalized);
+      return normalized;
+    } catch (error) {
+      const cached = readPrivateBrowserCache<ListingLifecycleAuditView>(cacheScope);
+      if (cached) {
+        console.warn('Using cached listing lifecycle audit because the live request is unavailable:', error);
+        return cached;
+      }
+      throw error;
+    }
+  },
+
+  async getAdminListingReviewSummaries(ids: string[]): Promise<ListingReviewSummary[]> {
+    const normalizedIds = Array.from(
+      new Set(
+        ids
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 50);
+
+    if (normalizedIds.length === 0) {
+      return [];
+    }
+
+    const params = new URLSearchParams({
+      ids: normalizedIds.join(','),
+    });
+
+    try {
+      const payload = await getAuthorizedJson<{ summaries?: ListingReviewSummary[] }>(
+        `/api/admin/listings/review-summaries?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        }
+      );
+
+      const summaries = Array.isArray(payload.summaries) ? payload.summaries : [];
+      summaries.forEach((summary) => {
+        const listingId = String(summary?.listingId || '').trim();
+        if (listingId) {
+          writePrivateBrowserCache(`admin-listing-review-summary:${listingId}`, summary);
+        }
+      });
+      return summaries;
+    } catch (error) {
+      const cached = normalizedIds
+        .map((listingId) => readPrivateBrowserCache<ListingReviewSummary>(`admin-listing-review-summary:${listingId}`))
+        .filter((summary): summary is ListingReviewSummary => Boolean(summary));
+
+      if (cached.length > 0) {
+        console.warn('Using cached admin listing review summaries because the live request is unavailable:', error);
+        return cached;
+      }
+
+      throw error;
+    }
   },
 
   subscribeToInquiries(callback: (inquiries: Inquiry[]) => void): () => void {
@@ -1594,29 +1720,35 @@ export const equipmentService = {
 
   async getInquiries(sellerUid?: string): Promise<Inquiry[]> {
     const path = sellerUid ? 'account/inquiries' : 'admin/inquiries';
-    const cacheKey = sellerUid ? `account-inquiries:${sellerUid}` : 'admin-inquiries';
+    const normalizedSellerUid = String(sellerUid || '').trim();
+    const cacheScope = normalizedSellerUid ? `account-inquiries:seller:${normalizedSellerUid}` : 'admin-inquiries';
     try {
-      if (sellerUid) {
-        const params = new URLSearchParams({ sellerUid });
-        const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>(`/api/account/inquiries?${params.toString()}`);
+      if (normalizedSellerUid) {
+        const params = new URLSearchParams({ sellerUid: normalizedSellerUid });
+        const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] } & QuotaLimitedAccountPayload>(`/api/account/inquiries?${params.toString()}`);
         const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
-        writePrivateBrowserCache(cacheKey, inquiries);
+        if (isQuotaLimitedAccountPayload(payload)) {
+          const cached = readPrivateBrowserCache<Inquiry[]>(cacheScope);
+          if (Array.isArray(cached)) {
+            console.warn(payload.warning || 'Using cached seller inquiries because the live request is quota-limited.');
+            return cached;
+          }
+          console.warn(payload.warning || 'Live seller inquiries are temporarily unavailable.');
+          return inquiries;
+        }
+        writePrivateBrowserCache(cacheScope, inquiries);
         return inquiries;
       }
 
       const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>('/api/admin/inquiries');
       const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
-      writePrivateBrowserCache(cacheKey, inquiries);
+      writePrivateBrowserCache(cacheScope, inquiries);
       return inquiries;
     } catch (error) {
-      const cachedInquiries = readPrivateBrowserCache<Inquiry[]>(cacheKey);
-      if (Array.isArray(cachedInquiries) && cachedInquiries.length > 0) {
-        console.warn('Using cached inquiries because the live inquiries request failed:', error);
-        return cachedInquiries;
-      }
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Inquiries are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
+      const cached = readPrivateBrowserCache<Inquiry[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn('Using cached inquiries because the live request is unavailable:', error);
+        return cached;
       }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1645,10 +1777,6 @@ export const equipmentService = {
         } as Account;
       });
     } catch (error) {
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Inspection requests are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
-      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -1676,14 +1804,6 @@ export const equipmentService = {
   }): Promise<string> {
     const path = 'inspectionRequests';
     try {
-      if (auth.currentUser) {
-        const response = await getAuthorizedJson<{ inspectionRequest?: InspectionRequest | null }>('/api/account/inspection-requests', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-        return response.inspectionRequest?.id || '';
-      }
-
       const docRef = doc(collection(db, path));
       await setDoc(docRef, {
         id: docRef.id,
@@ -1721,32 +1841,22 @@ export const equipmentService = {
   },
 
   async getInspectionRequests(options?: { userUid?: string; role?: string }): Promise<InspectionRequest[]> {
-    const path = 'account/inspection-requests';
+    const path = 'inspectionRequests';
     const userUid = options?.userUid || auth.currentUser?.uid;
     const role = options?.role || '';
 
     try {
-      if (!userUid) return [];
-
-      if (auth.currentUser) {
-        const params = new URLSearchParams();
-        params.set('userUid', userUid);
-        if (role) params.set('role', role);
-        const payload = await getAuthorizedJson<{ inspectionRequests?: InspectionRequest[] }>(
-          `/api/account/inspection-requests?${params.toString()}`
-        );
-        return Array.isArray(payload.inspectionRequests) ? payload.inspectionRequests : [];
-      }
-
       if (canReadAllInspectionRequests(role)) {
-        const snapshot = await getDocs(query(collection(db, 'inspectionRequests'), orderBy('createdAt', 'desc')));
+        const snapshot = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
         return snapshot.docs.map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest));
       }
 
+      if (!userUid) return [];
+
       if (canManageAssignedInspectionRequests(role)) {
         const [assignedSnapshot, matchedSnapshot] = await Promise.all([
-          getDocs(query(collection(db, 'inspectionRequests'), where('assignedToUid', '==', userUid))),
-          getDocs(query(collection(db, 'inspectionRequests'), where('matchedDealerUid', '==', userUid))),
+          getDocs(query(collection(db, path), where('assignedToUid', '==', userUid))),
+          getDocs(query(collection(db, path), where('matchedDealerUid', '==', userUid))),
         ]);
 
         const seen = new Set<string>();
@@ -1761,7 +1871,7 @@ export const equipmentService = {
           .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
       }
 
-      const snapshot = await getDocs(query(collection(db, 'inspectionRequests'), where('requesterUid', '==', userUid)));
+      const snapshot = await getDocs(query(collection(db, path), where('requesterUid', '==', userUid)));
       return snapshot.docs
         .map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest))
         .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
@@ -1780,16 +1890,8 @@ export const equipmentService = {
       assignedToName?: string | null;
     }
   ): Promise<void> {
-    const path = `account/inspection-requests/${id}`;
+    const path = `inspectionRequests/${id}`;
     try {
-      if (auth.currentUser) {
-        await getAuthorizedJson<{ inspectionRequest?: InspectionRequest | null }>(`/api/account/inspection-requests/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          body: JSON.stringify(updates),
-        });
-        return;
-      }
-
       const docRef = doc(db, 'inspectionRequests', id);
       const nextStatus = updates.status;
       const payload: Record<string, unknown> = {
@@ -1826,21 +1928,26 @@ export const equipmentService = {
 
   async getMyCalls(): Promise<CallLog[]> {
     const path = 'account/calls';
-    const cacheKey = 'account-calls:self';
+    const cacheScope = 'account-calls:mine';
     try {
-      const payload = await getAuthorizedJson<{ calls?: CallLog[] }>('/api/account/calls');
+      const payload = await getAuthorizedJson<{ calls?: CallLog[] } & QuotaLimitedAccountPayload>('/api/account/calls');
       const calls = Array.isArray(payload.calls) ? payload.calls : [];
-      writePrivateBrowserCache(cacheKey, calls);
+      if (isQuotaLimitedAccountPayload(payload)) {
+        const cached = readPrivateBrowserCache<CallLog[]>(cacheScope);
+        if (Array.isArray(cached)) {
+          console.warn(payload.warning || 'Using cached account calls because the live request is quota-limited.');
+          return cached;
+        }
+        console.warn(payload.warning || 'Live account calls are temporarily unavailable.');
+        return calls;
+      }
+      writePrivateBrowserCache(cacheScope, calls);
       return calls;
     } catch (error) {
-      const cachedCalls = readPrivateBrowserCache<CallLog[]>(cacheKey);
-      if (Array.isArray(cachedCalls) && cachedCalls.length > 0) {
-        console.warn('Using cached account calls because the live account calls request failed:', error);
-        return cachedCalls;
-      }
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Account calls are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
+      const cached = readPrivateBrowserCache<CallLog[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn('Using cached account calls because the live request is unavailable:', error);
+        return cached;
       }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1850,29 +1957,35 @@ export const equipmentService = {
   async getCalls(sellerUidOrOptions?: string | { sellerUid?: string; role?: string }): Promise<CallLog[]> {
     const sellerUid = typeof sellerUidOrOptions === 'string' ? sellerUidOrOptions : sellerUidOrOptions?.sellerUid;
     const path = sellerUid ? 'account/calls' : 'admin/calls';
-    const cacheKey = sellerUid ? `account-calls:${sellerUid}` : 'admin-calls';
+    const normalizedSellerUid = String(sellerUid || '').trim();
+    const cacheScope = normalizedSellerUid ? `account-calls:seller:${normalizedSellerUid}` : 'admin-calls';
     try {
-      if (sellerUid) {
-        const params = new URLSearchParams({ sellerUid });
-        const payload = await getAuthorizedJson<{ calls?: CallLog[] }>(`/api/account/calls?${params.toString()}`);
+      if (normalizedSellerUid) {
+        const params = new URLSearchParams({ sellerUid: normalizedSellerUid });
+        const payload = await getAuthorizedJson<{ calls?: CallLog[] } & QuotaLimitedAccountPayload>(`/api/account/calls?${params.toString()}`);
         const calls = Array.isArray(payload.calls) ? payload.calls : [];
-        writePrivateBrowserCache(cacheKey, calls);
+        if (isQuotaLimitedAccountPayload(payload)) {
+          const cached = readPrivateBrowserCache<CallLog[]>(cacheScope);
+          if (Array.isArray(cached)) {
+            console.warn(payload.warning || 'Using cached seller calls because the live request is quota-limited.');
+            return cached;
+          }
+          console.warn(payload.warning || 'Live seller calls are temporarily unavailable.');
+          return calls;
+        }
+        writePrivateBrowserCache(cacheScope, calls);
         return calls;
       }
 
       const payload = await getAuthorizedJson<{ calls?: CallLog[] }>('/api/admin/calls');
       const calls = Array.isArray(payload.calls) ? payload.calls : [];
-      writePrivateBrowserCache(cacheKey, calls);
+      writePrivateBrowserCache(cacheScope, calls);
       return calls;
     } catch (error) {
-      const cachedCalls = readPrivateBrowserCache<CallLog[]>(cacheKey);
-      if (Array.isArray(cachedCalls) && cachedCalls.length > 0) {
-        console.warn('Using cached calls because the live calls request failed:', error);
-        return cachedCalls;
-      }
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Calls are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
+      const cached = readPrivateBrowserCache<CallLog[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn('Using cached calls because the live request is unavailable:', error);
+        return cached;
       }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -2308,17 +2421,30 @@ export const equipmentService = {
     const userUid = typeof options === 'string' ? options : options?.userUid || auth.currentUser?.uid;
     const role = typeof options === 'string' ? '' : options?.role;
     if (!userUid) return [];
+    const cacheScope = `account-financing-requests:${String(userUid || '').trim()}:${String(role || '').trim() || 'self'}`;
 
     try {
       const params = new URLSearchParams();
       if (userUid) params.set('userUid', userUid);
       if (role) params.set('role', role);
-      const payload = await getAuthorizedJson<{ financingRequests?: FinancingRequest[] }>(`/api/account/financing-requests?${params.toString()}`);
-      return Array.isArray(payload.financingRequests) ? payload.financingRequests : [];
+      const payload = await getAuthorizedJson<{ financingRequests?: FinancingRequest[] } & QuotaLimitedAccountPayload>(`/api/account/financing-requests?${params.toString()}`);
+      const financingRequests = Array.isArray(payload.financingRequests) ? payload.financingRequests : [];
+      if (isQuotaLimitedAccountPayload(payload)) {
+        const cached = readPrivateBrowserCache<FinancingRequest[]>(cacheScope);
+        if (Array.isArray(cached)) {
+          console.warn(payload.warning || 'Using cached financing requests because the live request is quota-limited.');
+          return cached;
+        }
+        console.warn(payload.warning || 'Live financing requests are temporarily unavailable.');
+        return financingRequests;
+      }
+      writePrivateBrowserCache(cacheScope, financingRequests);
+      return financingRequests;
     } catch (error) {
-      if (isQuotaExceededRequestError(error)) {
-        console.warn('Financing requests are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
-        return [];
+      const cached = readPrivateBrowserCache<FinancingRequest[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn('Using cached financing requests because the live request is unavailable:', error);
+        return cached;
       }
       handleFirestoreError(error, OperationType.LIST, 'account/financing-requests');
       return [];
@@ -2328,16 +2454,6 @@ export const equipmentService = {
   async seedDemoInventory(options?: { sellerUid?: string }): Promise<void> {
     const path = 'listings';
     try {
-      if (auth.currentUser) {
-        await getAuthorizedJson('/api/admin/listings/seed-demo', {
-          method: 'POST',
-          body: JSON.stringify({
-            sellerUid: options?.sellerUid || auth.currentUser.uid,
-          }),
-        });
-        return;
-      }
-
       const superAdminUid = await resolveSuperAdminSellerUid();
       const sellerUid = options?.sellerUid || superAdminUid || auth.currentUser?.uid || 'demo-seller';
       const demoListings: Listing[] = [];

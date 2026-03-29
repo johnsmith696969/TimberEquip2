@@ -15,9 +15,9 @@ import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { userService } from '../services/userService';
 import { canAccessDealerOs, getListEquipmentPath } from '../utils/sellerAccess';
+import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
-const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
@@ -57,7 +57,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasAdminAccess = !!(
     user && (
       (user.role && ADMIN_ROLES.includes(user.role)) ||
-      (user.email && ADMIN_EMAILS.includes(user.email.trim().toLowerCase()))
+      isPrivilegedAdminEmail(user.email)
     )
   );
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
@@ -543,6 +543,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/privacy" className="hover:text-ink transition-colors">{t('layout.privacyPolicy', 'Privacy Policy')}</Link>
               <Link to="/terms" className="hover:text-ink transition-colors">{t('layout.termsOfService', 'Terms of Service')}</Link>
               <Link to="/cookies" className="hover:text-ink transition-colors">{t('layout.cookiePolicy', 'Cookie Policy')}</Link>
+              <Link to="/dmca" className="hover:text-ink transition-colors">{t('layout.dmcaPolicy', 'DMCA')}</Link>
             </div>
           </div>
         </div>

@@ -8,11 +8,11 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../components/AuthContext';
+import { Seo } from '../components/Seo';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { type AccountOnboardingChoice } from '../services/billingService';
-
-const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
+import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
 const ACCOUNT_OPTIONS: Array<{
   id: AccountOnboardingChoice;
@@ -39,14 +39,14 @@ const ACCOUNT_OPTIONS: Array<{
     id: 'dealer',
     title: 'Dealer Ad Package',
     price: '$499/MO',
-    summary: 'Run a dealer storefront with up to 50 active listings, managed seats, and included Meta ad spend.',
+    summary: 'Run a dealer storefront with up to 50 active listings and managed seats.',
     icon: Building,
   },
   {
     id: 'fleet_dealer',
     title: 'Pro Dealer Ad Package',
     price: '$999/MO',
-    summary: 'Support high-volume inventory with 150 listings, team access, and expanded included Meta ad spend.',
+    summary: 'Support high-volume inventory with 150 listings and team access.',
     icon: Crown,
   },
 ];
@@ -94,7 +94,7 @@ export function Register() {
         return;
       }
 
-      if (ADMIN_EMAILS.includes(formData.email.trim().toLowerCase())) {
+      if (isPrivilegedAdminEmail(formData.email)) {
         navigate('/admin', { replace: true });
         return;
       }
@@ -139,6 +139,12 @@ export function Register() {
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
+      <Seo
+        title="Create Account | Forestry Equipment Sales"
+        description="Register for a free account to browse, bookmark, and inquire on forestry equipment. Sellers can subscribe to list machines."
+        canonicalPath="/register"
+        robots="noindex, nofollow"
+      />
       {/* Background Accents */}
       <div className="absolute top-0 right-0 w-1/2 h-full bg-accent/5 skew-x-12 translate-x-1/2"></div>
       <div className="absolute bottom-0 left-0 w-1/3 h-full bg-accent/5 -skew-x-12 -translate-x-1/2"></div>

@@ -1,7 +1,10 @@
 {
-  "name": "react-example",
+  "name": "timberequip",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Forestry Equipment Sales — Enterprise logging equipment marketplace",
+  "author": "Forestry Equipment Sales",
+  "homepage": "https://www.timberequip.com",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

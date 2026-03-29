@@ -24,7 +24,6 @@ import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { useLocale } from '../components/LocaleContext';
-import { MetaLeadMachineSection } from '../components/MetaLeadMachineSection';
 import { useAuth } from '../components/AuthContext';
 import { getListEquipmentPath } from '../utils/sellerAccess';
 import {
@@ -442,27 +441,10 @@ export function Home() {
               </p>
             </div>
 
-            <div className="mb-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-              <div>
-                <span className="label-micro text-accent mb-3 block">Main Equipment Families</span>
-                <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">
-                  {selectedCategoryFamily}
-                </h3>
-              </div>
-              <div className="w-full lg:w-[360px]">
-                <label className="label-micro mb-2 block">{t('layout.categories', 'Category')} Selector</label>
-                <select
-                  value={selectedCategoryFamily}
-                  onChange={(event) => setSelectedCategoryFamily(event.target.value)}
-                  className="w-full bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none"
-                >
-                  {categoryCards.map((category) => (
-                    <option key={category.name} value={category.name}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="mb-10">
+              <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">
+                {selectedCategoryFamily}
+              </h3>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -494,12 +476,25 @@ export function Home() {
             <div className="mt-10 bg-bg border border-line p-6 md:p-8">
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
                 <div>
-                  <span className="label-micro text-accent mb-2 block">Family Breakdown</span>
+                  <span className="label-micro text-accent mb-2 block">Category Selector</span>
                   <h4 className="text-2xl font-black uppercase tracking-tighter">{selectedCategoryFamily} Subcategories</h4>
                 </div>
-                <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 w-fit">
-                  Browse {selectedCategoryFamily}
-                </Link>
+                <div className="flex items-center gap-4">
+                  <select
+                    value={selectedCategoryFamily}
+                    onChange={(event) => setSelectedCategoryFamily(event.target.value)}
+                    className="bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none"
+                  >
+                    {categoryCards.map((category) => (
+                      <option key={category.name} value={category.name}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 w-fit whitespace-nowrap">
+                    Browse {selectedCategoryFamily}
+                  </Link>
+                </div>
               </div>
               <div className="flex flex-wrap gap-3">
                 {selectedFamilySubcategories.map((subcategory) => (
@@ -646,8 +641,6 @@ export function Home() {
         </div>
       </section>
 
-      <MetaLeadMachineSection />
-
       {/* Financing CTA */}
       <section className="py-24 bg-ink px-4 md:px-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/2 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
@@ -667,15 +660,12 @@ export function Home() {
                 <Link to="/financing" className="btn-industrial btn-accent py-5 px-10">
                   Apply for Credit
                 </Link>
-                <Link to="/calculator" className="btn-industrial py-5 px-10 bg-white/10 text-white border-white/20">
-                  Rate Calculator
-                </Link>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               {[
                 { label: 'Approval Time', value: '24 Hours', icon: Clock },
-                { label: 'Max Facility', value: '$5.0M', icon: ShieldCheck },
+                { label: 'Max Facility', value: '$2.0M', icon: ShieldCheck },
                 { label: 'Terms Up To', value: '84 Months', icon: Activity },
                 { label: 'Down Payment', value: 'From 0%', icon: Calculator }
               ].map((item, i) => (

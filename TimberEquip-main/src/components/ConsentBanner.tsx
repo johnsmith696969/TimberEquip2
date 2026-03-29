@@ -1,30 +1,68 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cookie, X, ShieldCheck, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from './ThemeContext';
+import { useAuth } from './AuthContext';
+import { db } from '../firebase';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+
+const CONSENT_KEY = 'timber_consent';
+const CONSENT_VERSION = '1.2.0';
+
+/** Event name dispatched to reopen the banner (used by Cookies page "Manage Cookies" button) */
+export const REOPEN_CONSENT_EVENT = 'timber:reopen-consent';
+
+async function logConsentToFirestore(userUid: string, decision: 'accepted' | 'declined') {
+  try {
+    await addDoc(collection(db, 'consentLogs'), {
+      userUid,
+      type: 'cookie_consent',
+      decision,
+      version: CONSENT_VERSION,
+      userAgent: navigator.userAgent,
+      timestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to log consent:', error);
+  }
+}
 
 export function ConsentBanner() {
   const [isVisible, setIsVisible] = useState(false);
   const { theme } = useTheme();
+  const { user } = useAuth();
+
+  const showBanner = useCallback(() => setIsVisible(true), []);
 
   useEffect(() => {
-    const consent = localStorage.getItem('timber_consent');
+    const consent = localStorage.getItem(CONSENT_KEY);
     if (!consent) {
       const timer = setTimeout(() => setIsVisible(true), 1500);
       return () => clearTimeout(timer);
     }
   }, []);
 
+  // Listen for reopen events (from "Manage Cookies" button on /cookies page)
+  useEffect(() => {
+    window.addEventListener(REOPEN_CONSENT_EVENT, showBanner);
+    return () => window.removeEventListener(REOPEN_CONSENT_EVENT, showBanner);
+  }, [showBanner]);
+
   const handleAccept = () => {
-    localStorage.setItem('timber_consent', 'accepted');
+    localStorage.setItem(CONSENT_KEY, 'accepted');
     setIsVisible(false);
-    // Log consent to Firestore if user is logged in
+    if (user?.uid) {
+      logConsentToFirestore(user.uid, 'accepted');
+    }
   };
 
   const handleDecline = () => {
-    localStorage.setItem('timber_consent', 'declined');
+    localStorage.setItem(CONSENT_KEY, 'declined');
     setIsVisible(false);
+    if (user?.uid) {
+      logConsentToFirestore(user.uid, 'declined');
+    }
   };
 
   return (
@@ -59,19 +97,19 @@ export function ConsentBanner() {
             </div>
 
             <p className={`text-[11px] font-medium leading-relaxed mb-6 uppercase tracking-wider ${theme === 'light' ? 'text-[#1C1917]/75' : 'text-white/60'}`}>
-              We use cookies to enhance your marketplace experience and ensure site integrity. 
+              We use cookies to enhance your marketplace experience and ensure site integrity.
               By continuing, you agree to our cookie policies.
             </p>
 
             <div className="flex flex-col space-y-3">
               <div className="flex space-x-3">
-                <button 
+                <button
                   onClick={handleAccept}
                   className="flex-1 btn-industrial btn-accent py-3 text-[10px]"
                 >
                   Accept All
                 </button>
-                <button 
+                <button
                   onClick={handleDecline}
                   className={`flex-1 btn-industrial py-3 text-[10px] ${
                     theme === 'light'
@@ -82,8 +120,8 @@ export function ConsentBanner() {
                   Essential Only
                 </button>
               </div>
-              <Link 
-                to="/cookies" 
+              <Link
+                to="/cookies"
                 className={`flex items-center justify-center text-[9px] font-bold uppercase tracking-[0.2em] transition-colors ${
                   theme === 'light' ? 'text-[#1C1917]/60 hover:text-[#1C1917]' : 'text-white/40 hover:text-white'
                 }`}

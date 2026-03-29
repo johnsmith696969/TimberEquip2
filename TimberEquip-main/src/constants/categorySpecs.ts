@@ -2,7 +2,7 @@
  * categorySpecs.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Research-backed spec field definitions for every major forestry equipment
- * category sold on Forestry Equipment Sales. Each spec field drives:
+ * category sold on TimberEquip.  Each spec field drives:
  *   • Dynamic form rendering in ListingModal (admin) and Sell.tsx (public)
  *   • Server-side validation in equipmentService.validateListingQuality()
  *   • Spec-sheet display on ListingDetail / ListingCard

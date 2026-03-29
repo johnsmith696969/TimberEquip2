@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
+const { buildListingPublicPath, encodeListingPublicKey } = require('./listing-public-paths.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -128,8 +129,8 @@ function pickManufacturer(listing) {
   return normalizeText(listing?.make || listing?.manufacturer || listing?.brand);
 }
 
-function buildListingUrl(id) {
-  return `/listing/${encodeURIComponent(id)}`;
+function buildListingUrl(listing) {
+  return buildListingPublicPath(listing);
 }
 
 function buildDealerPath(seller) {
@@ -244,7 +245,19 @@ function summarizeListing(listingId, data) {
     createdAtIso: timestampToIso(data?.createdAt),
     updatedAtIso: timestampToIso(data?.updatedAt),
     lastmod: timestampToIso(data?.updatedAt) || timestampToIso(data?.createdAt) || new Date().toISOString(),
-    listingUrl: buildListingUrl(listingId),
+    publicKey: encodeListingPublicKey(listingId),
+    listingUrl: buildListingUrl({
+      id: listingId,
+      title: data?.title,
+      year: data?.year,
+      make: data?.make,
+      manufacturer: data?.manufacturer,
+      brand: data?.brand,
+      model,
+      category,
+      subcategory,
+      location: data?.location,
+    }),
   };
 }
 

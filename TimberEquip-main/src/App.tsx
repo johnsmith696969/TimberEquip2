@@ -44,6 +44,8 @@ const Privacy = lazy(() => import('./pages/Privacy').then((module) => ({ default
 const Terms = lazy(() => import('./pages/Terms').then((module) => ({ default: module.Terms })));
 const Cookies = lazy(() => import('./pages/Cookies').then((module) => ({ default: module.Cookies })));
 const Bookmarks = lazy(() => import('./pages/Bookmarks').then((module) => ({ default: module.Bookmarks })));
+const Dmca = lazy(() => import('./pages/Dmca').then((module) => ({ default: module.Dmca })));
+const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 
 function RouteLoadingFallback() {
   return (
@@ -110,15 +112,16 @@ function App() {
                     <Route path="/about" element={<About />} />
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/ad-programs" element={<AdPrograms />} />
-                    <Route path="/subscription-success" element={<ProtectedRoute><SubscriptionSuccess /></ProtectedRoute>} />
+                    <Route path="/subscription-success" element={<SubscriptionSuccess />} />
                     <Route path="/inspections" element={<Inspections />} />
                     <Route path="/auctions" element={<Auctions />} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/cookies" element={<Cookies />} />
+                    <Route path="/dmca" element={<Dmca />} />
                     <Route path="/bookmarks" element={<ProtectedRoute><Bookmarks /></ProtectedRoute>} />
-                    {/* Fallback for other routes */}
-                    <Route path="*" element={<Home />} />
+                    <Route path="/404" element={<NotFound />} />
+                    <Route path="*" element={<NotFound />} />
                   </Routes>
                 </Suspense>
               </Layout>

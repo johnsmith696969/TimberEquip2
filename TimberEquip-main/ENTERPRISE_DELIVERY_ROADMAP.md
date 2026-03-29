@@ -1,6 +1,6 @@
 # TimberEquip Enterprise Delivery Roadmap
 
-Last updated: 2026-03-26
+Last updated: 2026-03-28 (post server-owned seller lifecycle promotion)
 
 Reference plans:
 
@@ -42,8 +42,11 @@ Status:
 - alert-policy rendering scaffold now lives in `scripts/render-alert-policies.mjs`
 - alert-policy application now lives in `scripts/apply-alert-policies.mjs`
 - shared staging aliases now point at `timberequip-staging`
-- `timberequip-staging` now has Hosting, Monitoring, and Firestore bootstrap complete
-- remaining blocker for full SSR/API staging parity: upgrade `timberequip-staging` to Blaze so Cloud Functions v2 dependencies can be enabled
+- `timberequip-staging` now has Hosting, Monitoring, Firestore bootstrap, Blaze billing, `apiProxy`, `publicPages`, and browser-side Firebase isolation
+- baseline alert policies have been rendered and applied to both staging and production
+- the authenticated account bootstrap slice and the consolidated admin operations bootstrap slices for billing, content, users, accounts, inquiries, calls, and dealer feeds have now been promoted through staging and production
+- the seller listing create plus submit lane is now server-owned and has been promoted through staging and production
+- remaining gap: make the GitHub Environment promotion rail and approval path the standard operating model, not just repo scaffolding
 
 ### 2. Release observability and rollback discipline
 
@@ -167,8 +170,9 @@ Target state:
 
 ## Immediate Follow-Up After This Slice
 
-1. Create the actual staging Firebase project and attach its project ID to GitHub environment vars.
-2. Configure `preview`, `staging`, and `production` GitHub Environments with environment-specific secrets.
-3. Add required reviewers to the `production` environment.
-4. Run one preview deploy, one staging deploy, and one production dry run through the new workflows.
-5. Render environment-specific alert policies and create the matching Cloud Monitoring policies in GCP.
+1. Use the server-owned seller listing create plus submit lane as the default seller path, then gather staged and production evidence for create -> approve/reject -> pay -> live -> sold/archive flows.
+2. Configure `preview`, `staging`, and `production` GitHub Environments with environment-specific secrets and required reviewers so the repo scaffolding becomes the real release rail.
+3. Run one preview deploy, one staging deploy, and one production dry run through the new workflows.
+4. Drill the rollback, billing webhook, and quota-degradation runbooks against staging and production.
+5. Start the first staging governance data lane: Cloud SQL + Data Connect + one narrow Cloud Run worker.
+6. Do not run staging and production deploys in parallel when release mode rewrites shared SEO files like `firebase.json` and `public/robots.txt`.

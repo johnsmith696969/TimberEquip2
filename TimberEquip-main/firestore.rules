@@ -474,6 +474,105 @@ service cloud.firestore {
              ((('processedAt' in data) && data.processedAt is timestamp) || (('createdAt' in data) && data.createdAt is timestamp));
     }
 
+    function isValidDealerFeedProfile(data) {
+      return data.keys().hasOnly([
+               'sellerUid',
+               'dealerName',
+               'dealerEmail',
+               'sourceName',
+               'sourceType',
+               'rawInput',
+               'feedUrl',
+               'apiEndpoint',
+               'status',
+               'syncMode',
+               'syncFrequency',
+               'nightlySyncEnabled',
+               'autoPublish',
+               'fieldMapping',
+               'totalListingsSynced',
+               'totalListingsActive',
+               'totalListingsDeleted',
+               'totalListingsCreated',
+               'totalListingsUpdated',
+               'apiKey',
+               'apiKeyPreview',
+               'webhookSecret',
+               'lastSyncAt',
+               'nextSyncAt',
+               'lastSyncStatus',
+               'lastSyncMessage',
+               'lastResolvedType',
+               'createdAt',
+               'updatedAt'
+             ]) &&
+             isNonEmptyString(data.sellerUid, 128) &&
+             (!('dealerName' in data) || (data.dealerName is string && data.dealerName.size() <= 200)) &&
+             (!('dealerEmail' in data) || (data.dealerEmail is string && (data.dealerEmail.size() == 0 || isValidEmail(data.dealerEmail)))) &&
+             isNonEmptyString(data.sourceName, 120) &&
+             data.sourceType in ['auto', 'json', 'xml', 'csv'] &&
+             (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 500000)) &&
+             (!('feedUrl' in data) || data.feedUrl == null || (data.feedUrl is string && (data.feedUrl.size() == 0 || isValidUrl(data.feedUrl)))) &&
+             (!('apiEndpoint' in data) || data.apiEndpoint == null || (data.apiEndpoint is string && (data.apiEndpoint.size() == 0 || isValidUrl(data.apiEndpoint)))) &&
+             (!('status' in data) || data.status in ['active', 'paused', 'disabled']) &&
+             (!('syncMode' in data) || data.syncMode in ['pull', 'push', 'manual']) &&
+             (!('syncFrequency' in data) || data.syncFrequency in ['hourly', 'daily', 'weekly', 'manual']) &&
+             data.nightlySyncEnabled is bool &&
+             (!('autoPublish' in data) || data.autoPublish is bool) &&
+             (!('fieldMapping' in data) || (data.fieldMapping is list && data.fieldMapping.size() <= 100)) &&
+             (!('totalListingsSynced' in data) || (data.totalListingsSynced is number && data.totalListingsSynced >= 0)) &&
+             (!('totalListingsActive' in data) || (data.totalListingsActive is number && data.totalListingsActive >= 0)) &&
+             (!('totalListingsDeleted' in data) || (data.totalListingsDeleted is number && data.totalListingsDeleted >= 0)) &&
+             (!('totalListingsCreated' in data) || (data.totalListingsCreated is number && data.totalListingsCreated >= 0)) &&
+             (!('totalListingsUpdated' in data) || (data.totalListingsUpdated is number && data.totalListingsUpdated >= 0)) &&
+             (!('apiKey' in data) || (data.apiKey is string && data.apiKey.size() <= 200)) &&
+             (!('apiKeyPreview' in data) || (data.apiKeyPreview is string && data.apiKeyPreview.size() <= 200)) &&
+             (!('webhookSecret' in data) || (data.webhookSecret is string && data.webhookSecret.size() <= 200)) &&
+             (!('lastSyncAt' in data) || data.lastSyncAt == null || data.lastSyncAt is timestamp) &&
+             (!('nextSyncAt' in data) || data.nextSyncAt == null || data.nextSyncAt is timestamp) &&
+             (!('lastSyncStatus' in data) || (data.lastSyncStatus is string && data.lastSyncStatus.size() <= 80)) &&
+             (!('lastSyncMessage' in data) || (data.lastSyncMessage is string && data.lastSyncMessage.size() <= 2000)) &&
+             (!('lastResolvedType' in data) || data.lastResolvedType in ['auto', 'json', 'xml', 'csv']) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isDealerManagedDealerFeedProfileCreate(data) {
+      return !('apiKey' in data) &&
+             !('apiKeyPreview' in data) &&
+             !('webhookSecret' in data) &&
+             !('lastSyncAt' in data) &&
+             !('nextSyncAt' in data) &&
+             !('lastSyncStatus' in data) &&
+             !('lastSyncMessage' in data) &&
+             !('lastResolvedType' in data) &&
+             !('totalListingsSynced' in data) &&
+             !('totalListingsActive' in data) &&
+             !('totalListingsDeleted' in data) &&
+             !('totalListingsCreated' in data) &&
+             !('totalListingsUpdated' in data);
+    }
+
+    function isDealerManagedDealerFeedProfileUpdate(data, existing) {
+      return data.sellerUid == existing.sellerUid &&
+             data.diff(existing).affectedKeys().hasOnly([
+               'dealerName',
+               'dealerEmail',
+               'sourceName',
+               'sourceType',
+               'rawInput',
+               'feedUrl',
+               'apiEndpoint',
+               'status',
+               'syncMode',
+               'syncFrequency',
+               'nightlySyncEnabled',
+               'autoPublish',
+               'fieldMapping',
+               'updatedAt'
+             ]);
+    }
+
     function isValidDealer(data) {
       return data.keys().hasOnly(['businessName', 'accountType', 'status', 'billingProfile', 'createdAt', 'updatedAt']) &&
              isNonEmptyString(data.businessName, 200) &&
@@ -772,6 +871,25 @@ service cloud.firestore {
         allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
         allow create: if isAdmin() && isValidDealerFeedIngestLog(request.resource.data);
         allow update, delete: if isAdmin();
+      }
+
+      match /dealerFeedProfiles/{profileId} {
+        allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
+        allow create: if isAuthenticated() && isValidDealerFeedProfile(request.resource.data) && (
+          isAdmin() ||
+          (
+            isDealerAccountScope(request.resource.data.sellerUid) &&
+            isDealerManagedDealerFeedProfileCreate(request.resource.data)
+          )
+        );
+        allow update: if isAuthenticated() && isValidDealerFeedProfile(request.resource.data) && (
+          isAdmin() ||
+          (
+            isDealerAccountScope(resource.data.sellerUid) &&
+            isDealerManagedDealerFeedProfileUpdate(request.resource.data, resource.data)
+          )
+        );
+        allow delete: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
       }
 
       match /dealerFeeds/{feedId} {

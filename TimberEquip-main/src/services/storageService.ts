@@ -37,8 +37,8 @@ export const IMAGE_CONFIG = {
 };
 
 export const IMAGE_PUBLISHING_TARGETS = {
-  THUMBNAIL_MAX_BYTES: 50 * 1024,
-  DETAIL_MAX_BYTES: 100 * 1024,
+  THUMBNAIL_MAX_BYTES: 50 * 1024,      // 50KB thumbnails (card grids)
+  DETAIL_MAX_BYTES: 120 * 1024,        // 120KB detail images (listing pages)
   THUMBNAIL_MAX_WIDTH: 480,
   DETAIL_MAX_WIDTH: 1600,
 };

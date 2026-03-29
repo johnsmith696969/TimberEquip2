@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Calculator, ShieldCheck, Clock, 
@@ -10,10 +10,13 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { useAuth } from '../components/AuthContext';
+import { useTheme } from '../components/ThemeContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { Seo } from '../components/Seo';
 
 export function Financing() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -39,6 +42,20 @@ export function Financing() {
       contactPhone: prev.contactPhone || user?.phoneNumber || '',
     }));
   }, [user?.displayName, user?.email, user?.phoneNumber]);
+
+  const isDarkMode = theme === 'dark';
+  const heroClasses = useMemo(() => ({
+    shell: isDarkMode ? 'bg-ink text-white' : 'bg-surface text-ink border-b border-line',
+    image: isDarkMode ? 'opacity-30' : 'opacity-18 saturate-[0.85] brightness-110',
+    gradient: isDarkMode
+      ? 'bg-gradient-to-r from-black/90 via-black/80 to-black/55'
+      : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76',
+    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/8',
+    iconChip: isDarkMode ? 'bg-accent text-white' : 'bg-accent/12 text-accent border border-accent/20',
+    eyebrow: isDarkMode ? 'text-accent' : 'text-accent',
+    titleLead: isDarkMode ? 'text-white' : 'text-ink',
+    body: isDarkMode ? 'text-white/75' : 'text-muted',
+  }), [isDarkMode]);
 
   const handleNext = () => setStep(prev => prev + 1);
   const handlePrev = () => setStep(prev => prev - 1);
@@ -79,29 +96,34 @@ export function Financing() {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo
+        title="Equipment Financing | Apply for Credit | Forestry Equipment Sales"
+        description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales."
+        canonicalPath="/financing"
+      />
       {/* Header */}
-      <div className="bg-ink text-white py-24 px-4 md:px-8 relative overflow-hidden">
+      <div className={`py-24 px-4 md:px-8 relative overflow-hidden transition-colors ${heroClasses.shell}`}>
         <div className="absolute inset-0">
           <img
             src="/page-photos/pine-forest.jpg"
             alt="Forestry financing backdrop"
-            className="w-full h-full object-cover opacity-30"
+            className={`w-full h-full object-cover transition-opacity ${heroClasses.image}`}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/80 to-black/55" />
-          <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/12 skew-x-12 translate-x-1/2"></div>
+          <div className={`absolute inset-0 transition-colors ${heroClasses.gradient}`} />
+          <div className={`absolute top-0 right-0 w-1/3 h-full skew-x-12 translate-x-1/2 transition-colors ${heroClasses.accentBand}`}></div>
         </div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="flex items-center space-x-3 mb-6">
-            <div className="w-10 h-10 bg-accent flex items-center justify-center rounded-sm">
-              <Calculator className="text-white" size={20} />
+            <div className={`w-10 h-10 flex items-center justify-center rounded-sm transition-colors ${heroClasses.iconChip}`}>
+              <Calculator size={20} />
             </div>
-            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Financing Center</span>
+            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${heroClasses.eyebrow}`}>Financing Center</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
-            Institutional <br />
+            <span className={heroClasses.titleLead}>Institutional</span> <br />
             <span className="text-accent">Financing</span>
           </h1>
-          <p className="text-white/75 font-medium max-w-2xl leading-relaxed">
+          <p className={`font-medium max-w-2xl leading-relaxed transition-colors ${heroClasses.body}`}>
             Customized credit facilities for forestry operations. 
             Fast approvals, flexible terms, and competitive rates tailored to your business cycle.
           </p>

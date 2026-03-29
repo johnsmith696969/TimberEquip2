@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   TrendingUp, Activity, Globe, 
-  Clock, ArrowRight, Search, 
-  Filter, ChevronRight, PlayCircle,
+  Clock, ArrowRight,
   LayoutDashboard, ShieldCheck, Calculator
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
+import { Seo } from '../components/Seo';
 
 function slugifyNewsTitle(value: string) {
   return String(value || '')
@@ -23,6 +23,31 @@ function getNewsPostPath(post: NewsPost) {
   const slug = post.seoSlug || slugifyNewsTitle(post.title);
   return slug ? `/blog/${post.id}/${slug}` : `/blog/${post.id}`;
 }
+
+const MARKETPLACE_LINK_GROUPS = [
+  {
+    heading: 'Marketplace Navigation',
+    description: 'Move directly into live buyer and seller surfaces instead of a placeholder content filter.',
+    links: [
+      { label: 'Live Inventory', to: '/forestry-equipment-for-sale', description: 'Browse public live equipment inventory.' },
+      { label: 'Categories', to: '/categories', description: 'Jump into category-level equipment hubs.' },
+      { label: 'Manufacturers', to: '/manufacturers', description: 'Browse OEM and model market hubs.' },
+      { label: 'Dealer Directory', to: '/dealers', description: 'Explore dealer storefronts and inventory.' },
+      { label: 'State Markets', to: '/states', description: 'Navigate regional equipment availability.' },
+    ],
+  },
+  {
+    heading: 'Operator Links',
+    description: 'Use the same live commercial entry points we expect buyers and sellers to use in production.',
+    links: [
+      { label: 'Financing Center', to: '/financing', description: 'Institutional equipment financing intake.' },
+      { label: 'Ad Programs', to: '/ad-programs', description: 'Seller plans and subscription enrollment.' },
+      { label: 'List Equipment', to: '/sell', description: 'Start a seller listing workflow.' },
+      { label: 'Search Skidders', to: '/search?q=skidder', description: 'Direct search into a core forestry family.' },
+      { label: 'Search Harvesters', to: '/search?q=harvester', description: 'Direct search into another core family.' },
+    ],
+  },
+] as const;
 
 export function Blog() {
   const [news, setNews] = useState<NewsPost[]>([]);
@@ -45,6 +70,11 @@ export function Blog() {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo
+        title="Equipment News | Market Reports & Industry Updates | Forestry Equipment Sales"
+        description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales."
+        canonicalPath="/blog"
+      />
       {/* Editorial Header */}
       <section className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
@@ -63,6 +93,17 @@ export function Blog() {
             Institutional-grade analysis, regulatory updates, and global market reports for the forestry equipment industry. 
             Stay ahead of the market with real-time data and expert insights.
           </p>
+          <div className="mt-10 flex flex-wrap gap-3">
+            <Link to="/forestry-equipment-for-sale" className="btn-industrial btn-accent px-6 py-3 text-center">
+              Browse Live Inventory
+            </Link>
+            <Link to="/categories" className="btn-industrial bg-bg px-6 py-3 text-center">
+              Explore Categories
+            </Link>
+            <Link to="/dealers" className="btn-industrial bg-bg px-6 py-3 text-center">
+              View Dealers
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -139,20 +180,38 @@ export function Blog() {
           {/* Sidebar (Right) */}
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-12">
-              {/* Search Intelligence */}
-              <div className="bg-bg border border-line p-8">
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-6">Search Intelligence</h4>
-                <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
-                  <div className="p-3 text-muted">
-                    <Search size={16} />
+              {MARKETPLACE_LINK_GROUPS.map((group) => (
+                <div key={group.heading} className="bg-surface border border-line p-8">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Globe className="text-accent" size={18} />
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">{group.heading}</h4>
                   </div>
-                  <input 
-                    type="text" 
-                    placeholder="FILTER REPORTS..." 
-                    className="flex-1 bg-transparent border-none py-3 text-xs font-bold focus:ring-0 uppercase tracking-wider"
-                  />
+                  <p className="text-[11px] font-medium text-muted leading-relaxed mb-6">
+                    {group.description}
+                  </p>
+                  <div className="space-y-3">
+                    {group.links.map((link) => (
+                      <Link
+                        key={link.label}
+                        to={link.to}
+                        className="group block border border-line bg-bg p-4 transition-colors hover:border-accent/40 hover:bg-surface"
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-ink group-hover:text-accent">
+                              {link.label}
+                            </div>
+                            <p className="text-[11px] font-medium leading-relaxed text-muted">
+                              {link.description}
+                            </p>
+                          </div>
+                          <ArrowRight size={14} className="shrink-0 text-muted group-hover:text-accent" />
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ))}
 
               {/* Market Pulse */}
               <div className="bg-ink text-white p-8 rounded-sm">
@@ -189,15 +248,21 @@ export function Blog() {
                 )}
               </div>
 
-              {/* Newsletter Signup */}
-              <div className="bg-surface border border-line p-8">
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-4 text-accent">Intelligence Briefing</h4>
-                <p className="text-[11px] font-medium text-muted leading-relaxed mb-8">
-                  Receive our weekly institutional-grade market insights directly to your inbox.
+              <div className="bg-bg border border-line p-8">
+                <div className="flex items-center space-x-3 mb-4">
+                  <Calculator className="text-accent" size={18} />
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Action Center</h4>
+                </div>
+                <p className="text-[11px] font-medium text-muted leading-relaxed mb-6">
+                  Continue from intelligence into real commerce flows with live inventory, financing, and seller enrollment.
                 </p>
-                <div className="flex flex-col space-y-3">
-                  <input type="email" placeholder="YOUR@EMAIL.COM" className="bg-bg border border-line p-4 text-xs font-bold focus:ring-accent focus:border-accent" />
-                  <button className="btn-industrial w-full py-4">Subscribe Now</button>
+                <div className="grid grid-cols-1 gap-3">
+                  <Link to="/financing" className="btn-industrial bg-surface py-4 text-center">
+                    Financing Center
+                  </Link>
+                  <Link to="/ad-programs" className="btn-industrial bg-surface py-4 text-center">
+                    Seller Ad Programs
+                  </Link>
                 </div>
               </div>
             </div>

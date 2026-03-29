@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
   Search, Clock, CheckCircle2, 
@@ -11,7 +11,7 @@ import {
   Shield, Download, ClipboardList, AlertTriangle,
   Activity, Users, FileText, Database
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
 import { useAuth } from '../components/AuthContext';
 import { ListingModal } from '../components/admin/ListingModal';
@@ -28,6 +28,7 @@ import { canAccessDealerOs, canUserPostListings } from '../utils/sellerAccess';
 import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
+import { Seo } from '../components/Seo';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
@@ -68,7 +69,8 @@ function withAsyncTimeout<T>(promise: Promise<T>, timeoutMs: number, message: st
 export function Profile() {
   const { formatPrice, language, currency, setLanguage, setCurrency } = useLocale();
   const { user, logout, toggleFavorite, patchCurrentUserProfile } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const hasUser = Boolean(user);
   const entitlement = useMemo(() => resolveAccountEntitlement(user), [user]);
   const normalizedRole = hasUser ? userService.normalizeRole(user?.role) : '';
@@ -112,6 +114,14 @@ export function Profile() {
     hasPaidSellerSubscription && user?.activeSubscriptionPlanId
       ? getSellerProgramStatementLabel(user.activeSubscriptionPlanId)
       : 'n/a'
+  );
+  const canManageBillingPortal = Boolean(
+    user && (
+      entitlement.subscriptionState !== 'none' ||
+      user.currentSubscriptionId ||
+      user.activeSubscriptionPlanId ||
+      user.stripeCustomerId
+    )
   );
   const listingVisibilityLabel = entitlement.publicListingVisibility === 'publicly_eligible'
     ? 'publicly eligible'
@@ -209,7 +219,11 @@ export function Profile() {
 
     return profileTabs.find((tab) => tab.toLowerCase() === tabAlias) || null;
   }, [profileTabs]);
-  const [activeTab, setActiveTab] = useState(() => resolveRequestedProfileTab(searchParams.get('tab')) || 'Overview');
+  const resolvedRequestedProfileTab = useMemo(
+    () => resolveRequestedProfileTab(searchParams.get('tab')) || 'Overview',
+    [resolveRequestedProfileTab, searchParams]
+  );
+  const activeTab = resolvedRequestedProfileTab;
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -217,6 +231,8 @@ export function Profile() {
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [isConfirmingCheckout, setIsConfirmingCheckout] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isRefreshingAccountAccess, setIsRefreshingAccountAccess] = useState(false);
+  const [isSavingNotificationPreference, setIsSavingNotificationPreference] = useState(false);
   const [settingsError, setSettingsError] = useState('');
   const [settingsNotice, setSettingsNotice] = useState('');
   const [listingActionId, setListingActionId] = useState('');
@@ -226,6 +242,7 @@ export function Profile() {
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [profileDataLoading, setProfileDataLoading] = useState(false);
   const [profileDataError, setProfileDataError] = useState('');
+  const [loadedProfileSections, setLoadedProfileSections] = useState<Record<string, boolean>>({});
   const [storefrontPreview, setStorefrontPreview] = useState<Seller | null>(null);
   const [isSavingStorefront, setIsSavingStorefront] = useState(false);
   const [storefrontError, setStorefrontError] = useState('');
@@ -233,6 +250,7 @@ export function Profile() {
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const mfaRecaptchaRef = useRef<RecaptchaVerifier | null>(null);
+  const profileSectionRequestIdRef = useRef(0);
   const [settingsForm, setSettingsForm] = useState({
     displayName: '',
     email: '',
@@ -275,6 +293,21 @@ export function Profile() {
 
   const profilePhotoPreview = settingsForm.photoURL || user?.photoURL || '';
   const coverPhotoPreview = settingsForm.coverPhotoUrl || user?.coverPhotoUrl || '';
+  const emailNotificationsEnabled = user?.emailNotificationsEnabled !== false;
+  const favoritesKey = useMemo(
+    () => (Array.isArray(user?.favorites) ? user.favorites.join('|') : ''),
+    [user?.favorites]
+  );
+
+  const replaceProfileSearchParams = useCallback((mutate: (params: URLSearchParams) => void) => {
+    const nextParams = new URLSearchParams(searchParams);
+    mutate(nextParams);
+    const nextSearch = nextParams.toString();
+    navigate(nextSearch ? `/profile?${nextSearch}` : '/profile', {
+      replace: true,
+      preventScrollReset: true,
+    });
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     const accountCheckout = searchParams.get('accountCheckout');
@@ -283,10 +316,10 @@ export function Profile() {
 
     if (accountCheckout === 'canceled') {
       setCheckoutNotice('Subscription checkout was canceled. Choose a seller subscription when you are ready.');
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete('accountCheckout');
-      nextParams.delete('session_id');
-      setSearchParams(nextParams, { replace: true });
+      replaceProfileSearchParams((nextParams) => {
+        nextParams.delete('accountCheckout');
+        nextParams.delete('session_id');
+      });
       return;
     }
 
@@ -316,10 +349,10 @@ export function Profile() {
         } finally {
           if (!active) return;
           setIsConfirmingCheckout(false);
-          const nextParams = new URLSearchParams(searchParams);
-          nextParams.delete('accountCheckout');
-          nextParams.delete('session_id');
-          setSearchParams(nextParams, { replace: true });
+          replaceProfileSearchParams((nextParams) => {
+            nextParams.delete('accountCheckout');
+            nextParams.delete('session_id');
+          });
         }
       };
 
@@ -328,7 +361,54 @@ export function Profile() {
         active = false;
       };
     }
-  }, [searchParams, setSearchParams, user?.listingCap]);
+  }, [replaceProfileSearchParams, searchParams, user?.listingCap]);
+
+  useEffect(() => {
+    const billingPortalReturn = searchParams.get('billingPortal');
+    if (billingPortalReturn !== 'return') {
+      return;
+    }
+
+    let active = true;
+
+    const finalizePortalReturn = async () => {
+      try {
+        setIsRefreshingAccountAccess(true);
+        setSettingsError('');
+        const refreshedAccess = await billingService.refreshAccountAccess();
+        if (!active) return;
+
+        patchCurrentUserProfile({
+          role: refreshedAccess.role ? userService.normalizeRole(refreshedAccess.role) : user?.role,
+          activeSubscriptionPlanId: refreshedAccess.planId || null,
+          subscriptionStatus: refreshedAccess.subscriptionStatus || null,
+          listingCap: typeof refreshedAccess.listingCap === 'number' ? refreshedAccess.listingCap : user?.listingCap,
+          managedAccountCap: typeof refreshedAccess.managedAccountCap === 'number' ? refreshedAccess.managedAccountCap : user?.managedAccountCap,
+          currentSubscriptionId: refreshedAccess.currentSubscriptionId || null,
+          currentPeriodEnd: refreshedAccess.currentPeriodEnd || null,
+          accountAccessSource: refreshedAccess.accountAccessSource || null,
+          accountStatus: refreshedAccess.accountStatus || user?.accountStatus || 'active',
+          entitlement: refreshedAccess.entitlement ?? user?.entitlement,
+        });
+        setSettingsNotice('Billing details refreshed after returning from the secure billing portal.');
+      } catch (error) {
+        if (!active) return;
+        setSettingsError(error instanceof Error ? error.message : 'Unable to refresh billing details after returning from the billing portal.');
+      } finally {
+        if (!active) return;
+        setIsRefreshingAccountAccess(false);
+        replaceProfileSearchParams((nextParams) => {
+          nextParams.delete('billingPortal');
+        });
+      }
+    };
+
+    void finalizePortalReturn();
+
+    return () => {
+      active = false;
+    };
+  }, [patchCurrentUserProfile, replaceProfileSearchParams, searchParams, user?.accountStatus, user?.entitlement, user?.listingCap, user?.managedAccountCap, user?.role]);
 
   useEffect(() => {
     if (!user) return;
@@ -783,6 +863,72 @@ export function Profile() {
       alert('Failed to delete account. Please contact support.');
     }
   };
+
+  const handleRefreshAccountAccess = async () => {
+    if (!user) return;
+
+    setIsRefreshingAccountAccess(true);
+    setSettingsError('');
+    setSettingsNotice('');
+
+    try {
+      const refreshedAccess = await billingService.refreshAccountAccess();
+      patchCurrentUserProfile({
+        role: refreshedAccess.role ? userService.normalizeRole(refreshedAccess.role) : user.role,
+        activeSubscriptionPlanId: refreshedAccess.planId || null,
+        subscriptionStatus: refreshedAccess.subscriptionStatus || null,
+        listingCap: typeof refreshedAccess.listingCap === 'number' ? refreshedAccess.listingCap : user.listingCap,
+        managedAccountCap: typeof refreshedAccess.managedAccountCap === 'number' ? refreshedAccess.managedAccountCap : user.managedAccountCap,
+        currentSubscriptionId: refreshedAccess.currentSubscriptionId || null,
+        currentPeriodEnd: refreshedAccess.currentPeriodEnd || null,
+        accountAccessSource: refreshedAccess.accountAccessSource || null,
+        accountStatus: refreshedAccess.accountStatus || user.accountStatus || 'active',
+        entitlement: refreshedAccess.entitlement ?? user.entitlement,
+      });
+      setSettingsNotice('Account access refreshed successfully.');
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to refresh account access right now.');
+    } finally {
+      setIsRefreshingAccountAccess(false);
+    }
+  };
+
+  const handleToggleEmailNotifications = async () => {
+    if (!user?.uid) return;
+
+    const nextEnabled = !emailNotificationsEnabled;
+    setIsSavingNotificationPreference(true);
+    setSettingsError('');
+    setSettingsNotice('');
+
+    try {
+      await withAsyncTimeout(
+        userService.updateProfile(user.uid, {
+          emailNotificationsEnabled: nextEnabled,
+        }),
+        15000,
+        'Notification preferences are taking too long to save. Please try again once Firestore quota resets.'
+      );
+      patchCurrentUserProfile({ emailNotificationsEnabled: nextEnabled });
+      setSettingsNotice(nextEnabled ? 'Email notifications enabled.' : 'Email notifications paused.');
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to update notification preferences right now.');
+    } finally {
+      setIsSavingNotificationPreference(false);
+    }
+  };
+
+  const handleManageBillingPortal = async () => {
+    setSettingsError('');
+    setSettingsNotice('');
+
+    try {
+      const { url } = await billingService.createBillingPortalSession('/profile?tab=Account%20Settings');
+      window.location.assign(url);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to open secure billing management right now.');
+    }
+  };
   
   const [myListings, setMyListings] = useState<Listing[]>([]);
   const [savedAssets, setSavedAssets] = useState<Listing[]>([]);
@@ -806,77 +952,91 @@ export function Profile() {
       return;
     }
 
-    setActiveTab(nextTab);
-    const nextParams = new URLSearchParams(searchParams);
-    if (nextTab === 'Overview') {
-      nextParams.delete('tab');
-    } else {
-      nextParams.set('tab', nextTab);
-    }
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  }, [activeTab, searchParams, setSearchParams]);
+    replaceProfileSearchParams((nextParams) => {
+      if (nextTab === 'Overview') {
+        nextParams.delete('tab');
+      } else {
+        nextParams.set('tab', nextTab);
+      }
+    });
+  }, [activeTab, replaceProfileSearchParams]);
 
   useEffect(() => {
-    const matchedRequestedTab = resolveRequestedProfileTab(searchParams.get('tab'));
-
-    if (matchedRequestedTab) {
-      if (matchedRequestedTab !== activeTab) {
-        setActiveTab(matchedRequestedTab);
-      }
+    if (user) {
       return;
     }
 
-    if (!profileTabs.includes(activeTab)) {
-      setActiveTab('Overview');
-    }
-  }, [activeTab, profileTabs, resolveRequestedProfileTab, searchParams]);
+    setMyListings([]);
+    setFinancingRequests([]);
+    setSavedSearches([]);
+    setSavedAssets([]);
+    setInquiries([]);
+    setCalls([]);
+    setInspectionRequests([]);
+    setInspectionQuoteDrafts({});
+    setStorefrontPreview(null);
+    setLoadedProfileSections({});
+    setProfileDataError('');
+    setProfileDataLoading(false);
+  }, [user]);
 
   useEffect(() => {
-    const fetchProfileData = async () => {
-      if (user) {
-        setProfileDataLoading(true);
-        setProfileDataError('');
-        try {
-          const results = await Promise.allSettled([
-            canViewMyListings ? equipmentService.getMyListings({ sellerUid: user.uid }) : Promise.resolve([]),
-            canViewBuyerFinancing ? equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role }) : Promise.resolve([]),
-            canViewSearchAlerts ? userService.getSavedSearches(user.uid) : Promise.resolve([]),
-            canViewSavedEquipment && user.favorites && user.favorites.length > 0 ? equipmentService.getListingsByIds(user.favorites) : Promise.resolve([]),
-            canViewSellerCalls ? equipmentService.getMyCalls() : Promise.resolve([]),
-            canViewSellerInquiries ? equipmentService.getMyInquiries() : Promise.resolve([]),
-            hasStorefrontAccess ? equipmentService.getMyStorefront() : Promise.resolve(null),
-          ]);
+    if (!user?.uid) {
+      return;
+    }
 
-          setMyListings(results[0].status === 'fulfilled' ? results[0].value : []);
-          setFinancingRequests(results[1].status === 'fulfilled' ? results[1].value : []);
-          setSavedSearches(results[2].status === 'fulfilled' ? results[2].value : []);
-          setSavedAssets(results[3].status === 'fulfilled' ? results[3].value : []);
-          setCalls(results[4].status === 'fulfilled' ? results[4].value : []);
-          setInquiries(results[5].status === 'fulfilled' ? results[5].value : []);
-          setStorefrontPreview(results[6]?.status === 'fulfilled' ? results[6].value : null);
+    setMyListings([]);
+    setFinancingRequests([]);
+    setSavedSearches([]);
+    setSavedAssets([]);
+    setInquiries([]);
+    setCalls([]);
+    setInspectionRequests([]);
+    setInspectionQuoteDrafts({});
+    setStorefrontPreview(null);
+    setLoadedProfileSections({});
+    setProfileDataError('');
+  }, [normalizedRole, user?.uid]);
 
-          if (results.some((result) => result.status === 'rejected')) {
-            setProfileDataError('Some account data could not be loaded. Refresh to retry.');
-          }
-        } catch (error) {
-          setProfileDataError(error instanceof Error ? error.message : 'Unable to load profile data right now.');
-        } finally {
-          setProfileDataLoading(false);
-        }
-      } else {
-        setMyListings([]);
-        setFinancingRequests([]);
-        setSavedSearches([]);
-        setSavedAssets([]);
-        setInquiries([]);
-        setCalls([]);
-        setInspectionRequests([]);
-        setInspectionQuoteDrafts({});
-        setStorefrontPreview(null);
-        setProfileDataLoading(false);
+  useEffect(() => {
+    if (!user?.uid) {
+      return;
+    }
+
+    setSavedAssets([]);
+    setLoadedProfileSections((previous) => {
+      if (!previous.savedAssets) {
+        return previous;
       }
-    };
-    void fetchProfileData();
+
+      const next = { ...previous };
+      delete next.savedAssets;
+      return next;
+    });
+  }, [favoritesKey, user?.uid]);
+
+  const getProfileSectionsForTab = useCallback((tab: string) => {
+    const sections = new Set<string>();
+
+    if (tab === 'Overview') {
+      if (canViewSavedEquipment) sections.add('savedAssets');
+      if (canViewSearchAlerts) sections.add('savedSearches');
+      if (canViewMyListings) sections.add('myListings');
+      if (canViewSellerInquiries) sections.add('inquiries');
+      if (canViewSellerCalls) sections.add('calls');
+      if (canViewBuyerFinancing) sections.add('financingRequests');
+      return Array.from(sections);
+    }
+
+    if (tab === 'Saved Equipment' && canViewSavedEquipment) sections.add('savedAssets');
+    if (tab === 'Search Alerts' && canViewSearchAlerts) sections.add('savedSearches');
+    if (tab === 'My Listings' && canViewMyListings) sections.add('myListings');
+    if (tab === 'Inquiries' && canViewSellerInquiries) sections.add('inquiries');
+    if (tab === 'Calls' && canViewSellerCalls) sections.add('calls');
+    if (tab === 'Financing' && canViewBuyerFinancing) sections.add('financingRequests');
+    if (tab === storefrontTabLabel && hasStorefrontAccess) sections.add('storefrontPreview');
+
+    return Array.from(sections);
   }, [
     canViewBuyerFinancing,
     canViewMyListings,
@@ -885,11 +1045,124 @@ export function Profile() {
     canViewSellerCalls,
     canViewSellerInquiries,
     hasStorefrontAccess,
-    hasAdminProfileScope,
-    user?.favorites,
-    user?.role,
-    user?.uid,
+    storefrontTabLabel,
   ]);
+
+  const loadProfileSection = useCallback(async (section: string) => {
+    if (!user?.uid) {
+      return;
+    }
+
+    switch (section) {
+      case 'myListings': {
+        const nextListings = await equipmentService.getMyListings();
+        setMyListings(nextListings);
+        break;
+      }
+      case 'financingRequests': {
+        const nextFinancingRequests = await equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role });
+        setFinancingRequests(nextFinancingRequests);
+        break;
+      }
+      case 'savedSearches': {
+        const nextSavedSearches = await userService.getSavedSearches(user.uid);
+        setSavedSearches(nextSavedSearches);
+        break;
+      }
+      case 'savedAssets': {
+        const nextSavedAssets = user.favorites && user.favorites.length > 0
+          ? await equipmentService.getListingsByIds(user.favorites)
+          : [];
+        setSavedAssets(nextSavedAssets);
+        break;
+      }
+      case 'calls': {
+        const nextCalls = await equipmentService.getMyCalls();
+        setCalls(nextCalls);
+        break;
+      }
+      case 'inquiries': {
+        const nextInquiries = await equipmentService.getMyInquiries();
+        setInquiries(nextInquiries);
+        break;
+      }
+      case 'storefrontPreview': {
+        const nextStorefront = await equipmentService.getMyStorefront();
+        setStorefrontPreview(nextStorefront || null);
+        break;
+      }
+      default:
+        break;
+    }
+  }, [user]);
+
+  const currentProfileSections = useMemo(
+    () => getProfileSectionsForTab(activeTab),
+    [activeTab, getProfileSectionsForTab]
+  );
+
+  const isCurrentProfileTabReady = currentProfileSections.every((section) => loadedProfileSections[section]);
+  const shouldShowProfileLoadingShell =
+    profileDataLoading &&
+    activeTab === 'Overview' &&
+    currentProfileSections.length > 0 &&
+    !isCurrentProfileTabReady &&
+    Object.keys(loadedProfileSections).length === 0;
+
+  useEffect(() => {
+    if (!user?.uid) {
+      return;
+    }
+
+    const sectionsToLoad = currentProfileSections.filter((section) => !loadedProfileSections[section]);
+    if (sectionsToLoad.length === 0) {
+      setProfileDataLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = profileSectionRequestIdRef.current + 1;
+    profileSectionRequestIdRef.current = requestId;
+
+    setProfileDataLoading(true);
+    setProfileDataError('');
+
+    const loadSections = async () => {
+      try {
+        const results = await Promise.allSettled(sectionsToLoad.map((section) => loadProfileSection(section)));
+        if (cancelled || profileSectionRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setLoadedProfileSections((previous) => {
+          const next = { ...previous };
+          sectionsToLoad.forEach((section) => {
+            next[section] = true;
+          });
+          return next;
+        });
+
+        if (results.some((result) => result.status === 'rejected')) {
+          setProfileDataError('Some account data could not be loaded. Refresh to retry.');
+        }
+      } catch (error) {
+        if (cancelled || profileSectionRequestIdRef.current !== requestId) {
+          return;
+        }
+        setProfileDataError(error instanceof Error ? error.message : 'Unable to load profile data right now.');
+      } finally {
+        if (!cancelled && profileSectionRequestIdRef.current === requestId) {
+          setProfileDataLoading(false);
+        }
+      }
+    };
+
+    void loadSections();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProfileSections, loadProfileSection, loadedProfileSections, user?.uid]);
 
   useEffect(() => {
     const fetchInspectionRequests = async () => {
@@ -1094,7 +1367,7 @@ export function Profile() {
         });
       }
 
-      const refreshedListings = await equipmentService.getMyListings({ sellerUid: user.uid });
+      const refreshedListings = await equipmentService.getMyListings();
       setMyListings(refreshedListings);
       setIsListingModalOpen(false);
       setSelectedListing(null);
@@ -1912,35 +2185,6 @@ export function Profile() {
     );
   };
 
-  const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<any>(null);
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    setUploadResult(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-      setUploadResult(result);
-    } catch (error) {
-      console.error('Upload error:', error);
-      setUploadResult({ error: 'Failed to upload file.' });
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const renderSettings = () => (
     <div className="space-y-12">
       <section className="space-y-6">
@@ -2141,6 +2385,10 @@ export function Profile() {
             { label: 'Account Status', value: user?.accountStatus || 'active' },
             { label: 'Subscription Plan', value: subscriptionPlanLabel },
             { label: 'Subscription Status', value: subscriptionStatusLabel },
+            { label: user?.subscriptionStatus === 'canceled' ? 'Expires On' : 'Renewal Date',
+              value: user?.currentPeriodEnd
+                ? new Date(typeof user.currentPeriodEnd === 'string' ? user.currentPeriodEnd : Number(user.currentPeriodEnd)).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                : hasPaidSellerSubscription ? 'pending' : 'n/a' },
             { label: 'Billing Label', value: billingLabel },
             { label: 'Listing Visibility', value: listingVisibilityLabel },
             { label: 'SMS MFA', value: smsMfaFactors.length > 0 ? 'enabled' : 'not enrolled' },
@@ -2201,90 +2449,94 @@ export function Profile() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="label-micro">Mobile Number For SMS Codes</label>
-              <input
-                type="tel"
-                className="input-industrial w-full"
-                placeholder="+15551234567"
-                value={mfaPhoneNumber}
-                onChange={(e) => setMfaPhoneNumber(e.target.value)}
-              />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                Use full international format. Example: +15551234567
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="label-micro">Device Label</label>
-              <input
-                type="text"
-                className="input-industrial w-full"
-                placeholder="Primary mobile"
-                value={mfaDisplayName}
-                onChange={(e) => setMfaDisplayName(e.target.value)}
-              />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                Optional label shown when this SMS factor is enrolled.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void handleSendMfaCode()}
-              disabled={isSendingMfaCode || isEnrollingMfa}
-              className="btn-industrial btn-accent py-3 px-6 disabled:opacity-60"
-            >
-              {isSendingMfaCode ? 'Waiting For Security Check...' : mfaVerificationId ? 'Resend Code' : 'Send Verification Code'}
-            </button>
-            {mfaVerificationId ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMfaVerificationId('');
-                  setMfaVerificationCode('');
-                  setMfaError('');
-                  setMfaNotice('SMS enrollment was canceled before completion.');
-                  resetProfileMfaRecaptcha();
-                }}
-                className="btn-industrial py-3 px-6"
-              >
-                Cancel Enrollment
-              </button>
-            ) : null}
-          </div>
-
-          <div id="profile-mfa-recaptcha" className="min-h-[78px]" />
-
-          {mfaVerificationId ? (
-            <div className="rounded-sm border border-line bg-bg p-4 space-y-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-widest">Confirm SMS Code</p>
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  Enter the verification code sent to {mfaPhoneNumber.trim() || 'your mobile number'} to finish enrollment.
-                </p>
+          {smsMfaFactors.length === 0 || mfaVerificationId ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="label-micro">Mobile Number For SMS Codes</label>
+                  <input
+                    type="tel"
+                    className="input-industrial w-full"
+                    placeholder="+15551234567"
+                    value={mfaPhoneNumber}
+                    onChange={(e) => setMfaPhoneNumber(e.target.value)}
+                  />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                    Use full international format. Example: +15551234567
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="label-micro">Device Label</label>
+                  <input
+                    type="text"
+                    className="input-industrial w-full"
+                    placeholder="Primary mobile"
+                    value={mfaDisplayName}
+                    onChange={(e) => setMfaDisplayName(e.target.value)}
+                  />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                    Optional label shown when this SMS factor is enrolled.
+                  </p>
+                </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="input-industrial w-full"
-                  placeholder="123456"
-                  value={mfaVerificationCode}
-                  onChange={(e) => setMfaVerificationCode(e.target.value)}
-                />
+
+              <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={() => void handleCompleteMfaEnrollment()}
-                  disabled={isEnrollingMfa}
+                  onClick={() => void handleSendMfaCode()}
+                  disabled={isSendingMfaCode || isEnrollingMfa}
                   className="btn-industrial btn-accent py-3 px-6 disabled:opacity-60"
                 >
-                  {isEnrollingMfa ? 'Verifying...' : 'Enable SMS MFA'}
+                  {isSendingMfaCode ? 'Waiting For Security Check...' : mfaVerificationId ? 'Resend Code' : 'Send Verification Code'}
                 </button>
+                {mfaVerificationId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMfaVerificationId('');
+                      setMfaVerificationCode('');
+                      setMfaError('');
+                      setMfaNotice('SMS enrollment was canceled before completion.');
+                      resetProfileMfaRecaptcha();
+                    }}
+                    className="btn-industrial py-3 px-6"
+                  >
+                    Cancel Enrollment
+                  </button>
+                ) : null}
               </div>
-            </div>
+
+              <div id="profile-mfa-recaptcha" className="min-h-[78px]" />
+
+              {mfaVerificationId ? (
+                <div className="rounded-sm border border-line bg-bg p-4 space-y-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest">Confirm SMS Code</p>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      Enter the verification code sent to {mfaPhoneNumber.trim() || 'your mobile number'} to finish enrollment.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="input-industrial w-full"
+                      placeholder="123456"
+                      value={mfaVerificationCode}
+                      onChange={(e) => setMfaVerificationCode(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleCompleteMfaEnrollment()}
+                      disabled={isEnrollingMfa}
+                      className="btn-industrial btn-accent py-3 px-6 disabled:opacity-60"
+                    >
+                      {isEnrollingMfa ? 'Verifying...' : 'Enable SMS MFA'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : null}
 
           {mfaError ? <p className="text-[10px] font-black uppercase tracking-widest text-accent">{mfaError}</p> : null}
@@ -2300,20 +2552,86 @@ export function Profile() {
               <Wrench size={20} className="text-accent" />
               <div>
                 <p className="text-xs font-black uppercase tracking-widest">Account Verification</p>
-                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Keep your account verified so listings and payments keep moving</p>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Refresh seller access, billing visibility, and verification state</p>
               </div>
             </div>
-            <button className="text-[10px] font-black text-accent uppercase hover:underline">Manage</button>
+            <button
+              type="button"
+              onClick={() => void handleRefreshAccountAccess()}
+              disabled={isRefreshingAccountAccess}
+              className="text-[10px] font-black text-accent uppercase hover:underline disabled:opacity-60"
+            >
+              {isRefreshingAccountAccess ? 'Refreshing...' : 'Refresh'}
+            </button>
           </div>
           <div className="flex justify-between items-center p-4 bg-surface border border-line rounded-sm">
             <div className="flex items-center space-x-4">
               <Bell size={20} className="text-accent" />
               <div>
                 <p className="text-xs font-black uppercase tracking-widest">Account Notifications</p>
-                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Get updates on listings, buyer messages, and payments</p>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                  {emailNotificationsEnabled
+                    ? 'Email alerts enabled for listings, buyer messages, and payments'
+                    : 'Email alerts are currently paused for listings, buyer messages, and payments'}
+                </p>
               </div>
             </div>
-            <button className="text-[10px] font-black text-accent uppercase hover:underline">Configure</button>
+            <button
+              type="button"
+              onClick={() => void handleToggleEmailNotifications()}
+              disabled={isSavingNotificationPreference}
+              className="text-[10px] font-black text-accent uppercase hover:underline disabled:opacity-60"
+            >
+              {isSavingNotificationPreference ? 'Saving...' : emailNotificationsEnabled ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+          <div className="flex justify-between items-center p-4 bg-surface border border-line rounded-sm">
+            <div className="flex items-center space-x-4">
+              <CreditCard size={20} className="text-accent" />
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest">Billing & Subscription</p>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                  {canManageBillingPortal
+                    ? 'Open secure Stripe billing tools to manage payment methods, invoices, and subscription settings'
+                    : 'Choose an ad program first to activate secure billing and subscription management'}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {canManageBillingPortal ? (
+                <button
+                  type="button"
+                  onClick={() => void handleManageBillingPortal()}
+                  className="text-[10px] font-black text-accent uppercase hover:underline"
+                >
+                  Manage Billing
+                </button>
+              ) : (
+                <Link
+                  to="/ad-programs"
+                  className="text-[10px] font-black text-accent uppercase hover:underline"
+                >
+                  View Ad Programs
+                </Link>
+              )}
+              {hasPaidSellerSubscription && subscriptionStatusLabel !== 'canceled' && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm('Are you sure you want to cancel your subscription? It will remain active until the end of your current billing period.')) return;
+                    try {
+                      await billingService.cancelSubscription();
+                      setSettingsNotice('Your subscription has been scheduled for cancellation at the end of the current billing period.');
+                    } catch (err) {
+                      setSettingsError(err instanceof Error ? err.message : 'Failed to cancel subscription.');
+                    }
+                  }}
+                  className="text-[10px] font-black text-muted uppercase hover:text-accent hover:underline"
+                >
+                  Cancel Subscription
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -2322,6 +2640,7 @@ export function Profile() {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo title="My Profile | Forestry Equipment Sales" description="Manage your Forestry Equipment Sales account, listings, and subscription." robots="noindex, nofollow" />
       {/* Header */}
       <div className="bg-surface border-b border-line py-8 md:py-16 px-4 md:px-8 relative overflow-hidden">
         {coverPhotoPreview && (
@@ -2451,9 +2770,9 @@ export function Profile() {
               </div>
             )}
 
-            {profileTabItems.map((item, i) => (
+            {profileTabItems.map((item) => (
               <button 
-                key={i}
+                key={item.label}
                 onClick={() => selectProfileTab(item.label)}
                 className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-white shadow-lg' : 'hover:bg-surface text-muted'}`}
               >
@@ -2465,12 +2784,8 @@ export function Profile() {
 
           {/* Main Content */}
           <div className="lg:col-span-9">
-            <motion.div
-              initial={false}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              {profileDataLoading && activeTab !== 'Account Settings' && activeTab !== 'Privacy & Data' ? (
+            <div>
+              {shouldShowProfileLoadingShell && activeTab !== 'Account Settings' && activeTab !== 'Privacy & Data' ? (
                 <div className="space-y-4 animate-pulse">
                   <div className="h-10 bg-surface border border-line" />
                   <div className="h-40 bg-surface border border-line" />
@@ -2563,56 +2878,6 @@ export function Profile() {
                     </div>
                   </div>
 
-                  <div className="p-12 bg-surface border border-line space-y-6">
-                    <div className="flex items-center space-x-4">
-                      <Shield className="text-accent" size={24} />
-                      <h3 className="text-sm font-black uppercase tracking-widest">File Upload Test</h3>
-                    </div>
-                    <p className="text-[11px] text-muted leading-relaxed uppercase tracking-widest max-w-2xl">
-                      Test file upload for your account. Files are checked for file type (JPG, PNG, WEBP, PDF) 
-                      and size (5MB limit) before processing.
-                    </p>
-                    <div className="space-y-4">
-                      <div className="relative">
-                        <input 
-                          type="file" 
-                          onChange={handleFileUpload}
-                          disabled={uploading}
-                          className="block w-full text-[10px] text-muted
-                            file:mr-4 file:py-4 file:px-8
-                            file:rounded-sm file:border-0
-                            file:text-[10px] file:font-black file:uppercase
-                            file:bg-ink file:text-white
-                            hover:file:bg-accent transition-all cursor-pointer"
-                        />
-                      </div>
-                      {uploading && (
-                        <div className="flex items-center space-x-3 text-[10px] font-black text-accent animate-pulse uppercase tracking-widest">
-                          <div className="w-2 h-2 bg-accent rounded-full"></div>
-                          <span>Checking file...</span>
-                        </div>
-                      )}
-                      {uploadResult && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className={`p-6 text-[10px] font-mono rounded-sm border ${
-                            uploadResult.success 
-                              ? 'bg-data/5 border-data/20 text-data' 
-                              : 'bg-accent/5 border-accent/20 text-accent'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2 mb-4">
-                            <div className={`w-2 h-2 rounded-full ${uploadResult.success ? 'bg-data' : 'bg-accent'}`}></div>
-                            <span className="font-black uppercase tracking-widest">
-                              {uploadResult.success ? 'File Ready' : 'File Check Failed'}
-                            </span>
-                          </div>
-                          <pre className="whitespace-pre-wrap opacity-80">{JSON.stringify(uploadResult, null, 2)}</pre>
-                        </motion.div>
-                      )}
-                    </div>
-                  </div>
                 </div>
               )}
               {activeTab === 'Saved Equipment' && (
@@ -2649,7 +2914,7 @@ export function Profile() {
               )}
                 </>
               )}
-            </motion.div>
+            </div>
           </div>
         </div>
       </div>

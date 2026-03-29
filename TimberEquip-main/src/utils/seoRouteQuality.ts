@@ -1,6 +1,33 @@
-export const THIN_ROUTE_ROBOTS = 'noindex, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+type RouteQualityType =
+  | 'category'
+  | 'manufacturer'
+  | 'manufacturerModel'
+  | 'manufacturerCategory'
+  | 'manufacturerModelCategory'
+  | 'stateMarket'
+  | 'stateCategory'
+  | 'dealer'
+  | 'dealerCategory';
 
-export const ROUTE_MIN_LISTINGS = {
+type RouteQualityOptions = {
+  fallbackPath?: string;
+};
+
+type RouteQualityResult = {
+  threshold: number;
+  count: number;
+  qualifies: boolean;
+  redirectPath: string | null;
+  robots: string | undefined;
+};
+
+type CountLink = {
+  label: string;
+  count: number;
+  path: string;
+};
+
+const ROUTE_THRESHOLDS: Record<RouteQualityType, number> = {
   category: 2,
   manufacturer: 2,
   manufacturerModel: 2,
@@ -10,63 +37,52 @@ export const ROUTE_MIN_LISTINGS = {
   stateCategory: 2,
   dealer: 3,
   dealerCategory: 2,
-} as const;
-
-export type RouteQualityKey = keyof typeof ROUTE_MIN_LISTINGS;
-
-type RouteQualityOptions = {
-  fallbackPath: string;
 };
 
-export type RouteQualityResult = {
-  indexable: boolean;
-  minimumListings: number;
-  listingCount: number;
-  redirectPath?: string;
-  robots?: string;
-};
-
-export function getRouteMinimumListings(routeType: RouteQualityKey): number {
-  return ROUTE_MIN_LISTINGS[routeType];
+function getRouteThreshold(routeType: RouteQualityType): number {
+  return ROUTE_THRESHOLDS[routeType] || 2;
 }
 
-export function meetsRouteThreshold(routeType: RouteQualityKey, listingCount: number): boolean {
-  return listingCount >= getRouteMinimumListings(routeType);
+export function meetsRouteThreshold(routeType: RouteQualityType, count: number): boolean {
+  return count >= getRouteThreshold(routeType);
 }
 
-export function filterLinksByRouteThreshold<T extends { count: number }>(links: T[], routeType: RouteQualityKey): T[] {
-  return links.filter((link) => meetsRouteThreshold(routeType, Number(link.count || 0)));
+export function filterLinksByRouteThreshold(links: CountLink[], routeType: RouteQualityType): CountLink[] {
+  return links.filter((link) => meetsRouteThreshold(routeType, link.count));
 }
 
 export function evaluateRouteQuality(
-  routeType: RouteQualityKey,
-  listingCount: number,
-  { fallbackPath }: RouteQualityOptions
+  routeType: RouteQualityType,
+  count: number,
+  options: RouteQualityOptions = {}
 ): RouteQualityResult {
-  const minimumListings = getRouteMinimumListings(routeType);
+  const threshold = getRouteThreshold(routeType);
 
-  if (listingCount <= 0) {
+  if (count <= 0) {
     return {
-      indexable: false,
-      minimumListings,
-      listingCount,
-      redirectPath: fallbackPath,
-      robots: THIN_ROUTE_ROBOTS,
+      threshold,
+      count,
+      qualifies: false,
+      redirectPath: options.fallbackPath || null,
+      robots: 'noindex, follow',
     };
   }
 
-  if (listingCount < minimumListings) {
+  if (count < threshold) {
     return {
-      indexable: false,
-      minimumListings,
-      listingCount,
-      robots: THIN_ROUTE_ROBOTS,
+      threshold,
+      count,
+      qualifies: false,
+      redirectPath: null,
+      robots: 'noindex, follow',
     };
   }
 
   return {
-    indexable: true,
-    minimumListings,
-    listingCount,
+    threshold,
+    count,
+    qualifies: true,
+    redirectPath: null,
+    robots: undefined,
   };
 }

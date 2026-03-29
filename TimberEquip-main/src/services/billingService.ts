@@ -47,7 +47,7 @@ export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
     name: 'Dealer Ad Package',
     price: 499,
     period: 'month',
-    summary: 'For dealer teams with included Meta ad spend and full monthly inventory.',
+    summary: 'For dealer teams with full monthly inventory management.',
     listingCap: 50,
     managedAccountCap: 3,
   },
@@ -56,7 +56,7 @@ export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
     name: 'Pro Dealer Ad Package',
     price: 999,
     period: 'month',
-    summary: 'For high-volume dealer groups with expanded included Meta ad spend.',
+    summary: 'For high-volume dealer groups with expanded inventory and visibility.',
     listingCap: 150,
     managedAccountCap: 3,
   },
@@ -93,6 +93,58 @@ export interface BillingAuditLog {
   timestamp: any;
 }
 
+export interface AccountAuditLog {
+  id: string;
+  eventType: string;
+  actorUid?: string | null;
+  targetUid: string;
+  source?: string | null;
+  reason?: string | null;
+  previousState?: Record<string, unknown> | null;
+  nextState?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
+  createdAt?: string | null;
+}
+
+export interface SellerProgramAgreementAcceptance {
+  id: string;
+  userUid: string;
+  actorUid?: string | null;
+  planId: string;
+  statementLabel?: string | null;
+  legalScope?: string | null;
+  agreementVersion?: string | null;
+  checkoutSessionId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  source?: string | null;
+  acceptedAtIso?: string | null;
+  status?: string | null;
+  checkoutState?: string | null;
+  acceptedTerms: boolean;
+  acceptedPrivacy: boolean;
+  acceptedRecurringBilling: boolean;
+  acceptedVisibilityPolicy: boolean;
+  acceptedAuthority: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  finalizedAt?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminBillingBootstrapResponse {
+  invoices: Invoice[];
+  subscriptions: Subscription[];
+  auditLogs: BillingAuditLog[];
+  accountAuditLogs: AccountAuditLog[];
+  sellerAgreementAcceptances: SellerProgramAgreementAcceptance[];
+  partial: boolean;
+  degradedSections: string[];
+  errors: Partial<Record<'invoices' | 'subscriptions' | 'auditLogs' | 'accountAuditLogs' | 'sellerAgreementAcceptances', string>>;
+  firestoreQuotaLimited: boolean;
+  fetchedAt: string;
+}
+
 export interface RefreshedAccountAccessSummary {
   stripeCustomerId: string | null;
   planId: ListingPlanId | null;
@@ -108,6 +160,7 @@ export interface RefreshedAccountAccessSummary {
 }
 
 const PRIVATE_BILLING_CACHE_PREFIX = 'te-billing-cache-v1';
+const ACCOUNT_ACCESS_CACHE_SCOPE = 'account-access-summary';
 
 type BillingCacheEnvelope<T> = {
   savedAt: string;
@@ -152,6 +205,16 @@ function writeBillingCache<T>(scope: string, data: T): void {
     window.localStorage.setItem(getBillingCacheKey(scope), JSON.stringify(payload));
   } catch (error) {
     console.warn(`Unable to write billing cache for ${scope}:`, error);
+  }
+}
+
+function clearBillingCache(scope: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(getBillingCacheKey(scope));
+  } catch (error) {
+    console.warn(`Unable to clear billing cache for ${scope}:`, error);
   }
 }
 
@@ -241,6 +304,36 @@ export const billingService = {
     };
   },
 
+  async createBillingPortalSession(
+    returnPath = '/profile?tab=Account%20Settings'
+  ): Promise<{ url: string }> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Unauthorized');
+
+    const token = await user.getIdToken(true);
+    const response = await fetchBillingApi(
+      '/api/billing/create-portal-session',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ returnPath }),
+      },
+      { allowFallbackOn404: true }
+    );
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Failed to create billing portal session');
+    }
+
+    return {
+      url: payload.url,
+    };
+  },
+
   async createListingCheckoutSession(planId: ListingPlanId, listingId: string): Promise<{ url: string; sessionId: string }> {
     const user = auth.currentUser;
     if (!user) throw new Error('Unauthorized');
@@ -275,20 +368,36 @@ export const billingService = {
     planId?: string | null;
     scope?: 'listing' | 'account' | null;
   }> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('Unauthorized');
     if (!sessionId) throw new Error('Missing checkout session id');
 
-    const token = await user.getIdToken();
+    const headers: Record<string, string> = {};
+    const user = auth.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const response = await fetch(`/api/billing/checkout-session/${encodeURIComponent(sessionId)}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+      headers,
     });
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload?.error || 'Failed to confirm checkout session');
+    }
+
+    if (payload?.scope === 'account' && payload?.paid) {
+      const cachedAccess = readBillingCache<RefreshedAccountAccessSummary>(ACCOUNT_ACCESS_CACHE_SCOPE);
+      if (cachedAccess) {
+        writeBillingCache(ACCOUNT_ACCESS_CACHE_SCOPE, {
+          ...cachedAccess,
+          planId: typeof payload.planId === 'string' && payload.planId.trim() ? payload.planId : cachedAccess.planId,
+          subscriptionStatus: 'active',
+          accountStatus: cachedAccess.accountStatus || 'active',
+        });
+      } else {
+        clearBillingCache(ACCOUNT_ACCESS_CACHE_SCOPE);
+      }
     }
 
     return payload;
@@ -298,28 +407,64 @@ export const billingService = {
     return this.confirmCheckoutSession(sessionId);
   },
 
-  async refreshAccountAccess(): Promise<RefreshedAccountAccessSummary> {
+  async cancelSubscription(): Promise<{ success: boolean; message: string }> {
     const user = auth.currentUser;
     if (!user) throw new Error('Unauthorized');
 
     const token = await user.getIdToken(true);
-    const response = await fetchBillingApi(
-      '/api/billing/refresh-account-access',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+    const response = await fetchBillingApi('/api/billing/cancel-subscription', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
-      { allowFallbackOn404: true }
-    );
+    });
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to refresh account access');
+      throw new Error(payload?.error || 'Failed to cancel subscription');
     }
 
     return payload;
+  },
+
+  async refreshAccountAccess(): Promise<RefreshedAccountAccessSummary> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Unauthorized');
+
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetchBillingApi(
+        '/api/billing/refresh-account-access',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        },
+        { allowFallbackOn404: true }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to refresh account access');
+      }
+
+      writeBillingCache(ACCOUNT_ACCESS_CACHE_SCOPE, payload);
+      return payload;
+    } catch (error) {
+      const cached = readBillingCache<RefreshedAccountAccessSummary>(ACCOUNT_ACCESS_CACHE_SCOPE);
+      if (cached) {
+        console.warn(
+          isQuotaExceededBillingError(error)
+            ? 'Account access is temporarily unavailable because the Firestore daily read quota is exhausted.'
+            : 'Using cached account access summary because the live billing request is unavailable.',
+          error
+        );
+        return cached;
+      }
+      throw error;
+    }
   },
 
   async getAdminInvoices(): Promise<Invoice[]> {
@@ -351,6 +496,77 @@ export const billingService = {
       writeBillingCache('admin-invoices', invoices);
     }
     return invoices;
+  },
+
+  async getAdminBillingBootstrap(): Promise<AdminBillingBootstrapResponse> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Unauthorized');
+    const token = await user.getIdToken();
+
+    const response = await fetch('/api/admin/billing/bootstrap', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const payload = await response.json().catch(() => ({} as Partial<AdminBillingBootstrapResponse>));
+    if (!response.ok) {
+      const cachedInvoices = readBillingCache<Invoice[]>('admin-invoices') || [];
+      const cachedSubscriptions = readBillingCache<Subscription[]>('admin-subscriptions') || [];
+      const cachedAuditLogs = readBillingCache<BillingAuditLog[]>('admin-audit-logs') || [];
+      const cachedAccountAuditLogs = readBillingCache<AccountAuditLog[]>('admin-account-audit-logs') || [];
+      const cachedSellerAgreementAcceptances = readBillingCache<SellerProgramAgreementAcceptance[]>('admin-seller-agreement-acceptances') || [];
+      const hasCachedData =
+        cachedInvoices.length > 0 ||
+        cachedSubscriptions.length > 0 ||
+        cachedAuditLogs.length > 0 ||
+        cachedAccountAuditLogs.length > 0 ||
+        cachedSellerAgreementAcceptances.length > 0;
+
+      if (hasCachedData) {
+        console.warn('Using cached admin billing bootstrap because the live request failed.');
+        return {
+          invoices: cachedInvoices,
+          subscriptions: cachedSubscriptions,
+          auditLogs: cachedAuditLogs,
+          accountAuditLogs: cachedAccountAuditLogs,
+          sellerAgreementAcceptances: cachedSellerAgreementAcceptances,
+          partial: true,
+          degradedSections: ['live_request'],
+          errors: {
+            invoices: 'Using cached billing data.',
+            subscriptions: 'Using cached billing data.',
+            auditLogs: 'Using cached billing data.',
+            accountAuditLogs: 'Using cached account audit data.',
+            sellerAgreementAcceptances: 'Using cached seller legal acceptance data.',
+          },
+          firestoreQuotaLimited: isQuotaExceededBillingError(payload?.error || ''),
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+
+      throw new Error(String(payload?.error || 'Failed to fetch billing bootstrap'));
+    }
+
+    const normalized: AdminBillingBootstrapResponse = {
+      invoices: Array.isArray(payload?.invoices) ? payload.invoices : [],
+      subscriptions: Array.isArray(payload?.subscriptions) ? payload.subscriptions : [],
+      auditLogs: Array.isArray(payload?.auditLogs) ? payload.auditLogs : [],
+      accountAuditLogs: Array.isArray(payload?.accountAuditLogs) ? payload.accountAuditLogs : [],
+      sellerAgreementAcceptances: Array.isArray(payload?.sellerAgreementAcceptances) ? payload.sellerAgreementAcceptances : [],
+      partial: Boolean(payload?.partial),
+      degradedSections: Array.isArray(payload?.degradedSections) ? payload.degradedSections : [],
+      errors: typeof payload?.errors === 'object' && payload?.errors ? payload.errors : {},
+      firestoreQuotaLimited: Boolean(payload?.firestoreQuotaLimited),
+      fetchedAt: String(payload?.fetchedAt || new Date().toISOString()),
+    };
+
+    writeBillingCache('admin-invoices', normalized.invoices);
+    writeBillingCache('admin-subscriptions', normalized.subscriptions);
+    writeBillingCache('admin-audit-logs', normalized.auditLogs);
+    writeBillingCache('admin-account-audit-logs', normalized.accountAuditLogs);
+    writeBillingCache('admin-seller-agreement-acceptances', normalized.sellerAgreementAcceptances);
+    return normalized;
   },
 
   async getAdminSubscriptions(): Promise<Subscription[]> {

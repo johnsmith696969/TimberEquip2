@@ -11,12 +11,12 @@ import {
   FileText, Image, Layers, Database, Upload, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { equipmentService, type AdminListingsCursor } from '../services/equipmentService';
+import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { adminUserService } from '../services/adminUserService';
-import { cmsService } from '../services/cmsService';
+import { cmsService, type AdminContentBootstrapResponse } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
-import { billingService, Invoice, Subscription, BillingAuditLog } from '../services/billingService';
+import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, type AdminBillingBootstrapResponse } from '../services/billingService';
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { InquiryList } from '../components/admin/InquiryList';
@@ -39,6 +39,7 @@ import {
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
 type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
+type ListingReviewFilter = 'all' | 'pending_approval' | 'paid_not_live' | 'rejected' | 'expired' | 'sold' | 'archived' | 'anomalies';
 
 const LISTINGS_PAGE_SIZE = 50;
 const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
@@ -64,11 +65,11 @@ function resolveDashboardTab(tab: string | null | undefined): DashboardTab {
 }
 
 export function AdminDashboard() {
-  const { user: authUser, accountBootstrap, logout: authLogout, patchCurrentUserProfile } = useAuth();
+  const { user: authUser, logout: authLogout, patchCurrentUserProfile } = useAuth();
   const { formatPrice } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const profileName = authUser?.displayName || 'Caleb Happy';
+  const profileName = authUser?.displayName || 'Admin';
   const roleLabel = getUserRoleDisplayLabel(authUser?.role);
   const assignableRoleOptions = getAssignableUserRoleOptions(authUser?.role);
   const canAssignSuperAdmin = assignableRoleOptions.some((option) => option.value === 'super_admin');
@@ -84,11 +85,14 @@ export function AdminDashboard() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingLoaded, setBillingLoaded] = useState(false);
   const [billingLoadError, setBillingLoadError] = useState('');
+  const [accountAuditLogs, setAccountAuditLogs] = useState<AccountAuditLog[]>([]);
+  const [sellerAgreementAcceptances, setSellerAgreementAcceptances] = useState<SellerProgramAgreementAcceptance[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentLoaded, setContentLoaded] = useState(false);
   const [contentLoadError, setContentLoadError] = useState('');
   const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
-  const [activeTab, setActiveTab] = useState<DashboardTab>(() => resolveDashboardTab(requestedTab));
+  const resolvedRequestedTab = useMemo<DashboardTab>(() => resolveDashboardTab(requestedTab), [requestedTab]);
+  const activeTab = resolvedRequestedTab;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,11 +108,16 @@ export function AdminDashboard() {
   const [listingAuditLoading, setListingAuditLoading] = useState(false);
   const [listingAuditError, setListingAuditError] = useState('');
   const [pendingListingLifecycleKey, setPendingListingLifecycleKey] = useState('');
+  const [listingReviewFilter, setListingReviewFilter] = useState<ListingReviewFilter>('all');
+  const [listingReviewSummaries, setListingReviewSummaries] = useState<Record<string, ListingReviewSummary>>({});
+  const [listingReviewSummariesLoading, setListingReviewSummariesLoading] = useState(false);
+  const [listingReviewSummariesError, setListingReviewSummariesError] = useState('');
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [usersLoadError, setUsersLoadError] = useState('');
   const [usersLoading, setUsersLoading] = useState(false);
+  const [adminOperationsLoaded, setAdminOperationsLoaded] = useState(false);
   const [userFeedback, setUserFeedback] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [savingUserEdit, setSavingUserEdit] = useState(false);
@@ -152,27 +161,16 @@ export function AdminDashboard() {
   const listingsInitializedRef = useRef(false);
   const operationalLoadKeyRef = useRef('');
   const userDirectoryLoadKeyRef = useRef('');
-  const requestedTabRef = useRef(requestedTab);
-  const bootstrapAdminSummary = accountBootstrap?.summaries?.adminUsers || null;
-  const bootstrapBillingSummary = accountBootstrap?.summaries?.billing || null;
-  const bootstrapContentSummary = accountBootstrap?.summaries?.content || null;
-  const totalAccountCount = accounts.length > 0 ? accounts.length : (bootstrapAdminSummary?.totalUsers || 0);
-  const activeAccountCount = accounts.length > 0
-    ? accounts.filter(account => account.status === 'Active').length
-    : (bootstrapAdminSummary?.activeUsers || 0);
-  const suspendedAccountCount = accounts.length > 0
-    ? accounts.filter(account => account.status === 'Suspended').length
-    : (bootstrapAdminSummary?.suspendedUsers || 0);
-  const pendingAccountCount = accounts.length > 0
-    ? accounts.filter(account => account.status === 'Pending').length
-    : (bootstrapAdminSummary?.pendingUsers || 0);
+  const listingReviewSummariesLoadKeyRef = useRef('');
+  const shouldLoadListingsData = activeTab === 'overview' || activeTab === 'listings';
+  const shouldLoadAdminOperations = ['overview', 'accounts', 'users', 'inquiries', 'calls'].includes(activeTab);
+  const showTabContentLoader = shouldLoadListingsData && loading && !listingsInitializedRef.current && listings.length === 0;
 
   const selectAdminTab = useCallback((nextTab: DashboardTab) => {
     if (nextTab === activeTab) {
       return;
     }
 
-    setActiveTab(nextTab);
     const nextParams = new URLSearchParams(searchParams);
     if (nextTab === 'overview') {
       nextParams.delete('tab');
@@ -256,29 +254,6 @@ export function AdminDashboard() {
     setAdminSettingsError('');
   }, [authUser?.company, authUser?.displayName, authUser?.email, authUser?.emailNotificationsEnabled, authUser?.phoneNumber]);
 
-  useEffect(() => {
-    requestedTabRef.current = requestedTab;
-    const resolvedRequestedTab = resolveDashboardTab(requestedTab);
-    if (resolvedRequestedTab !== activeTab) {
-      setActiveTab(resolvedRequestedTab);
-    }
-  }, [activeTab, requestedTab]);
-
-  useEffect(() => {
-    const currentTab = resolveDashboardTab(requestedTab);
-    if (currentTab === activeTab) {
-      return;
-    }
-
-    const nextParams = new URLSearchParams(searchParams);
-    if (activeTab === 'overview') {
-      nextParams.delete('tab');
-    } else {
-      nextParams.set('tab', activeTab);
-    }
-    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
-  }, [activeTab, requestedTab, searchParams, setSearchParams]);
-
   const downloadCsv = (filenamePrefix: string, headers: string[], rows: string[][]) => {
     const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -360,8 +335,12 @@ export function AdminDashboard() {
     downloadCsv('calls', headers, rows);
   };
 
-  const fetchUsers = async () => {
-    const requestKey = `${authUser?.uid || 'anonymous'}:${activeTab}`;
+  const fetchUsers = async (force = false) => {
+    if (!authUser?.uid || usersLoading || (adminOperationsLoaded && !force)) {
+      return;
+    }
+
+    const requestKey = `${authUser.uid}:admin_operations`;
     if (userDirectoryLoadKeyRef.current === requestKey) {
       return;
     }
@@ -370,10 +349,24 @@ export function AdminDashboard() {
     setUsersLoading(true);
     setUsersLoadError('');
     try {
-      const accountsData = await adminUserService.getUsers();
-      setAccounts(accountsData);
+      const payload = await adminUserService.getAdminOperationsBootstrap();
+      setAccounts(payload.users);
+      if (Array.isArray(payload.inquiries)) {
+        setInquiries(payload.inquiries);
+      }
+      if (Array.isArray(payload.calls)) {
+        setCalls(payload.calls);
+      }
+      setAdminOperationsLoaded(true);
+      const errorMessages = [
+        payload.errors?.users,
+        payload.errors?.inquiries,
+        payload.errors?.calls,
+      ].filter(Boolean);
+      setUsersLoadError(errorMessages.join(' '));
     } catch (err) {
       console.error('Error fetching users:', err);
+      setAdminOperationsLoaded(false);
       setUsersLoadError(err instanceof Error ? err.message : 'Failed to load users.');
     } finally {
       if (userDirectoryLoadKeyRef.current === requestKey) {
@@ -391,40 +384,21 @@ export function AdminDashboard() {
     setBillingLoading(true);
     setBillingLoadError('');
     try {
-      const [invoicesResult, subscriptionsResult, logsResult] = await Promise.allSettled([
-        billingService.getAdminInvoices(),
-        billingService.getAdminSubscriptions(),
-        billingService.getAdminAuditLogs()
-      ]);
+      const payload: AdminBillingBootstrapResponse = await billingService.getAdminBillingBootstrap();
+      setInvoices(payload.invoices);
+      setSubscriptions(payload.subscriptions);
+      setBillingLogs(payload.auditLogs);
+      setAccountAuditLogs(payload.accountAuditLogs);
+      setSellerAgreementAcceptances(payload.sellerAgreementAcceptances);
+      setBillingLoaded(true);
 
-      const errorMessages: string[] = [];
-
-      if (invoicesResult.status === 'fulfilled') {
-        setInvoices(invoicesResult.value);
-      } else {
-        setInvoices([]);
-        errorMessages.push('Invoices are temporarily unavailable.');
-      }
-
-      if (subscriptionsResult.status === 'fulfilled') {
-        setSubscriptions(subscriptionsResult.value);
-      } else {
-        setSubscriptions([]);
-        errorMessages.push('Subscriptions are temporarily unavailable.');
-      }
-
-      if (logsResult.status === 'fulfilled') {
-        setBillingLogs(logsResult.value);
-      } else {
-        setBillingLogs([]);
-        errorMessages.push('Audit logs are temporarily unavailable.');
-      }
-
-      setBillingLoaded(
-        invoicesResult.status === 'fulfilled' ||
-          subscriptionsResult.status === 'fulfilled' ||
-          logsResult.status === 'fulfilled'
-      );
+      const errorMessages = [
+        payload.errors?.invoices,
+        payload.errors?.subscriptions,
+        payload.errors?.auditLogs,
+        payload.errors?.accountAuditLogs,
+        payload.errors?.sellerAgreementAcceptances,
+      ].filter(Boolean);
       setBillingLoadError(errorMessages.join(' '));
     } catch (billingError) {
       console.warn('Billing data not available:', billingError);
@@ -442,40 +416,17 @@ export function AdminDashboard() {
     setContentLoading(true);
     setContentLoadError('');
     try {
-      const [postsResult, mediaResult, blocksResult] = await Promise.allSettled([
-        cmsService.getBlogPosts(),
-        cmsService.getMedia(),
-        cmsService.getContentBlocks()
-      ]);
+      const payload: AdminContentBootstrapResponse = await cmsService.getAdminContentBootstrap();
+      setBlogPosts(payload.posts);
+      setMediaItems(payload.media);
+      setContentBlocks(payload.contentBlocks);
+      setContentLoaded(true);
 
-      const errorMessages: string[] = [];
-
-      if (postsResult.status === 'fulfilled') {
-        setBlogPosts(postsResult.value);
-      } else {
-        setBlogPosts([]);
-        errorMessages.push('Blog posts are temporarily unavailable.');
-      }
-
-      if (mediaResult.status === 'fulfilled') {
-        setMediaItems(mediaResult.value);
-      } else {
-        setMediaItems([]);
-        errorMessages.push('Media assets are temporarily unavailable.');
-      }
-
-      if (blocksResult.status === 'fulfilled') {
-        setContentBlocks(blocksResult.value);
-      } else {
-        setContentBlocks([]);
-        errorMessages.push('Content blocks are temporarily unavailable.');
-      }
-
-      setContentLoaded(
-        postsResult.status === 'fulfilled' ||
-          mediaResult.status === 'fulfilled' ||
-          blocksResult.status === 'fulfilled'
-      );
+      const errorMessages = [
+        payload.errors?.posts,
+        payload.errors?.media,
+        payload.errors?.contentBlocks,
+      ].filter(Boolean);
       setContentLoadError(errorMessages.join(' '));
     } catch (cmsErr) {
       console.warn('CMS data not available:', cmsErr);
@@ -698,47 +649,24 @@ export function AdminDashboard() {
     if (!authUser?.uid) {
       listingsInitializedRef.current = false;
       operationalLoadKeyRef.current = '';
+      setAdminOperationsLoaded(false);
       setLoading(false);
       return;
     }
 
-    const shouldLoadOperationalData = ['overview', 'listings', 'inquiries', 'calls'].includes(activeTab);
-    const shouldLoadUserDirectory = ['overview', 'accounts', 'users'].includes(activeTab);
-    const operationalLoadKey = `${authUser.uid}:${activeTab}:${showDemoListings ? 'demo' : 'live'}`;
-
-    if (!shouldLoadOperationalData) {
-      listingsInitializedRef.current = false;
-      operationalLoadKeyRef.current = '';
-    }
-
-    if (!['billing', 'tracking'].includes(activeTab)) {
-      setBillingLoaded(false);
-      setBillingLoadError('');
-      setInvoices([]);
-      setSubscriptions([]);
-      setBillingLogs([]);
-    }
-
-    if (activeTab !== 'content') {
-      setContentLoaded(false);
-      setContentLoadError('');
-      setBlogPosts([]);
-      setMediaItems([]);
-      setContentBlocks([]);
-    }
-
-    if (shouldLoadUserDirectory) {
+    if (shouldLoadAdminOperations) {
       // Fetch users independently so a failure doesn't block the rest of the dashboard
       void fetchUsers();
     }
 
-    if (!shouldLoadOperationalData) {
+    if (!shouldLoadListingsData) {
       setLoading(false);
-      operationalLoadKeyRef.current = '';
       return;
     }
 
-    if (operationalLoadKeyRef.current === operationalLoadKey) {
+    const operationalLoadKey = `${authUser.uid}:${showDemoListings ? 'demo' : 'live'}`;
+
+    if (listingsInitializedRef.current && operationalLoadKeyRef.current === operationalLoadKey) {
       setLoading(false);
       return;
     }
@@ -747,14 +675,10 @@ export function AdminDashboard() {
     setLoading(true);
 
     try {
-      const [listingsPage, inquiriesData, callsData] = await Promise.all([
-        equipmentService.getAdminListingsPage({
-          pageSize: LISTINGS_PAGE_SIZE,
-          includeDemoListings: showDemoListings,
-        }),
-        equipmentService.getInquiries(),
-        equipmentService.getCalls(),
-      ]);
+      const listingsPage = await equipmentService.getAdminListingsPage({
+        pageSize: LISTINGS_PAGE_SIZE,
+        includeDemoListings: showDemoListings,
+      });
 
       setListings(listingsPage.listings);
       setNextListingCursor(listingsPage.nextCursor);
@@ -762,8 +686,6 @@ export function AdminDashboard() {
       setListingPage(1);
       setListingCursorHistory([null]);
       setDemoInventoryRecommended(false);
-      setInquiries(inquiriesData);
-      setCalls(callsData);
       listingsInitializedRef.current = true;
     } catch (error) {
       console.error('Error fetching admin data:', error);
@@ -783,6 +705,11 @@ export function AdminDashboard() {
   }, [activeTab, authUser?.uid]);
 
   useEffect(() => {
+    userDirectoryLoadKeyRef.current = '';
+    setAdminOperationsLoaded(false);
+  }, [authUser?.uid]);
+
+  useEffect(() => {
     if (activeTab === 'billing' || activeTab === 'tracking') {
       void fetchBillingData();
     }
@@ -800,6 +727,67 @@ export function AdminDashboard() {
     setSearchQuery('');
     void loadListingsPage(null, 1, showDemoListings);
   }, [showDemoListings]);
+
+  useEffect(() => {
+    if (!authUser?.uid || !['overview', 'listings'].includes(activeTab)) {
+      setListingReviewSummaries({});
+      setListingReviewSummariesError('');
+      setListingReviewSummariesLoading(false);
+      listingReviewSummariesLoadKeyRef.current = '';
+      return;
+    }
+
+    const listingIds = listings
+      .map((listing) => String(listing.id || '').trim())
+      .filter(Boolean)
+      .slice(0, LISTINGS_PAGE_SIZE);
+
+    if (listingIds.length === 0) {
+      setListingReviewSummaries({});
+      setListingReviewSummariesError('');
+      setListingReviewSummariesLoading(false);
+      listingReviewSummariesLoadKeyRef.current = '';
+      return;
+    }
+
+    const requestKey = `${authUser.uid}:${listingIds.join(',')}`;
+    if (listingReviewSummariesLoadKeyRef.current === requestKey) {
+      return;
+    }
+
+    listingReviewSummariesLoadKeyRef.current = requestKey;
+    setListingReviewSummariesLoading(true);
+    setListingReviewSummariesError('');
+
+    void equipmentService.getAdminListingReviewSummaries(listingIds)
+      .then((summaries) => {
+        if (listingReviewSummariesLoadKeyRef.current !== requestKey) {
+          return;
+        }
+
+        const nextSummaries = summaries.reduce<Record<string, ListingReviewSummary>>((accumulator, summary) => {
+          if (summary?.listingId) {
+            accumulator[summary.listingId] = summary;
+          }
+          return accumulator;
+        }, {});
+        setListingReviewSummaries(nextSummaries);
+      })
+      .catch((error) => {
+        console.error('Error loading listing review summaries:', error);
+        if (listingReviewSummariesLoadKeyRef.current !== requestKey) {
+          return;
+        }
+        setListingReviewSummaries({});
+        setListingReviewSummariesError(error instanceof Error ? error.message : 'Unable to load listing review summaries right now.');
+      })
+      .finally(() => {
+        if (listingReviewSummariesLoadKeyRef.current === requestKey) {
+          listingReviewSummariesLoadKeyRef.current = '';
+        }
+        setListingReviewSummariesLoading(false);
+      });
+  }, [activeTab, authUser?.uid, listings]);
 
   const openNativeMap = (location: string) => {
     const encodedLocation = encodeURIComponent(location);
@@ -1014,7 +1002,7 @@ export function AdminDashboard() {
         setAccounts(prev => prev.map(a => a.id === uid ? result.user! : a));
       }
       try {
-        await fetchUsers();
+        await fetchUsers(true);
       } catch (refreshError) {
         console.warn('Unable to refresh users after role change:', refreshError);
       }
@@ -1098,7 +1086,7 @@ export function AdminDashboard() {
       }
       closeUserEditor();
       try {
-        await fetchUsers();
+        await fetchUsers(true);
       } catch (refreshError) {
         console.warn('Unable to refresh users after saving user edits:', refreshError);
       }
@@ -1185,20 +1173,86 @@ export function AdminDashboard() {
 
   const isUserActionPending = (uid: string, action: string) => pendingUserActionKey === `${uid}:${action}`;
 
+  const getListingReviewSummary = useCallback(
+    (listingId: string) => listingReviewSummaries[listingId] || null,
+    [listingReviewSummaries]
+  );
+
+  const matchesListingReviewFilter = useCallback((listing: Listing, filter: ListingReviewFilter) => {
+    if (filter === 'all') return true;
+
+    const status = String(listing.status || '').trim().toLowerCase();
+    const approvalStatus = String(listing.approvalStatus || 'pending').trim().toLowerCase();
+    const paymentStatus = String(listing.paymentStatus || 'pending').trim().toLowerCase();
+    const reviewSummary = getListingReviewSummary(listing.id);
+    const hasAnomalies = Boolean(reviewSummary && (reviewSummary.anomalyCount > 0 || reviewSummary.anomalyCodes.length > 0));
+
+    switch (filter) {
+      case 'pending_approval':
+        return approvalStatus === 'pending';
+      case 'paid_not_live':
+        return approvalStatus === 'approved' && paymentStatus === 'paid' && !['active', 'archived', 'sold'].includes(status);
+      case 'rejected':
+        return approvalStatus === 'rejected' || status === 'rejected';
+      case 'expired':
+        return status === 'expired';
+      case 'sold':
+        return status === 'sold';
+      case 'archived':
+        return status === 'archived';
+      case 'anomalies':
+        return hasAnomalies;
+      default:
+        return true;
+    }
+  }, [getListingReviewSummary]);
+
+  const listingReviewCounts = useMemo(() => {
+    return listings.reduce<Record<ListingReviewFilter, number>>((totals, listing) => {
+      totals.all += 1;
+      if (matchesListingReviewFilter(listing, 'pending_approval')) totals.pending_approval += 1;
+      if (matchesListingReviewFilter(listing, 'paid_not_live')) totals.paid_not_live += 1;
+      if (matchesListingReviewFilter(listing, 'rejected')) totals.rejected += 1;
+      if (matchesListingReviewFilter(listing, 'expired')) totals.expired += 1;
+      if (matchesListingReviewFilter(listing, 'sold')) totals.sold += 1;
+      if (matchesListingReviewFilter(listing, 'archived')) totals.archived += 1;
+      if (matchesListingReviewFilter(listing, 'anomalies')) totals.anomalies += 1;
+      return totals;
+    }, {
+      all: 0,
+      pending_approval: 0,
+      paid_not_live: 0,
+      rejected: 0,
+      expired: 0,
+      sold: 0,
+      archived: 0,
+      anomalies: 0,
+    });
+  }, [listings, matchesListingReviewFilter]);
+
   // Memoize filtered listings to avoid recalculating on every render
-  const filteredListings = useMemo(() => listings.filter(l => 
-    l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (l.manufacturer || l.make || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.model.toLowerCase().includes(searchQuery.toLowerCase())
-  ), [listings, searchQuery]);
+  const filteredListings = useMemo(() => listings.filter((listing) => {
+    const searchHaystack = [
+      listing.title,
+      listing.manufacturer || listing.make || '',
+      listing.model,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    const matchesSearch = searchHaystack.includes(searchQuery.toLowerCase());
+    return matchesSearch && matchesListingReviewFilter(listing, listingReviewFilter);
+  }), [listings, searchQuery, matchesListingReviewFilter, listingReviewFilter]);
   const recentOverviewListings = listings.slice(0, 5);
-  const pendingReviewCount = listings.filter((listing) => String(listing.approvalStatus || 'pending').trim().toLowerCase() === 'pending').length;
-  const rejectedListingCount = listings.filter((listing) => String(listing.approvalStatus || '').trim().toLowerCase() === 'rejected').length;
+  const pendingReviewCount = listingReviewCounts.pending_approval;
+  const rejectedListingCount = listingReviewCounts.rejected;
   const liveListingCount = listings.filter((listing) => (
     String(listing.status || '').trim().toLowerCase() === 'active' &&
     String(listing.approvalStatus || '').trim().toLowerCase() === 'approved' &&
     String(listing.paymentStatus || '').trim().toLowerCase() === 'paid'
   )).length;
+  const paidNotLiveCount = listingReviewCounts.paid_not_live;
+  const anomalyListingCount = listingReviewCounts.anomalies;
 
   const selectedListingAudit = selectedListingAuditId
     ? filteredListings.find((entry) => entry.id === selectedListingAuditId) ||
@@ -1409,8 +1463,8 @@ export function AdminDashboard() {
     const totalInquiries = inquiries.length;
     const wonInquiries = inquiries.filter((inquiry) => inquiry.status === 'Won').length;
     const conversionRate = totalInquiries === 0 ? 0 : Math.round((wonInquiries / totalInquiries) * 100);
-    const totalAccounts = totalAccountCount;
-    const activeAccounts = activeAccountCount;
+    const totalAccounts = accounts.length;
+    const activeAccounts = accounts.filter((account) => account.status === 'Active').length;
     const totalInventoryValue = listings.reduce((sum, listing) => sum + (listing.price || 0), 0);
     const totalViews = listings.reduce((sum, listing) => sum + (listing.views || 0), 0);
     const totalRevenue = invoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + invoice.amount, 0);
@@ -1438,7 +1492,7 @@ export function AdminDashboard() {
     { label: 'Visible Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
     { label: 'Total Leads', value: inquiries.length, change: '+24%', icon: MessageSquare, color: 'text-secondary' },
     { label: 'Call Volume', value: calls.length, change: '+8%', icon: Phone, color: 'text-data' },
-    { label: 'Active Users', value: activeAccountCount, change: '+15%', icon: Users, color: 'text-ink' }
+    { label: 'Active Users', value: accounts.length, change: '+15%', icon: Users, color: 'text-ink' }
   ];
 
   const renderOverview = () => (
@@ -1938,6 +1992,54 @@ export function AdminDashboard() {
         </div>
       </div>
 
+      <div className="rounded-sm border border-line bg-surface px-4 py-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">Operator Review Filters</p>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Loaded page filters for pending approval, paid not live, rejected, expired, sold, archived, and anomalies.
+            </p>
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-muted">
+            {listingReviewSummariesLoading ? 'Refreshing review summaries...' : 'Review summaries synced from governance artifacts'}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {[
+            { key: 'all', label: 'All Loaded', count: listingReviewCounts.all },
+            { key: 'pending_approval', label: 'Pending Approval', count: pendingReviewCount },
+            { key: 'paid_not_live', label: 'Paid Not Live', count: paidNotLiveCount },
+            { key: 'rejected', label: 'Rejected', count: rejectedListingCount },
+            { key: 'expired', label: 'Expired', count: listingReviewCounts.expired },
+            { key: 'sold', label: 'Sold', count: listingReviewCounts.sold },
+            { key: 'archived', label: 'Archived', count: listingReviewCounts.archived },
+            { key: 'anomalies', label: 'Anomalies', count: anomalyListingCount },
+          ].map((option) => {
+            const isActive = listingReviewFilter === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setListingReviewFilter(option.key as ListingReviewFilter)}
+                className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${
+                  isActive
+                    ? 'border-accent bg-accent text-white'
+                    : 'border-line bg-bg text-ink hover:border-accent'
+                }`}
+              >
+                {option.label} ({option.count})
+              </button>
+            );
+          })}
+        </div>
+        {listingReviewSummariesError ? (
+          <div className="mt-4 flex items-center gap-2 rounded-sm border border-yellow-200 bg-yellow-50 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-yellow-800">
+            <AlertCircle size={14} className="shrink-0" />
+            <span>{listingReviewSummariesError}</span>
+          </div>
+        ) : null}
+      </div>
+
       <VirtualizedListingsTable
         listings={filteredListings}
         onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
@@ -2308,10 +2410,10 @@ export function AdminDashboard() {
       <>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Users', value: totalAccountCount },
-          { label: 'Active', value: activeAccountCount },
-          { label: 'Suspended', value: suspendedAccountCount },
-          { label: 'Pending', value: pendingAccountCount },
+          { label: 'Total Users', value: accounts.length },
+          { label: 'Active', value: accounts.filter(account => account.status === 'Active').length },
+          { label: 'Suspended', value: accounts.filter(account => account.status === 'Suspended').length },
+          { label: 'Pending', value: accounts.filter(account => account.status === 'Pending').length },
         ].map((metric) => (
           <div key={metric.label} className="bg-surface border border-line rounded-sm p-5">
             <span className="label-micro block mb-1">{metric.label}</span>
@@ -2477,7 +2579,14 @@ export function AdminDashboard() {
   );
 
   const renderBilling = () => {
-    if (billingLoading && invoices.length === 0 && subscriptions.length === 0 && billingLogs.length === 0) {
+    if (
+      billingLoading &&
+      invoices.length === 0 &&
+      subscriptions.length === 0 &&
+      billingLogs.length === 0 &&
+      accountAuditLogs.length === 0 &&
+      sellerAgreementAcceptances.length === 0
+    ) {
       return (
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -2485,7 +2594,14 @@ export function AdminDashboard() {
       );
     }
 
-    if (billingLoadError && invoices.length === 0 && subscriptions.length === 0 && billingLogs.length === 0 && !bootstrapBillingSummary) {
+    if (
+      billingLoadError &&
+      invoices.length === 0 &&
+      subscriptions.length === 0 &&
+      billingLogs.length === 0 &&
+      accountAuditLogs.length === 0 &&
+      sellerAgreementAcceptances.length === 0
+    ) {
       return (
         <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-3">
@@ -2504,13 +2620,11 @@ export function AdminDashboard() {
     }
 
     const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
-    const pendingCount = invoices.length > 0
-      ? invoices.filter(i => i.status === 'pending').length
-      : Math.max((bootstrapBillingSummary?.invoiceCount || 0) - (bootstrapBillingSummary?.paidInvoiceCount || 0), 0);
+    const pendingCount = invoices.filter(i => i.status === 'pending').length;
     const failedCount = invoices.filter(i => i.status === 'failed').length;
-    const activeSubs = subscriptions.length > 0
-      ? subscriptions.filter(s => s.status === 'active').length
-      : (bootstrapBillingSummary?.activeSubscriptionCount || 0);
+    const activeSubs = subscriptions.filter(s => s.status === 'active').length;
+    const recentAccountAuditLogs = accountAuditLogs.slice(0, 10);
+    const recentSellerAgreementAcceptances = sellerAgreementAcceptances.slice(0, 10);
 
     return (
       <div className="space-y-8">
@@ -2650,6 +2764,138 @@ export function AdminDashboard() {
             ))}
           </div>
         </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+          <div className="bg-surface border border-line rounded-sm overflow-hidden">
+            <div className="p-6 border-b border-line bg-bg/50 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-ink">Account Governance Audit</h3>
+                <p className="mt-2 text-[11px] text-muted">
+                  Role changes, entitlement syncs, subscription-linked changes, and operator-side account actions.
+                </p>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                {recentAccountAuditLogs.length} loaded
+              </div>
+            </div>
+            <div className="divide-y divide-line">
+              {recentAccountAuditLogs.length === 0 ? (
+                <div className="px-6 py-10 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">No account audit events loaded</p>
+                </div>
+              ) : recentAccountAuditLogs.map((log) => (
+                <div key={log.id} className="px-6 py-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-sm border border-accent/30 bg-accent/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-accent">
+                          {formatLifecycleLabel(log.eventType)}
+                        </span>
+                        {log.source ? (
+                          <span className="rounded-sm border border-line bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-muted">
+                            {formatLifecycleLabel(log.source)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-[11px] font-bold text-ink">
+                        {log.reason || 'No operator reason captured for this account event.'}
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                        <span>Actor: {log.actorUid || 'System'}</span>
+                        <span>Target: {log.targetUid || 'Unknown'}</span>
+                      </div>
+                      {log.metadata && Object.keys(log.metadata).length > 0 ? (
+                        <div className="rounded-sm border border-line bg-bg px-3 py-2 text-[10px] text-muted">
+                          {Object.entries(log.metadata)
+                            .slice(0, 3)
+                            .map(([key, value]) => `${formatLifecycleLabel(key)}: ${String(value)}`)
+                            .join(' • ')}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-muted">
+                      {formatTimestamp(log.createdAt)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Seller Legal Acceptances are stored in Firebase but hidden from the admin dashboard UI */}
+          {authUser?.role !== 'super_admin' && authUser?.role !== 'admin' && (<div className="bg-surface border border-line rounded-sm overflow-hidden">
+            <div className="p-6 border-b border-line bg-bg/50 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-ink">Seller Legal Acceptances</h3>
+                <p className="mt-2 text-[11px] text-muted">
+                  Agreement acknowledgements captured during seller-program enrollment and Stripe checkout initiation.
+                </p>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                {recentSellerAgreementAcceptances.length} loaded
+              </div>
+            </div>
+            <div className="divide-y divide-line">
+              {recentSellerAgreementAcceptances.length === 0 ? (
+                <div className="px-6 py-10 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">No seller agreement acceptances loaded</p>
+                </div>
+              ) : recentSellerAgreementAcceptances.map((acceptance) => {
+                const acceptedCount = [
+                  acceptance.acceptedTerms,
+                  acceptance.acceptedPrivacy,
+                  acceptance.acceptedRecurringBilling,
+                  acceptance.acceptedVisibilityPolicy,
+                  acceptance.acceptedAuthority,
+                ].filter(Boolean).length;
+
+                return (
+                  <div key={acceptance.id} className="px-6 py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-sm border border-data/30 bg-data/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-data">
+                            {formatLifecycleLabel(acceptance.planId)}
+                          </span>
+                          {acceptance.status ? (
+                            <span className="rounded-sm border border-line bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-muted">
+                              {formatLifecycleLabel(acceptance.status)}
+                            </span>
+                          ) : null}
+                          {acceptance.checkoutState ? (
+                            <span className="rounded-sm border border-line bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-muted">
+                              Checkout: {formatLifecycleLabel(acceptance.checkoutState)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-[11px] font-bold text-ink">
+                          {acceptance.statementLabel || 'Seller program statement'}
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                          <span>User: {acceptance.userUid || 'Unknown'}</span>
+                          <span>Version: {acceptance.agreementVersion || 'Current'}</span>
+                          <span>Acknowledgements: {acceptedCount}/5</span>
+                        </div>
+                        {acceptance.checkoutSessionId || acceptance.stripeSubscriptionId ? (
+                          <div className="rounded-sm border border-line bg-bg px-3 py-2 text-[10px] text-muted">
+                            {[
+                              acceptance.checkoutSessionId ? `Checkout: ${acceptance.checkoutSessionId}` : '',
+                              acceptance.stripeSubscriptionId ? `Subscription: ${acceptance.stripeSubscriptionId}` : '',
+                            ].filter(Boolean).join(' • ')}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="text-right text-[9px] font-black uppercase tracking-[0.18em] text-muted">
+                        <div>{formatTimestamp(acceptance.updatedAt || acceptance.createdAt)}</div>
+                        {acceptance.source ? <div className="mt-2">{formatLifecycleLabel(acceptance.source)}</div> : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>)}
+        </div>
       </div>
     );
   };
@@ -2663,7 +2909,7 @@ export function AdminDashboard() {
       );
     }
 
-    if (contentLoadError && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0 && !bootstrapContentSummary) {
+    if (contentLoadError && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0) {
       return (
         <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-3">
@@ -3321,6 +3567,8 @@ export function AdminDashboard() {
       }
       return new Date(timestamp as string | number).toLocaleString();
     };
+    const latestDealerFeedLog = dfLogs[0] || null;
+    const dealerFeedFailureLog = dfLogs.find((log) => Array.isArray(log.errors) && log.errors.length > 0) || null;
 
     return (
       <div className="space-y-6">
@@ -3336,6 +3584,41 @@ export function AdminDashboard() {
             <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Setup Flow</div>
             <div className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-ink">
               1. Select format 2. Resolve 3. Preview 4. Import
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-sm border border-line bg-surface p-4">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Last Run</div>
+            <div className="mt-3 text-sm font-black text-ink">{latestDealerFeedLog ? formatLogTime(latestDealerFeedLog.processedAt) : 'No runs loaded'}</div>
+            <div className="mt-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {latestDealerFeedLog ? `${latestDealerFeedLog.processed} processed / ${latestDealerFeedLog.upserted} upserted` : 'Load logs for operator visibility'}
+            </div>
+          </div>
+          <div className="rounded-sm border border-line bg-surface p-4">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Current Feed Status</div>
+            <div className="mt-3 text-sm font-black text-ink">
+              {dfActiveProfile?.lastSyncStatus ? formatLifecycleLabel(dfActiveProfile.lastSyncStatus) : 'No profile selected'}
+            </div>
+            <div className="mt-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {dfActiveProfile?.sourceType ? `${formatLifecycleLabel(dfActiveProfile.sourceType)} / ${formatLifecycleLabel(dfActiveProfile.syncMode || 'pull')}` : 'Save or load a dealer feed profile'}
+            </div>
+          </div>
+          <div className="rounded-sm border border-line bg-surface p-4">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Failure Reason</div>
+            <div className="mt-3 text-sm font-black text-ink">
+              {dealerFeedFailureLog?.errors?.[0] || dfActiveProfile?.lastSyncMessage || 'No recent failures recorded'}
+            </div>
+            <div className="mt-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {dealerFeedFailureLog ? `From ${dealerFeedFailureLog.sourceName}` : 'Operator-safe failure summary'}
+            </div>
+          </div>
+          <div className="rounded-sm border border-line bg-surface p-4">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-muted">Profile + Sync</div>
+            <div className="mt-3 text-sm font-black text-ink">{dfCurrentProfileId || 'No saved profile selected'}</div>
+            <div className="mt-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {dfActiveProfile?.nightlySyncEnabled ? 'Nightly sync enabled' : 'Nightly sync disabled'}
             </div>
           </div>
         </div>
@@ -4060,16 +4343,12 @@ export function AdminDashboard() {
             </>
           )}
 
-          {loading ? (
+          {showTabContentLoader ? (
             <div className="flex items-center justify-center h-64">
               <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <motion.div
-              initial={false}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-            >
+            <div>
               {activeTab === 'overview'  && renderOverview()}
               {activeTab === 'listings'  && renderListings()}
               {activeTab === 'inquiries' && renderInquiries()}
@@ -4081,7 +4360,7 @@ export function AdminDashboard() {
               {activeTab === 'dealer_feeds' && renderDealerFeeds()}
               {activeTab === 'users'     && renderUsers()}
               {activeTab === 'settings'  && renderSettings()}
-            </motion.div>
+            </div>
           )}
         </div>
       </main>

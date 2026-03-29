@@ -29,8 +29,8 @@ import {
   startSmsMfaSignIn,
   type SmsMfaFactorSummary,
 } from '../services/mfaService';
+import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
-const ADMIN_EMAILS = ['caleb@forestryequipmentsales.com'];
 const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
 
 export function Login() {
@@ -62,6 +62,7 @@ export function Login() {
   const redirectTarget = typeof (location.state as { from?: unknown } | null)?.from === 'string'
     ? ((location.state as { from: string }).from || '')
     : queryRedirectTarget;
+  const hasActiveSession = Boolean(isAuthenticated || auth.currentUser);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -91,7 +92,7 @@ export function Login() {
 
   const navigateAfterSignIn = () => {
     const signedInEmail = auth.currentUser?.email?.trim().toLowerCase() || email.trim().toLowerCase();
-    if (ADMIN_EMAILS.includes(signedInEmail)) {
+    if (isPrivilegedAdminEmail(signedInEmail)) {
       navigate('/admin', { replace: true });
     } else if (redirectTarget) {
       navigate(redirectTarget, { replace: true });
@@ -101,12 +102,12 @@ export function Login() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated || mfaResolver) {
+    if (!hasActiveSession || mfaResolver) {
       return;
     }
 
     navigateAfterSignIn();
-  }, [isAuthenticated, mfaResolver]);
+  }, [hasActiveSession, mfaResolver, redirectTarget, email]);
 
   const resetMfaChallenge = (notice = '') => {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
@@ -296,6 +297,11 @@ export function Login() {
     setInfoMessage('');
 
     try {
+      if (auth.currentUser || isAuthenticated) {
+        navigateAfterSignIn();
+        return;
+      }
+
       await loginWithGoogle();
       const currentUser = auth.currentUser;
       if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
@@ -331,6 +337,18 @@ export function Login() {
   };
 
   const disablePrimaryAuth = loading || googleLoading || !!mfaResolver;
+
+  if (hasActiveSession && !mfaResolver) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center p-6">
+        <div className="w-full max-w-md border border-line bg-surface px-8 py-10 text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-accent mb-3">Session Active</p>
+          <h1 className="text-2xl font-black uppercase tracking-tight mb-3">Redirecting To Your Account</h1>
+          <p className="text-sm text-muted">Your session is already active. Taking you to the correct dashboard now.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">

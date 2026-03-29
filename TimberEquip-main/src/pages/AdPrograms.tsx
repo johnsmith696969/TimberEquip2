@@ -17,9 +17,9 @@ import {
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useLocale } from '../components/LocaleContext';
+import { Seo } from '../components/Seo';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { billingService, type ListingPlanId } from '../services/billingService';
-import { MetaAdProgramBreakdown } from '../components/MetaAdProgramBreakdown';
 import { useAuth } from '../components/AuthContext';
 import { hasActiveSellerSubscription } from '../utils/sellerAccess';
 import {
@@ -197,9 +197,8 @@ export function AdPrograms() {
       planId: 'dealer',
       roleLabel: 'dealer',
       icon: Building2,
-      summary: 'For active dealerships managing inventory, leads, and branded Meta growth campaigns.',
+      summary: 'For active dealerships managing inventory, leads, and branded growth campaigns.',
       features: [
-        'Includes $250 in Meta ad spend',
         'Dealer storefront and branding',
         'Up to 50 active machine listings',
         'Priority inventory management tools',
@@ -216,7 +215,6 @@ export function AdPrograms() {
       icon: Crown,
       summary: 'For high-volume dealer groups that need expanded scale, visibility, and ad coverage.',
       features: [
-        'Includes $500 in Meta ad spend',
         'Up to 150 active machine listings',
         'Expanded dealer merchandising',
         'Top placement opportunities',
@@ -496,6 +494,11 @@ export function AdPrograms() {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo
+        title="Seller Ad Programs | List Equipment | Forestry Equipment Sales"
+        description="Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace."
+        canonicalPath="/ad-programs"
+      />
       {/* Hero Section */}
       <section className="relative py-24 px-4 md:px-8 border-b border-line overflow-hidden">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
@@ -559,9 +562,6 @@ export function AdPrograms() {
             <span className="label-micro text-accent mb-4 block">Seller Types</span>
             <h2 className="text-3xl font-black tracking-tighter uppercase mb-4">Ad Program Selections</h2>
             <p className="text-muted max-w-2xl">Choose your subscription, complete the enrollment form below, agree to the legal terms on-site, and then continue into Stripe checkout.</p>
-            <p className="text-[10px] font-black uppercase tracking-widest text-accent mt-4">
-              Flow: select plan -&gt; complete enrollment -&gt; legal acknowledgement -&gt; Stripe checkout -&gt; subscription success.
-            </p>
             {hasCurrentSellerSubscription && currentSellerPlanId && (
               <div className="mt-6 border border-line bg-bg rounded-sm p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-accent">Current Seller Subscription</p>
@@ -991,10 +991,6 @@ export function AdPrograms() {
           <div className="mb-16">
             <h2 className="text-3xl font-black tracking-tighter uppercase mb-4">Strategic Ad Programs</h2>
             <p className="text-muted max-w-xl">A focused visibility upgrade for sellers who want more exposure on priority inventory.</p>
-          </div>
-
-          <div className="mb-10">
-            <MetaAdProgramBreakdown />
           </div>
 
           <div className="grid grid-cols-1 gap-1">

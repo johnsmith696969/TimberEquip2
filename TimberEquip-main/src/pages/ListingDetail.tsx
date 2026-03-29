@@ -24,6 +24,7 @@ import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
+import WatermarkOverlay from '../components/WatermarkOverlay';
 import { buildListingPath, decodeListingPublicKey, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import {
   buildCategoryPath,
@@ -178,11 +179,21 @@ export function ListingDetail() {
       : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
   };
 
-  const buildGoogleMapsEmbedUrl = (query: string, latitude?: number, longitude?: number) => {
+  const buildMapEmbedUrl = (query: string, latitude?: number, longitude?: number) => {
     if (latitude !== undefined && longitude !== undefined) {
-      return `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}&z=11&output=embed`;
+      const latPadding = 0.08;
+      const lngPadding = 0.12;
+      const left = longitude - lngPadding;
+      const right = longitude + lngPadding;
+      const top = latitude + latPadding;
+      const bottom = latitude - latPadding;
+      const bbox = `${left},${bottom},${right},${top}`;
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${latitude},${longitude}`)}`;
     }
-    return `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=11&output=embed`;
+    if (query) {
+      return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&t=&z=10&ie=UTF8&iwloc=&output=embed`;
+    }
+    return '';
   };
 
   const buildGoogleMapsLink = (query: string, latitude?: number, longitude?: number) => {
@@ -397,11 +408,13 @@ export function ListingDetail() {
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(', ');
-  const hasMachineMap = Boolean(machineMapQuery || (machineLatitude !== undefined && machineLongitude !== undefined));
-  const machineMapsHref = hasMachineMap
+  const hasMachineCoordinates = machineLatitude !== undefined && machineLongitude !== undefined;
+  const hasMachineMapLink = Boolean(machineMapQuery || hasMachineCoordinates);
+  const hasMachineMap = hasMachineCoordinates || Boolean(machineMapQuery);
+  const machineMapsHref = hasMachineMapLink
     ? buildMapsHref(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
     : '';
-  const googleMapsHref = hasMachineMap
+  const googleMapsHref = hasMachineMapLink
     ? buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
     : '';
 
@@ -744,17 +757,12 @@ export function ListingDetail() {
   const normalizedCurrentPath = location.pathname.replace(/\/+$/, '') || '/';
   const normalizedCanonicalPath = listingPath.replace(/\/+$/, '') || '/';
   const routeLinks = [
-    routeCategory ? { label: `${routeCategory} For Sale`, path: buildCategoryPath(routeCategory) } : null,
-    routeManufacturer ? { label: `${routeManufacturer} Inventory`, path: buildManufacturerPath(routeManufacturer) } : null,
-    routeManufacturer && routeCategory ? { label: `${routeManufacturer} ${routeCategory}`, path: buildManufacturerCategoryPath(routeManufacturer, routeCategory) } : null,
-    routeManufacturer && routeModel ? { label: `${routeManufacturer} ${routeModel}`, path: buildManufacturerModelPath(routeManufacturer, routeModel) } : null,
-    routeManufacturer && routeModel && routeCategory
-      ? { label: `${routeManufacturer} ${routeModel} ${routeCategory}`, path: buildManufacturerModelCategoryPath(routeManufacturer, routeModel, routeCategory) }
-      : null,
-    routeState && routeCategory ? { label: `${routeCategory} In ${routeState}`, path: buildStateCategoryPath(routeState, routeCategory) } : null,
-    dealerPath ? { label: `${seller?.storefrontName || safeSellerName} Storefront`, path: dealerPath } : null,
-  ].filter((entry): entry is { label: string; path: string } => Boolean(entry));
-  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 6);
+    routeCategory ? { label: routeCategory, path: buildCategoryPath(routeCategory) } : null,
+    routeManufacturer ? { label: routeManufacturer, path: buildManufacturerCategoryPath(routeManufacturer, routeCategory || '') } : null,
+    routeState ? { label: `${routeState}`, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
+    dealerPath ? { label: seller?.storefrontName || safeSellerName, path: dealerPath } : null,
+  ].filter((entry): entry is { label: string; path: string } => Boolean(entry) && entry.path);
+  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 4);
   const breadcrumbItems = [
     {
       '@type': 'ListItem',
@@ -882,7 +890,19 @@ export function ListingDetail() {
             {t('listingDetail.backToInventory', 'Back to Inventory')}
           </Link>
           <div className="flex items-center space-x-4">
-            <button className="p-2 text-muted hover:text-ink"><Share2 size={18} /></button>
+            <button
+              onClick={() => {
+                const url = window.location.href;
+                if (navigator.share) {
+                  navigator.share({ title: `${safeYear} ${safeMake} ${safeModel}`, url }).catch(() => {});
+                } else {
+                  navigator.clipboard.writeText(url).then(() => {
+                    window.alert('Link copied to clipboard');
+                  }).catch(() => {});
+                }
+              }}
+              className="p-2 text-muted hover:text-ink"
+            ><Share2 size={18} /></button>
             <button 
               onClick={handleToggleFavorite}
               className={`p-2 transition-colors ${isFavorite ? 'text-accent' : 'text-muted hover:text-ink'}`}
@@ -963,7 +983,8 @@ export function ListingDetail() {
                     referrerPolicy="no-referrer"
                   />
                 </AnimatePresence>
-                
+                <WatermarkOverlay />
+
                 {/* Navigation Arrows */}
                 <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
@@ -1000,7 +1021,7 @@ export function ListingDetail() {
                     onClick={() => setActiveImage(i)}
                     className={`aspect-square border-2 transition-all overflow-hidden ${activeImage === i ? 'border-accent' : 'border-line hover:border-muted'}`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" decoding="async" />
                   </button>
                 ))}
               </div>
@@ -1137,13 +1158,16 @@ export function ListingDetail() {
                         to={matchPath}
                         className="group overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
                       >
-                        <div className="aspect-[4/3] overflow-hidden bg-bg">
+                        <div className="aspect-[4/3] overflow-hidden bg-bg relative">
                           <img
                             src={matchImage}
                             alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                             referrerPolicy="no-referrer"
+                            loading="lazy"
+                            decoding="async"
                           />
+                          <WatermarkOverlay />
                         </div>
                         <div className="space-y-4 p-5">
                           <div className="flex items-center justify-between gap-3">
@@ -1239,7 +1263,7 @@ export function ListingDetail() {
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-8">
               {/* Pricing Card */}
-              <div className="bg-ink text-white p-8 rounded-sm shadow-2xl">
+              <div className="bg-[#1C1917] text-white p-8 rounded-sm shadow-2xl">
                 <div className="flex flex-col mb-8">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Listed Price</span>
                   <div className="flex items-baseline space-x-3">
@@ -1249,32 +1273,30 @@ export function ListingDetail() {
                 </div>
 
                 <div className="flex flex-col space-y-4 mb-8">
-                  <button 
+                  <button
                     onClick={() => setShowInquiryModal(true)}
                     className="btn-industrial btn-accent w-full py-5 text-base"
                   >
                     {t('listingDetail.sendInquiry', 'Send Inquiry')}
                   </button>
-                  <button 
+                  <button
                     onClick={handleCallSeller}
-                    className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-ink"
+                    className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
                   >
                     <Phone size={18} className="mr-3" />
-                    {seller?.phone
-                      ? `${t('listingDetail.callSeller', 'Call Seller')} ${seller.phone}`
-                      : t('listingDetail.callSeller', 'Call Seller')}
+                    {t('listingDetail.callSeller', 'Call Seller')}
                   </button>
                 </div>
 
                 <div className="flex items-center justify-center space-x-6 pt-6 border-t border-white/10">
-                  <button 
+                  <button
                     onClick={() => setShowPaymentCalcModal(true)}
                     className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
                   >
                     <Calculator size={14} className="mr-2" />
                     {t('listingDetail.calcPayment', 'Calc Payment')}
                   </button>
-                  <button 
+                  <button
                     onClick={() => setShowFinancingModal(true)}
                     className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
                   >
@@ -1362,7 +1384,7 @@ export function ListingDetail() {
               <div className="bg-surface border border-line overflow-hidden">
                 <div className="flex items-center justify-between border-b border-line px-6 py-4 gap-4">
                   <div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Google Maps</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Map Preview</span>
                       <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
                       <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{seller?.storefrontName || seller?.name || 'Seller'} • {safeCityState}</p>
                     </div>
@@ -1381,7 +1403,7 @@ export function ListingDetail() {
                     ) : null}
                     <iframe
                       title={`Map for ${machineMapQuery || safeCityState}`}
-                      src={buildGoogleMapsEmbedUrl(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)}
+                      src={buildMapEmbedUrl(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)}
                       className="h-64 w-full border-0"
                       loading="lazy"
                       onLoad={() => setIsMapFrameLoading(false)}
@@ -1449,19 +1471,22 @@ export function ListingDetail() {
                     </div>
 
                     <TransformComponent wrapperClass="w-full h-full !overflow-visible" contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10">
-                      <AnimatePresence mode="wait">
-                        <motion.img
-                          key={galleryImages[activeImage]}
-                          src={galleryImages[activeImage]}
-                          alt={listing.title}
-                          className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
-                          referrerPolicy="no-referrer"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.12 }}
-                        />
-                      </AnimatePresence>
+                      <div className="relative inline-block">
+                        <AnimatePresence mode="wait">
+                          <motion.img
+                            key={galleryImages[activeImage]}
+                            src={galleryImages[activeImage]}
+                            alt={listing.title}
+                            className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
+                            referrerPolicy="no-referrer"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.12 }}
+                          />
+                        </AnimatePresence>
+                        <WatermarkOverlay />
+                      </div>
                     </TransformComponent>
 
                     <button
@@ -1774,9 +1799,7 @@ export function ListingDetail() {
                           </p>
                         </div>
                       </div>
-                      <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
-                        Stock # auto-fills when available. If not, the listing URL is attached automatically and locked to this request.
-                      </p>
+                      {/* explainer removed – reference auto-populates silently */}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1792,23 +1815,23 @@ export function ListingDetail() {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <select className="input-industrial" value={shippingForm.timeline} onChange={(e) => setShippingForm({ ...shippingForm, timeline: e.target.value })}>
-                        <option value="">PREFERRED TIMING</option>
+                        <option value="">Timing</option>
                         <option value="ASAP">ASAP</option>
-                        <option value="THIS WEEK">THIS WEEK</option>
-                        <option value="WITHIN 2 WEEKS">WITHIN 2 WEEKS</option>
-                        <option value="FLEXIBLE">FLEXIBLE</option>
+                        <option value="This Week">This Week</option>
+                        <option value="Within 2 Weeks">Within 2 Weeks</option>
+                        <option value="Flexible">Flexible</option>
                       </select>
                       <select className="input-industrial" value={shippingForm.trailerType} onChange={(e) => setShippingForm({ ...shippingForm, trailerType: e.target.value })}>
-                        <option value="">TRAILER / SERVICE TYPE</option>
-                        <option value="STEP DECK">STEP DECK</option>
-                        <option value="LOWBOY / RGN">LOWBOY / RGN</option>
-                        <option value="FLATBED">FLATBED</option>
-                        <option value="OPEN TO RECOMMENDATION">OPEN TO RECOMMENDATION</option>
+                        <option value="">Trailer Type</option>
+                        <option value="Step Deck">Step Deck</option>
+                        <option value="Lowboy / RGN">Lowboy / RGN</option>
+                        <option value="Flatbed">Flatbed</option>
+                        <option value="Open to Recommendation">Open to Rec.</option>
                       </select>
                       <select className="input-industrial" value={shippingForm.loadReady} onChange={(e) => setShippingForm({ ...shippingForm, loadReady: e.target.value })}>
-                        <option value="Yes">LOAD READY: YES</option>
-                        <option value="No">LOAD READY: NO</option>
-                        <option value="Unknown">LOAD READY: UNKNOWN</option>
+                        <option value="Yes">Load Ready</option>
+                        <option value="No">Not Load Ready</option>
+                        <option value="Unknown">Unknown</option>
                       </select>
                     </div>
 

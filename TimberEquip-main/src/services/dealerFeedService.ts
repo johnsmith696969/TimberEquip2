@@ -1,5 +1,12 @@
 import { auth } from '../firebase';
 
+const DEALER_FEED_CACHE_PREFIX = 'te-dealer-feed-cache-v1';
+
+type DealerFeedCacheEnvelope<T> = {
+  savedAt: string;
+  data: T;
+};
+
 export type DealerFeedSourceType = 'auto' | 'json' | 'xml' | 'csv';
 export type DealerFeedSyncMode = 'pull' | 'push' | 'manual';
 export type DealerFeedSyncFrequency = 'hourly' | 'daily' | 'weekly' | 'manual';
@@ -170,6 +177,89 @@ function normalizeDealerFeedProfile(profile: Partial<DealerFeedProfile> & { id: 
   };
 }
 
+function isQuotaExceededDealerFeedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /quota limit exceeded|free daily read units per project|quota exceeded|daily read quota is exhausted/i.test(message);
+}
+
+function getDealerFeedCacheKey(scope: string): string {
+  const uid = auth.currentUser?.uid || 'anonymous';
+  return `${DEALER_FEED_CACHE_PREFIX}:${uid}:${scope}`;
+}
+
+function readDealerFeedCache<T>(scope: string): T | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(getDealerFeedCacheKey(scope));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DealerFeedCacheEnvelope<T> | T;
+    if (parsed && typeof parsed === 'object' && 'data' in (parsed as DealerFeedCacheEnvelope<T>)) {
+      return ((parsed as DealerFeedCacheEnvelope<T>).data ?? null) as T | null;
+    }
+    return parsed as T;
+  } catch (error) {
+    console.warn(`Unable to read dealer feed cache for ${scope}:`, error);
+    return null;
+  }
+}
+
+function writeDealerFeedCache<T>(scope: string, data: T): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const payload: DealerFeedCacheEnvelope<T> = {
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    window.localStorage.setItem(getDealerFeedCacheKey(scope), JSON.stringify(payload));
+  } catch (error) {
+    console.warn(`Unable to write dealer feed cache for ${scope}:`, error);
+  }
+}
+
+function clearDealerFeedCacheScope(scope: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(getDealerFeedCacheKey(scope));
+  } catch (error) {
+    console.warn(`Unable to clear dealer feed cache for ${scope}:`, error);
+  }
+}
+
+function clearDealerFeedCachePrefix(scopePrefix: string): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const keyPrefix = getDealerFeedCacheKey(scopePrefix);
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith(keyPrefix)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+  } catch (error) {
+    console.warn(`Unable to clear dealer feed cache prefix for ${scopePrefix}:`, error);
+  }
+}
+
+function clearDealerFeedCaches(profileId?: string, sellerUid?: string): void {
+  clearDealerFeedCachePrefix('profiles:');
+  clearDealerFeedCachePrefix('recent-logs:');
+
+  if (profileId) {
+    clearDealerFeedCachePrefix(`profile:${profileId}`);
+    clearDealerFeedCachePrefix(`audit:${profileId}:`);
+  }
+
+  if (sellerUid) {
+    clearDealerFeedCacheScope(`profiles:${sellerUid}`);
+  }
+}
+
 async function requestDealerFeedApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const user = auth.currentUser;
   if (!user) {
@@ -207,14 +297,31 @@ export const dealerFeedService = {
   async getSavedProfiles(sellerUid: string): Promise<DealerFeedProfile[]> {
     const normalizedSellerUid = String(sellerUid || '').trim();
     if (!normalizedSellerUid) return [];
+    const cacheScope = `profiles:${normalizedSellerUid}`;
 
-    const payload = await requestDealerFeedApi<{ feeds?: DealerFeedProfile[] }>(
-      `/api/admin/dealer-feeds?sellerUid=${encodeURIComponent(normalizedSellerUid)}`
-    );
+    try {
+      const payload = await requestDealerFeedApi<{ feeds?: DealerFeedProfile[] }>(
+        `/api/admin/dealer-feeds?sellerUid=${encodeURIComponent(normalizedSellerUid)}`
+      );
 
-    return Array.isArray(payload.feeds)
-      ? payload.feeds.map((feed) => normalizeDealerFeedProfile(feed))
-      : [];
+      const feeds = Array.isArray(payload.feeds)
+        ? payload.feeds.map((feed) => normalizeDealerFeedProfile(feed))
+        : [];
+      writeDealerFeedCache(cacheScope, feeds);
+      return feeds;
+    } catch (error) {
+      const cached = readDealerFeedCache<DealerFeedProfile[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn(
+          isQuotaExceededDealerFeedError(error)
+            ? 'Dealer feed profiles are temporarily unavailable because the Firestore daily read quota is exhausted.'
+            : 'Using cached dealer feed profiles because the live request is unavailable.',
+          error
+        );
+        return cached;
+      }
+      throw error;
+    }
   },
 
   async saveProfile(profile: {
@@ -248,7 +355,10 @@ export const dealerFeedService = {
           body: payload as unknown as BodyInit,
         }
       );
-      return normalizeDealerFeedProfile(response.feed);
+      const normalized = normalizeDealerFeedProfile(response.feed);
+      clearDealerFeedCaches(normalized.id, normalized.sellerUid || normalizedSellerUid);
+      writeDealerFeedCache(`profile:${normalized.id}:public`, normalized);
+      return normalized;
     }
 
     const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
@@ -258,7 +368,10 @@ export const dealerFeedService = {
         body: payload as unknown as BodyInit,
       }
     );
-    return normalizeDealerFeedProfile(response.feed);
+    const normalized = normalizeDealerFeedProfile(response.feed);
+    clearDealerFeedCaches(normalized.id, normalized.sellerUid || normalizedSellerUid);
+    writeDealerFeedCache(`profile:${normalized.id}:public`, normalized);
+    return normalized;
   },
 
   async updateProfile(profileId: string, changes: {
@@ -276,13 +389,16 @@ export const dealerFeedService = {
       throw new Error('A valid feed profile is required.');
     }
 
-    await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
+    const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
       `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}`,
       {
         method: 'PATCH',
         body: changes as unknown as BodyInit,
       }
     );
+    const normalized = normalizeDealerFeedProfile(response.feed);
+    clearDealerFeedCaches(normalizedProfileId, normalized.sellerUid);
+    writeDealerFeedCache(`profile:${normalizedProfileId}:public`, normalized);
   },
 
   async getProfile(profileId: string, options: { includeSecrets?: boolean } = {}): Promise<DealerFeedProfile> {
@@ -290,17 +406,34 @@ export const dealerFeedService = {
     if (!normalizedProfileId) {
       throw new Error('A valid feed profile is required.');
     }
+    const cacheScope = `profile:${normalizedProfileId}:${options.includeSecrets ? 'secrets' : 'public'}`;
 
     const searchParams = new URLSearchParams();
     if (options.includeSecrets) {
       searchParams.set('includeSecrets', '1');
     }
 
-    const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
-    );
+    try {
+      const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
+        `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+      );
 
-    return normalizeDealerFeedProfile(response.feed);
+      const normalized = normalizeDealerFeedProfile(response.feed);
+      writeDealerFeedCache(cacheScope, normalized);
+      return normalized;
+    } catch (error) {
+      const cached = readDealerFeedCache<DealerFeedProfile>(cacheScope);
+      if (cached) {
+        console.warn(
+          isQuotaExceededDealerFeedError(error)
+            ? 'Dealer feed profile details are temporarily unavailable because the Firestore daily read quota is exhausted.'
+            : 'Using cached dealer feed profile because the live request is unavailable.',
+          error
+        );
+        return cached;
+      }
+      throw error;
+    }
   },
 
   async deleteProfile(profileId: string): Promise<void> {
@@ -313,6 +446,7 @@ export const dealerFeedService = {
         method: 'DELETE',
       }
     );
+    clearDealerFeedCaches(normalizedProfileId);
   },
 
   async syncProfile(profileId: string, options: { dryRun?: boolean; fullSync?: boolean } = {}): Promise<DealerFeedIngestResult> {
@@ -328,18 +462,36 @@ export const dealerFeedService = {
         body: options as unknown as BodyInit,
       }
     );
+    clearDealerFeedCaches(normalizedProfileId);
     return response.result;
   },
 
   async getAuditLog(profileId: string, limitCount = 20): Promise<DealerFeedAuditLog[]> {
     const normalizedProfileId = String(profileId || '').trim();
     if (!normalizedProfileId) return [];
+    const cacheScope = `audit:${normalizedProfileId}:${limitCount}`;
 
-    const response = await requestDealerFeedApi<{ audit?: DealerFeedAuditLog[] }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}/audit?limit=${encodeURIComponent(String(limitCount))}`
-    );
+    try {
+      const response = await requestDealerFeedApi<{ audit?: DealerFeedAuditLog[] }>(
+        `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}/audit?limit=${encodeURIComponent(String(limitCount))}`
+      );
 
-    return Array.isArray(response.audit) ? response.audit : [];
+      const audit = Array.isArray(response.audit) ? response.audit : [];
+      writeDealerFeedCache(cacheScope, audit);
+      return audit;
+    } catch (error) {
+      const cached = readDealerFeedCache<DealerFeedAuditLog[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn(
+          isQuotaExceededDealerFeedError(error)
+            ? 'Dealer feed audit logs are temporarily unavailable because the Firestore daily read quota is exhausted.'
+            : 'Using cached dealer feed audit logs because the live request is unavailable.',
+          error
+        );
+        return cached;
+      }
+      throw error;
+    }
   },
 
   async resolveSource(params: {
@@ -377,33 +529,51 @@ export const dealerFeedService = {
   },
 
   async getRecentLogs(limitCount = 20, dealerId?: string): Promise<DealerFeedLog[]> {
+    const normalizedDealerId = String(dealerId || '').trim();
+    const cacheScope = `recent-logs:${normalizedDealerId || 'all'}:${limitCount}`;
     const searchParams = new URLSearchParams();
     searchParams.set('limit', String(limitCount));
-    if (dealerId) {
-      searchParams.set('sellerUid', dealerId);
+    if (normalizedDealerId) {
+      searchParams.set('sellerUid', normalizedDealerId);
     }
 
-    const response = await requestDealerFeedApi<{ logs?: DealerFeedLog[] }>(
-      `/api/admin/dealer-feeds/logs?${searchParams.toString()}`
-    );
+    try {
+      const response = await requestDealerFeedApi<{ logs?: DealerFeedLog[] }>(
+        `/api/admin/dealer-feeds/logs?${searchParams.toString()}`
+      );
 
-    return Array.isArray(response.logs)
-      ? response.logs.map((log) => ({
-        id: String(log.id || ''),
-        sourceName: String(log.sourceName || 'dealer_feed'),
-        dealerId: String(log.dealerId || log.sellerUid || ''),
-        sellerUid: String(log.sellerUid || log.dealerId || ''),
-        processedAt: log.processedAt || log.createdAt,
-        createdAt: log.createdAt,
-        processed: Number(log.processed || 0),
-        upserted: Number(log.upserted || 0),
-        created: Number(log.created || 0),
-        updated: Number(log.updated || 0),
-        skipped: Number(log.skipped || 0),
-        archived: Number(log.archived || 0),
-        errors: Array.isArray(log.errors) ? log.errors.map((entry) => String(entry || '')) : [],
-        dryRun: Boolean(log.dryRun),
-      }))
-      : [];
+      const logs = Array.isArray(response.logs)
+        ? response.logs.map((log) => ({
+          id: String(log.id || ''),
+          sourceName: String(log.sourceName || 'dealer_feed'),
+          dealerId: String(log.dealerId || log.sellerUid || ''),
+          sellerUid: String(log.sellerUid || log.dealerId || ''),
+          processedAt: log.processedAt || log.createdAt,
+          createdAt: log.createdAt,
+          processed: Number(log.processed || 0),
+          upserted: Number(log.upserted || 0),
+          created: Number(log.created || 0),
+          updated: Number(log.updated || 0),
+          skipped: Number(log.skipped || 0),
+          archived: Number(log.archived || 0),
+          errors: Array.isArray(log.errors) ? log.errors.map((entry) => String(entry || '')) : [],
+          dryRun: Boolean(log.dryRun),
+        }))
+        : [];
+      writeDealerFeedCache(cacheScope, logs);
+      return logs;
+    } catch (error) {
+      const cached = readDealerFeedCache<DealerFeedLog[]>(cacheScope);
+      if (Array.isArray(cached)) {
+        console.warn(
+          isQuotaExceededDealerFeedError(error)
+            ? 'Dealer feed logs are temporarily unavailable because the Firestore daily read quota is exhausted.'
+            : 'Using cached dealer feed logs because the live request is unavailable.',
+          error
+        );
+        return cached;
+      }
+      throw error;
+    }
   },
 };

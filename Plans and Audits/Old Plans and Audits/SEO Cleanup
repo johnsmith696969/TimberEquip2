@@ -1,0 +1,311 @@
+# SEO Restructure Plan for Equipment Listings
+
+## Objective
+
+Create a scalable, high-ranking SEO structure for equipment listing pages that:
+
+* Eliminates QA/test noise
+* Maximizes search relevance
+* Supports dealer-based inventory
+* Improves conversions
+
+---
+
+## 1. URL Structure Strategy
+
+### Current Problem
+
+Example:
+
+```
+/listing/qa-listing-prodealer-20260326/2021-tigercat-1075b-forwarder-qa
+```
+
+Issues:
+
+* Contains QA/test strings
+* Not user-friendly
+* Weak keyword targeting
+* Not stable for long-term indexing
+
+---
+
+### Recommended URL Structure
+
+#### Primary (Canonical Listing URL)
+
+```
+/equipment/[year]-[make]-[model]-[machine-type]-[city]-[state]
+```
+
+Example:
+
+```
+/equipment/2021-tigercat-1075b-forwarder-atlanta-ga
+```
+
+---
+
+### Dealer Integration (Optional but Recommended)
+
+#### Option A (Subdirectory)
+
+```
+/dealers/[dealer-name]/equipment/[year]-[make]-[model]-[machine-type]-[city]-[state]
+```
+
+Example:
+
+```
+/dealers/kleis-equipment/equipment/2021-tigercat-1075b-forwarder-atlanta-ga
+```
+
+#### Option B (Query-based, not indexed)
+
+* Keep dealer association internal
+* Do NOT include dealer name in canonical URL
+
+---
+
+### Rules
+
+* Lowercase only
+* Hyphen-separated
+* No timestamps
+* No QA/test labels
+* No duplicate words
+* Keep under ~75 characters if possible
+
+---
+
+## 2. Title Tag Template
+
+### Format
+
+```
+[Year] [Make] [Model] [Machine Type] for Sale in [City], [State] | Timber Equip
+```
+
+### Example
+
+```
+2021 Tigercat 1075B Forwarder for Sale in Atlanta, GA | Timber Equip
+```
+
+---
+
+## 3. Meta Description Template
+
+### Format
+
+```
+Used [Year] [Make] [Model] [Machine Type] for sale in [City], [State] with [Hours] hours. View specs, photos, and request pricing.
+```
+
+### Example
+
+```
+Used 2021 Tigercat 1075B forwarder for sale in Atlanta, Georgia with 3,150 hours. View specs, photos, and request pricing from Timber Equip.
+```
+
+---
+
+## 4. H1 + Page Structure
+
+### H1
+
+```
+[Year] [Make] [Model] [Machine Type]
+```
+
+---
+
+### Page Sections (Required)
+
+#### 1. Overview
+
+* 150–300 words
+* Include:
+
+  * Machine type
+  * Year
+  * Hours
+  * Location
+  * Use case
+
+#### 2. Technical Specifications
+
+* Structured table (already implemented well)
+
+#### 3. Condition & Features
+
+* Bullet points
+
+#### 4. Call to Action
+
+* Request quote
+* Call button
+
+#### 5. Related Equipment
+
+* Internal linking
+
+---
+
+## 5. Content Template (Reusable)
+
+### Paragraph 1
+
+```
+This [Year] [Make] [Model] [Machine Type] is available in [City], [State] with [Hours] hours. Designed for [use case], this machine is ideal for [application].
+```
+
+### Paragraph 2
+
+```
+The [Model] features [key specs] including [horsepower], [reach], and [capabilities]. Built for durability and performance, it is well suited for demanding logging operations.
+```
+
+### Paragraph 3
+
+```
+This unit has been [condition statement] and is ready for immediate work. Contact us for pricing, financing options, and transportation details.
+```
+
+Can we implement AI to create descriptions of each product with the year, hours, where its at, undercarriage condition, tire size, etc? Or is that too complex?
+
+---
+
+## 6. Internal Linking Strategy
+
+### Replace Keyword Blocks With:
+
+Contextual links inside content:
+
+* "Browse more Tigercat forwarders"
+* "View logging equipment for sale in Georgia"
+* "See all used forestry equipment"
+
+---
+
+## 7. Schema Markup (Required)
+
+### Types
+
+* Product
+* Offer
+* BreadcrumbList
+
+### Fields
+
+* name
+* brand
+* model
+* category
+* condition
+* location
+* sku (stock ID)
+* description
+* image
+* availability
+
+---
+
+## 8. Indexing Rules
+
+### NOINDEX
+
+* QA listings
+* Draft listings
+* Dealer preview pages
+
+### INDEX
+
+* Live inventory pages only
+
+### Canonical
+
+* All variants → canonical listing URL
+
+---
+
+## 9. Image SEO
+
+### Requirements
+
+* Descriptive filenames
+* Alt text:
+
+```
+[Year] [Make] [Model] [Machine Type] for sale in [City], [State]
+```
+
+---
+
+## 10. Site Architecture
+
+### Category Pages
+
+```
+/forwarders/
+/forwarders/tigercat/
+/logging-equipment/georgia/
+/used-logging-equipment/
+```
+
+### Purpose
+
+* Build authority
+* Capture broader search terms
+* Support internal linking
+
+---
+
+## 11. Lifecycle Handling
+
+### Active Listings
+
+* Indexed
+
+### Sold Listings
+
+Option A: Keep page + mark as sold
+Option B: Redirect to category page
+
+### Expired / QA
+
+* Remove or noindex
+
+---
+
+## 12. Implementation Phases
+
+### Phase 1 (Critical Fixes)
+
+* Clean URL structure
+* Fix title tags
+* Remove QA indexing
+
+### Phase 2 (Content)
+
+* Add overview content
+* Replace keyword blocks
+* Improve internal linking
+
+### Phase 3 (Scaling SEO)
+
+* Category pages
+* Schema implementation
+* Sitemap optimization
+
+---
+
+## Bottom Line
+
+Your current system is structurally close, but:
+
+* URLs are polluted
+* Titles are not dynamic
+* Content is too thin
+
+Fix those three and rankings will move fast.

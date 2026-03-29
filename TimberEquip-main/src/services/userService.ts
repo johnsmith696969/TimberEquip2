@@ -17,14 +17,7 @@ import {
   orderBy,
   limit
 } from 'firebase/firestore';
-import {
-  UserProfile,
-  ManagedSubAccountInput,
-  UserRole,
-  SavedSearch,
-  AlertPreferences,
-  AccountBootstrapResponse,
-} from '../types';
+import { AccountBootstrapResponse, UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
 
 function slugifyStorefrontValue(value: string): string {
   return String(value || '')
@@ -61,6 +54,55 @@ interface FirestoreErrorInfo {
       email: string | null;
       photoUrl: string | null;
     }[];
+  }
+}
+
+const USER_PROFILE_CACHE_PREFIX = 'fes:user-profile-cache:';
+const SAVED_SEARCH_CACHE_PREFIX = 'fes:saved-search-cache:';
+
+function getCachedProfileStorageKey(uid: string): string {
+  return `${USER_PROFILE_CACHE_PREFIX}${uid}`;
+}
+
+function readCachedProfile(uid: string): Partial<UserProfile> | null {
+  if (typeof window === 'undefined' || !uid) return null;
+
+  try {
+    const raw = window.localStorage.getItem(getCachedProfileStorageKey(uid));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<UserProfile>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSavedSearchCacheKey(uid: string): string {
+  return `${SAVED_SEARCH_CACHE_PREFIX}${uid}`;
+}
+
+function readCachedSavedSearches(uid: string): SavedSearch[] | null {
+  if (typeof window === 'undefined' || !uid) return null;
+
+  try {
+    const raw = window.localStorage.getItem(getSavedSearchCacheKey(uid));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as SavedSearch[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedSavedSearches(uid: string, searches: SavedSearch[]): void {
+  if (typeof window === 'undefined' || !uid) return;
+
+  try {
+    window.localStorage.setItem(getSavedSearchCacheKey(uid), JSON.stringify(searches));
+  } catch (error) {
+    console.warn('Unable to write saved-search cache:', error);
   }
 }
 
@@ -196,38 +238,6 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
 
 type CurrentProfileResponse = AccountBootstrapResponse;
 
-const ACCOUNT_BOOTSTRAP_CACHE_PREFIX = 'fes:account-bootstrap-cache:';
-
-function getAccountBootstrapCacheKey(uid: string): string {
-  return `${ACCOUNT_BOOTSTRAP_CACHE_PREFIX}${uid}`;
-}
-
-function readCachedAccountBootstrap(uid: string | null | undefined): CurrentProfileResponse | null {
-  if (typeof window === 'undefined' || !uid) return null;
-
-  try {
-    const raw = window.localStorage.getItem(getAccountBootstrapCacheKey(uid));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CurrentProfileResponse;
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch (error) {
-    console.warn('Unable to read cached account bootstrap:', error);
-    return null;
-  }
-}
-
-function writeCachedAccountBootstrap(payload: CurrentProfileResponse | null | undefined): void {
-  if (typeof window === 'undefined') return;
-  const uid = payload?.profile?.uid || auth.currentUser?.uid;
-  if (!uid || !payload) return;
-
-  try {
-    window.localStorage.setItem(getAccountBootstrapCacheKey(uid), JSON.stringify(payload));
-  } catch (error) {
-    console.warn('Unable to write cached account bootstrap:', error);
-  }
-}
-
 function deriveSeatContextFromProfile(profile: Partial<UserProfile> | null | undefined): {
   seatLimit: number;
   seatCount: number;
@@ -285,6 +295,24 @@ export const userService = {
 
   buildStorefrontSlug(value: string): string {
     return slugifyStorefrontValue(value) || 'timber-equip-storefront';
+  },
+
+  getCachedAccountBootstrap() {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return null;
+
+    const cachedProfile = readCachedProfile(currentUid);
+    if (!cachedProfile) return null;
+
+    return {
+      profile: cachedProfile as UserProfile,
+      source: 'profile_cache',
+      profileDocExists: true,
+      firestoreQuotaLimited: false,
+      seatContext: deriveSeatContextFromProfile(cachedProfile),
+      seatContextSource: 'profile_fallback',
+      fetchedAt: new Date().toISOString(),
+    };
   },
 
   async ensureUserProfileDocument(uid: string, seed: Partial<UserProfile> = {}): Promise<void> {
@@ -480,6 +508,23 @@ export const userService = {
     }
 
     const currentUser = auth.currentUser;
+    const cachedBootstrap = this.getCachedAccountBootstrap();
+    const cachedSeatContext = cachedBootstrap?.seatContext;
+
+    if (
+      currentUser &&
+      cachedSeatContext &&
+      String(cachedSeatContext.ownerUid || currentUser.uid).trim() === normalizedOwnerUid
+    ) {
+      return {
+        seatLimit: Number(cachedSeatContext.seatLimit) || 0,
+        seatCount: Number(cachedSeatContext.seatCount) || 0,
+        activePlanIds: Array.isArray(cachedSeatContext.activePlanIds)
+          ? cachedSeatContext.activePlanIds.map((planId) => String(planId || '').trim()).filter(Boolean)
+          : [],
+      };
+    }
+
     if (auth.currentUser) {
       try {
         const token = await currentUser.getIdToken();
@@ -567,54 +612,30 @@ export const userService = {
     }
   },
 
-  async getCurrentProfile(): Promise<CurrentProfileResponse> {
+  async getAccountBootstrap(): Promise<AccountBootstrapResponse> {
     const path = 'account/bootstrap';
-    const cachedBootstrap = readCachedAccountBootstrap(auth.currentUser?.uid);
     try {
-      const payload = await getAuthorizedJson<CurrentProfileResponse>('/api/account/bootstrap', {
+      return await getAuthorizedJson<AccountBootstrapResponse>('/api/account/bootstrap', {
         method: 'GET',
         headers: {
           Accept: 'application/json',
         },
       });
-      writeCachedAccountBootstrap(payload);
-      return payload;
     } catch (error) {
-      console.error('Account bootstrap request failed:', {
-        path,
-        error: error instanceof Error ? error.message : String(error),
-        uid: auth.currentUser?.uid || null,
-      });
-      if (cachedBootstrap) {
-        return {
-          ...cachedBootstrap,
-          source: 'cache',
-          firestoreQuotaLimited: cachedBootstrap.firestoreQuotaLimited || isQuotaExceededFirestoreError(error),
-          summaries: {
-            adminUsers: cachedBootstrap.summaries?.adminUsers
-              ? { ...cachedBootstrap.summaries.adminUsers, source: 'cache' }
-              : null,
-            billing: cachedBootstrap.summaries?.billing
-              ? { ...cachedBootstrap.summaries.billing, source: 'cache' }
-              : null,
-            content: cachedBootstrap.summaries?.content
-              ? { ...cachedBootstrap.summaries.content, source: 'cache' }
-              : null,
-          },
-        };
-      }
+      handleFirestoreError(error, OperationType.GET, path);
       return {
         profile: null,
         source: 'error',
         profileDocExists: false,
         firestoreQuotaLimited: isQuotaExceededFirestoreError(error),
-        fetchedAt: new Date().toISOString(),
+        seatContext: null,
+        seatContextSource: 'unavailable',
       };
     }
   },
 
-  getCachedAccountBootstrap(): CurrentProfileResponse | null {
-    return readCachedAccountBootstrap(auth.currentUser?.uid);
+  async getCurrentProfile(): Promise<CurrentProfileResponse> {
+    return this.getAccountBootstrap();
   },
 
   async createProfile(profile: UserProfile): Promise<void> {
@@ -624,11 +645,10 @@ export const userService = {
       const currentUser = auth.currentUser;
 
       if (currentUser && currentUser.uid === profile.uid) {
-        const payload = await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile/bootstrap', {
+        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile/bootstrap', {
           method: 'POST',
           body: JSON.stringify(sanitizedProfile),
         });
-        writeCachedAccountBootstrap(payload);
         return;
       }
 
@@ -662,11 +682,10 @@ export const userService = {
       const currentUser = auth.currentUser;
 
       if (currentUser && currentUser.uid === uid) {
-        const payload = await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
           method: 'PATCH',
           body: JSON.stringify(sanitizedUpdates),
         });
-        writeCachedAccountBootstrap(payload);
         return;
       }
 
@@ -850,6 +869,11 @@ export const userService = {
         method: 'POST',
         body: JSON.stringify(input),
       });
+      if (payload.savedSearch) {
+        const cached = readCachedSavedSearches(currentUser.uid) || [];
+        const nextSavedSearches = [payload.savedSearch, ...cached.filter((entry) => entry.id !== payload.savedSearch?.id)];
+        writeCachedSavedSearches(currentUser.uid, nextSavedSearches);
+      }
       return payload.savedSearch?.id || '';
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -871,7 +895,9 @@ export const userService = {
             Accept: 'application/json',
           },
         });
-        return Array.isArray(payload.savedSearches) ? payload.savedSearches : [];
+        const savedSearches = Array.isArray(payload.savedSearches) ? payload.savedSearches : [];
+        writeCachedSavedSearches(userUid, savedSearches);
+        return savedSearches;
       }
 
       const q = query(collection(db, path), where('userUid', '==', userUid), orderBy('createdAt', 'desc'));
@@ -881,6 +907,18 @@ export const userService = {
         ...(savedSearchDoc.data() as Omit<SavedSearch, 'id'>)
       }));
     } catch (error) {
+      if (currentUser && currentUser.uid === userUid) {
+        const cached = readCachedSavedSearches(userUid);
+        if (Array.isArray(cached)) {
+          console.warn(
+            isQuotaExceededFirestoreError(error)
+              ? 'Saved searches are temporarily unavailable because the Firestore daily read quota is exhausted.'
+              : 'Using cached saved searches because the live request is unavailable.',
+            error
+          );
+          return cached;
+        }
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -890,10 +928,15 @@ export const userService = {
     const path = `savedSearches/${id}`;
     try {
       if (auth.currentUser) {
-        await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
+        const payload = await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body: JSON.stringify(updates),
         });
+        if (payload.savedSearch && auth.currentUser?.uid) {
+          const cached = readCachedSavedSearches(auth.currentUser.uid) || [];
+          const nextSavedSearches = cached.map((entry) => (entry.id === id ? payload.savedSearch! : entry));
+          writeCachedSavedSearches(auth.currentUser.uid, nextSavedSearches);
+        }
         return;
       }
 
@@ -913,6 +956,10 @@ export const userService = {
         await getAuthorizedJson<{ deleted?: boolean }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
           method: 'DELETE',
         });
+        if (auth.currentUser?.uid) {
+          const cached = readCachedSavedSearches(auth.currentUser.uid) || [];
+          writeCachedSavedSearches(auth.currentUser.uid, cached.filter((entry) => entry.id !== id));
+        }
         return;
       }
 

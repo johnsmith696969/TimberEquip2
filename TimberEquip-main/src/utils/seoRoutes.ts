@@ -6,10 +6,7 @@ export const MARKET_ROUTE_LABELS = {
 } as const;
 
 export type MarketRouteKey = keyof typeof MARKET_ROUTE_LABELS;
-export const CANONICAL_MARKET_ROUTE_KEY = 'forestry' as const;
-export const LEGACY_MARKET_ROUTE_KEY = 'logging' as const;
-export const CANONICAL_MARKET_ROUTE = MARKET_ROUTE_LABELS[CANONICAL_MARKET_ROUTE_KEY];
-export const LEGACY_MARKET_ROUTE = MARKET_ROUTE_LABELS[LEGACY_MARKET_ROUTE_KEY];
+export const CANONICAL_MARKET_ROUTE_KEY: MarketRouteKey = 'forestry';
 
 export function normalizeSeoSlug(value: string, fallback = ''): string {
   const normalized = String(value || '')
@@ -61,7 +58,15 @@ export function buildManufacturerPath(manufacturer: string): string {
   return `/manufacturers/${normalizeSeoSlug(manufacturer, 'brand')}`;
 }
 
-export function buildStateMarketPath(state: string, market: MarketRouteKey = CANONICAL_MARKET_ROUTE_KEY): string {
+export function buildManufacturerModelPath(manufacturer: string, model: string): string {
+  return `/manufacturers/${normalizeSeoSlug(manufacturer, 'brand')}/models/${normalizeSeoSlug(model, 'model')}`;
+}
+
+export function buildManufacturerModelCategoryPath(manufacturer: string, model: string, category: string): string {
+  return `${buildManufacturerModelPath(manufacturer, model)}/${normalizeSeoSlug(category, 'equipment')}-for-sale`;
+}
+
+export function buildStateMarketPath(state: string, market: MarketRouteKey): string {
   return `/states/${normalizeSeoSlug(state, 'region')}/${MARKET_ROUTE_LABELS[market]}`;
 }
 
@@ -73,18 +78,10 @@ export function buildManufacturerCategoryPath(manufacturer: string, category: st
   return `/manufacturers/${normalizeSeoSlug(manufacturer, 'brand')}/${normalizeSeoSlug(category, 'equipment')}-for-sale`;
 }
 
-export function buildManufacturerModelPath(manufacturer: string, model: string): string {
-  return `/manufacturers/${normalizeSeoSlug(manufacturer, 'brand')}/models/${normalizeSeoSlug(model, 'model')}`;
-}
-
-export function buildManufacturerModelCategoryPath(manufacturer: string, model: string, category: string): string {
-  return `${buildManufacturerModelPath(manufacturer, model)}/${normalizeSeoSlug(category, 'equipment')}-for-sale`;
-}
-
 export function buildDealerPath(seller: Pick<Seller, 'id' | 'storefrontSlug'>): string {
   return `/dealers/${seller.storefrontSlug || seller.id}`;
 }
 
 export function isDealerRole(role?: string): boolean {
-  return ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(String(role || '').toLowerCase());
+  return ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(String(role || '').toLowerCase());
 }

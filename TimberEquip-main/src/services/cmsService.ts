@@ -5,6 +5,17 @@ import {
 } from 'firebase/firestore';
 import { BlogPost, ContentBlock, MediaItem } from '../types';
 
+export interface AdminContentBootstrapResponse {
+  posts: BlogPost[];
+  media: MediaItem[];
+  contentBlocks: ContentBlock[];
+  partial: boolean;
+  degradedSections: string[];
+  errors: Partial<Record<'posts' | 'media' | 'contentBlocks', string>>;
+  firestoreQuotaLimited: boolean;
+  fetchedAt: string;
+}
+
 const CMS_CACHE_PREFIX = 'te-cms-cache-v1';
 
 type CmsCacheEnvelope<T> = {
@@ -270,6 +281,58 @@ export const cmsService = {
         console.warn('Content blocks are temporarily unavailable because the Firestore daily read quota is exhausted:', error);
         return [];
       }
+      throw error;
+    }
+  },
+
+  async getAdminContentBootstrap(): Promise<AdminContentBootstrapResponse> {
+    try {
+      const payload = await getAuthorizedJson<AdminContentBootstrapResponse>('/api/admin/content/bootstrap', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      const normalized: AdminContentBootstrapResponse = {
+        posts: Array.isArray(payload?.posts) ? payload.posts : [],
+        media: Array.isArray(payload?.media) ? payload.media : [],
+        contentBlocks: Array.isArray(payload?.contentBlocks) ? payload.contentBlocks : [],
+        partial: Boolean(payload?.partial),
+        degradedSections: Array.isArray(payload?.degradedSections) ? payload.degradedSections : [],
+        errors: typeof payload?.errors === 'object' && payload?.errors ? payload.errors : {},
+        firestoreQuotaLimited: Boolean(payload?.firestoreQuotaLimited),
+        fetchedAt: String(payload?.fetchedAt || new Date().toISOString()),
+      };
+
+      writeCmsCache('blog-posts', normalized.posts);
+      writeCmsCache('media', normalized.media);
+      writeCmsCache('content-blocks', normalized.contentBlocks);
+      return normalized;
+    } catch (error) {
+      const cachedPosts = readCmsCache<BlogPost[]>('blog-posts') || [];
+      const cachedMedia = readCmsCache<MediaItem[]>('media') || [];
+      const cachedBlocks = readCmsCache<ContentBlock[]>('content-blocks') || [];
+      const hasCachedData = cachedPosts.length > 0 || cachedMedia.length > 0 || cachedBlocks.length > 0;
+
+      if (hasCachedData) {
+        console.warn('Using cached admin content bootstrap because the live CMS bootstrap request failed:', error);
+        return {
+          posts: cachedPosts,
+          media: cachedMedia,
+          contentBlocks: cachedBlocks,
+          partial: true,
+          degradedSections: ['live_request'],
+          errors: {
+            posts: 'Using cached CMS data.',
+            media: 'Using cached CMS data.',
+            contentBlocks: 'Using cached CMS data.',
+          },
+          firestoreQuotaLimited: isQuotaExceededCmsError(error),
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+
       throw error;
     }
   },
