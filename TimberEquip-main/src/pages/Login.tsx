@@ -162,6 +162,7 @@ export function Login() {
 
   const startLoginMfaChallenge = async (resolver: MultiFactorResolver) => {
     setMfaResolver(resolver);
+    setMfaVerificationId('');
     setMfaLoading(true);
     setError('');
     setInfoMessage('');
@@ -171,6 +172,12 @@ export function Login() {
       setInfoMessage('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
       const preferredFactor = getPreferredSmsMfaFactor(resolver);
       const { verificationId, factor } = await startSmsMfaSignIn(resolver, preferredFactor?.uid, verifier);
+      // reCAPTCHA token is consumed — destroy the widget immediately
+      // so the user never sees it uncheck itself.
+      resetRecaptchaVerifier(mfaRecaptchaRef.current);
+      mfaRecaptchaRef.current = null;
+      const recaptchaContainer = document.getElementById('login-mfa-recaptcha');
+      if (recaptchaContainer) recaptchaContainer.innerHTML = '';
       setMfaFactor(factor);
       setMfaVerificationId(verificationId);
       setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'}. Enter it below to finish signing in.`);
@@ -456,16 +463,13 @@ export function Login() {
                 ) : null}
               </div>
 
-              <div
-                id="login-mfa-recaptcha"
-                className="min-h-[78px]"
-                style={{ display: mfaVerificationId && !mfaLoading ? 'none' : undefined }}
-              />
-              {mfaVerificationId && !mfaLoading && (
-                <div className="flex items-center space-x-2 text-data text-xs font-bold uppercase tracking-widest">
-                  <CheckCircle2 size={16} />
+              {mfaVerificationId ? (
+                <div className="flex items-center space-x-2 text-data text-xs font-bold uppercase tracking-widest py-2">
+                  <ShieldCheck size={16} />
                   <span>Security check passed</span>
                 </div>
+              ) : (
+                <div id="login-mfa-recaptcha" className="min-h-[78px]" />
               )}
 
               <div className="space-y-2">
