@@ -164,6 +164,13 @@ function getAdminRecipients() {
 
 const APP_URL = 'https://timberequip.com';
 const STAGING_APP_URL = 'https://timberequip-staging.web.app';
+function resolveConfiguredAppUrl() {
+  const projectId = String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || '').trim().toLowerCase();
+  if (projectId === 'timberequip-staging') {
+    return STAGING_APP_URL;
+  }
+  return APP_URL;
+}
 const PRIVILEGED_ADMIN_EMAILS = new Set([
   'caleb@forestryequipmentsales.com',
   'calebhappy@gmail.com',
@@ -6085,6 +6092,7 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     photoURL: normalizeNonEmptyString(userData.photoURL || authRecord?.photoURL) || '',
     coverPhotoUrl: normalizeNonEmptyString(userData.coverPhotoUrl) || '',
     phoneNumber: normalizeNonEmptyString(userData.phoneNumber || authRecord?.phoneNumber) || '',
+    twilioPhoneNumber: normalizeNonEmptyString(userData.twilioPhoneNumber) || '',
     company: normalizeNonEmptyString(userData.company) || '',
     website: normalizeNonEmptyString(userData.website) || '',
     about: normalizeNonEmptyString(userData.about) || '',
@@ -7164,7 +7172,7 @@ function validateTwilioRequest(req) {
   if (!token) return false;
   const twilio = require('twilio');
   const sig = req.headers['x-twilio-signature'] || '';
-  const url = `${APP_URL}${req.originalUrl || req.url}`;
+  const url = `${resolveConfiguredAppUrl()}${req.originalUrl || req.url}`;
   return twilio.validateRequest(token, sig, url, req.body || {});
 }
 
@@ -7189,6 +7197,17 @@ async function provisionTwilioNumberForSeller(userUid, planId) {
     return;
   }
 
+  // Look up seller phone to determine area code
+  const userSnap = await getDb().collection('users').doc(userUid).get();
+  const userData = userSnap.data() || {};
+  const sellerRealPhone = String(userData.phoneNumber || '').trim();
+  const areaCode = extractAreaCode(sellerRealPhone);
+
+  const webhookBaseUrl = `${resolveConfiguredAppUrl()}/api/twilio/voice`;
+  const voiceUrl = `${webhookBaseUrl}/inbound`;
+  const statusCallback = `${webhookBaseUrl}/status`;
+  const friendlyName = `FES-${userUid.substring(0, 8)}`;
+
   // Check if seller already has an active Twilio number
   const existingSnap = await getDb().collection('twilioNumbers')
     .where('sellerUid', '==', userUid)
@@ -7196,17 +7215,45 @@ async function provisionTwilioNumberForSeller(userUid, planId) {
     .limit(1)
     .get();
   if (!existingSnap.empty) {
-    logger.info('Seller already has an active Twilio number.', { userUid });
+    const existingDoc = existingSnap.docs[0];
+    const existingData = existingDoc.data() || {};
+
+    if (existingData.twilioPhoneSid) {
+      try {
+        await twilioClient.incomingPhoneNumbers(existingData.twilioPhoneSid).update({
+          voiceUrl,
+          voiceMethod: 'POST',
+          statusCallback,
+          statusCallbackMethod: 'POST',
+          friendlyName,
+        });
+      } catch (error) {
+        logger.warn('Unable to refresh webhook config for existing Twilio number.', {
+          userUid,
+          twilioPhoneSid: existingData.twilioPhoneSid,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await existingDoc.ref.set({
+      sellerRealPhone,
+      sellerName: String(userData.displayName || userData.storefrontName || existingData.sellerName || ''),
+      planId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    const existingNumber = normalizeNonEmptyString(existingDoc.id);
+    if (existingNumber) {
+      const existingBatch = getDb().batch();
+      existingBatch.set(getDb().collection('users').doc(userUid), { twilioPhoneNumber: existingNumber }, { merge: true });
+      existingBatch.set(getDb().collection('storefronts').doc(userUid), { twilioPhoneNumber: existingNumber }, { merge: true });
+      await existingBatch.commit();
+    }
+
+    logger.info('Seller already has an active Twilio number; webhook config refreshed.', { userUid });
     return;
   }
-
-  // Look up seller phone to determine area code
-  const userSnap = await getDb().collection('users').doc(userUid).get();
-  const userData = userSnap.data() || {};
-  const sellerRealPhone = String(userData.phoneNumber || '').trim();
-  const areaCode = extractAreaCode(sellerRealPhone);
-
-  const webhookBaseUrl = `${APP_URL}/api/twilio/voice`;
 
   // Search for available local number matching area code
   let availableNumbers = [];
@@ -7230,11 +7277,11 @@ async function provisionTwilioNumberForSeller(userUid, planId) {
   // Purchase the number
   const purchased = await twilioClient.incomingPhoneNumbers.create({
     phoneNumber: availableNumbers[0].phoneNumber,
-    voiceUrl: `${webhookBaseUrl}/inbound`,
+    voiceUrl,
     voiceMethod: 'POST',
-    statusCallback: `${webhookBaseUrl}/status`,
+    statusCallback,
     statusCallbackMethod: 'POST',
-    friendlyName: `FES-${userUid.substring(0, 8)}`,
+    friendlyName,
   });
 
   // Store mapping in Firestore
@@ -7342,7 +7389,7 @@ async function handleTwilioInboundCall(req, res) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  const statusUrl = `${APP_URL}/api/twilio/voice/status`;
+  const statusUrl = `${resolveConfiguredAppUrl()}/api/twilio/voice/status`;
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna">This call is monitored and recorded by Forestry Equipment Sales.</Say>
