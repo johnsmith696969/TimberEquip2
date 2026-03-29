@@ -644,6 +644,76 @@ const templates = {
     `);
     return { subject, html };
   },
+
+  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, topMachines, dashboardUrl }) {
+    const subject = `Your ${monthLabel} Forestry Equipment Sales Performance Report`;
+    const topMachinesHtml = Array.isArray(topMachines) && topMachines.length > 0
+      ? `<table style="width:100%; border-collapse:collapse; margin:16px 0;">
+          <tr style="background:#f8fafc;">
+            <th style="text-align:left; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Machine</th>
+            <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Inquiries</th>
+          </tr>
+          ${topMachines.map((m) => `<tr><td style="padding:8px 12px; font-size:13px; color:#111827; border-bottom:1px solid #f3f4f6;">${m.title || 'Untitled'}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#2f6f2d; border-bottom:1px solid #f3f4f6;">${m.count}</td></tr>`).join('')}
+        </table>`
+      : '<p style="color:#6b7280; font-size:13px;">No inquiries recorded this period.</p>';
+
+    const html = baseLayout(subject, `${monthLabel} Performance Report`, `
+      <p class="label">Monthly Dealer Report</p>
+      <h2>Here's how your listings performed</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>Below is your performance summary for <strong>${monthLabel}</strong> on Forestry Equipment Sales.</p>
+
+      <div style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:2px; padding:20px; margin:20px 0;">
+        <div class="info-row"><span class="info-label">Active Listings</span><span class="info-value">${totalListings}</span></div>
+        <div class="info-row"><span class="info-label">Lead Forms</span><span class="info-value">${leadForms}</span></div>
+        <div class="info-row"><span class="info-label">Call Button Clicks</span><span class="info-value">${callButtonClicks}</span></div>
+        <div class="info-row"><span class="info-label">Connected Calls</span><span class="info-value">${connectedCalls}</span></div>
+        <div class="info-row"><span class="info-label">Qualified Calls (60s+)</span><span class="info-value">${qualifiedCalls}</span></div>
+        <div class="info-row"><span class="info-label">Missed Calls</span><span class="info-value">${missedCalls}</span></div>
+      </div>
+
+      <h2>Top Machines by Inquiry Volume</h2>
+      ${topMachinesHtml}
+
+      <hr class="divider" />
+      <p>Impressions and click data will be available in a future update. For questions about your report, contact the Forestry Equipment Sales team.</p>
+      <a href="${dashboardUrl || 'https://timberequip.com/profile'}" class="cta">Open Seller Dashboard</a>
+    `);
+    return { subject, html };
+  },
+
+  dealerMonthlyReportAdminSummary({ monthLabel, sellerSummaries, dashboardUrl }) {
+    const tableRows = Array.isArray(sellerSummaries)
+      ? sellerSummaries.map((s) => `<tr>
+          <td style="padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.name}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.listings}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.leads}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.calls}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.qualifiedCalls}</td>
+        </tr>`).join('')
+      : '';
+
+    const subject = `${monthLabel} Marketplace Performance Summary`;
+    const html = baseLayout(subject, `${monthLabel} Admin Summary`, `
+      <p class="label">Monthly Admin Report</p>
+      <h2>Consolidated seller performance for ${monthLabel}</h2>
+      <p>This report summarizes all seller activity across the Forestry Equipment Sales marketplace.</p>
+
+      <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+        <tr style="background:#f8fafc;">
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Seller</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Listings</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Leads</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Qualified</th>
+        </tr>
+        ${tableRows}
+      </table>
+
+      <a href="${dashboardUrl || 'https://timberequip.com/admin'}" class="cta">Open Admin Dashboard</a>
+    `);
+    return { subject, html };
+  },
 };
 
 module.exports = { templates };

@@ -76,6 +76,8 @@ const EXCHANGERATE_API_KEY = defineSecret('EXCHANGERATE_API_KEY');
 const GOOGLE_MAPS_API_KEY = defineSecret('GOOGLE_MAPS_API_KEY');
 const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
+const TWILIO_ACCOUNT_SID = defineSecret('TWILIO_ACCOUNT_SID');
+const TWILIO_AUTH_TOKEN = defineSecret('TWILIO_AUTH_TOKEN');
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
@@ -3915,6 +3917,173 @@ exports.dealerFeedNightlySync = onSchedule(
   }
 );
 
+// ---------------------------------------------------------------------------
+// Monthly Dealer Report — 1st of each month at 9 AM Eastern
+// ---------------------------------------------------------------------------
+exports.monthlyDealerReport = onSchedule(
+  {
+    schedule: '0 9 1 * *',
+    timeZone: 'America/New_York',
+    region: 'us-central1',
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
+  },
+  async () => {
+    const now = new Date();
+    const reportMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const monthStart = reportMonth;
+    const monthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthLabel = reportMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+    // Find all paid sellers (individual_seller, dealer, pro_dealer)
+    const usersSnap = await getDb()
+      .collection('users')
+      .where('role', 'in', ['individual_seller', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'])
+      .get();
+
+    if (usersSnap.empty) {
+      logger.info('monthlyDealerReport: no sellers found');
+      return;
+    }
+
+    // Fetch all calls and inquiries for the month in bulk
+    const [callsSnap, inquiriesSnap] = await Promise.all([
+      getDb()
+        .collection('calls')
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(monthStart))
+        .where('createdAt', '<', admin.firestore.Timestamp.fromDate(monthEnd))
+        .get(),
+      getDb()
+        .collection('inquiries')
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(monthStart))
+        .where('createdAt', '<', admin.firestore.Timestamp.fromDate(monthEnd))
+        .get(),
+    ]);
+
+    // Group calls by seller
+    const callsBySeller = {};
+    for (const doc of callsSnap.docs) {
+      const d = doc.data() || {};
+      const sellerKey = normalizeNonEmptyString(d.sellerUid || d.sellerId);
+      if (!sellerKey) continue;
+      if (!callsBySeller[sellerKey]) callsBySeller[sellerKey] = [];
+      callsBySeller[sellerKey].push(d);
+    }
+
+    // Group inquiries by seller
+    const inquiriesBySeller = {};
+    for (const doc of inquiriesSnap.docs) {
+      const d = doc.data() || {};
+      const sellerKey = normalizeNonEmptyString(d.sellerUid || d.sellerId);
+      if (!sellerKey) continue;
+      if (!inquiriesBySeller[sellerKey]) inquiriesBySeller[sellerKey] = [];
+      inquiriesBySeller[sellerKey].push(d);
+    }
+
+    const adminSummaries = [];
+
+    for (const userDoc of usersSnap.docs) {
+      const userData = userDoc.data() || {};
+      const sellerUid = userDoc.id;
+      const sellerEmail = normalizeNonEmptyString(userData.email);
+      const sellerName = normalizeNonEmptyString(userData.displayName || userData.name, 'Seller');
+
+      if (!sellerEmail) continue;
+
+      // Count active listings for this seller
+      const listingsSnap = await getDb()
+        .collection('listings')
+        .where('sellerUid', '==', sellerUid)
+        .where('status', '==', 'active')
+        .where('approvalStatus', '==', 'approved')
+        .get();
+      const totalListings = listingsSnap.size;
+
+      const sellerCalls = callsBySeller[sellerUid] || [];
+      const sellerInquiries = inquiriesBySeller[sellerUid] || [];
+
+      const leadForms = sellerInquiries.filter((i) => (i.type || 'Inquiry') !== 'Call').length;
+      const callButtonClicks = sellerCalls.length;
+      const connectedCalls = sellerCalls.filter((c) => {
+        const dur = typeof c.duration === 'number' ? c.duration : 0;
+        return dur > 0 && String(c.status || '').toLowerCase() === 'completed';
+      }).length;
+      const qualifiedCalls = sellerCalls.filter((c) => {
+        const dur = typeof c.duration === 'number' ? c.duration : 0;
+        return dur >= 60;
+      }).length;
+      const missedCalls = sellerCalls.filter((c) => {
+        return String(c.status || '').toLowerCase() === 'missed';
+      }).length;
+
+      // Top 5 machines by inquiry volume
+      const machineInquiryCounts = {};
+      for (const inq of sellerInquiries) {
+        const listingId = normalizeNonEmptyString(inq.listingId);
+        if (!listingId) continue;
+        if (!machineInquiryCounts[listingId]) {
+          machineInquiryCounts[listingId] = { title: normalizeNonEmptyString(inq.listingTitle) || listingId, count: 0 };
+        }
+        machineInquiryCounts[listingId].count += 1;
+      }
+      // Also count calls as inquiry touches
+      for (const call of sellerCalls) {
+        const listingId = normalizeNonEmptyString(call.listingId);
+        if (!listingId) continue;
+        if (!machineInquiryCounts[listingId]) {
+          machineInquiryCounts[listingId] = { title: normalizeNonEmptyString(call.listingTitle) || listingId, count: 0 };
+        }
+        machineInquiryCounts[listingId].count += 1;
+      }
+
+      const topMachines = Object.values(machineInquiryCounts)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      try {
+        const { subject, html } = templates.dealerMonthlyReport({
+          sellerName,
+          monthLabel,
+          totalListings,
+          leadForms,
+          callButtonClicks,
+          connectedCalls,
+          qualifiedCalls,
+          missedCalls,
+          topMachines,
+          dashboardUrl: 'https://timberequip.com/profile',
+        });
+        await sendEmail({ to: sellerEmail, subject, html });
+      } catch (emailError) {
+        logger.error(`monthlyDealerReport: failed to send report to ${sellerUid}`, emailError);
+      }
+
+      adminSummaries.push({
+        name: sellerName,
+        listings: totalListings,
+        leads: leadForms,
+        calls: callButtonClicks,
+        qualifiedCalls,
+      });
+    }
+
+    // Send consolidated admin summary to super_admins
+    if (adminSummaries.length > 0) {
+      try {
+        const { subject, html } = templates.dealerMonthlyReportAdminSummary({
+          monthLabel,
+          sellerSummaries: adminSummaries,
+          dashboardUrl: 'https://timberequip.com/admin',
+        });
+        await sendEmail({ to: getAdminRecipients(), subject, html });
+      } catch (adminEmailError) {
+        logger.error('monthlyDealerReport: failed to send admin summary', adminEmailError);
+      }
+    }
+
+    logger.info(`monthlyDealerReport: sent ${adminSummaries.length} seller reports for ${monthLabel}`);
+  }
+);
+
 const marketRatesCache = {
   value: null,
   fetchedAt: 0,
@@ -4177,6 +4346,7 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
     seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
     rating: 5,
     totalListings: 0,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
@@ -4206,6 +4376,7 @@ function serializeSellerPayloadFromUser(snapshotId, data = {}) {
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
     seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
     rating: 5,
     totalListings: 0,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
@@ -4270,6 +4441,10 @@ function serializeCallDoc(docSnapshot) {
     source: normalizeNonEmptyString(data.source) || undefined,
     isAuthenticated: Boolean(data.isAuthenticated),
     recordingUrl: normalizeNonEmptyString(data.recordingUrl) || undefined,
+    twilioCallSid: normalizeNonEmptyString(data.twilioCallSid) || undefined,
+    twilioFromNumber: normalizeNonEmptyString(data.twilioFromNumber) || undefined,
+    twilioToNumber: normalizeNonEmptyString(data.twilioToNumber) || undefined,
+    completedAt: timestampValueToIso(data.completedAt) || normalizeNonEmptyString(data.completedAt) || undefined,
     createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
   };
 }
@@ -6884,6 +7059,22 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
       }
     );
   }
+
+  // ── Twilio number lifecycle ──
+  try {
+    if (retainsSellerAccess && summary.planId) {
+      await provisionTwilioNumberForSeller(normalizedUserUid, summary.planId);
+    } else if (!retainsSellerAccess) {
+      await releaseTwilioNumberForSeller(normalizedUserUid);
+    }
+  } catch (twilioError) {
+    logger.error('Twilio number lifecycle failed (non-fatal).', {
+      userUid: normalizedUserUid,
+      planId: summary.planId,
+      retainsSellerAccess,
+      error: String(twilioError?.message || twilioError),
+    });
+  }
 }
 
 async function getManagedAccountSeatContext(ownerUid) {
@@ -6938,6 +7129,249 @@ function createStripeClient() {
     timeout: 15000,
     maxNetworkRetries: 1,
   });
+}
+
+// ── Twilio client ───────────────────────────────────────────────────────────
+function createTwilioClient() {
+  const sid = String(TWILIO_ACCOUNT_SID.value() || '').trim();
+  const token = String(TWILIO_AUTH_TOKEN.value() || '').trim();
+  if (!sid || !token) return null;
+  return require('twilio')(sid, token);
+}
+
+function extractAreaCode(phoneNumber) {
+  const digits = String(phoneNumber || '').replace(/[^\d]/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.substring(1, 4);
+  if (digits.length === 10) return digits.substring(0, 3);
+  return '';
+}
+
+function validateTwilioRequest(req) {
+  const token = String(TWILIO_AUTH_TOKEN.value() || '').trim();
+  if (!token) return false;
+  const twilio = require('twilio');
+  const sig = req.headers['x-twilio-signature'] || '';
+  const url = `${APP_URL}${req.originalUrl || req.url}`;
+  return twilio.validateRequest(token, sig, url, req.body || {});
+}
+
+function mapTwilioStatusToCallLogStatus(twilioStatus) {
+  switch (String(twilioStatus || '').toLowerCase()) {
+    case 'completed': return 'Completed';
+    case 'busy':
+    case 'no-answer':
+    case 'canceled':
+    case 'failed':
+      return 'Missed';
+    default: return 'Initiated';
+  }
+}
+
+async function provisionTwilioNumberForSeller(userUid, planId) {
+  if (!isSellerSubscriptionRole(getSellerRoleForPlan(planId))) return;
+
+  const twilioClient = createTwilioClient();
+  if (!twilioClient) {
+    logger.warn('Twilio client not configured; skipping number provisioning.', { userUid, planId });
+    return;
+  }
+
+  // Check if seller already has an active Twilio number
+  const existingSnap = await getDb().collection('twilioNumbers')
+    .where('sellerUid', '==', userUid)
+    .where('status', '==', 'active')
+    .limit(1)
+    .get();
+  if (!existingSnap.empty) {
+    logger.info('Seller already has an active Twilio number.', { userUid });
+    return;
+  }
+
+  // Look up seller phone to determine area code
+  const userSnap = await getDb().collection('users').doc(userUid).get();
+  const userData = userSnap.data() || {};
+  const sellerRealPhone = String(userData.phoneNumber || '').trim();
+  const areaCode = extractAreaCode(sellerRealPhone);
+
+  const webhookBaseUrl = `${APP_URL}/api/twilio/voice`;
+
+  // Search for available local number matching area code
+  let availableNumbers = [];
+  try {
+    if (areaCode) {
+      availableNumbers = await twilioClient.availablePhoneNumbers('US').local.list({ areaCode, limit: 1 });
+    }
+    if (!availableNumbers.length) {
+      availableNumbers = await twilioClient.availablePhoneNumbers('US').local.list({ limit: 1 });
+    }
+  } catch (err) {
+    logger.error('Failed to search Twilio numbers.', { userUid, error: err.message });
+    return;
+  }
+
+  if (!availableNumbers.length) {
+    logger.error('No available Twilio numbers found.', { userUid, areaCode });
+    return;
+  }
+
+  // Purchase the number
+  const purchased = await twilioClient.incomingPhoneNumbers.create({
+    phoneNumber: availableNumbers[0].phoneNumber,
+    voiceUrl: `${webhookBaseUrl}/inbound`,
+    voiceMethod: 'POST',
+    statusCallback: `${webhookBaseUrl}/status`,
+    statusCallbackMethod: 'POST',
+    friendlyName: `FES-${userUid.substring(0, 8)}`,
+  });
+
+  // Store mapping in Firestore
+  await getDb().collection('twilioNumbers').doc(purchased.phoneNumber).set({
+    sellerUid: userUid,
+    sellerRealPhone,
+    sellerName: String(userData.displayName || userData.storefrontName || ''),
+    planId,
+    twilioPhoneSid: purchased.sid,
+    provisionedAt: admin.firestore.FieldValue.serverTimestamp(),
+    status: 'active',
+    releasedAt: null,
+  });
+
+  // Write Twilio number to user and storefront docs
+  const batch = getDb().batch();
+  batch.set(getDb().collection('users').doc(userUid), { twilioPhoneNumber: purchased.phoneNumber }, { merge: true });
+  batch.set(getDb().collection('storefronts').doc(userUid), { twilioPhoneNumber: purchased.phoneNumber }, { merge: true });
+  await batch.commit();
+
+  logger.info('Twilio number provisioned.', { userUid, twilioNumber: purchased.phoneNumber });
+}
+
+async function releaseTwilioNumberForSeller(userUid) {
+  const twilioClient = createTwilioClient();
+  if (!twilioClient) return;
+
+  const snapshot = await getDb().collection('twilioNumbers')
+    .where('sellerUid', '==', userUid)
+    .where('status', '==', 'active')
+    .get();
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    try {
+      await twilioClient.incomingPhoneNumbers(data.twilioPhoneSid).remove();
+    } catch (err) {
+      logger.error('Failed to release Twilio number.', { userUid, sid: data.twilioPhoneSid, error: err.message });
+    }
+    await doc.ref.set({ status: 'released', releasedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  const batch = getDb().batch();
+  batch.set(getDb().collection('users').doc(userUid), { twilioPhoneNumber: admin.firestore.FieldValue.delete() }, { merge: true });
+  const sfSnap = await getDb().collection('storefronts').doc(userUid).get();
+  if (sfSnap.exists) {
+    batch.set(sfSnap.ref, { twilioPhoneNumber: admin.firestore.FieldValue.delete() }, { merge: true });
+  }
+  await batch.commit();
+
+  logger.info('Twilio number(s) released.', { userUid, count: snapshot.size });
+}
+
+// ── Twilio voice webhook handlers ──────────────────────────────────────────
+async function handleTwilioInboundCall(req, res) {
+  if (!validateTwilioRequest(req)) {
+    logger.warn('Invalid Twilio request signature.', { path: req.path });
+    res.set('Content-Type', 'text/xml');
+    return res.status(403).send('<Response><Say>Unauthorized.</Say></Response>');
+  }
+
+  const calledNumber = String(req.body?.To || '').trim();
+  const callerNumber = String(req.body?.From || '').trim();
+  const callSid = String(req.body?.CallSid || '').trim();
+
+  const numberDoc = await getDb().collection('twilioNumbers').doc(calledNumber).get();
+  if (!numberDoc.exists || numberDoc.data()?.status !== 'active') {
+    res.set('Content-Type', 'text/xml');
+    return res.status(200).send(
+      '<Response><Say voice="Polly.Joanna">This number is no longer in service. Please visit forestry equipment sales dot com.</Say><Hangup/></Response>'
+    );
+  }
+
+  const mapping = numberDoc.data();
+  const sellerRealPhone = String(mapping.sellerRealPhone || '').trim();
+
+  if (!sellerRealPhone) {
+    res.set('Content-Type', 'text/xml');
+    return res.status(200).send(
+      '<Response><Say voice="Polly.Joanna">The seller phone number is not available. Please try again later.</Say><Hangup/></Response>'
+    );
+  }
+
+  // Create call log
+  const callDocRef = getDb().collection('calls').doc();
+  await callDocRef.set({
+    id: callDocRef.id,
+    twilioCallSid: callSid,
+    callerPhone: callerNumber,
+    callerName: '',
+    callerUid: null,
+    sellerUid: mapping.sellerUid || '',
+    sellerId: mapping.sellerUid || '',
+    sellerName: mapping.sellerName || '',
+    sellerPhone: sellerRealPhone,
+    listingId: '',
+    listingTitle: '',
+    duration: 0,
+    status: 'Initiated',
+    source: 'twilio_inbound',
+    isAuthenticated: false,
+    recordingUrl: null,
+    twilioFromNumber: callerNumber,
+    twilioToNumber: calledNumber,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const statusUrl = `${APP_URL}/api/twilio/voice/status`;
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">This call is monitored and recorded by Forestry Equipment Sales.</Say>
+  <Dial record="record-from-answer-dual" action="${statusUrl}" method="POST" timeout="30" callerId="${calledNumber}">
+    <Number statusCallbackEvent="initiated ringing answered completed" statusCallback="${statusUrl}" statusCallbackMethod="POST">${sellerRealPhone}</Number>
+  </Dial>
+</Response>`;
+
+  res.set('Content-Type', 'text/xml');
+  return res.status(200).send(twiml);
+}
+
+async function handleTwilioCallStatus(req, res) {
+  // Status callbacks don't always have valid signatures when sent as action callbacks
+  const callSid = String(req.body?.CallSid || '').trim();
+  const callStatus = String(req.body?.CallStatus || req.body?.DialCallStatus || '').trim();
+  const callDuration = parseInt(req.body?.CallDuration || req.body?.Duration || '0', 10) || 0;
+  const recordingUrl = String(req.body?.RecordingUrl || '').trim() || null;
+
+  if (!callSid) {
+    res.set('Content-Type', 'text/xml');
+    return res.status(200).send('<Response/>');
+  }
+
+  const callsSnap = await getDb().collection('calls')
+    .where('twilioCallSid', '==', callSid)
+    .limit(1)
+    .get();
+
+  if (!callsSnap.empty) {
+    const mappedStatus = mapTwilioStatusToCallLogStatus(callStatus);
+    await callsSnap.docs[0].ref.set({
+      duration: callDuration,
+      status: mappedStatus,
+      recordingUrl: recordingUrl ? `${recordingUrl}.mp3` : null,
+      twilioCallStatus: callStatus,
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+
+  res.set('Content-Type', 'text/xml');
+  return res.status(200).send('<Response/>');
 }
 
 function getRequestBaseUrl(req) {
@@ -8322,12 +8756,23 @@ exports.apiProxy = onRequest(
       GOOGLE_MAPS_API_KEY,
       STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET,
+      TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN,
     ],
   },
   async (req, res) => {
     let path = '/';
     try {
       path = (req.path || '/').replace(/^\/api/, '') || '/';
+
+      // ── Twilio voice webhooks (no CORS, no auth, TwiML responses) ──
+      if (req.method === 'POST' && path === '/twilio/voice/inbound') {
+        return handleTwilioInboundCall(req, res);
+      }
+      if (req.method === 'POST' && path === '/twilio/voice/status') {
+        return handleTwilioCallStatus(req, res);
+      }
+
       applyApiResponseCachePolicy(res, req, path);
       const stripe = createStripeClient();
 

@@ -582,7 +582,11 @@ export function ListingDetail() {
     if (!listing) return;
 
     const rawSellerPhone = String(seller?.phone || '').trim();
-    const dialablePhone = rawSellerPhone.replace(/[^\d+]/g, '');
+    // Prefer Twilio virtual number for call tracking; fall back to real phone
+    const twilioPhone = String(seller?.twilioPhoneNumber || '').trim();
+    const dialablePhone = twilioPhone
+      ? twilioPhone.replace(/[^\d+]/g, '')
+      : rawSellerPhone.replace(/[^\d+]/g, '');
 
     if (!dialablePhone) {
       window.alert('Seller phone number is not available on this listing yet.');
@@ -606,7 +610,7 @@ export function ListingDetail() {
         callerPhone,
         duration: 0,
         status: 'Initiated',
-        source: 'listing_detail',
+        source: twilioPhone ? 'listing_detail_twilio' : 'listing_detail',
         isAuthenticated,
       });
     } catch (error) {

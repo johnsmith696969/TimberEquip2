@@ -2141,6 +2141,7 @@ export const equipmentService = {
           totalListings: 0,
           memberSince: data.createdAt || new Date().toISOString(),
           verified: Boolean(data.storefrontEnabled),
+          twilioPhoneNumber: String(data.twilioPhoneNumber || ''),
         } as Seller;
       }
 
@@ -2174,6 +2175,7 @@ export const equipmentService = {
           totalListings: 0,
           memberSince: data.createdAt || new Date().toISOString(),
           verified: true,
+          twilioPhoneNumber: String(data.twilioPhoneNumber || ''),
         } as Seller;
       }
       return undefined;

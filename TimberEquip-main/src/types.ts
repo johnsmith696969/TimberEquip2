@@ -66,6 +66,7 @@ export interface Seller {
   totalListings: number;
   memberSince: string;
   verified: boolean;
+  twilioPhoneNumber?: string;
 }
 
 export interface ListingSpecs {
@@ -378,9 +379,13 @@ export interface CallLog {
   callerPhone: string;
   duration: number; // in seconds
   status: 'Initiated' | 'Completed' | 'Missed' | 'Voicemail';
-  source?: 'listing_detail' | 'seller_profile' | 'unknown';
+  source?: 'listing_detail' | 'listing_detail_twilio' | 'twilio_inbound' | 'seller_profile' | 'unknown';
   isAuthenticated?: boolean;
   recordingUrl?: string;
+  twilioCallSid?: string;
+  twilioFromNumber?: string;
+  twilioToNumber?: string;
+  completedAt?: string;
   createdAt: string;
 }
 

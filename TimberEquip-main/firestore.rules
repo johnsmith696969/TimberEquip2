@@ -394,7 +394,7 @@ service cloud.firestore {
              (!('callerPhone' in data) || data.callerPhone is string) &&
              data.duration is number && data.duration >= 0 &&
              data.status in ['Initiated', 'Completed', 'Missed', 'Voicemail'] &&
-             (!('source' in data) || data.source in ['listing_detail', 'seller_profile', 'unknown']) &&
+             (!('source' in data) || data.source in ['listing_detail', 'listing_detail_twilio', 'seller_profile', 'twilio_inbound', 'unknown']) &&
              (!('isAuthenticated' in data) || data.isAuthenticated is bool) &&
              (
                !isAuthenticated()
@@ -405,7 +405,7 @@ service cloud.firestore {
     }
 
     function isValidStorefront(data) {
-          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
+          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'twilioPhoneNumber', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
             data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller'] &&
              data.storefrontEnabled is bool &&
@@ -904,6 +904,11 @@ service cloud.firestore {
 
       match /dealerAuditLogs/{logId} {
         allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
+        allow create, update, delete: if false;
+      }
+
+      match /twilioNumbers/{numberId} {
+        allow read: if isAdmin();
         allow create, update, delete: if false;
       }
 
