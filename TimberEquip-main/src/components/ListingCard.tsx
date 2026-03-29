@@ -8,7 +8,6 @@ import {
 import { Listing } from '../types';
 import { useLocale } from './LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
-import WatermarkOverlay from './WatermarkOverlay';
 
 interface ListingCardProps {
   listing: Listing;
@@ -68,7 +67,6 @@ export function ListingCard({
           loading="lazy"
           decoding="async"
         />
-        <WatermarkOverlay index={(listing.id?.charCodeAt(0) || 0)} />
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col space-y-2">

@@ -2834,6 +2834,79 @@ function resolveStorageBucketName() {
   return 'mobile-app-equipment-sales.firebasestorage.app';
 }
 
+// ── Watermark compositing ───────────────────────────────────────────────────
+const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.png');
+let _watermarkBuffer = null;
+
+async function getWatermarkBuffer() {
+  if (!_watermarkBuffer) {
+    try {
+      _watermarkBuffer = require('node:fs').readFileSync(WATERMARK_PATH);
+    } catch (err) {
+      logger.warn('Watermark file not found – images will not be watermarked.', err.message);
+    }
+  }
+  return _watermarkBuffer;
+}
+
+/**
+ * Composite the brand watermark onto an image buffer.
+ * Places an upright watermark at ~9 % of image width, ~28 % opacity,
+ * in the bottom-right corner with a small margin.
+ */
+async function applyWatermark(imageBuffer) {
+  const wmSource = await getWatermarkBuffer();
+  if (!wmSource) return imageBuffer;
+
+  try {
+    const meta = await sharp(imageBuffer).metadata();
+    const imgWidth = meta.width || 800;
+    const imgHeight = meta.height || 600;
+
+    const wmWidth = Math.max(Math.round(imgWidth * 0.09), 24);
+    const margin = Math.round(imgWidth * 0.04);
+
+    const resizedWatermark = await sharp(wmSource)
+      .resize({ width: wmWidth, fit: 'inside', withoutEnlargement: false })
+      .ensureAlpha()
+      .composite([{
+        input: Buffer.from(
+          `<svg width="${wmWidth}" height="${wmWidth}"><rect width="100%" height="100%" fill-opacity="0"/></svg>`
+        ),
+        blend: 'dest-in',
+      }])
+      .png()
+      .toBuffer();
+
+    // Apply 28 % opacity by reducing alpha channel
+    const wmMeta = await sharp(resizedWatermark).metadata();
+    const wmH = wmMeta.height || wmWidth;
+    const opacityWatermark = await sharp(resizedWatermark)
+      .ensureAlpha()
+      .raw()
+      .toBuffer()
+      .then((rawBuf) => {
+        // Multiply alpha channel (every 4th byte) by 0.28
+        for (let i = 3; i < rawBuf.length; i += 4) {
+          rawBuf[i] = Math.round(rawBuf[i] * 0.28);
+        }
+        return sharp(rawBuf, { raw: { width: wmMeta.width || wmWidth, height: wmH, channels: 4 } })
+          .png()
+          .toBuffer();
+      });
+
+    const left = Math.max(imgWidth - wmWidth - margin, 0);
+    const top = Math.max(imgHeight - wmH - margin, 0);
+
+    return sharp(imageBuffer)
+      .composite([{ input: opacityWatermark, left, top }])
+      .toBuffer();
+  } catch (err) {
+    logger.warn('Watermark compositing failed – returning unwatermarked image.', err.message);
+    return imageBuffer;
+  }
+}
+
 async function compressToAvifTarget(inputBuffer, width, targetBytes) {
   const widthSteps = [width, Math.round(width * 0.85), Math.round(width * 0.72), Math.round(width * 0.6), Math.round(width * 0.5), Math.round(width * 0.4)]
     .filter((candidate, index, array) => candidate > 0 && array.indexOf(candidate) === index);
@@ -2841,13 +2914,19 @@ async function compressToAvifTarget(inputBuffer, width, targetBytes) {
 
   for (const targetWidth of widthSteps) {
     for (const quality of AVIF_QUALITIES) {
-      const output = await sharp(inputBuffer)
+      const resized = await sharp(inputBuffer)
         .rotate()
         .resize({
           width: targetWidth,
           fit: 'inside',
           withoutEnlargement: true,
         })
+        .png()
+        .toBuffer();
+
+      const watermarked = await applyWatermark(resized);
+
+      const output = await sharp(watermarked)
         .avif({ quality })
         .toBuffer();
 

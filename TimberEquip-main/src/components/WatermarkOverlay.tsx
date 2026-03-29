@@ -1,16 +1,16 @@
 /**
- * WatermarkOverlay – renders a single watermark in one corner of a listing image.
- * Pass `index` to rotate which corner is used across a set of images.
+ * WatermarkOverlay – renders a single upright watermark in one corner of a listing image.
+ * Pass `index` to cycle which corner is used across a set of images.
  *
- * 28 % opacity, ~9 % of container width, one corner per image.
+ * ~10 % opacity, ~9 % of container width, no rotation.
  */
 const WATERMARK_SRC = '/watermark.png';
 
 const corners = [
-  { top: '4%', left: '4%', rotate: '0deg' },          // top-left
-  { top: '4%', right: '4%', rotate: '90deg' },         // top-right
-  { bottom: '4%', right: '4%', rotate: '180deg' },     // bottom-right
-  { bottom: '4%', left: '4%', rotate: '-90deg' },      // bottom-left
+  { top: '4%', left: '4%' },          // top-left
+  { top: '4%', right: '4%' },         // top-right
+  { bottom: '4%', right: '4%' },      // bottom-right
+  { bottom: '4%', left: '4%' },       // bottom-left
 ] as const;
 
 interface WatermarkOverlayProps {
@@ -31,8 +31,7 @@ export default function WatermarkOverlay({ index = 0 }: WatermarkOverlayProps) {
         position: 'absolute',
         width: '9%',
         height: 'auto',
-        opacity: 0.28,
-        transform: `rotate(${pos.rotate})`,
+        opacity: 0.10,
         pointerEvents: 'none',
         userSelect: 'none',
         zIndex: 5,
