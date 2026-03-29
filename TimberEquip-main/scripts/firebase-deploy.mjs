@@ -73,7 +73,17 @@ const scope = String(
   process.env.npm_config_scope ||
   'hosting,functions,firestore:rules',
 ).trim();
-const seoMode = environment === 'production' ? 'indexable' : 'noindex';
+const requestedSeoMode = String(
+  args['seo-mode'] ||
+  process.env.FIREBASE_SEO_MODE ||
+  process.env.SEO_MODE ||
+  '',
+).trim().toLowerCase();
+const seoMode = ['indexable', 'noindex'].includes(requestedSeoMode)
+  ? requestedSeoMode
+  : environment === 'production'
+    ? 'indexable'
+    : 'noindex';
 
 console.log(`Preparing ${environment} deploy for Firebase project ${projectId}`);
 await runCommand(
