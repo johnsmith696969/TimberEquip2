@@ -539,11 +539,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="hidden md:inline text-line">|</span>
               <span className="text-ink">EST. 1998</span>
             </div>
-            <div className="flex space-x-8 mt-6 md:mt-0">
+            <div className="flex flex-wrap gap-x-8 gap-y-2 mt-6 md:mt-0">
               <Link to="/privacy" className="hover:text-ink transition-colors">{t('layout.privacyPolicy', 'Privacy Policy')}</Link>
               <Link to="/terms" className="hover:text-ink transition-colors">{t('layout.termsOfService', 'Terms of Service')}</Link>
               <Link to="/cookies" className="hover:text-ink transition-colors">{t('layout.cookiePolicy', 'Cookie Policy')}</Link>
-              <Link to="/dmca" className="hover:text-ink transition-colors">{t('layout.dmcaPolicy', 'DMCA')}</Link>
+              <Link to="/dmca" className="hover:text-ink transition-colors">{t('layout.dmcaPolicy', 'DMCA Policy')}</Link>
             </div>
           </div>
         </div>

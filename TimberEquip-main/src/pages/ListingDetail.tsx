@@ -49,6 +49,7 @@ export function ListingDetail() {
   const { t, formatNumber, formatPrice } = useLocale();
   const [listing, setListing] = useState<Listing | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
+  const [sellerListingCount, setSellerListingCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [activeImage, setActiveImage] = useState(0);
@@ -330,6 +331,9 @@ export function ListingDetail() {
 
         if (sellerData) {
           setSeller(sellerData);
+          equipmentService.getSellerListingUsage(sellerData.id || sellerData.uid || '').then((count) => {
+            if (isActive) setSellerListingCount(count);
+          }).catch(() => { /* non-critical */ });
         }
         setAiSpecs(specs);
         setAmvExplanation(explanation || null);
@@ -759,10 +763,11 @@ export function ListingDetail() {
   const routeLinks = [
     routeCategory ? { label: routeCategory, path: buildCategoryPath(routeCategory) } : null,
     routeManufacturer ? { label: routeManufacturer, path: buildManufacturerCategoryPath(routeManufacturer, routeCategory || '') } : null,
+    routeManufacturer && routeModel ? { label: routeModel, path: buildManufacturerModelPath(routeManufacturer, routeModel) } : null,
     routeState ? { label: `${routeState}`, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
     dealerPath ? { label: seller?.storefrontName || safeSellerName, path: dealerPath } : null,
   ].filter((entry): entry is { label: string; path: string } => Boolean(entry) && entry.path);
-  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 4);
+  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 5);
   const breadcrumbItems = [
     {
       '@type': 'ListItem',
@@ -983,7 +988,7 @@ export function ListingDetail() {
                     referrerPolicy="no-referrer"
                   />
                 </AnimatePresence>
-                <WatermarkOverlay />
+                <WatermarkOverlay index={activeImage} />
 
                 {/* Navigation Arrows */}
                 <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1138,7 +1143,7 @@ export function ListingDetail() {
                 </div>
               ) : marketMatchRecommendations.length > 0 ? (
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                  {marketMatchRecommendations.map((match) => {
+                  {marketMatchRecommendations.map((match, matchIdx) => {
                     const matchImage =
                       match.imageVariants?.[0]?.thumbnailUrl ||
                       match.images?.find(Boolean) ||
@@ -1167,7 +1172,7 @@ export function ListingDetail() {
                             loading="lazy"
                             decoding="async"
                           />
-                          <WatermarkOverlay />
+                          <WatermarkOverlay index={matchIdx} />
                         </div>
                         <div className="space-y-4 p-5">
                           <div className="flex items-center justify-between gap-3">
@@ -1343,8 +1348,8 @@ export function ListingDetail() {
 
                 <div className="grid grid-cols-1 gap-4 mb-8">
                   <div className="bg-bg border border-line p-4 flex flex-col items-center text-center">
-                    <span className="text-lg font-black tracking-tighter">{safeSellerTotalListings}</span>
-                    <span className="label-micro">Equipment</span>
+                    <span className="text-lg font-black tracking-tighter">{sellerListingCount ?? safeSellerTotalListings}</span>
+                    <span className="label-micro">{(sellerListingCount ?? safeSellerTotalListings) === 1 ? 'Machine' : 'Machines'}</span>
                   </div>
                 </div>
 
@@ -1485,7 +1490,7 @@ export function ListingDetail() {
                             transition={{ duration: 0.12 }}
                           />
                         </AnimatePresence>
-                        <WatermarkOverlay />
+                        <WatermarkOverlay index={activeImage} />
                       </div>
                     </TransformComponent>
 
