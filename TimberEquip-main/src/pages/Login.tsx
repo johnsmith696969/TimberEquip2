@@ -456,7 +456,17 @@ export function Login() {
                 ) : null}
               </div>
 
-              <div id="login-mfa-recaptcha" className="min-h-[78px]" />
+              <div
+                id="login-mfa-recaptcha"
+                className="min-h-[78px]"
+                style={{ display: mfaVerificationId && !mfaLoading ? 'none' : undefined }}
+              />
+              {mfaVerificationId && !mfaLoading && (
+                <div className="flex items-center space-x-2 text-data text-xs font-bold uppercase tracking-widest">
+                  <CheckCircle2 size={16} />
+                  <span>Security check passed</span>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="label-micro">Verification Code</label>
