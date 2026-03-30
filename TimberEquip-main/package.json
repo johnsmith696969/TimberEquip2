@@ -29,6 +29,8 @@
     "ops:alerts:render": "node scripts/render-alert-policies.mjs",
     "ops:alerts:apply": "node scripts/apply-alert-policies.mjs",
     "ops:staging:setup": "node scripts/setup-staging-project.mjs",
+    "ops:firestore:backup": "node scripts/firestore-backup.mjs export",
+    "ops:firestore:backup:apply-retention": "node scripts/firestore-backup.mjs apply-retention",
     "prepare:seo-mode": "node scripts/prepare-seo-mode.mjs",
     "deploy:firebase": "node scripts/firebase-deploy.mjs",
     "deploy:preview": "node scripts/firebase-deploy.mjs --env preview",

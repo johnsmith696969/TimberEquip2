@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
-**Last updated:** March 30, 2026 (session 3)
+**Last updated:** March 30, 2026 (session 4)
 
 ---
 
@@ -91,7 +91,8 @@
 - [ ] **5.3 - Application performance monitoring** - Firebase Performance Monitoring and custom traces for page load/search/checkout.
   - Files: `index.html`, `src/main.tsx`
   - Effort: 8-12 hours
-- [ ] **5.4 - Database backup strategy** - Firestore automated daily exports to Cloud Storage with 30-day retention and a documented restore procedure.
+- [~] **5.4 - Database backup strategy** - Backup workflow, export script, retention policy, and restore runbook are now in the repo. Remaining work: configure the dedicated backup bucket and confirm IAM/variables in production so the scheduled export lane is truly active.
+  - Files: `.github/workflows/firestore-backup.yml`, `scripts/firestore-backup.mjs`, `ops/runbooks/FIRESTORE_BACKUP_RESTORE.md`
   - Effort: 8-12 hours
 - [x] **5.5 - Rate limiting audit** - Added specific rate limiters for checkout (10/min), account deletion (3/min), billing portal (10/min). General API limiter (1000/15min) already covers `/api/` routes. AI generation is capped at 20/min. Cloud Functions auth endpoints now also have dedicated in-function rate limiting for password reset and verification email sends.
 - [ ] **5.6 - Split functions/index.js** - 12,166 lines -> `billing.js`, `email.js`, `scheduled.js`, `auth-triggers.js`, `dealer-feeds.js`. Keep `index.js` as a thin re-export.
@@ -153,7 +154,7 @@
 
 ## Score
 
-**Completed:** 31 items (+ 1 partially done)
+**Completed:** 31 items (+ 2 partially done)
 **Remaining Phase 1-3 (pre-launch):** 5 items (+ 1 partial: 2.6 Firestore rules cap)
-**Remaining Phase 4-5 (post-launch):** 8 items
+**Remaining Phase 4-5 (post-launch):** 7 items (+ 1 partial: 5.4 backup rollout)
 **Longer-term:** 5 items
