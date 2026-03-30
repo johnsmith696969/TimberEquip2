@@ -99,4 +99,35 @@ test.describe('public critical journeys', () => {
     await expect(page.getByRole('heading', { name: /contact seller/i })).toBeVisible();
     await expect(page.getByText(/specific listing/i)).toBeVisible();
   });
+
+  test('financing wizard advances through the public application steps', async ({ page }) => {
+    await page.goto('/financing', { waitUntil: 'domcontentloaded' });
+    await dismissCookieBannerIfPresent(page);
+
+    await expect(page.getByRole('heading', { name: /institutional financing/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /entity information/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /continue to equipment details/i }).click();
+    await expect(page.getByRole('heading', { name: /equipment & credit requirements/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /continue to verification/i }).click();
+    await expect(page.getByRole('heading', { name: /identity verification/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /submit application/i })).toBeVisible();
+    await expect(page.getByText(/specific to this financing request/i)).toBeVisible();
+  });
+
+  test('ad programs exposes public seller-plan enrollment states', async ({ page }) => {
+    await page.goto('/ad-programs', { waitUntil: 'domcontentloaded' });
+    await dismissCookieBannerIfPresent(page);
+
+    await expect(page.getByRole('heading', { name: /seller tools and visibility/i })).toBeVisible();
+    await page.getByRole('button', { name: /select owner-operator ad program/i }).click();
+
+    await expect(page.getByText(/owner-operator quantity/i)).toBeVisible();
+    await expect(page.getByText(/total: \$39\/month for 1 active listing slot/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /sign in and continue/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /connect with support team/i }).first().click();
+    await expect(page.getByRole('heading', { name: /contact support team/i })).toBeVisible();
+  });
 });
