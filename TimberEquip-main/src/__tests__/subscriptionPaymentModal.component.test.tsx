@@ -119,6 +119,68 @@ describe('SubscriptionPaymentModal component', () => {
     expect(assignMock).toHaveBeenCalledWith('https://checkout.stripe.test/session-1');
   });
 
+  it('routes account checkout to account settings intent when return path is outside sell', () => {
+    render(
+      <MemoryRouter>
+        <SubscriptionPaymentModal
+          isOpen
+          onClose={vi.fn()}
+          checkoutMode="account"
+          initialPlan="dealer"
+          returnPath="/profile?tab=Account%20Settings"
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /activate with dealer ad package/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith('/ad-programs?plan=dealer&intent=account-settings');
+    expect(createAccountCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('shows an error when listing checkout is attempted without a listing id', () => {
+    render(
+      <MemoryRouter>
+        <SubscriptionPaymentModal
+          isOpen
+          onClose={vi.fn()}
+          checkoutMode="listing"
+          initialPlan="dealer"
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with dealer ad package/i }));
+
+    expect(screen.getByText('Listing is missing. Please save the listing again and retry checkout.')).toBeInTheDocument();
+    expect(createListingCheckoutSession).not.toHaveBeenCalled();
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the checkout service error when Stripe session creation fails', async () => {
+    createListingCheckoutSession.mockRejectedValue(new Error('Stripe checkout is temporarily unavailable.'));
+
+    render(
+      <MemoryRouter>
+        <SubscriptionPaymentModal
+          isOpen
+          onClose={vi.fn()}
+          listingId="listing-123"
+          initialPlan="dealer"
+          checkoutMode="listing"
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with dealer ad package/i }));
+
+    await waitFor(() => {
+      expect(createListingCheckoutSession).toHaveBeenCalledWith('dealer', 'listing-123');
+    });
+    expect(await screen.findByText('Stripe checkout is temporarily unavailable.')).toBeInTheDocument();
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
   it('shows a sign-in error before checkout when user is missing', () => {
     mockUser = null;
 
