@@ -12482,6 +12482,21 @@ exports.apiProxy = onRequest(
         return res.status(200).json({ translations: translated });
       }
 
+      if (req.method === 'POST' && path === '/ai/generate') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // Keep the live contract intact even when the Gemini runtime wiring is
+        // unavailable in Functions. The frontend already handles a null response
+        // gracefully; returning 200 here avoids dead-end 404 noise on detail pages.
+        return res.status(200).json({
+          text: null,
+          unavailable: true,
+        });
+      }
+
       if (req.method === 'GET' && path === '/currency-rates') {
         const base = String(req.query?.base || 'USD').toUpperCase();
         if (!/^[A-Z]{3}$/.test(base)) {
