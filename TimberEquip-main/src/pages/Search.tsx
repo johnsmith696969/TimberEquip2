@@ -25,6 +25,7 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { startPerformanceTrace } from '../services/performance';
 import { buildListingPath } from '../utils/listingPath';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
@@ -300,6 +301,10 @@ export function Search() {
   useEffect(() => {
     const fetchData = async () => {
       const cachedListings = equipmentService.getCachedPublicListings();
+      const loadTrace = await startPerformanceTrace('search_inventory_load', {
+        route: '/search',
+        has_cached_inventory: cachedListings.length > 0,
+      });
       if (cachedListings.length > 0) {
         setAllListings(cachedListings);
         setLoading(false);
@@ -318,31 +323,47 @@ export function Search() {
 
         if (listingsResult.status === 'fulfilled') {
           setAllListings(listingsResult.value);
+          loadTrace?.putMetric('result_count', listingsResult.value.length);
+          loadTrace?.putAttribute('inventory_source', 'live');
         } else if (cachedListings.length > 0) {
           console.warn('Falling back to cached listings in search view:', listingsResult.reason);
           setInventoryNotice('Showing the latest available inventory snapshot while live inventory recovers.');
+          loadTrace?.putMetric('result_count', cachedListings.length);
+          loadTrace?.putAttribute('inventory_source', 'cache');
         } else {
           const message =
             listingsResult.reason instanceof Error
               ? listingsResult.reason.message
               : 'Live inventory is temporarily unavailable.';
           setInventoryError(message);
+          loadTrace?.putMetric('result_count', 0);
+          loadTrace?.putAttribute('inventory_source', 'error');
         }
 
         if (taxonomyResult.status === 'fulfilled') {
           setTaxonomy(taxonomyResult.value);
+          loadTrace?.putMetric('taxonomy_category_count', Object.keys(taxonomyResult.value).length);
+          loadTrace?.putAttribute('taxonomy_source', 'live');
         } else {
           console.warn('Error fetching taxonomy for search view:', taxonomyResult.reason);
+          loadTrace?.putAttribute('taxonomy_source', 'error');
         }
       } catch (error) {
         console.error('Error fetching listings:', error);
         if (cachedListings.length > 0) {
           setInventoryNotice('Showing the latest available inventory snapshot while live inventory recovers.');
+          loadTrace?.putMetric('result_count', cachedListings.length);
+          loadTrace?.putAttribute('inventory_source', 'cache');
         } else {
           setInventoryError(error instanceof Error ? error.message : 'Live inventory is temporarily unavailable.');
+          loadTrace?.putMetric('result_count', 0);
+          loadTrace?.putAttribute('inventory_source', 'error');
         }
       } finally {
         setLoading(false);
+        await loadTrace?.stop({
+          active_filter_count: countActiveFilters(getInitialFilters(searchParams)),
+        });
       }
     };
 

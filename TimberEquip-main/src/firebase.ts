@@ -24,7 +24,7 @@ if (!resolvedFirebaseConfig.apiKey) {
   throw new Error('Missing Firebase web API key. Provide VITE_FIREBASE_API_KEY or configure a local .firebase-web-config.local.json for environment-aware builds.');
 }
 
-const app = initializeApp({
+export const app = initializeApp({
   apiKey: resolvedFirebaseConfig.apiKey,
   projectId: resolvedFirebaseConfig.projectId,
   appId: resolvedFirebaseConfig.appId,

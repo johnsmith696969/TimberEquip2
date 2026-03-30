@@ -86,9 +86,9 @@
 - [~] **5.2 - Error tracking (Sentry)** - Optional client, local server, and Functions Sentry scaffolding is now wired with browser init, error-boundary capture, authenticated user context, backend exception capture hooks, and a hidden-sourcemap build toggle. Remaining work: configure DSNs/secrets, enable sourcemap upload in CI, validate staging events, and set alert routing.
   - Files: `src/services/sentry.ts`, `src/main.tsx`, `src/components/ErrorBoundary.tsx`, `src/components/AuthContext.tsx`, `sentry.server.ts`, `server.ts`, `functions/sentry.js`, `functions/index.js`, `ops/runbooks/SENTRY_ERROR_TRACKING.md`
   - Effort remaining: 4-8 hours
-- [ ] **5.3 - Application performance monitoring** - Firebase Performance Monitoring and custom traces for page load/search/checkout.
-  - Files: `index.html`, `src/main.tsx`
-  - Effort: 8-12 hours
+- [~] **5.3 - Application performance monitoring** - Optional Firebase Performance Monitoring scaffolding is now wired behind `VITE_ENABLE_FIREBASE_PERFORMANCE=true`, with custom traces for app bootstrap, search inventory load, and checkout start. Remaining work: enable the flag in staging, verify traces in Firebase, and promote the flag to production once dashboards and alert thresholds are confirmed.
+  - Files: `src/services/performance.ts`, `src/main.tsx`, `src/pages/Search.tsx`, `src/services/billingService.ts`, `ops/runbooks/FIREBASE_PERFORMANCE_MONITORING.md`
+  - Effort remaining: 4-8 hours
 - [~] **5.4 - Database backup strategy** - Backup workflow, export script, retention policy, and restore runbook are now in the repo. Remaining work: configure the dedicated backup bucket and confirm IAM/variables in production so the scheduled export lane is truly active.
   - Files: `.github/workflows/firestore-backup.yml`, `scripts/firestore-backup.mjs`, `ops/runbooks/FIRESTORE_BACKUP_RESTORE.md`
   - Effort: 8-12 hours
@@ -152,7 +152,8 @@
 
 ## Score
 
-**Completed:** 33 items (+ 1 partially done)
-**Remaining Phase 1-3 (pre-launch):** 4 items (+ 1 partial: 2.6 Firestore rules cap)
-**Remaining Phase 4-5 (post-launch):** 7 items (+ 1 partial: 5.4 backup rollout)
+**Completed:** 33 items
+**Partially complete:** 6 items (`2.6`, `3.4`, `3.7`, `5.2`, `5.3`, `5.4`)
+**Remaining Phase 1-3 (fully open):** 4 items
+**Remaining Phase 4-5 (fully open):** 6 items
 **Longer-term:** 5 items

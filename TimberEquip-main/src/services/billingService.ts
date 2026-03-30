@@ -1,4 +1,5 @@
 import { auth } from '../firebase';
+import { withPerformanceTrace } from './performance';
 import type { AccountEntitlement } from '../types';
 
 export type ListingPlanId = 'individual_seller' | 'dealer' | 'fleet_dealer';
@@ -281,28 +282,37 @@ export const billingService = {
     quantity = 1,
     enrollment?: SellerProgramCheckoutEnrollment | null
   ): Promise<{ url: string; sessionId: string }> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('Unauthorized');
+    return withPerformanceTrace('checkout_account_start', {
+      plan_id: planId,
+      return_path: returnPath,
+      quantity,
+      has_enrollment: Boolean(enrollment),
+    }, async (trace) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Unauthorized');
 
-    const token = await user.getIdToken();
-    const response = await fetch('/api/billing/create-account-checkout-session', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ planId, returnPath, quantity, enrollment }),
+      const token = await user.getIdToken();
+      const response = await fetch('/api/billing/create-account-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ planId, returnPath, quantity, enrollment }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        trace?.putMetric('http_status', response.status);
+        throw new Error(payload?.error || 'Failed to create account checkout session');
+      }
+
+      trace?.putMetric('http_status', response.status);
+      return {
+        url: payload.url,
+        sessionId: payload.sessionId,
+      };
     });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to create account checkout session');
-    }
-
-    return {
-      url: payload.url,
-      sessionId: payload.sessionId,
-    };
   },
 
   async createBillingPortalSession(
@@ -336,29 +346,36 @@ export const billingService = {
   },
 
   async createListingCheckoutSession(planId: ListingPlanId, listingId: string): Promise<{ url: string; sessionId: string }> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('Unauthorized');
-    if (!listingId) throw new Error('Missing listing id');
+    return withPerformanceTrace('checkout_listing_start', {
+      plan_id: planId,
+      has_listing_id: Boolean(listingId),
+    }, async (trace) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Unauthorized');
+      if (!listingId) throw new Error('Missing listing id');
 
-    const token = await user.getIdToken();
-    const response = await fetch('/api/billing/create-checkout-session', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ planId, listingId }),
+      const token = await user.getIdToken();
+      const response = await fetch('/api/billing/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ planId, listingId }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        trace?.putMetric('http_status', response.status);
+        throw new Error(payload?.error || 'Failed to create checkout session');
+      }
+
+      trace?.putMetric('http_status', response.status);
+      return {
+        url: payload.url,
+        sessionId: payload.sessionId,
+      };
     });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to create checkout session');
-    }
-
-    return {
-      url: payload.url,
-      sessionId: payload.sessionId,
-    };
   },
 
   async confirmCheckoutSession(sessionId: string): Promise<{
