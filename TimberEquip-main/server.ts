@@ -872,14 +872,13 @@ async function startServer() {
   app.get('/server-test', (req, res) => res.send('Server is alive and reachable'));
 
   // 1. Security Headers (WAF-like protection at app level)
-  /*
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "https://*.googleapis.com", "https://*.firebaseio.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        imgSrc: ["'self'", "data:", "https://picsum.photos", "https://*.stripe.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
         connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://*.stripe.com", "https://*.run.app", "https://ai.studio"],
@@ -894,7 +893,6 @@ async function startServer() {
     referrerPolicy: { policy: 'no-referrer-when-downgrade' },
     frameguard: false, // Allow iframe rendering for AI Studio preview
   }));
-  */
 
   // 2. Rate Limiting (DDoS protection)
   const limiter = rateLimit({
@@ -907,8 +905,22 @@ async function startServer() {
   app.use('/api/', limiter);
 
   // 3. CORS
+  const ALLOWED_ORIGINS = [
+    'https://timberequip.com',
+    'https://www.timberequip.com',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
   app.use(cors({
-    origin: true,
+    origin: (origin, callback) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else if (origin.endsWith('.run.app') || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   }));
 

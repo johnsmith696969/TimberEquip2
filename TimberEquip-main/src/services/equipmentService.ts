@@ -26,7 +26,7 @@ import {
   AMV_MIN_COMPARABLES,
   isWithinPercentRange,
 } from '../utils/amvMatching';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+import { isPrivilegedAdminEmail, SUPERADMIN_EMAIL } from '../utils/privilegedAdmin';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
   'Logging Equipment': ['Wisconsin, USA', 'Georgia, USA', 'Ontario, Canada'],
