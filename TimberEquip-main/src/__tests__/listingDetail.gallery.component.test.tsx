@@ -235,4 +235,21 @@ describe('ListingDetail gallery interactions', () => {
       expect(screen.queryByRole('button', { name: 'Next image' })).not.toBeInTheDocument();
     });
   });
+
+  it('renders technical specifications before market match recommendations', async () => {
+    render(
+      <MemoryRouter initialEntries={['/equipment/test-machine/listing-1']}>
+        <Routes>
+          <Route path="/equipment/:slug/:publicKey" element={<ListingDetail />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('heading', { name: /technical specifications/i })).toBeInTheDocument();
+    const technicalHeading = screen.getByRole('heading', { name: /technical specifications/i });
+    const marketMatchHeading = screen.getByRole('heading', { name: /market match recommendations/i });
+
+    const technicalPosition = technicalHeading.compareDocumentPosition(marketMatchHeading);
+    expect(technicalPosition & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

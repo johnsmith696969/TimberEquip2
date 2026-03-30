@@ -53,9 +53,9 @@
   - Effort remaining: 10-16 hours
 - [ ] **3.5 - Integration tests for Stripe flows** - Checkout session creation, webhook event processing (`invoice.paid`, subscription CRUD, `checkout.session.completed`), idempotency, subscription expiry, listing cap API enforcement.
   - Effort: 40-60 hours
-- [ ] **3.6 - E2E tests (Playwright)** - Install Playwright coverage for 6 critical journeys: register -> checkout -> list, search -> inquiry, seller billing, admin approve, category browse, listing form + upload.
-  - Effort: 60-80 hours
-- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `SubscriptionPaymentModal`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. `ListingModal` also now covers minimum-photo validation and mocked image-upload behavior. Remaining gaps are the broader multi-file media-edit permutations and purchase-state permutations beyond the success-page path.
+- [~] **3.6 - E2E tests (Playwright)** - First real critical-journey evidence is now in place: a live Playwright pass verified the public category-browse flow (`Home -> Categories -> category inventory -> Listing Detail`) on March 30, 2026. Remaining work is to codify the rest of the journey matrix: register -> checkout -> list, search -> inquiry, seller billing, admin approve, and listing form + upload.
+  - Effort remaining: 50-70 hours
+- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `SubscriptionPaymentModal`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. `ListingModal` also covers minimum-photo validation and mocked image-upload behavior, while `SubscriptionSuccess` now covers missing-session, processing, signed-in success, and signed-out continuation states. Remaining gaps are the broader multi-file media-edit permutations and more end-to-end purchase states beyond the success-page surface.
   - Effort remaining: 10-16 hours
 
 ---

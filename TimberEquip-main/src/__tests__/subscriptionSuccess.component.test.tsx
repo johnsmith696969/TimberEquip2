@@ -95,4 +95,50 @@ describe('SubscriptionSuccess component', () => {
     expect(screen.getByRole('link', { name: /List Equipment/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /My Account/i })).toBeInTheDocument();
   });
+
+  it('renders the processing state when Stripe has not finalized the subscription yet', async () => {
+    confirmCheckoutSessionMock.mockResolvedValue({
+      sessionId: 'sess_processing',
+      status: 'open',
+      paid: false,
+      planId: 'individual_seller',
+      scope: 'account',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/subscription-success?session_id=sess_processing']}>
+        <Routes>
+          <Route path="/subscription-success" element={<SubscriptionSuccess />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Subscription Processing')).toBeInTheDocument();
+    expect(screen.getByText(/Stripe is still finalizing the subscription/i)).toBeInTheDocument();
+    expect(screen.getByText('Owner-Operator Ad Program')).toBeInTheDocument();
+  });
+
+  it('shows the sign-in continuation CTA when the checkout is confirmed without an authenticated user', async () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+    });
+    confirmCheckoutSessionMock.mockResolvedValue({
+      sessionId: 'sess_anon',
+      status: 'complete',
+      paid: true,
+      planId: 'dealer',
+      scope: 'account',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/subscription-success?session_id=sess_anon']}>
+        <Routes>
+          <Route path="/subscription-success" element={<SubscriptionSuccess />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Seller Subscription Active')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Sign In To Continue/i })).toBeInTheDocument();
+  });
 });

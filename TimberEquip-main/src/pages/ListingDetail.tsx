@@ -1123,6 +1123,33 @@ export function ListingDetail() {
               </div>
             )}
 
+            {/* Description */}
+            <div className="flex flex-col space-y-6">
+              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.equipmentOverview', 'Equipment Overview')}</h3>
+              <p className="text-muted font-medium leading-loose whitespace-pre-line">
+                {safeDescription}
+              </p>
+            </div>
+
+            {/* Technical Specifications */}
+            <div className="flex flex-col space-y-6">
+              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.technicalSpecifications', 'Technical Specifications')}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
+                {Object.entries(listingSpecs).length > 0 ? Object.entries(listingSpecs).map(([key, value], i) => (
+                  <div key={i} className="data-row">
+                    <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
+                    <span className="value-mono uppercase">
+                      {formatSpecValue(value)}
+                    </span>
+                  </div>
+                )) : (
+                  <div className="md:col-span-2 border border-dashed border-line bg-surface p-6 text-sm font-medium leading-relaxed text-muted">
+                    Seller-provided technical specifications will appear here when they are included with the listing.
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Market Match Recommendations */}
             <div className="flex flex-col space-y-6">
               <div className="flex flex-col gap-3 border-b border-line pb-4 md:flex-row md:items-end md:justify-between">
@@ -1228,33 +1255,6 @@ export function ListingDetail() {
                   {' '}same manufacturer and model, stay within {AMV_MATCH_YEAR_RANGE} years, and stay within {AMV_MATCH_PRICE_PERCENT}% of price and {AMV_MATCH_HOURS_PERCENT}% of hours.
                 </div>
               )}
-            </div>
-
-            {/* Description */}
-            <div className="flex flex-col space-y-6">
-              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.equipmentOverview', 'Equipment Overview')}</h3>
-              <p className="text-muted font-medium leading-loose whitespace-pre-line">
-                {safeDescription}
-              </p>
-            </div>
-
-            {/* Technical Specifications */}
-            <div className="flex flex-col space-y-6">
-              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.technicalSpecifications', 'Technical Specifications')}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
-                {Object.entries(listingSpecs).length > 0 ? Object.entries(listingSpecs).map(([key, value], i) => (
-                  <div key={i} className="data-row">
-                    <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
-                    <span className="value-mono uppercase">
-                      {formatSpecValue(value)}
-                    </span>
-                  </div>
-                )) : (
-                  <div className="md:col-span-2 border border-dashed border-line bg-surface p-6 text-sm font-medium leading-relaxed text-muted">
-                    Seller-provided technical specifications will appear here when they are included with the listing.
-                  </div>
-                )}
-              </div>
             </div>
           </div>
 
