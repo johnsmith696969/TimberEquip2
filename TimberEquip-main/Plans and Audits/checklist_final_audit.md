@@ -23,11 +23,9 @@
 - [x] **1.11 - Expand Privacy Policy** - Already comprehensive: covers Stripe, Firebase, SendGrid, reCAPTCHA, Gemini, Maps, GDPR Art 13/14, CCPA, COPPA, data breach 72h, cookie consent, data transfer.
 - [x] **1.12 - Fix Terms of Service gaps** - Already covers: IP license, indemnification, governing law (Minnesota), binding arbitration, class action waiver, force majeure.
 - [x] **1.13 - Implement consent logging** - `ConsentBanner` already logs accept/decline to Firestore `consentLogs` via `logConsentToFirestore()`. "Manage Cookies" button wired on `/cookies`.
-- [ ] **1.14 - Replace deprecated `csurf` package** - CSRF is active but still uses archived `csurf@1.11.0`. Replace with a maintained CSRF strategy and re-test all mutation routes plus Stripe webhook exemptions.
-  - Files: `server.ts`, `package.json`
-  - Effort: 8-16 hours
+- [x] **1.14 - Replace deprecated `csurf` package** - Replaced archived `csurf@1.11.0` with an in-repo double-submit CSRF token strategy that preserves the existing `/api/csrf-token` + `CSRF-Token` frontend contract, keeps Stripe webhook exemptions, and removes the deprecated package from `package.json`.
 - [x] **1.15 - HTTP 404 status for unknown routes** - SPA route allowlist implemented in `server.ts`. Unknown routes return 404 while still serving SPA shell.
-- [x] **1.16 - Fix dependency vulnerabilities** - `npm audit fix` resolved all 3 high-severity vulnerabilities (node-forge, path-to-regexp, picomatch). Remaining advisories are low-severity transitive deps in `firebase-admin` and `csurf` that require breaking major changes.
+- [x] **1.16 - Fix dependency vulnerabilities** - `npm audit fix` resolved all 3 high-severity vulnerabilities (node-forge, path-to-regexp, picomatch). Current `npm audit --omit=dev` shows only 8 low-severity advisories in the `firebase-admin` transitive tree.
 
 ---
 
@@ -133,7 +131,7 @@
 - [x] All legal page emails reference `@timberequip.com`
 - [x] Privacy policy covers GDPR Art 13/14 + CCPA
 - [x] Terms cover IP, indemnification, governing law
-- [ ] CSRF on maintained package
+- [x] CSRF on maintained package
 - [x] Consent banner logs to Firestore
 - [x] Stripe Customer Portal configured
 - [x] Subscription dates displayed in Profile
@@ -154,7 +152,7 @@
 
 ## Score
 
-**Completed:** 32 items (+ 1 partially done)
-**Remaining Phase 1-3 (pre-launch):** 5 items (+ 1 partial: 2.6 Firestore rules cap)
+**Completed:** 33 items (+ 1 partially done)
+**Remaining Phase 1-3 (pre-launch):** 4 items (+ 1 partial: 2.6 Firestore rules cap)
 **Remaining Phase 4-5 (post-launch):** 7 items (+ 1 partial: 5.4 backup rollout)
 **Longer-term:** 5 items

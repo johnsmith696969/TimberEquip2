@@ -3,11 +3,11 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import crypto from 'crypto';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import csurf from 'csurf';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
@@ -95,6 +95,67 @@ type DealerFeedItem = {
 
 let marketplaceStatsCache: { value: MarketplaceStatsPayload; fetchedAt: number } | null = null;
 const MARKETPLACE_STATS_TTL_MS = 10 * 60 * 1000;
+const CSRF_COOKIE_NAME = '_csrf';
+const CSRF_HEADER_NAMES = ['csrf-token', 'x-csrf-token'];
+
+function getCsrfCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+}
+
+function generateCsrfToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function getRequestCsrfCookieToken(req: express.Request): string | null {
+  const raw = req.cookies?.[CSRF_COOKIE_NAME];
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim();
+  return normalized || null;
+}
+
+function ensureCsrfCookieToken(req: express.Request, res: express.Response): string {
+  const existingToken = getRequestCsrfCookieToken(req);
+  if (existingToken) return existingToken;
+
+  const freshToken = generateCsrfToken();
+  res.cookie(CSRF_COOKIE_NAME, freshToken, getCsrfCookieOptions());
+  return freshToken;
+}
+
+function getRequestCsrfHeaderToken(req: express.Request): string | null {
+  for (const headerName of CSRF_HEADER_NAMES) {
+    const raw = req.get(headerName);
+    if (typeof raw === 'string' && raw.trim()) {
+      return raw.trim();
+    }
+  }
+  return null;
+}
+
+function tokensMatch(expected: string, actual: string): boolean {
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  if (expectedBuffer.length !== actualBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function csrfProtection(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (req.path === '/billing/webhook' || req.path === '/webhooks/stripe') return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) return next();
+
+  const cookieToken = ensureCsrfCookieToken(req, res);
+  const headerToken = getRequestCsrfHeaderToken(req);
+  if (!headerToken || !tokensMatch(cookieToken, headerToken)) {
+    return res.status(403).json({ error: 'Invalid CSRF token.' });
+  }
+
+  return next();
+}
 
 function parseDate(value: unknown): Date | null {
   if (!value) return null;
@@ -1331,26 +1392,16 @@ async function startServer() {
   }
 
   // 6. CSRF Protection
-  const csrfProtection = csurf({
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    },
-  });
-
-  // Apply CSRF to all non-webhook API routes
+  // Double-submit token strategy that preserves the existing frontend contract
+  // without depending on the archived `csurf` package.
   app.use('/api', (req, res, next) => {
-    // Skip CSRF for webhook endpoints (raw body needed for Stripe signature)
-    if (req.path === '/billing/webhook' || req.path === '/webhooks/stripe') return next();
-    // Skip CSRF for GET requests (read-only, no state mutation)
-    if (req.method === 'GET') return next();
     csrfProtection(req, res, next);
   });
 
   // Provide CSRF token to frontend
-  app.get('/api/csrf-token', csrfProtection, (req, res) => {
-    res.json({ csrfToken: req.csrfToken() });
+  app.get('/api/csrf-token', (req, res) => {
+    const csrfToken = ensureCsrfCookieToken(req, res);
+    res.json({ csrfToken });
   });
 
   // 7. API Routes
