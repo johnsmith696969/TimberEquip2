@@ -259,6 +259,12 @@ function getDirectApiProxyUrl() {
 }
 const STRIPE_WEBHOOK_DEDUPE_WINDOW_MS = 30 * 60 * 1000;
 const recentStripeWebhookEvents = new Map();
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_RATE_LIMITS = Object.freeze({
+  sendVerificationEmail: 3,
+  passwordReset: 5,
+});
+const recentAuthEndpointRequests = new Map();
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase();
@@ -285,6 +291,67 @@ function markRecentStripeWebhookEvent(eventId) {
 
   recentStripeWebhookEvents.set(normalizedEventId, now + STRIPE_WEBHOOK_DEDUPE_WINDOW_MS);
   return false;
+}
+
+function pruneRecentAuthEndpointRequests(now = Date.now()) {
+  for (const [key, bucket] of recentAuthEndpointRequests.entries()) {
+    if (!bucket || bucket.resetAt <= now) {
+      recentAuthEndpointRequests.delete(key);
+    }
+  }
+}
+
+function getRequestIp(req) {
+  const forwardedFor = normalizeNonEmptyString(req.headers['cf-connecting-ip'])
+    || normalizeNonEmptyString(req.headers['x-forwarded-for'])
+    || normalizeNonEmptyString(req.headers['x-real-ip'])
+    || normalizeNonEmptyString(req.ip)
+    || normalizeNonEmptyString(req.socket?.remoteAddress)
+    || 'unknown';
+
+  return forwardedFor.split(',')[0].trim().toLowerCase();
+}
+
+function consumeAuthRateLimit(scope, req, identifier, limit = 5) {
+  const normalizedScope = normalizeNonEmptyString(scope, 'auth');
+  const normalizedIdentifier = normalizeNonEmptyString(identifier, 'anonymous').toLowerCase();
+  const ipAddress = getRequestIp(req);
+  const now = Date.now();
+
+  pruneRecentAuthEndpointRequests(now);
+
+  const key = `${normalizedScope}:${normalizedIdentifier}:${ipAddress}`;
+  const currentBucket = recentAuthEndpointRequests.get(key);
+
+  if (!currentBucket || currentBucket.resetAt <= now) {
+    const nextBucket = {
+      count: 1,
+      resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
+    };
+    recentAuthEndpointRequests.set(key, nextBucket);
+    return {
+      allowed: true,
+      remaining: Math.max(limit - nextBucket.count, 0),
+      retryAfterSeconds: Math.ceil((nextBucket.resetAt - now) / 1000),
+    };
+  }
+
+  if (currentBucket.count >= limit) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: Math.max(Math.ceil((currentBucket.resetAt - now) / 1000), 1),
+    };
+  }
+
+  currentBucket.count += 1;
+  recentAuthEndpointRequests.set(key, currentBucket);
+
+  return {
+    allowed: true,
+    remaining: Math.max(limit - currentBucket.count, 0),
+    retryAfterSeconds: Math.ceil((currentBucket.resetAt - now) / 1000),
+  };
 }
 
 function normalizeUserRole(role) {
@@ -9334,6 +9401,25 @@ exports.apiProxy = onRequest(
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
+        const verificationRateLimit = consumeAuthRateLimit(
+          'send-verification-email',
+          req,
+          decodedToken.uid,
+          AUTH_RATE_LIMITS.sendVerificationEmail,
+        );
+
+        if (!verificationRateLimit.allowed) {
+          res.set('Retry-After', String(verificationRateLimit.retryAfterSeconds));
+          logger.warn('Verification email endpoint rate limit exceeded.', {
+            uid: decodedToken.uid,
+            ipAddress: getRequestIp(req),
+          });
+          return res.status(429).json({
+            error: 'Too many verification email requests. Please wait before trying again.',
+            retryAfterSeconds: verificationRateLimit.retryAfterSeconds,
+          });
+        }
+
         const userRecord = await admin.auth().getUser(decodedToken.uid);
         if (userRecord.emailVerified) {
           return res.status(200).json({ sent: false, alreadyVerified: true });
@@ -9361,6 +9447,26 @@ exports.apiProxy = onRequest(
           return res.status(400).json({
             error: 'Please enter a valid email address.',
             code: 'auth/invalid-email',
+          });
+        }
+
+        const passwordResetRateLimit = consumeAuthRateLimit(
+          'password-reset',
+          req,
+          email,
+          AUTH_RATE_LIMITS.passwordReset,
+        );
+
+        if (!passwordResetRateLimit.allowed) {
+          res.set('Retry-After', String(passwordResetRateLimit.retryAfterSeconds));
+          logger.warn('Password reset endpoint rate limit exceeded.', {
+            email,
+            ipAddress: getRequestIp(req),
+          });
+          return res.status(429).json({
+            error: 'Too many password reset requests. Please wait before trying again.',
+            code: 'auth/too-many-requests',
+            retryAfterSeconds: passwordResetRateLimit.retryAfterSeconds,
           });
         }
 
