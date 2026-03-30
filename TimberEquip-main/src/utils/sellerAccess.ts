@@ -4,6 +4,10 @@ const ADMIN_PUBLISHER_ROLES = new Set(['admin', 'super_admin', 'developer']);
 const SELLER_OVERRIDE_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer']);
 const DEALER_OS_ROLES = new Set(['dealer', 'pro_dealer']);
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
+const ROLE_BASED_LISTING_CAPS: Record<string, number> = {
+  dealer: 50,
+  pro_dealer: 150,
+};
 
 function normalizeRole(role?: string | null): string {
   return String(role || '').trim().toLowerCase();
@@ -64,10 +68,16 @@ export function hasActiveSellerSubscription(user: UserProfile | null | undefined
 }
 
 export function hasSellerWorkspaceAccess(user: UserProfile | null | undefined): boolean {
-  if (user?.entitlement) {
-    return user.entitlement.sellerWorkspaceAccess;
+  if (user?.entitlement?.sellerWorkspaceAccess) {
+    return true;
   }
-  return hasAdminPublishingAccess(user) || hasActiveSellerSubscription(user) || hasManagedSellerAccess(user);
+
+  const normalizedRole = normalizeRole(user?.role);
+  const isRoleBackedSeller =
+    SELLER_OVERRIDE_ROLES.has(normalizedRole) &&
+    String(user?.accountStatus || '').trim().toLowerCase() === 'active';
+
+  return hasAdminPublishingAccess(user) || hasActiveSellerSubscription(user) || hasManagedSellerAccess(user) || isRoleBackedSeller;
 }
 
 export function canUserPostListings(user: UserProfile | null | undefined): boolean {
@@ -76,13 +86,16 @@ export function canUserPostListings(user: UserProfile | null | undefined): boole
 
 export function canAccessDealerOs(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
-  if (user.entitlement) {
-    return user.entitlement.dealerOsAccess;
+  if (user.entitlement?.dealerOsAccess) {
+    return true;
   }
   const normalizedRole = normalizeRole(user.role);
 
   if (hasAdminPublishingAccess(user)) return true;
   if (!DEALER_OS_ROLES.has(normalizedRole)) return false;
+  if (String(user.accountStatus || '').trim().toLowerCase() === 'active') {
+    return true;
+  }
 
   return hasActiveSellerSubscription(user) || hasManagedSellerAccess(user);
 }
@@ -97,6 +110,17 @@ export function getFeaturedListingCap(user: UserProfile | null | undefined): num
   if (role === 'dealer') return 3;
   if (role === 'pro_dealer') return 6;
   return 0;
+}
+
+export function getManagedListingCap(user: UserProfile | null | undefined): number | null {
+  if (!user) return null;
+  if (hasAdminPublishingAccess(user)) return null;
+
+  if (typeof user.listingCap === 'number' && Number.isFinite(user.listingCap) && user.listingCap > 0) {
+    return user.listingCap;
+  }
+
+  return ROLE_BASED_LISTING_CAPS[normalizeRole(user.role)] || null;
 }
 
 export function getListEquipmentPath(user: UserProfile | null | undefined, isAuthenticated: boolean): string {

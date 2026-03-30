@@ -7,6 +7,7 @@ import {
   canUserPostListings,
   canAccessDealerOs,
   getFeaturedListingCap,
+  getManagedListingCap,
   getListEquipmentPath,
 } from '../utils/sellerAccess';
 import type { UserProfile } from '../types';
@@ -108,6 +109,26 @@ describe('hasSellerWorkspaceAccess', () => {
     expect(hasSellerWorkspaceAccess(makeUser({ role: 'super_admin' }))).toBe(true);
   });
 
+  it('returns true for active role-backed dealer access when entitlement is lagging', () => {
+    expect(hasSellerWorkspaceAccess(makeUser({
+      role: 'dealer',
+      accountStatus: 'active',
+      accountAccessSource: null,
+      entitlement: {
+        subscriptionState: 'none',
+        effectiveSellerCapability: 'none',
+        sellerAccessMode: 'none',
+        sellerWorkspaceAccess: false,
+        canPostListings: false,
+        dealerOsAccess: false,
+        publicListingVisibility: 'hidden_due_to_billing',
+        visibilityReason: 'inactive_subscription',
+        billingLabel: 'n/a',
+        overrideSource: null,
+      },
+    }))).toBe(true);
+  });
+
   it('returns true for active subscription seller', () => {
     expect(hasSellerWorkspaceAccess(makeUser({
       role: 'dealer',
@@ -133,6 +154,26 @@ describe('canUserPostListings', () => {
 describe('canAccessDealerOs', () => {
   it('returns true for admin', () => {
     expect(canAccessDealerOs(makeUser({ role: 'admin' }))).toBe(true);
+  });
+
+  it('returns true for active dealer role even when entitlement is stale', () => {
+    expect(canAccessDealerOs(makeUser({
+      role: 'dealer',
+      accountStatus: 'active',
+      accountAccessSource: null,
+      entitlement: {
+        subscriptionState: 'none',
+        effectiveSellerCapability: 'none',
+        sellerAccessMode: 'none',
+        sellerWorkspaceAccess: false,
+        canPostListings: false,
+        dealerOsAccess: false,
+        publicListingVisibility: 'hidden_due_to_billing',
+        visibilityReason: 'inactive_subscription',
+        billingLabel: 'n/a',
+        overrideSource: null,
+      },
+    }))).toBe(true);
   });
 
   it('returns true for dealer with subscription', () => {
@@ -175,6 +216,24 @@ describe('getFeaturedListingCap', () => {
 
   it('returns 0 for buyer', () => {
     expect(getFeaturedListingCap(makeUser({ role: 'buyer' }))).toBe(0);
+  });
+});
+
+describe('getManagedListingCap', () => {
+  it('returns explicit listing cap when available', () => {
+    expect(getManagedListingCap(makeUser({ role: 'dealer', listingCap: 42 }))).toBe(42);
+  });
+
+  it('returns dealer fallback cap', () => {
+    expect(getManagedListingCap(makeUser({ role: 'dealer', listingCap: 0 }))).toBe(50);
+  });
+
+  it('returns pro dealer fallback cap', () => {
+    expect(getManagedListingCap(makeUser({ role: 'pro_dealer', listingCap: 0 }))).toBe(150);
+  });
+
+  it('returns null for admin unlimited access', () => {
+    expect(getManagedListingCap(makeUser({ role: 'super_admin' }))).toBeNull();
   });
 });
 
