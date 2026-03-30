@@ -234,7 +234,6 @@ export function ListingDetail() {
         setLoadError('');
         setMarketMatchRecommendations([]);
         setLoadingMarketMatches(false);
-        setLoadingAiData(false);
       }
       try {
         const listingData = await equipmentService.getListing(requestedListingId);
