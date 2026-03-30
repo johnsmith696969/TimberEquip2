@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
-**Last updated:** March 30, 2026 (session 4)
+**Last updated:** March 30, 2026 (session 5)
 
 ---
 
@@ -97,8 +97,8 @@
 - [x] **5.5 - Rate limiting audit** - Added specific rate limiters for checkout (10/min), account deletion (3/min), billing portal (10/min). General API limiter (1000/15min) already covers `/api/` routes. AI generation is capped at 20/min. Cloud Functions auth endpoints now also have dedicated in-function rate limiting for password reset and verification email sends.
 - [ ] **5.6 - Split functions/index.js** - 12,166 lines -> `billing.js`, `email.js`, `scheduled.js`, `auth-triggers.js`, `dealer-feeds.js`. Keep `index.js` as a thin re-export.
   - Effort: 20-30 hours
-- [ ] **5.7 - Local development parity** - Fix `functions/` dependency mismatch. Proxy or stub billing endpoints for local dev. Document setup.
-  - Files: `server.ts`, dev setup docs
+- [x] **5.7 - Local development parity** - Local `server.ts` now proxies the same shared Functions billing routes used in production, and an explicit `LOCAL_BILLING_STUB=true` mode now simulates checkout/portal/cancel/access flows when Stripe secrets are absent. The local setup docs now also call out `npm --prefix functions install`.
+  - Files: `server.ts`, `README.md`
   - Effort: 8-12 hours
 
 ---
@@ -154,7 +154,7 @@
 
 ## Score
 
-**Completed:** 31 items (+ 2 partially done)
+**Completed:** 32 items (+ 1 partially done)
 **Remaining Phase 1-3 (pre-launch):** 5 items (+ 1 partial: 2.6 Firestore rules cap)
 **Remaining Phase 4-5 (post-launch):** 7 items (+ 1 partial: 5.4 backup rollout)
 **Longer-term:** 5 items

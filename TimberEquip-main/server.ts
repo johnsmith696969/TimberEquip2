@@ -582,6 +582,63 @@ const DEALER_MANAGED_ACCOUNT_LIMIT = 3;
 const MANAGED_ACCOUNT_PLAN_IDS: ListingCheckoutPlanId[] = ['dealer', 'fleet_dealer'];
 
 const checkoutPriceCache: Partial<Record<ListingCheckoutPlanId, string>> = {};
+const LOCAL_BILLING_STUB_SESSION_PREFIX = 'local_stub';
+
+function isLocalBillingStubEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production'
+    && String(process.env.LOCAL_BILLING_STUB || '').trim().toLowerCase() === 'true';
+}
+
+function buildLocalBillingStubSessionId(scope: 'listing' | 'account', planId: string, listingId: string | null, uid: string): string {
+  const safePlanId = String(planId || 'unknown').trim() || 'unknown';
+  const safeListingId = String(listingId || '').trim() || 'none';
+  const safeUid = String(uid || 'anonymous').trim() || 'anonymous';
+  return [LOCAL_BILLING_STUB_SESSION_PREFIX, scope, safePlanId, safeListingId, safeUid].join('__');
+}
+
+function parseLocalBillingStubSessionId(sessionId: string): {
+  scope: 'listing' | 'account';
+  planId: string | null;
+  listingId: string | null;
+  uid: string | null;
+} | null {
+  const normalized = String(sessionId || '').trim();
+  if (!normalized.startsWith(`${LOCAL_BILLING_STUB_SESSION_PREFIX}__`)) {
+    return null;
+  }
+
+  const parts = normalized.split('__');
+  if (parts.length < 5) return null;
+
+  const scope = parts[1] === 'account' ? 'account' : parts[1] === 'listing' ? 'listing' : null;
+  if (!scope) return null;
+
+  return {
+    scope,
+    planId: parts[2] && parts[2] !== 'unknown' ? parts[2] : null,
+    listingId: parts[3] && parts[3] !== 'none' ? parts[3] : null,
+    uid: parts[4] && parts[4] !== 'anonymous' ? parts[4] : null,
+  };
+}
+
+function buildLocalBillingStubSummary(decodedToken: admin.auth.DecodedIdToken): Record<string, unknown> {
+  const claimedRole = String(decodedToken.role || '').trim() || 'buyer';
+  return {
+    stripeCustomerId: 'cus_local_stub',
+    planId: null,
+    subscriptionStatus: null,
+    listingCap: 0,
+    managedAccountCap: 0,
+    currentSubscriptionId: null,
+    currentPeriodEnd: null,
+    subscriptionStartDate: null,
+    role: claimedRole,
+    accountAccessSource: claimedRole === 'buyer' ? 'free_member' : 'admin_override',
+    accountStatus: 'active',
+    entitlement: null,
+    localBillingStub: true,
+  };
+}
 
 function getListingCheckoutPlan(rawPlanId: unknown): ListingCheckoutPlan | null {
   const planId = String(rawPlanId || '').trim() as ListingCheckoutPlanId;
@@ -867,7 +924,7 @@ async function finalizeListingPaymentFromCheckoutSession(
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   app.get('/server-test', (req, res) => res.send('Server is alive and reachable'));
 
@@ -1230,7 +1287,11 @@ async function startServer() {
   app.use(cookieParser());
 
   if (sharedDealerApiProxy) {
-    app.all(/^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit)$/i, async (req, res, next) => {
+    const proxiedApiPattern = isLocalBillingStubEnabled()
+      ? /^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit)$/i
+      : /^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit|billing\/(?:create-checkout-session|create-account-checkout-session|create-portal-session|cancel-subscription|refresh-account-access|checkout-session\/[^/]+))$/i;
+
+    app.all(proxiedApiPattern, async (req, res, next) => {
       try {
         await sharedDealerApiProxy?.(req, res);
       } catch (error) {
@@ -1340,6 +1401,34 @@ async function startServer() {
   });
 
   app.post('/api/billing/create-checkout-session', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        const plan = getListingCheckoutPlan(req.body?.planId);
+        const listingId = String(req.body?.listingId || '').trim();
+
+        if (!plan) {
+          return res.status(400).json({ error: 'Invalid listing plan.' });
+        }
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const sessionId = buildLocalBillingStubSessionId('listing', plan.id, listingId, decodedToken.uid);
+        const baseUrl = getRequestBaseUrl(req);
+        return res.json({
+          sessionId,
+          url: `${baseUrl}/sell?checkout=success&session_id=${encodeURIComponent(sessionId)}&listingId=${encodeURIComponent(listingId)}&localBillingStub=1`,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1437,6 +1526,31 @@ async function startServer() {
   });
 
   app.get('/api/billing/checkout-session/:sessionId', async (req, res) => {
+    const stubSession = parseLocalBillingStubSessionId(String(req.params.sessionId || ''));
+    if (!stripe && isLocalBillingStubEnabled() && stubSession) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        if (stubSession.uid && stubSession.uid !== decodedToken.uid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        return res.json({
+          sessionId: req.params.sessionId,
+          status: 'complete',
+          paid: true,
+          listingId: stubSession.listingId,
+          planId: stubSession.planId,
+          scope: stubSession.scope,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1476,6 +1590,25 @@ async function startServer() {
   });
 
   app.post('/api/billing/create-portal-session', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        await auth.verifyIdToken(idToken);
+        const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
+        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
+        const baseUrl = getRequestBaseUrl(req);
+        const separator = returnPath.includes('?') ? '&' : '?';
+        return res.json({
+          url: `${baseUrl}${returnPath}${separator}billingPortal=local-stub`,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1519,6 +1652,22 @@ async function startServer() {
   });
 
   app.post('/api/billing/cancel-subscription', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        await auth.verifyIdToken(idToken);
+        return res.json({
+          success: true,
+          message: 'Local billing stub: subscription cancellation simulated.',
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1545,6 +1694,57 @@ async function startServer() {
       console.error('Failed to cancel subscription:', error);
       return res.status(500).json({ error: error?.message || 'Failed to cancel subscription.' });
     }
+  });
+
+  app.post('/api/billing/create-account-checkout-session', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        const plan = getListingCheckoutPlan(req.body?.planId);
+        if (!plan) {
+          return res.status(400).json({ error: 'Invalid seller plan.' });
+        }
+
+        const returnPathRaw = String(req.body?.returnPath || '/sell').trim();
+        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/sell';
+        const baseUrl = getRequestBaseUrl(req);
+        const separator = returnPath.includes('?') ? '&' : '?';
+        const sessionId = buildLocalBillingStubSessionId('account', plan.id, null, decodedToken.uid);
+
+        return res.json({
+          sessionId,
+          url: `${baseUrl}${returnPath}${separator}accountCheckout=success&session_id=${encodeURIComponent(sessionId)}&localBillingStub=1`,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
+    return res.status(503).json({
+      error: 'Account checkout should be served by the shared billing proxy in local development. If Stripe is unavailable locally, enable LOCAL_BILLING_STUB=true.',
+    });
+  });
+
+  app.post('/api/billing/refresh-account-access', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        return res.json(buildLocalBillingStubSummary(decodedToken));
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
+    return res.status(503).json({
+      error: 'Account access refresh should be served by the shared billing proxy in local development. If Stripe is unavailable locally, enable LOCAL_BILLING_STUB=true.',
+    });
   });
 
   app.get('/api/marketplace-stats', async (req, res) => {
