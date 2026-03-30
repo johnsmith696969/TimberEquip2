@@ -425,6 +425,7 @@ export interface Account {
   managedAccountCap?: number | null;
   currentSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
+  subscriptionStartDate?: string | null;
   entitlement?: AccountEntitlement | null;
 }
 
@@ -545,6 +546,7 @@ export interface UserProfile {
   managedAccountCap?: number | null;
   currentSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
+  subscriptionStartDate?: string | null;
   entitlement?: AccountEntitlement | null;
   stripeCustomerId?: string;
   mfaEnabled?: boolean;

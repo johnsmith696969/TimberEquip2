@@ -1,0 +1,159 @@
+# TimberEquip — Consolidated Production Checklist
+
+**Created:** March 29, 2026
+**Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
+**Last updated:** March 29, 2026 (session 2)
+
+---
+
+## Phase 1: Critical Security & Legal (Pre-Launch Blockers)
+
+### Code & Security
+
+- [x] **1.1 — Fix all TypeScript errors** — 19 errors → 0. `tsc --noEmit` passes clean.
+- [x] **1.2 — Re-enable Helmet security headers** — Uncommented in `server.ts`, CSP configured, `blob:` added to imgSrc. `X-Powered-By` removed.
+- [x] **1.3 — Lock CORS to explicit origins** — Replaced `origin: true` with allowlist (timberequip.com, localhost, Firebase preview domains).
+- [x] **1.4 — Fix SUPERADMIN_EMAIL bug** — Exported from `privilegedAdmin.ts`, imported in `equipmentService.ts`. Queries and comparisons now work.
+- [x] **1.5 — Remove Gemini API key from client bundle** — Already removed before audit. `GEMINI_API_KEY` not in Vite `define`.
+- [x] **1.6 — Build 404 page** — `NotFound.tsx` already exists with noindex meta, routed at `path="*"`.
+- [x] **1.7 — Create DMCA policy page** — `Dmca.tsx` already exists at `/dmca` with footer link.
+- [x] **1.8 — Fix package.json identity** — Already `"name": "timberequip"` with correct metadata.
+- [x] **1.9 — Default noindex meta in index.html** — Added `<meta name="robots" content="noindex, nofollow" />` as safety net. `Seo.tsx` overrides per-page.
+- [x] **1.10 — Fix legal page contact emails** — All emails now reference `@timberequip.com`. Verified in Privacy.tsx, Cookies.tsx, Terms.tsx, Contact.tsx.
+- [x] **1.11 — Expand Privacy Policy** — Already comprehensive: covers Stripe, Firebase, SendGrid, reCAPTCHA, Gemini, Maps, GDPR Art 13/14, CCPA, COPPA, data breach 72h, cookie consent, data transfer.
+- [x] **1.12 — Fix Terms of Service gaps** — Already covers: IP license, indemnification, governing law (Minnesota), binding arbitration, class action waiver, force majeure.
+- [x] **1.13 — Implement consent logging** — ConsentBanner already logs accept/decline to Firestore `consentLogs` collection via `logConsentToFirestore()`. "Manage Cookies" button wired on `/cookies`.
+- [ ] **1.14 — Replace deprecated `csurf` package** — CSRF is active but uses archived `csurf@1.11.0`. Replace with maintained CSRF strategy. Re-test all mutation routes and Stripe webhook exemptions.
+  - Files: `server.ts`, `package.json`
+  - Effort: 8–16 hours
+- [x] **1.15 — HTTP 404 status for unknown routes** — SPA route allowlist implemented in `server.ts`. Unknown routes return 404 while still serving SPA shell.
+- [x] **1.16 — Fix dependency vulnerabilities** — `npm audit fix` resolved all 3 high-severity vulnerabilities (node-forge, path-to-regexp, picomatch). 13→10, all remaining are low-severity transitive deps in firebase-admin and csurf (require breaking major version changes).
+
+---
+
+## Phase 2: Stripe & Subscription Completeness (Pre-Launch Blockers)
+
+- [x] **2.1 — Stripe Customer Portal** — `/api/billing/create-portal-session` endpoint in `server.ts`. "Manage Billing" button in Profile.tsx calls `billingService.createBillingPortalSession()`.
+- [x] **2.2 — Display subscription dates in Profile** — "Renewal Date" / "Expires On" and "Subscribed Since" both displayed. `subscriptionStartDate` added to refresh endpoint, billingService interface, types, and Profile UI.
+- [x] **2.3 — Store subscription start date** — `createdAt` and `startDate` already stored in webhook handlers for `subscription.created` and `subscription.updated` events.
+- [ ] **2.4 — Improve dunning sequence** — Add 3-day warning, day-of warning, 3-day grace period, "listings hidden" email. Track `dunningStep` in subscription doc.
+  - Files: `functions/index.js`, email templates
+  - Effort: 8–12 hours
+- [x] **2.5 — Sync subscription status to user profile** — Webhook handlers update user documents with `activeSubscriptionPlanId`, `subscriptionStatus`. Auth claims synced via `functions/index.js`. Listings hidden on `past_due`/`unpaid`.
+- [~] **2.6 — Server-side listing cap enforcement** — Express API validates listing count vs `plan.listingCap` (returns 409). Missing: Firestore rules validation as defense-in-depth layer.
+  - Files: `firestore.rules`
+  - Effort: 2–4 hours
+
+---
+
+## Phase 3: Testing Foundation (Pre-Launch Blocker)
+
+- [x] **3.1 — Test infrastructure** — Vitest + React Testing Library installed and configured. `vitest.config.ts`, `src/__tests__/setup.ts` created. Scripts: `test`, `test:watch`, `test:coverage`.
+- [x] **3.2 — Unit tests (core business logic)** — 8 test files, 138 unit tests covering: accountEntitlement, sellerAccess, userRoles, sellerPlans, seoRoutes, seoRouteQuality, privilegedAdmin, amvMatching.
+- [x] **3.3 — Smoke tests** — 32 tests verifying all 26 page modules and 4 core components import and export correctly. Firebase fully mocked.
+- [ ] **3.4 — Additional unit test coverage** — billingService, equipmentService (CRUD, search query building, cap enforcement), listingPath (URL generation, slugs).
+  - Effort: 30–40 hours
+- [ ] **3.5 — Integration tests for Stripe flows** — Checkout session creation, webhook event processing (invoice.paid, subscription CRUD, checkout.session.completed), idempotency, subscription expiry, listing cap API enforcement.
+  - Effort: 40–60 hours
+- [ ] **3.6 — E2E tests (Playwright)** — Install Playwright. Cover 6 critical journeys: register→checkout→list, search→inquiry, seller billing, admin approve, category browse, listing form+upload.
+  - Effort: 60–80 hours
+- [ ] **3.7 — Component tests** — ListingCard, ListingModal, SubscriptionPaymentModal, ConsentBanner, Seo. Snapshot + behavior tests.
+  - Effort: 30–40 hours
+
+---
+
+## Phase 4: SEO & Performance (Post-Launch, Week 1–2)
+
+- [x] **4.1 — JSON-LD structured data** — Already on Home (WebSite+SearchAction), ListingDetail (Product), Search (ItemList), SellerProfile (Organization).
+- [x] **4.2 — SSR proxy for SEO routes** — `functions/public-pages.js` exists for SEO landing pages.
+- [x] **4.3 — Default noindex safety net** — Added to `index.html`. Seo.tsx overrides per-page.
+- [ ] **4.4 — Expand SSR coverage** — Static pages (About, Contact, Financing, Terms, Privacy, Cookies, DMCA) serve empty SPA shells to crawlers. Add SSR templates for all indexable pages.
+  - Files: `functions/public-pages.js`, `server.ts`
+  - Effort: 40–60 hours
+- [ ] **4.5 — Image optimization pipeline** — Firebase Storage trigger → sharp → thumbnail/medium/large WebP variants. Update ListingCard/ListingDetail with `srcSet` and `loading="lazy"`.
+  - Files: `functions/index.js`, `src/services/storageService.ts`
+  - Effort: 20–30 hours
+- [ ] **4.6 — Split categorySpecs.ts** — 73,000-line file → per-category JSON files, lazy-loaded on demand. Target: -150KB initial bundle.
+  - Files: `src/constants/categorySpecs.ts`, ListingModal
+  - Effort: 15–20 hours
+- [x] **4.7 — Performance hints in index.html** — `<link rel="preconnect">` already present for Firebase, Google APIs, Stripe, Google Fonts, Cloudflare.
+- [ ] **4.8 — Split monolith page components** — AdminDashboard (4,482 lines), Profile (2,967 lines), DealerOS (1,643 lines) → extract tabs into separate files. Target: no file >500 lines.
+  - Effort: 40–60 hours
+
+---
+
+## Phase 5: Infrastructure & Operations (Post-Launch, Week 2–4)
+
+- [x] **5.1 — CI/CD pipeline** — 3 workflows: PR (lint→test→build→preview deploy), Staging (verify→deploy→smoke on push to main), Production (verify→deploy→smoke, manual trigger). Tests added to verify scripts.
+- [ ] **5.2 — Error tracking (Sentry)** — Client + server integration, source maps, user context, alerting.
+  - Files: `src/main.tsx`, `src/components/ErrorBoundary.tsx`, `server.ts`, `functions/index.js`
+  - Effort: 10–15 hours
+- [ ] **5.3 — Application performance monitoring** — Firebase Performance Monitoring, custom traces for page load/search/checkout.
+  - Files: `index.html`, `src/main.tsx`
+  - Effort: 8–12 hours
+- [ ] **5.4 — Database backup strategy** — Firestore automated daily exports to Cloud Storage. 30-day retention. Documented restore procedure.
+  - Effort: 8–12 hours
+- [x] **5.5 — Rate limiting audit** — Added specific rate limiters: checkout (10/min), account deletion (3/min), billing portal (10/min). General API limiter (1000/15min) already covers all `/api/` routes. AI generation at 20/min. Cloud Functions endpoints covered via API proxy.
+  - Remaining: Cloud Functions-specific rate limiting for auth endpoints (password-reset, send-verification-email)
+- [ ] **5.6 — Split functions/index.js** — 12,166 lines → billing.js, email.js, scheduled.js, auth-triggers.js, dealer-feeds.js. Keep index.js as thin re-export.
+  - Effort: 20–30 hours
+- [ ] **5.7 — Local development parity** — Fix `functions/` dependency mismatch. Proxy or stub billing endpoints for local dev. Document setup.
+  - Files: `server.ts`, dev setup docs
+  - Effort: 8–12 hours
+
+---
+
+## Longer-Term Architecture Items
+
+- [ ] **6.1 — Move search to server-side pagination** — Current: full inventory loaded client-side. Move to cursor-based server pagination with indexed/faceted querying.
+  - Effort: 50–120 hours
+- [ ] **6.2 — Reduce taxonomy payload** — 3.38 MB raw / 188 KB gzip. Split by category, lazy-load on demand.
+  - Effort: 12–24 hours
+- [ ] **6.3 — Real malware scanning** — Replace EICAR mock with ClamAV or Cloud Run scanning pipeline. Quarantine → scan → release.
+  - Effort: 12–24 hours
+- [ ] **6.4 — Migrate hardcoded admin emails to role claims** — Remove scattered email checks from frontend/rules. Centralize privilege in server-side role claims.
+  - Effort: 8–20 hours
+- [ ] **6.5 — Fix storage rules hardcoded database ID** — Remove literal `ai-studio-206e8e62-...` reference. Use active database context.
+  - Effort: 4–10 hours
+
+---
+
+## Pre-Launch Day Checklist
+
+- [x] TypeScript errors resolved
+- [x] Helmet security headers enabled
+- [x] CORS locked to explicit origins
+- [x] Test suite passing (230 tests, 12 test files)
+- [x] package.json identity correct
+- [x] 404 page exists with noindex
+- [x] DMCA page exists with footer link
+- [x] Gemini API key not in client bundle
+- [x] Default noindex meta in index.html
+- [x] All legal page emails reference `@timberequip.com`
+- [x] Privacy policy covers GDPR Art 13/14 + CCPA
+- [x] Terms cover IP, indemnification, governing law
+- [ ] CSRF on maintained package
+- [x] Consent banner logs to Firestore
+- [x] Stripe Customer Portal configured
+- [x] Subscription dates displayed in Profile
+- [ ] DNS verified: timberequip.com + www resolve
+- [ ] SSL certificate valid and auto-renewing
+- [ ] Firebase Hosting production channel configured
+- [ ] Stripe webhooks pointing to production URL
+- [ ] SendGrid sender domain verified
+- [ ] reCAPTCHA Enterprise site key matches production domain
+- [ ] Google Search Console verified
+- [ ] robots.txt allows crawling (via `prepare-seo-mode.mjs`)
+- [ ] Sitemap.xml accessible
+- [ ] Lighthouse audit: 75+ mobile, 90+ desktop
+- [ ] Error tracking receiving production events
+- [ ] Rollback plan documented
+
+---
+
+## Score
+
+**Completed:** 31 items (+ 1 partially done)
+**Remaining Phase 1–3 (pre-launch):** 5 items (+ 1 partial: 2.6 Firestore rules cap)
+**Remaining Phase 4–5 (post-launch):** 8 items
+**Longer-term:** 5 items

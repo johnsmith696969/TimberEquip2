@@ -5896,6 +5896,9 @@ async function listStripeAccountSubscriptionEntries(stripe, customerId) {
           : 0,
         subscriptionQuantity: subscription?.items?.data?.[0]?.quantity,
         listingCap: metadata.listingCap,
+        createdMillis: typeof subscription?.created === 'number'
+          ? Math.floor(subscription.created) * 1000
+          : 0,
       });
     });
 
@@ -9871,6 +9874,10 @@ exports.apiProxy = onRequest(
           currentPeriodEnd: summary.currentPeriodEndIso || null,
         });
 
+        const subscriptionStartDate = relevantEntry?.createdMillis && Number(relevantEntry.createdMillis) > 0
+          ? new Date(Number(relevantEntry.createdMillis)).toISOString()
+          : null;
+
         return res.status(200).json({
           stripeCustomerId: customerId || null,
           planId: responseState.activeSubscriptionPlanId,
@@ -9879,6 +9886,7 @@ exports.apiProxy = onRequest(
           managedAccountCap: responseState.managedAccountCap,
           currentSubscriptionId: responseState.currentSubscriptionId,
           currentPeriodEnd: responseState.currentPeriodEnd,
+          subscriptionStartDate,
           role: responseState.role || null,
           accountAccessSource: responseState.accountAccessSource,
           accountStatus: responseState.accountStatus,

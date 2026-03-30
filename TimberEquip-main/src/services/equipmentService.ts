@@ -1144,9 +1144,9 @@ export const equipmentService = {
         };
 
         if (sortBy === 'price_asc') {
-          listings = [...listings].sort((a, b) => a.price - b.price);
+          sortWithFeaturedPriority((a, b) => a.price - b.price);
         } else if (sortBy === 'price_desc') {
-          listings = [...listings].sort((a, b) => b.price - a.price);
+          sortWithFeaturedPriority((a, b) => b.price - a.price);
         } else if (sortBy === 'popular') {
           sortWithFeaturedPriority((a, b) => (b.views + b.leads * 3) - (a.views + a.leads * 3));
         } else if (sortBy === 'relevance' && filters.q) {

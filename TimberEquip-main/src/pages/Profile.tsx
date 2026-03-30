@@ -386,6 +386,7 @@ export function Profile() {
           managedAccountCap: typeof refreshedAccess.managedAccountCap === 'number' ? refreshedAccess.managedAccountCap : user?.managedAccountCap,
           currentSubscriptionId: refreshedAccess.currentSubscriptionId || null,
           currentPeriodEnd: refreshedAccess.currentPeriodEnd || null,
+          subscriptionStartDate: refreshedAccess.subscriptionStartDate || user?.subscriptionStartDate || null,
           accountAccessSource: refreshedAccess.accountAccessSource || null,
           accountStatus: refreshedAccess.accountStatus || user?.accountStatus || 'active',
           entitlement: refreshedAccess.entitlement ?? user?.entitlement,
@@ -881,6 +882,7 @@ export function Profile() {
         managedAccountCap: typeof refreshedAccess.managedAccountCap === 'number' ? refreshedAccess.managedAccountCap : user.managedAccountCap,
         currentSubscriptionId: refreshedAccess.currentSubscriptionId || null,
         currentPeriodEnd: refreshedAccess.currentPeriodEnd || null,
+        subscriptionStartDate: refreshedAccess.subscriptionStartDate || user.subscriptionStartDate || null,
         accountAccessSource: refreshedAccess.accountAccessSource || null,
         accountStatus: refreshedAccess.accountStatus || user.accountStatus || 'active',
         entitlement: refreshedAccess.entitlement ?? user.entitlement,
@@ -2512,6 +2514,10 @@ export function Profile() {
             { label: user?.subscriptionStatus === 'canceled' ? 'Expires On' : 'Renewal Date',
               value: user?.currentPeriodEnd
                 ? new Date(typeof user.currentPeriodEnd === 'string' ? user.currentPeriodEnd : Number(user.currentPeriodEnd)).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                : hasPaidSellerSubscription ? 'pending' : 'n/a' },
+            { label: 'Subscribed Since',
+              value: user?.subscriptionStartDate
+                ? new Date(user.subscriptionStartDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
                 : hasPaidSellerSubscription ? 'pending' : 'n/a' },
             { label: 'Billing Label', value: billingLabel },
             { label: 'Listing Visibility', value: listingVisibilityLabel },

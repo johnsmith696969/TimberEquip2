@@ -897,12 +897,35 @@ async function startServer() {
   // 2. Rate Limiting (DDoS protection)
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Increased for dev environment
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
     message: 'Too many requests from this IP, please try again after 15 minutes',
   });
   app.use('/api/', limiter);
+
+  // Stricter rate limits for sensitive endpoints
+  const checkoutLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Too many checkout requests. Please try again in a minute.' },
+  });
+  app.use('/api/billing/create-checkout-session', checkoutLimiter);
+  app.use('/api/billing/create-account-checkout-session', checkoutLimiter);
+
+  const accountDeletionLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 3,
+    message: { error: 'Too many account deletion requests. Please try again later.' },
+  });
+  app.use('/api/user/delete', accountDeletionLimiter);
+
+  const portalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Too many billing portal requests. Please try again in a minute.' },
+  });
+  app.use('/api/billing/create-portal-session', portalLimiter);
 
   // 3. CORS
   const ALLOWED_ORIGINS = [
@@ -2072,7 +2095,25 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    // Known SPA routes — return 200 for these, 404 for everything else
+    const SPA_ROUTES = new Set([
+      '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',
+      '/login', '/register', '/sell', '/dealer-os', '/financing', '/profile',
+      '/about', '/contact', '/ad-programs', '/subscription-success', '/inspections',
+      '/auctions', '/privacy', '/terms', '/cookies', '/dmca', '/bookmarks', '/404',
+      '/forestry-equipment-for-sale', '/logging-equipment-for-sale',
+    ]);
+    const SPA_ROUTE_PREFIXES = [
+      '/equipment/', '/listing/', '/seller/', '/blog/', '/categories/',
+      '/manufacturers/', '/states/', '/dealers/',
+    ];
+
     app.get('*', (req, res) => {
+      const cleanPath = req.path.split('?')[0].replace(/\/+$/, '') || '/';
+      const isKnownRoute = SPA_ROUTES.has(cleanPath) || SPA_ROUTE_PREFIXES.some((prefix) => cleanPath.startsWith(prefix));
+      if (!isKnownRoute) {
+        res.status(404);
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

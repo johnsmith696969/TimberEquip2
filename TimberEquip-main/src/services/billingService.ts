@@ -153,6 +153,7 @@ export interface RefreshedAccountAccessSummary {
   managedAccountCap: number;
   currentSubscriptionId: string | null;
   currentPeriodEnd: string | null;
+  subscriptionStartDate: string | null;
   role: string | null;
   accountAccessSource: 'free_member' | 'pending_checkout' | 'subscription' | 'admin_override' | 'managed_account' | null;
   accountStatus: 'active' | 'pending' | 'suspended' | null;
