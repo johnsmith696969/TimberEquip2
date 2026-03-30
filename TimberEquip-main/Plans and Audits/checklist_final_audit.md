@@ -55,7 +55,7 @@
   - Effort: 40-60 hours
 - [ ] **3.6 - E2E tests (Playwright)** - Install Playwright coverage for 6 critical journeys: register -> checkout -> list, search -> inquiry, seller billing, admin approve, category browse, listing form + upload.
   - Effort: 60-80 hours
-- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `SubscriptionPaymentModal`, and the admin `ListingModal` now have render/behavior coverage in Vitest + RTL. Remaining gaps are deeper interaction coverage for media galleries, upload-heavy listing flows, and purchase flows beyond the first checkout step.
+- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `SubscriptionPaymentModal`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. Remaining gaps are the most upload-heavy listing/media edit flows and broader purchase-state permutations beyond the success-page path.
   - Effort remaining: 10-16 hours
 
 ---
