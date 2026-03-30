@@ -1341,6 +1341,7 @@ export const equipmentService = {
     const path = 'listings';
     const normalizedSellerUid = String(sellerUid || '').trim();
     if (!normalizedSellerUid) return 0;
+    if (!auth.currentUser) return 0;
 
     try {
       const snapshot = await getDocs(query(collection(db, path), where('sellerUid', '==', normalizedSellerUid)));
