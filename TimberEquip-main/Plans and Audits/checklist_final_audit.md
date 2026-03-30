@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
-**Last updated:** March 30, 2026 (session 5)
+**Last updated:** March 30, 2026 (session 6)
 
 ---
 
@@ -55,8 +55,8 @@
   - Effort: 40-60 hours
 - [ ] **3.6 - E2E tests (Playwright)** - Install Playwright coverage for 6 critical journeys: register -> checkout -> list, search -> inquiry, seller billing, admin approve, category browse, listing form + upload.
   - Effort: 60-80 hours
-- [ ] **3.7 - Component tests** - `ListingCard`, `ListingModal`, `SubscriptionPaymentModal`, `ConsentBanner`, `Seo`. Snapshot + behavior coverage.
-  - Effort: 30-40 hours
+- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, and `ConsentBanner` now have render/behavior coverage in Vitest + RTL. Remaining gaps: `ListingModal` and `SubscriptionPaymentModal`, plus deeper interaction coverage for media galleries and purchase flows.
+  - Effort remaining: 16-24 hours
 
 ---
 

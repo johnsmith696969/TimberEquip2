@@ -286,6 +286,66 @@ function serializeCallDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot):
   };
 }
 
+function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
+  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
+    type: isDealerRole ? 'Dealer' : 'Private',
+    role: normalizeNonEmptyString(data.role, 'buyer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    location: normalizeNonEmptyString(data.location, 'Unknown'),
+    phone: normalizeNonEmptyString(data.phone),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.logo),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
+    rating: 5,
+    totalListings: 0,
+    memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    verified: Boolean(data.storefrontEnabled),
+  };
+}
+
+function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
+  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
+    type: isDealerRole ? 'Dealer' : 'Private',
+    role: normalizeNonEmptyString(data.role, 'buyer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    location: normalizeNonEmptyString(data.location, 'Unknown'),
+    phone: normalizeNonEmptyString(data.phoneNumber),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.photoURL || data.profileImage),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
+    rating: 5,
+    totalListings: 0,
+    memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    verified: true,
+  };
+}
+
 function buildMarketplaceListingPayload(listingId: string, rawListing: Record<string, unknown>): Record<string, unknown> {
   const listing = rawListing || {};
   const make = normalizeNonEmptyString(listing.make || listing.manufacturer || listing.brand);
@@ -1764,6 +1824,54 @@ async function startServer() {
     } catch (error: any) {
       console.error('Failed to compute marketplace stats:', error);
       res.status(500).json({ error: error?.message || 'Failed to load marketplace stats' });
+    }
+  });
+
+  app.get('/api/public/sellers/:identity', async (req, res) => {
+    const requestedIdentity = normalizeNonEmptyString(req.params.identity);
+    if (!requestedIdentity) {
+      return res.status(400).json({ error: 'Seller identifier is required.' });
+    }
+
+    try {
+      let storefrontSnapshot = await db.collection('storefronts').doc(requestedIdentity).get();
+      if (!storefrontSnapshot.exists) {
+        const storefrontSlugSnapshot = await db
+          .collection('storefronts')
+          .where('storefrontSlug', '==', requestedIdentity)
+          .limit(1)
+          .get();
+        if (!storefrontSlugSnapshot.empty) {
+          storefrontSnapshot = storefrontSlugSnapshot.docs[0];
+        }
+      }
+
+      if (storefrontSnapshot.exists) {
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+      }
+
+      let userSnapshot = await db.collection('users').doc(requestedIdentity).get();
+      if (!userSnapshot.exists) {
+        const userSlugSnapshot = await db
+          .collection('users')
+          .where('storefrontSlug', '==', requestedIdentity)
+          .limit(1)
+          .get();
+        if (!userSlugSnapshot.empty) {
+          userSnapshot = userSlugSnapshot.docs[0];
+        }
+      }
+
+      if (userSnapshot.exists) {
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+      }
+
+      return res.json({ seller: null });
+    } catch (error: any) {
+      console.error('Failed to resolve public seller:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to load seller.' });
     }
   });
 

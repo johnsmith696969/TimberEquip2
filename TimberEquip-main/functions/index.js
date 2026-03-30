@@ -10991,6 +10991,61 @@ exports.apiProxy = onRequest(
         return streamTwilioRecordingToResponse(callData.recordingUrl, res);
       }
 
+      if (req.method === 'GET' && path.startsWith('/public/sellers/')) {
+        const requestedIdentity = decodeURIComponent(path.slice('/public/sellers/'.length)).trim();
+        if (!requestedIdentity) {
+          return res.status(400).json({ error: 'Seller identifier is required.' });
+        }
+
+        try {
+          let storefrontSnapshot = await getDb().collection('storefronts').doc(requestedIdentity).get();
+          if (!storefrontSnapshot.exists) {
+            const storefrontSlugSnapshot = await getDb()
+              .collection('storefronts')
+              .where('storefrontSlug', '==', requestedIdentity)
+              .limit(1)
+              .get();
+            if (!storefrontSlugSnapshot.empty) {
+              storefrontSnapshot = storefrontSlugSnapshot.docs[0];
+            }
+          }
+
+          if (storefrontSnapshot.exists) {
+            res.set('Cache-Control', 'public, max-age=300');
+            return res.status(200).json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+          }
+
+          let userSnapshot = await getDb().collection('users').doc(requestedIdentity).get();
+          if (!userSnapshot.exists) {
+            const userSlugSnapshot = await getDb()
+              .collection('users')
+              .where('storefrontSlug', '==', requestedIdentity)
+              .limit(1)
+              .get();
+            if (!userSlugSnapshot.empty) {
+              userSnapshot = userSlugSnapshot.docs[0];
+            }
+          }
+
+          if (userSnapshot.exists) {
+            res.set('Cache-Control', 'public, max-age=300');
+            return res.status(200).json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+          }
+
+          return res.status(200).json({ seller: null });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Public seller API is returning a quota-limited fallback.', {
+              requestedIdentity,
+            });
+            return res.status(200).json(buildQuotaLimitedPayload('seller', null, 'Seller information is temporarily unavailable because the Firestore daily read quota is exhausted.', {
+              source: 'quota_fallback',
+            }));
+          }
+          throw error;
+        }
+      }
+
       if (req.method === 'GET' && path === '/account/storefront') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {

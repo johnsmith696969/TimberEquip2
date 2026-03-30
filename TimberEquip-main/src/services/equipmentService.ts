@@ -2101,6 +2101,15 @@ export const equipmentService = {
       }
     }
 
+    try {
+      const payload = await getPublicJson<{ seller?: Seller | null }>(`/api/public/sellers/${encodeURIComponent(normalizedId)}`);
+      if (payload?.seller) {
+        return payload.seller;
+      }
+    } catch (error) {
+      console.warn('Public seller API unavailable, falling back to Firestore lookup:', error);
+    }
+
     const storefrontPath = `storefronts/${normalizedId}`;
     const fallbackPath = `users/${normalizedId}`;
 
