@@ -351,15 +351,17 @@ function shouldValidateListingQualityOnUpdate(updates: Partial<Listing>): boolea
 function normalizeListingImages(listing: Listing): Listing {
   const variants = Array.isArray(listing.imageVariants) ? listing.imageVariants : [];
   const hasImages = Array.isArray(listing.images) && listing.images.length > 0;
+  const normalizedImages = hasImages
+    ? listing.images
+    : variants.map((v) => v.detailUrl).filter(Boolean);
+  const rawTitles = Array.isArray(listing.imageTitles) ? listing.imageTitles : [];
+  const imageTitles = normalizedImages.map((_, index) => String(rawTitles[index] || '').trim()).slice(0, normalizedImages.length);
 
-  if (!hasImages && variants.length > 0) {
-    return {
-      ...listing,
-      images: variants.map((v) => v.detailUrl).filter(Boolean),
-    };
-  }
-
-  return listing;
+  return {
+    ...listing,
+    images: normalizedImages,
+    imageTitles,
+  };
 }
 
 function isAdminPublisherRole(role?: string | null): boolean {

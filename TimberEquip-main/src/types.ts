@@ -175,6 +175,7 @@ export interface Listing {
   condition: string;
   description: string;
   images: string[];
+  imageTitles?: string[];
   imageVariants?: Array<{
     thumbnailUrl: string;
     detailUrl: string;

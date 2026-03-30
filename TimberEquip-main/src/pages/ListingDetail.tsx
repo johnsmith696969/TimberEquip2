@@ -731,6 +731,11 @@ export function ListingDetail() {
         ? listing.images.filter(Boolean)
         : [];
   const galleryImages = detailImages.length ? detailImages : [LISTING_IMAGE_PLACEHOLDER];
+  const galleryImageTitles = galleryImages.map((_, index) => {
+    const rawTitle = Array.isArray(listing.imageTitles) ? listing.imageTitles[index] : '';
+    return String(rawTitle || '').trim();
+  });
+  const activeImageTitle = galleryImageTitles[activeImage] || '';
   const hasGallery = detailImages.length > 0;
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
@@ -992,7 +997,7 @@ export function ListingDetail() {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
                     src={galleryImages[activeImage]} 
-                    alt={listing.title}
+                    alt={activeImageTitle || listing.title}
                     className="w-full h-full object-cover cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
@@ -1036,10 +1041,22 @@ export function ListingDetail() {
                     onClick={() => setActiveImage(i)}
                     className={`aspect-square border-2 transition-all overflow-hidden ${activeImage === i ? 'border-accent' : 'border-line hover:border-muted'}`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" decoding="async" />
+                    <img
+                      src={img}
+                      alt={galleryImageTitles[i] || `${listing.title} photo ${i + 1}`}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </button>
                 ))}
               </div>
+              {activeImageTitle && (
+                <p className="text-xs font-bold uppercase tracking-widest text-muted">
+                  {activeImageTitle}
+                </p>
+              )}
             </div>
 
             {/* Core Specs Grid */}
@@ -1475,7 +1492,7 @@ export function ListingDetail() {
                           <motion.img
                             key={galleryImages[activeImage]}
                             src={galleryImages[activeImage]}
-                            alt={listing.title}
+                            alt={activeImageTitle || listing.title}
                             className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
                             referrerPolicy="no-referrer"
                             initial={{ opacity: 0 }}

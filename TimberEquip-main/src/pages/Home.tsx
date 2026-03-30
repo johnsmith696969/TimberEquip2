@@ -57,6 +57,8 @@ const SUBCATEGORY_MARKET_ORDER = [
   'Skidders',
 ];
 
+const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.jpeg?v=20260330a';
+
 const formatChange = (value: unknown) => {
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
   return `${numericValue >= 0 ? '+' : ''}${numericValue.toFixed(1)}%`;
@@ -302,11 +304,20 @@ export function Home() {
       {/* Hero Section */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
         <div className="absolute inset-0 z-0">
+          <img
+            src={HERO_IMAGE_PATH}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+            loading="eager"
+            decoding="async"
+          />
+          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-white/72' : 'bg-black/58'}`}></div>
           <div
             className={`absolute inset-0 ${
               theme === 'light'
-                ? 'bg-bg'
-                : 'bg-black'
+                ? 'bg-[linear-gradient(90deg,rgba(249,247,242,0.96)_0%,rgba(249,247,242,0.86)_34%,rgba(249,247,242,0.32)_70%,rgba(249,247,242,0.08)_100%)]'
+                : 'bg-[linear-gradient(90deg,rgba(10,10,10,0.92)_0%,rgba(10,10,10,0.80)_36%,rgba(10,10,10,0.36)_72%,rgba(10,10,10,0.12)_100%)]'
             }`}
           ></div>
         </div>

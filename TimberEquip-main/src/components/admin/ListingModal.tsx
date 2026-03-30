@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Upload, Video, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Video, ShieldCheck, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Listing, ListingConditionChecklist } from '../../types';
 import { getSchemaForListing } from '../../constants/categorySpecs';
@@ -75,6 +75,16 @@ const inferCategorySelection = (
     category: DEFAULT_TOP_LEVEL_CATEGORY,
     subcategory: DEFAULT_SUBCATEGORY,
   };
+};
+
+const normalizeListingImageTitles = (images: string[], imageTitles?: string[] | null) => {
+  const normalizedImages = Array.isArray(images) ? images : [];
+  const rawTitles = Array.isArray(imageTitles) ? imageTitles : [];
+
+  return normalizedImages.map((_, index) => {
+    const title = typeof rawTitles[index] === 'string' ? rawTitles[index].trim() : '';
+    return title.slice(0, 120);
+  });
 };
 
 interface ListingModalProps {
@@ -218,6 +228,7 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
     stockNumber: '',
     serialNumber: '',
     images: [] as string[],
+    imageTitles: [] as string[],
     imageVariants: [] as Array<{ thumbnailUrl: string; detailUrl: string; format?: 'image/avif' | 'image/webp' | 'image/jpeg' }>,
     videoUrls: [] as string[],
     description: '',
@@ -248,10 +259,13 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
     const inferred = inferCategorySelection(fullTaxonomy, listing || null);
 
     if (listing) {
+      const normalizedImages = Array.isArray(listing.images) ? listing.images : [];
       setListingStorageId(listing.id);
       setFormData({
         ...defaultForm(),
         ...listing,
+        images: normalizedImages,
+        imageTitles: normalizeListingImageTitles(normalizedImages, listing.imageTitles),
         category: inferred.category,
         subcategory: inferred.subcategory,
         conditionChecklist: normalizeConditionChecklist(listing.conditionChecklist),
@@ -336,6 +350,7 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
       setFormData((prev) => ({
         ...prev,
         images: [...prev.images, ...urls],
+        imageTitles: [...(prev.imageTitles || []), ...urls.map(() => '')],
         imageVariants: [...(prev.imageVariants || []), ...variants],
       }));
     } catch (error) {
@@ -352,8 +367,42 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
     setFormData((prev) => ({
       ...prev,
       images: prev.images.filter((_, i) => i !== idx),
+      imageTitles: (prev.imageTitles || []).filter((_, i) => i !== idx),
       imageVariants: (prev.imageVariants || []).filter((_, i) => i !== idx),
     }));
+
+  const moveImage = (idx: number, direction: -1 | 1) =>
+    setFormData((prev) => {
+      const targetIndex = idx + direction;
+      if (targetIndex < 0 || targetIndex >= prev.images.length) return prev;
+
+      const images = [...prev.images];
+      const imageTitles = normalizeListingImageTitles(prev.images, prev.imageTitles);
+      const imageVariants = [...(prev.imageVariants || [])];
+
+      [images[idx], images[targetIndex]] = [images[targetIndex], images[idx]];
+      [imageTitles[idx], imageTitles[targetIndex]] = [imageTitles[targetIndex], imageTitles[idx]];
+      if (imageVariants.length) {
+        [imageVariants[idx], imageVariants[targetIndex]] = [imageVariants[targetIndex], imageVariants[idx]];
+      }
+
+      return {
+        ...prev,
+        images,
+        imageTitles,
+        imageVariants,
+      };
+    });
+
+  const updateImageTitle = (idx: number, title: string) =>
+    setFormData((prev) => {
+      const nextTitles = normalizeListingImageTitles(prev.images, prev.imageTitles);
+      nextTitles[idx] = title.slice(0, 120);
+      return {
+        ...prev,
+        imageTitles: nextTitles,
+      };
+    });
 
   // ── Video upload ─────────────────────────────────────────────────────────
   const handleVideoFiles = async (files: FileList | null) => {
@@ -871,19 +920,66 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
                 {formData.images.map((img, i) => (
-                  <div key={i} className="relative aspect-video bg-surface border border-line rounded-sm overflow-hidden group">
-                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    {i === 0 && (
-                      <span className="absolute top-1 left-1 bg-accent text-white text-[8px] font-black uppercase px-1.5 py-0.5">
-                        Cover
+                  <div key={`${img}-${i}`} className="flex flex-col gap-2 bg-surface border border-line rounded-sm overflow-hidden p-2">
+                    <div className="relative aspect-video overflow-hidden rounded-sm group">
+                      <img
+                        src={img}
+                        alt={formData.imageTitles?.[i] || `Listing photo ${i + 1}`}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                      {i === 0 && (
+                        <span className="absolute top-1 left-1 bg-accent text-white text-[8px] font-black uppercase px-1.5 py-0.5">
+                          Cover
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeImage(i)}
+                        aria-label={`Remove photo ${i + 1}`}
+                        className="absolute top-1 right-1 p-1 bg-ink/80 text-white rounded-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-muted">
+                        Photo {i + 1}
                       </span>
-                    )}
-                    <button type="button" onClick={() => removeImage(i)}
-                      className="absolute top-1 right-1 p-1 bg-ink/80 text-white rounded-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent">
-                      <Trash2 size={12} />
-                    </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveImage(i, -1)}
+                          aria-label={`Move photo ${i + 1} earlier`}
+                          disabled={i === 0}
+                          className="inline-flex items-center justify-center border border-line bg-bg p-1 text-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ChevronLeft size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveImage(i, 1)}
+                          aria-label={`Move photo ${i + 1} later`}
+                          disabled={i === formData.images.length - 1}
+                          className="inline-flex items-center justify-center border border-line bg-bg p-1 text-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={formData.imageTitles?.[i] || ''}
+                      onChange={(e) => updateImageTitle(i, e.target.value)}
+                      placeholder="Photo title (optional)"
+                      aria-label={`Photo ${i + 1} title`}
+                      className="input-industrial w-full text-[10px]"
+                      maxLength={120}
+                    />
                   </div>
                 ))}
                 {formData.images.length < 40 && (
@@ -909,7 +1005,7 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 multiple className="hidden"
                 onChange={(e) => handleImageFiles(e.target.files)} />
               <p className="text-[9px] text-muted font-bold uppercase tracking-widest">
-                JPG / PNG / WEBP / AVIF up to 10 MB each. First image = cover photo. Min {MIN_IMAGE_COUNT} · Max 40.
+                JPG / PNG / WEBP / AVIF up to 10 MB each. First image = cover photo. Reorder with arrows and add optional photo titles. Min {MIN_IMAGE_COUNT} · Max 40.
               </p>
               {uploadError && (
                 <p className="text-[9px] text-accent font-bold uppercase tracking-widest">{uploadError}</p>

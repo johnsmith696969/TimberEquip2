@@ -257,4 +257,134 @@ describe('ListingModal component', () => {
     });
     expect(screen.queryByText(/need 1 more/i)).not.toBeInTheDocument();
   });
+
+  it('lets sellers add per-photo titles', async () => {
+    render(
+      <ListingModal
+        isOpen
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        listing={({
+          id: 'listing-4',
+          title: '2018 TIGERCAT 1075B',
+          category: 'Logging Equipment',
+          subcategory: 'Forwarders',
+          manufacturer: 'TIGERCAT',
+          make: 'TIGERCAT',
+          model: '1075B',
+          year: 2018,
+          price: 239000,
+          currency: 'USD',
+          condition: 'Used',
+          location: 'Atlanta, Georgia',
+          hours: 5100,
+          stockNumber: 'QA-4',
+          serialNumber: 'SERIAL-4',
+          images: [
+            'https://example.com/1.jpg',
+            'https://example.com/2.jpg',
+            'https://example.com/3.jpg',
+            'https://example.com/4.jpg',
+            'https://example.com/5.jpg',
+          ],
+          imageTitles: ['', '', '', '', ''],
+          imageVariants: [],
+          videoUrls: [],
+          description: 'Forwarder test listing',
+          featured: false,
+          sellerVerified: false,
+          conditionChecklist: {
+            engineChecked: false,
+            undercarriageChecked: false,
+            hydraulicsLeakStatus: '',
+            serviceRecordsAvailable: false,
+            partsManualAvailable: false,
+            serviceManualAvailable: false,
+          },
+          specs: {},
+        } as any)}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2018 TIGERCAT 1075B')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Photo 1 title'), {
+      target: { value: 'Front grapple view' },
+    });
+
+    expect(screen.getByDisplayValue('Front grapple view')).toBeInTheDocument();
+  });
+
+  it('reorders photos and keeps titles aligned when updating a machine', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ListingModal
+        isOpen
+        onClose={vi.fn()}
+        onSave={onSave}
+        listing={({
+          id: 'listing-5',
+          title: '2017 TIGERCAT 1075B',
+          category: 'Logging Equipment',
+          subcategory: 'Forwarders',
+          manufacturer: 'TIGERCAT',
+          make: 'TIGERCAT',
+          model: '1075B',
+          year: 2017,
+          price: 219000,
+          currency: 'USD',
+          condition: 'Used',
+          location: 'Atlanta, Georgia',
+          hours: 6200,
+          stockNumber: 'QA-5',
+          serialNumber: 'SERIAL-5',
+          images: [
+            'https://example.com/1.jpg',
+            'https://example.com/2.jpg',
+            'https://example.com/3.jpg',
+            'https://example.com/4.jpg',
+            'https://example.com/5.jpg',
+          ],
+          imageTitles: ['Front', 'Side', 'Cab', 'Boom', 'Rear'],
+          imageVariants: [],
+          videoUrls: [],
+          description: 'Forwarder test listing',
+          featured: false,
+          sellerVerified: false,
+          conditionChecklist: {
+            engineChecked: false,
+            undercarriageChecked: false,
+            hydraulicsLeakStatus: '',
+            serviceRecordsAvailable: false,
+            partsManualAvailable: false,
+            serviceManualAvailable: false,
+          },
+          specs: {},
+        } as any)}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2017 TIGERCAT 1075B')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('Move photo 2 earlier'));
+    fireEvent.click(screen.getByRole('button', { name: 'Update Machine' }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+        images: [
+          'https://example.com/2.jpg',
+          'https://example.com/1.jpg',
+          'https://example.com/3.jpg',
+          'https://example.com/4.jpg',
+          'https://example.com/5.jpg',
+        ],
+        imageTitles: ['Side', 'Front', 'Cab', 'Boom', 'Rear'],
+      }));
+    });
+  });
 });

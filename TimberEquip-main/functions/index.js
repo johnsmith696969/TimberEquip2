@@ -206,6 +206,7 @@ const ACCOUNT_LISTING_CREATE_ALLOWED_KEYS = new Set([
   'stockNumber',
   'description',
   'images',
+  'imageTitles',
   'imageVariants',
   'videoUrls',
   'features',
@@ -4659,6 +4660,14 @@ function sanitizeListingCreateImages(value) {
   return normalizeImageUrls(Array.isArray(value) ? value : []);
 }
 
+function sanitizeListingCreateImageTitles(value, imageCount = 0) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry) => normalizeNonEmptyString(entry).slice(0, 120))
+    .slice(0, Math.max(0, imageCount));
+}
+
 function sanitizeListingCreateImageVariants(value) {
   if (!Array.isArray(value)) return [];
 
@@ -4708,6 +4717,7 @@ function sanitizeListingCreatePayload(rawListing = {}) {
   const specs = picked.specs && typeof picked.specs === 'object'
     ? picked.specs
     : (picked.specifications && typeof picked.specifications === 'object' ? picked.specifications : {});
+  const images = sanitizeListingCreateImages(picked.images);
 
   return stripUndefinedDeep({
     id: normalizeNonEmptyString(picked.id),
@@ -4733,7 +4743,8 @@ function sanitizeListingCreatePayload(rawListing = {}) {
     serialNumber: normalizeNonEmptyString(picked.serialNumber),
     stockNumber: normalizeNonEmptyString(picked.stockNumber),
     description: normalizeNonEmptyString(picked.description),
-    images: sanitizeListingCreateImages(picked.images),
+    images,
+    imageTitles: sanitizeListingCreateImageTitles(picked.imageTitles, images.length),
     imageVariants: sanitizeListingCreateImageVariants(picked.imageVariants),
     videoUrls: Array.isArray(picked.videoUrls)
       ? picked.videoUrls.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 6)
