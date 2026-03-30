@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ClipboardCheck, FileDown, LoaderCircle, Mail, MapPin, Phone, Printer, ShieldCheck, Truck } from 'lucide-react';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { equipmentService } from '../services/equipmentService';
+import { userService } from '../services/userService';
+import type { Listing } from '../types';
+import { buildInspectionSheetFileName, buildInspectionSheetText } from '../utils/inspectionSheets';
+import { buildListingPath } from '../utils/listingPath';
 
 const SUPPORT_EMAIL = 'support@timberequip.com';
 
@@ -59,6 +64,9 @@ function formatDistance(distanceMiles?: number | null) {
 
 export function Inspections() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedListingId = String(searchParams.get('listingId') || searchParams.get('id') || '').trim();
+  const canJoinInspectionNetwork = ['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(String(user?.role || '').trim().toLowerCase());
   const [requestForm, setRequestForm] = useState({
     company: '',
     contactName: '',
@@ -76,6 +84,8 @@ export function Inspections() {
   const [requestSubmitError, setRequestSubmitError] = useState('');
   const [requestSubmitNotice, setRequestSubmitNotice] = useState('');
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [prefilledListing, setPrefilledListing] = useState<Listing | null>(null);
+  const [prefilledListingError, setPrefilledListingError] = useState('');
   const [partnerForm, setPartnerForm] = useState({
     company: '',
     contactName: '',
@@ -86,6 +96,9 @@ export function Inspections() {
     equipmentFocus: '',
     notes: '',
   });
+  const [partnerSubmitError, setPartnerSubmitError] = useState('');
+  const [partnerSubmitNotice, setPartnerSubmitNotice] = useState('');
+  const [submittingPartnerRequest, setSubmittingPartnerRequest] = useState(false);
 
   const requestChecklist = `FORESTRY EQUIPMENT SALES INSPECTION CHECKLIST
 
@@ -151,6 +164,7 @@ Notes:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          listingId: prefilledListing?.id || '',
           reference: requestForm.stockNumber,
           inspectionLocation: requestForm.inspectionLocation,
         }),
@@ -185,10 +199,10 @@ Notes:
     void (async () => {
       try {
         const requestId = await equipmentService.createInspectionRequest({
-          listingId: dealerMatch?.listing?.id,
-          listingTitle: dealerMatch?.listing?.title || requestForm.equipment,
-          listingUrl: dealerMatch?.listing?.url,
-          reference: requestForm.stockNumber,
+          listingId: dealerMatch?.listing?.id || prefilledListing?.id,
+          listingTitle: dealerMatch?.listing?.title || prefilledListing?.title || requestForm.equipment,
+          listingUrl: dealerMatch?.listing?.url || (prefilledListing ? `https://timberequip.com${buildListingPath(prefilledListing)}` : ''),
+          reference: prefilledListing?.id || requestForm.stockNumber,
           requesterName: requestForm.contactName,
           requesterEmail: requestForm.email,
           requesterPhone: requestForm.phone,
@@ -241,24 +255,133 @@ Notes:
     }));
   }, [user]);
 
+  React.useEffect(() => {
+    if (!user) return;
+    setPartnerForm((prev) => ({
+      company: prev.company || user.company || '',
+      contactName: prev.contactName || user.displayName || '',
+      email: prev.email || user.email || '',
+      phone: prev.phone || user.phoneNumber || '',
+      territory: prev.territory || user.inspectionCoverageTerritory || user.location || '',
+      certifications: prev.certifications || user.inspectionCertifications || '',
+      equipmentFocus: prev.equipmentFocus || user.inspectionEquipmentFocus || '',
+      notes: prev.notes || user.inspectionCoverageNotes || '',
+    }));
+  }, [user]);
+
+  useEffect(() => {
+    if (!requestedListingId) {
+      setPrefilledListing(null);
+      setPrefilledListingError('');
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const nextListing = await equipmentService.getListing(requestedListingId);
+        if (!nextListing || cancelled) {
+          if (!cancelled) {
+            setPrefilledListing(null);
+            setPrefilledListingError('The linked machine could not be loaded for inspection prefill.');
+          }
+          return;
+        }
+
+        setPrefilledListing(nextListing);
+        setPrefilledListingError('');
+        setRequestForm((prev) => ({
+          ...prev,
+          equipment: prev.equipment || nextListing.title || '',
+          stockNumber: prev.stockNumber || nextListing.id || '',
+          inspectionLocation: prev.inspectionLocation || nextListing.location || '',
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          setPrefilledListing(null);
+          setPrefilledListingError(error instanceof Error ? error.message : 'Unable to prefill the inspection request.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedListingId]);
+
+  const downloadMachineInspectionSheet = () => {
+    const content = buildInspectionSheetText({
+      listingId: prefilledListing?.id,
+      listingTitle: prefilledListing?.title || requestForm.equipment,
+      equipment: requestForm.equipment || prefilledListing?.title || '',
+      inspectionLocation: requestForm.inspectionLocation || prefilledListing?.location || '',
+      requesterName: requestForm.contactName,
+      requesterCompany: requestForm.company,
+      requesterEmail: requestForm.email,
+      requesterPhone: requestForm.phone,
+      timeline: requestForm.timeline,
+      notes: requestForm.notes,
+      matchedDealerName: dealerMatch?.recommendedDealer?.name || '',
+    }, prefilledListing);
+    const fileName = buildInspectionSheetFileName({
+      listingId: prefilledListing?.id,
+      listingTitle: prefilledListing?.title || requestForm.equipment,
+      equipment: requestForm.equipment,
+    }, prefilledListing);
+    downloadTextFile(fileName, content);
+  };
+
   const submitPartnerRequest = (event: React.FormEvent) => {
     event.preventDefault();
-    openMailto(
-      `Inspection Partner Application: ${partnerForm.company || partnerForm.contactName || 'New Partner'}`,
-      [
-        'Inspection Partner Application',
-        `Company: ${partnerForm.company}`,
-        `Contact: ${partnerForm.contactName}`,
-        `Email: ${partnerForm.email}`,
-        `Phone: ${partnerForm.phone}`,
-        `Territory: ${partnerForm.territory}`,
-        `Certifications: ${partnerForm.certifications}`,
-        `Equipment Focus: ${partnerForm.equipmentFocus}`,
-        '',
-        'Notes:',
-        partnerForm.notes,
-      ].join('\n')
-    );
+    setPartnerSubmitError('');
+    setPartnerSubmitNotice('');
+
+    if (!user?.uid) {
+      openMailto(
+        `Inspection Partner Application: ${partnerForm.company || partnerForm.contactName || 'New Partner'}`,
+        [
+          'Inspection Partner Application',
+          `Company: ${partnerForm.company}`,
+          `Contact: ${partnerForm.contactName}`,
+          `Email: ${partnerForm.email}`,
+          `Phone: ${partnerForm.phone}`,
+          `Territory: ${partnerForm.territory}`,
+          `Certifications: ${partnerForm.certifications}`,
+          `Equipment Focus: ${partnerForm.equipmentFocus}`,
+          '',
+          'Notes:',
+          partnerForm.notes,
+        ].join('\n')
+      );
+      return;
+    }
+
+    if (!canJoinInspectionNetwork) {
+      setPartnerSubmitError('Only dealer, pro dealer, or admin accounts can join the inspection network.');
+      return;
+    }
+
+    setSubmittingPartnerRequest(true);
+    void (async () => {
+      try {
+        await userService.updateProfile(user.uid, {
+          company: partnerForm.company.trim(),
+          phoneNumber: partnerForm.phone.trim(),
+          inspectionCoverageEnabled: true,
+          inspectionCoverageTerritory: partnerForm.territory.trim(),
+          inspectionEquipmentFocus: partnerForm.equipmentFocus.trim(),
+          inspectionCertifications: partnerForm.certifications.trim(),
+          inspectionCoverageNotes: partnerForm.notes.trim(),
+          inspectionCoverageUpdatedAt: new Date().toISOString(),
+        });
+        setPartnerSubmitNotice('Inspection network coverage saved. Your account can now be matched for nearby requests.');
+      } catch (error) {
+        setPartnerSubmitError(error instanceof Error ? error.message : 'Unable to save inspection network coverage right now.');
+      } finally {
+        setSubmittingPartnerRequest(false);
+      }
+    })();
   };
 
   return (
@@ -282,6 +405,11 @@ Notes:
             <button onClick={() => downloadTextFile('forestry-equipment-sales-inspection-checklist.txt', requestChecklist)} className="btn-industrial btn-accent px-6 py-4">
               <FileDown size={16} /> Download Checklist
             </button>
+            {prefilledListing ? (
+              <button onClick={downloadMachineInspectionSheet} className="btn-industrial bg-white/10 border border-white/20 px-6 py-4 hover:bg-white hover:text-ink">
+                <ClipboardCheck size={16} /> Download Machine Sheet
+              </button>
+            ) : null}
             <button onClick={() => window.print()} className="btn-industrial bg-white/10 border border-white/20 px-6 py-4 hover:bg-white hover:text-ink">
               <Printer size={16} /> Print Review Sheet
             </button>
@@ -329,6 +457,27 @@ Notes:
               Match the machine to the nearest dealer first, then route the request to the Forestry Equipment Sales support desk with the recommended inspection partner included.
             </p>
 
+            {prefilledListing ? (
+              <div className="mt-6 border border-line bg-bg p-5">
+                <span className="label-micro text-accent">Linked Machine</span>
+                <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-tight">{prefilledListing.title}</p>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-muted">
+                      Listing ID: {prefilledListing.id} • {prefilledListing.location || 'Location pending'}
+                    </p>
+                  </div>
+                  <Link to={buildListingPath(prefilledListing)} className="btn-industrial px-4 py-2 text-[10px]">
+                    View Machine
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {prefilledListingError ? (
+              <p className="mt-4 text-sm font-bold uppercase tracking-wider text-red-500">{prefilledListingError}</p>
+            ) : null}
+
             <form onSubmit={submitRequest} className="mt-8 space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <input required type="text" placeholder="COMPANY" className="input-industrial" value={requestForm.company} onChange={(event) => setRequestForm((prev) => ({ ...prev, company: event.target.value }))} />
@@ -337,7 +486,7 @@ Notes:
                 <input required type="tel" placeholder="PHONE" className="input-industrial" value={requestForm.phone} onChange={(event) => setRequestForm((prev) => ({ ...prev, phone: event.target.value }))} />
               </div>
               <input required type="text" placeholder="EQUIPMENT DESCRIPTION" className="input-industrial w-full" value={requestForm.equipment} onChange={(event) => setRequestForm((prev) => ({ ...prev, equipment: event.target.value }))} />
-              <input type="text" placeholder="STOCK NUMBER, LISTING URL, OR LISTING ID" className="input-industrial w-full" value={requestForm.stockNumber} onChange={(event) => setRequestForm((prev) => ({ ...prev, stockNumber: event.target.value }))} />
+              <input type="text" placeholder="LISTING ID, STOCK NUMBER, OR LISTING URL" className="input-industrial w-full" value={requestForm.stockNumber} onChange={(event) => setRequestForm((prev) => ({ ...prev, stockNumber: event.target.value }))} />
               <div className="grid gap-4 md:grid-cols-2">
                 <input required type="text" placeholder="INSPECTION LOCATION" className="input-industrial" value={requestForm.inspectionLocation} onChange={(event) => setRequestForm((prev) => ({ ...prev, inspectionLocation: event.target.value }))} />
                 <input type="text" placeholder="PREFERRED TIMELINE" className="input-industrial" value={requestForm.timeline} onChange={(event) => setRequestForm((prev) => ({ ...prev, timeline: event.target.value }))} />
@@ -448,6 +597,12 @@ Notes:
             <p className="mt-3 text-sm font-medium leading-relaxed text-muted">
               Dealers and pro dealers can use this to register territory coverage, certifications, and the equipment classes they can inspect.
             </p>
+            {partnerSubmitError ? (
+              <p className="mt-4 text-sm font-bold uppercase tracking-wider text-red-500">{partnerSubmitError}</p>
+            ) : null}
+            {partnerSubmitNotice ? (
+              <p className="mt-4 text-sm font-bold uppercase tracking-wider text-data">{partnerSubmitNotice}</p>
+            ) : null}
 
             <form onSubmit={submitPartnerRequest} className="mt-8 space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -461,7 +616,9 @@ Notes:
               <input type="text" placeholder="EQUIPMENT FOCUS" className="input-industrial w-full" value={partnerForm.equipmentFocus} onChange={(event) => setPartnerForm((prev) => ({ ...prev, equipmentFocus: event.target.value }))} />
               <textarea rows={5} placeholder="CAPACITY, TRAVEL RANGE, FIELD TOOLS, AND NOTES" className="input-industrial w-full" value={partnerForm.notes} onChange={(event) => setPartnerForm((prev) => ({ ...prev, notes: event.target.value }))} />
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button type="submit" className="btn-industrial btn-accent flex-1 py-4">Send Partner Intake</button>
+                <button type="submit" disabled={submittingPartnerRequest} className="btn-industrial btn-accent flex-1 py-4 disabled:cursor-not-allowed disabled:opacity-60">
+                  {submittingPartnerRequest ? 'Saving Inspection Coverage...' : user?.uid && canJoinInspectionNetwork ? 'Join Inspection Network' : 'Send Partner Intake'}
+                </button>
                 <button type="button" onClick={() => downloadTextFile('forestry-equipment-sales-inspection-partner-intake.txt', partnerPacket)} className="btn-industrial flex-1 py-4">Download Intake Template</button>
               </div>
             </form>

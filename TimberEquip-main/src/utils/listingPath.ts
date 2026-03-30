@@ -125,21 +125,41 @@ export function decodeListingPublicKey(publicKey: string): string {
   const normalizedKey = String(publicKey || '').trim();
   if (!normalizedKey) return '';
 
-  try {
-    const padded = normalizedKey
+  const decodeBase64Key = (value: string): string => {
+    const padded = value
       .replace(/-/g, '+')
       .replace(/_/g, '/')
-      .padEnd(Math.ceil(normalizedKey.length / 4) * 4, '=');
+      .padEnd(Math.ceil(value.length / 4) * 4, '=');
     const binary = atob(padded);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     return new TextDecoder().decode(bytes).trim();
+  };
+
+  if (/^[a-zA-Z0-9._-]+$/.test(normalizedKey) && !/[+=/]/.test(normalizedKey)) {
+    const legacyDecoded = (() => {
+      try {
+        return decodeBase64Key(normalizedKey);
+      } catch {
+        return '';
+      }
+    })();
+
+    if (legacyDecoded && /^[A-Za-z0-9._+\-]+$/.test(legacyDecoded)) {
+      return legacyDecoded;
+    }
+
+    return normalizedKey;
+  }
+
+  try {
+    return decodeBase64Key(normalizedKey);
   } catch {
     return '';
   }
 }
 
 export function buildListingPath(listing: ListingPathRecord): string {
-  const publicKey = encodeListingPublicKey(String(listing?.id || '').trim());
+  const publicKey = String(listing?.id || '').trim();
   const safeSlug = buildListingSeoSlug(listing);
 
   if (!publicKey) {

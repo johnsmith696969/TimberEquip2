@@ -705,7 +705,7 @@ export function Search() {
       item: {
         '@type': 'Product',
         name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
-        sku: listing.stockNumber || listing.id,
+        sku: listing.id,
         brand: {
           '@type': 'Brand',
           name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales'

@@ -259,11 +259,15 @@ describe('decodeListingPublicKey', () => {
     const decoded = decodeListingPublicKey(encoded);
     expect(decoded).toBe(original);
   });
+
+  it('accepts raw firestore listing ids for new route format', () => {
+    expect(decodeListingPublicKey('firebase-doc-id-123')).toBe('firebase-doc-id-123');
+  });
 });
 
 // ---------- buildListingPath ----------
 describe('buildListingPath', () => {
-  it('builds path with slug and encoded public key', () => {
+  it('builds path with slug and raw listing id', () => {
     const path = buildListingPath({
       id: 'listing123',
       title: '2020 Cat 525D',
@@ -276,6 +280,7 @@ describe('buildListingPath', () => {
     });
     expect(path).toMatch(/^\/equipment\/.+\/.+$/);
     expect(path).toContain('/equipment/');
+    expect(path.endsWith('/listing123')).toBe(true);
   });
 
   it('omits public key when listing ID is empty', () => {
@@ -292,7 +297,7 @@ describe('buildListingPath', () => {
     expect(path.split('/').length).toBe(3);
   });
 
-  it('produces decodable public key in path', () => {
+  it('produces raw listing id in path that still resolves through decode helper', () => {
     const listingId = 'firebase-doc-id-123';
     const path = buildListingPath({
       id: listingId,

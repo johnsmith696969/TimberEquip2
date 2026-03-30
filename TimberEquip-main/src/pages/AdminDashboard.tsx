@@ -278,7 +278,7 @@ export function AdminDashboard() {
 
   // ── Real-time inquiry subscription ─────────────────────────────
   const exportInquiriesCSV = () => {
-    const headers = ['ID', 'Buyer Name', 'Email', 'Phone', 'Status', 'Assigned To', 'Listing', 'Type', 'Spam Score', 'Response Time (min)', 'Message', 'Created At'];
+    const headers = ['ID', 'Buyer Name', 'Email', 'Phone', 'Status', 'Assigned To', 'Listing', 'Type', 'Spam Score', 'Message', 'Created At'];
     const rows = inquiries.map((inq) => [
       inq.id,
       inq.buyerName,
@@ -289,7 +289,6 @@ export function AdminDashboard() {
       inq.listingId || '',
       inq.type,
       String(inq.spamScore ?? 0),
-      String(inq.responseTimeMinutes ?? ''),
       inq.message,
       inq.createdAt,
     ]);
@@ -926,12 +925,24 @@ export function AdminDashboard() {
 
   const handleAddInquiryNote = async (id: string, text: string) => {
     try {
+      const optimisticNote = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text,
+        authorUid: authUser?.uid,
+        authorName: authUser?.displayName || 'Admin',
+        createdAt: new Date().toISOString(),
+      };
       await equipmentService.addInquiryInternalNote(id, {
         text,
         authorUid: authUser?.uid,
         authorName: authUser?.displayName || 'Admin'
       });
-      fetchData();
+      setInquiries((prev) => prev.map((entry) => (
+        entry.id === id
+          ? { ...entry, internalNotes: [...(entry.internalNotes || []), optimisticNote] }
+          : entry
+      )));
+      void fetchData();
     } catch (error) {
       console.error('Error adding inquiry note:', error);
     }
@@ -1556,12 +1567,12 @@ export function AdminDashboard() {
             <span className="text-[9px] font-bold text-muted uppercase mt-2">Leads to Sales Ratio</span>
           </div>
           <div className="flex flex-col">
-            <span className="label-micro mb-2">Avg. Response Time</span>
-            <span className="text-2xl font-black tracking-tighter">18.5m</span>
+            <span className="label-micro mb-2">Qualified Leads</span>
+            <span className="text-2xl font-black tracking-tighter">{inquiries.filter((inquiry) => ['Qualified', 'Won'].includes(inquiry.status)).length}</span>
             <div className="w-full bg-line h-1 mt-4">
               <div className="bg-secondary h-full w-[65%]"></div>
             </div>
-            <span className="text-[9px] font-bold text-muted uppercase mt-2">Inquiry to Contact</span>
+            <span className="text-[9px] font-bold text-muted uppercase mt-2">Pipeline Quality</span>
           </div>
           <div className="flex flex-col">
             <span className="label-micro mb-2">Market Sentiment</span>

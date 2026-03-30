@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, Navigate, useLocation } from 'react-router-dom';
-import { 
+import {
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
-  Phone, Calculator, AlertCircle, Landmark
+  Phone, Calculator, AlertCircle, Landmark, ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
@@ -157,7 +157,7 @@ export function ListingDetail() {
     timeline: '',
     trailerType: '',
     loadReady: 'Yes',
-    reference: targetListing?.stockNumber?.trim() || getListingUrl(targetListing),
+    reference: targetListing?.id?.trim() || getListingUrl(targetListing),
     notes: ''
   });
 
@@ -353,7 +353,7 @@ export function ListingDetail() {
       ...prev,
       email: prev.email || user?.email || '',
       pickupLocation: prev.pickupLocation || listing.location || '',
-      reference: prev.reference || listing.stockNumber?.trim() || getListingUrl(listing),
+      reference: prev.reference || listing.id || getListingUrl(listing),
     }));
   }, [listing, user?.email]);
 
@@ -547,7 +547,7 @@ export function ListingDetail() {
       if (!(await runRecaptchaCheck('DETAIL_LOGISTICS'))) return;
       const sellerUid = listing.sellerUid || listing.sellerId || seller?.id || '';
       const listingUrl = getListingUrl(listing);
-      const reference = shippingForm.reference.trim() || listing.stockNumber?.trim() || listingUrl;
+      const reference = shippingForm.reference.trim() || listing.id || listingUrl;
       const logisticsSummary = [
         'Logistics Trucking Request',
         `Equipment: ${listing.title}`,
@@ -739,7 +739,7 @@ export function ListingDetail() {
   const hasGallery = detailImages.length > 0;
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
-  const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
+  const safeListingId = String(listing.id || 'pending').trim() || 'pending';
   const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
   const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
   const routeCategory = getListingCategoryLabel(listing) || safeCategory;
@@ -834,7 +834,7 @@ export function ListingDetail() {
         description: safeDescription,
         category: routeCategory,
         model: routeModel || undefined,
-        sku: listing.stockNumber || listing.id,
+        sku: listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
         url: `https://timberequip.com${listingPath}`,
@@ -945,7 +945,7 @@ export function ListingDetail() {
                   {safeCategory}
                 </span>
                 <span className="text-xs font-bold text-muted uppercase tracking-widest">
-                  {t('listingDetail.stockId', 'Stock ID')}: {safeStockId}
+                  {t('listingDetail.stockId', 'Listing ID')}: {safeListingId}
                 </span>
               </div>
               <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none">
@@ -1295,6 +1295,13 @@ export function ListingDetail() {
                   >
                     {t('listingDetail.sendInquiry', 'Send Inquiry')}
                   </button>
+                  <Link
+                    to={`/inspections?listingId=${encodeURIComponent(listing.id)}`}
+                    className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917] flex items-center justify-center"
+                  >
+                    <ClipboardCheck size={18} className="mr-3" />
+                    Request Inspection
+                  </Link>
                   <button
                     onClick={handleCallSeller}
                     className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
@@ -1834,9 +1841,9 @@ export function ListingDetail() {
                           <p className="text-sm font-black tracking-tight uppercase">{listing.title}</p>
                         </div>
                         <div className="text-right">
-                          <span className="label-micro block mb-2">Stock / Listing</span>
+                          <span className="label-micro block mb-2">Listing ID</span>
                           <p className="text-[10px] font-black uppercase tracking-widest text-accent break-all">
-                            {shippingForm.reference || listing.stockNumber || listing.id}
+                            {shippingForm.reference || listing.id}
                           </p>
                         </div>
                       </div>

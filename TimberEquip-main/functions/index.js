@@ -225,6 +225,19 @@ const FEATURED_LISTING_CAPS = Object.freeze({
   dealer: 3,
   pro_dealer: 6,
 });
+
+function getRoleDefaultListingCap(role) {
+  const normalizedRole = normalizeUserRole(role);
+  if (normalizedRole === 'dealer') return 50;
+  if (normalizedRole === 'pro_dealer') return 150;
+  return 0;
+}
+
+function getRoleDefaultManagedAccountCap(role) {
+  const normalizedRole = normalizeUserRole(role);
+  if (normalizedRole === 'dealer' || normalizedRole === 'pro_dealer') return 3;
+  return 0;
+}
 const ACCOUNT_LISTING_CREATE_ALLOWED_KEYS = new Set([
   'id',
   'title',
@@ -712,6 +725,7 @@ async function geocodeLocation(address) {
 async function resolveInspectionTarget({ listingId, reference, inspectionLocation }) {
   const db = getDb();
   const directListingId = String(listingId || '').trim() || parseListingIdFromReference(reference);
+  const explicitInspectionLocation = String(inspectionLocation || '').trim();
   let listingSnap = null;
 
   if (directListingId) {
@@ -735,14 +749,15 @@ async function resolveInspectionTarget({ listingId, reference, inspectionLocatio
   if (!listingSnap) {
     return {
       listing: null,
-      targetLocation: String(inspectionLocation || '').trim(),
+      targetLocation: explicitInspectionLocation,
       targetCoordinates: await geocodeLocation(inspectionLocation),
     };
   }
 
   const listingData = listingSnap.data() || {};
   const listingCoordinates = extractListingCoordinates(listingData);
-  const geocodedLocation = listingCoordinates ? null : await geocodeLocation(listingData.location || inspectionLocation);
+  const targetLocation = explicitInspectionLocation || String(listingData.location || '').trim();
+  const geocodedLocation = listingCoordinates ? null : await geocodeLocation(targetLocation);
 
   return {
     listing: {
@@ -766,7 +781,7 @@ async function resolveInspectionTarget({ listingId, reference, inspectionLocatio
         location: listingData.location,
       })}`,
     },
-    targetLocation: String(listingData.location || inspectionLocation || '').trim(),
+    targetLocation,
     targetCoordinates: listingCoordinates || geocodedLocation,
   };
 }
@@ -778,7 +793,9 @@ async function getInspectionDealerCandidates() {
   return snapshot.docs
     .map((doc) => {
       const data = doc.data() || {};
-      const location = String(data.location || '').trim();
+      if (data.inspectionCoverageEnabled !== true) return null;
+
+      const location = String(data.inspectionCoverageTerritory || data.location || '').trim();
       if (!location) return null;
 
       const candidateName = String(data.storefrontName || data.displayName || data.company || data.name || '').trim();
@@ -3469,6 +3486,7 @@ exports.onInspectionRequestCreated = onDocumentCreated(
         const payload = templates.inspectionRequestReceived({
           requesterName: request.requesterName || 'there',
           equipment: request.equipment || request.listingTitle || 'Equipment inspection',
+          listingId: request.listingId || request.reference || '',
           inspectionLocation: request.inspectionLocation || 'Unknown',
           timeline: request.timeline || '',
           matchedDealerName: request.matchedDealerName || request.assignedToName || '',
@@ -3496,8 +3514,10 @@ exports.onInspectionRequestUpdated = onDocumentUpdated(
 
     const statusChanged = String(before.status || '') !== String(after.status || '');
     const quotedPriceChanged = Number(before.quotedPrice || 0) !== Number(after.quotedPrice || 0);
+    const inspectionSheetChanged = String(before.inspectionTemplateUrl || '') !== String(after.inspectionTemplateUrl || '');
+    const completedReportChanged = String(before.inspectionReportUrl || '') !== String(after.inspectionReportUrl || '');
 
-    if (!statusChanged && !quotedPriceChanged) return;
+    if (!statusChanged && !quotedPriceChanged && !inspectionSheetChanged && !completedReportChanged) return;
 
     const requesterEmail = String(after.requesterEmail || '').trim();
     if (!requesterEmail) return;
@@ -3510,6 +3530,10 @@ exports.onInspectionRequestUpdated = onDocumentUpdated(
         quotedPrice: typeof after.quotedPrice === 'number' ? after.quotedPrice : null,
         managerName: after.assignedToName || after.matchedDealerName || 'the Forestry Equipment Sales inspection team',
         inspectionLocation: after.inspectionLocation || 'Unknown',
+        inspectionSheetUrl: String(after.inspectionTemplateUrl || '').trim(),
+        completedReportUrl: String(after.inspectionReportUrl || '').trim(),
+        dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Inspections')}`,
+        listingId: after.listingId || after.reference || '',
       });
       await sendEmail({ to: requesterEmail, ...payload });
     } catch (error) {
@@ -6223,7 +6247,7 @@ function buildAccountStateFromSources(userData = {}, authRecord = null, override
     ?? authClaims.subscriptionStatus
     ?? ''
   ).trim() || null;
-  const listingCap = Number.isFinite(Number(
+  const rawListingCap = Number.isFinite(Number(
     overrides.listingCap
     ?? userData.listingCap
     ?? authClaims.listingCap
@@ -6234,7 +6258,7 @@ function buildAccountStateFromSources(userData = {}, authRecord = null, override
       ?? authClaims.listingCap
     )
     : 0;
-  const managedAccountCap = Number.isFinite(Number(
+  const rawManagedAccountCap = Number.isFinite(Number(
     overrides.managedAccountCap
     ?? userData.managedAccountCap
     ?? authClaims.managedAccountCap
@@ -6245,6 +6269,8 @@ function buildAccountStateFromSources(userData = {}, authRecord = null, override
       ?? authClaims.managedAccountCap
     )
     : 0;
+  const listingCap = rawListingCap > 0 ? rawListingCap : getRoleDefaultListingCap(role);
+  const managedAccountCap = rawManagedAccountCap > 0 ? rawManagedAccountCap : getRoleDefaultManagedAccountCap(role);
   const currentSubscriptionId = String(
     overrides.currentSubscriptionId
     ?? userData.currentSubscriptionId
@@ -6311,6 +6337,10 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
   assignString('about', 5000);
   assignString('bio', 1200);
   assignString('location', 240);
+  assignString('inspectionCoverageTerritory', 240);
+  assignString('inspectionEquipmentFocus', 240);
+  assignString('inspectionCertifications', 240);
+  assignString('inspectionCoverageNotes', 2000);
   assignString('photoURL', 2000);
   assignString('coverPhotoUrl', 2000);
   assignString('preferredLanguage', 16);
@@ -6326,6 +6356,14 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
 
   if ('emailNotificationsEnabled' in payload) {
     sanitized.emailNotificationsEnabled = Boolean(payload.emailNotificationsEnabled);
+  }
+
+  if ('inspectionCoverageEnabled' in payload) {
+    sanitized.inspectionCoverageEnabled = Boolean(payload.inspectionCoverageEnabled);
+  }
+
+  if ('inspectionCoverageUpdatedAt' in payload) {
+    sanitized.inspectionCoverageUpdatedAt = normalizeNonEmptyString(payload.inspectionCoverageUpdatedAt) || null;
   }
 
   if ('mfaEnabled' in payload) {
@@ -6400,6 +6438,12 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     about: normalizeNonEmptyString(userData.about) || '',
     bio: normalizeNonEmptyString(userData.bio) || '',
     location: normalizeNonEmptyString(userData.location) || '',
+    inspectionCoverageEnabled: Boolean(userData.inspectionCoverageEnabled),
+    inspectionCoverageTerritory: normalizeNonEmptyString(userData.inspectionCoverageTerritory) || '',
+    inspectionEquipmentFocus: normalizeNonEmptyString(userData.inspectionEquipmentFocus) || '',
+    inspectionCertifications: normalizeNonEmptyString(userData.inspectionCertifications) || '',
+    inspectionCoverageNotes: normalizeNonEmptyString(userData.inspectionCoverageNotes) || '',
+    inspectionCoverageUpdatedAt: normalizeNonEmptyString(userData.inspectionCoverageUpdatedAt) || null,
     storefrontEnabled: Boolean(userData.storefrontEnabled),
     storefrontSlug: normalizeNonEmptyString(userData.storefrontSlug) || '',
     storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
@@ -6803,19 +6847,10 @@ async function buildAdminOverviewBootstrapPayload() {
 
   let totalInquiries = 0;
   let wonInquiries = 0;
-  let avgResponseTimeMinutes = null;
   if (inquiriesResult.status === 'fulfilled') {
     const inquiries = inquiriesResult.value.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
     totalInquiries = inquiries.length;
     wonInquiries = inquiries.filter((inquiry) => inquiry.status === 'Won').length;
-    const responseSamples = inquiries
-      .map((inquiry) => Number(inquiry.responseTimeMinutes))
-      .filter((value) => Number.isFinite(value) && value > 0);
-
-    if (responseSamples.length > 0) {
-      const totalResponseTime = responseSamples.reduce((sum, value) => sum + value, 0);
-      avgResponseTimeMinutes = Number((totalResponseTime / responseSamples.length).toFixed(1));
-    }
   } else if (isFirestoreQuotaExceeded(inquiriesResult.reason)) {
     firestoreQuotaLimited = true;
     degradedSections.push('inquiries_summary');
@@ -6838,7 +6873,6 @@ async function buildAdminOverviewBootstrapPayload() {
       callVolume,
       activeUsers,
       conversionRate,
-      avgResponseTimeMinutes,
       marketSentiment: computeAdminOverviewMarketSentiment({
         conversionRate,
         inventoryTurnoverRate,

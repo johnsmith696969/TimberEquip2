@@ -584,7 +584,7 @@ const templates = {
     return { subject, html };
   },
 
-  inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl }) {
+  inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl, listingId }) {
     const subject = `Forestry Equipment Sales inspection request received for ${equipment}`;
     const html = baseLayout(subject, 'Inspection Request Received', `
       <p class="label">Inspection Desk</p>
@@ -593,6 +593,7 @@ const templates = {
       <p>We received your Forestry Equipment Sales inspection request and routed it to the inspection management desk.</p>
       ${renderInfoPanel([
         { label: 'Equipment', value: equipment },
+        { label: 'Listing ID', value: listingId || 'Not linked yet' },
         { label: 'Location', value: inspectionLocation },
         { label: 'Requested Timeline', value: timeline || 'Not provided' },
         { label: 'Recommended Dealer', value: matchedDealerName || 'No dealer matched yet' },
@@ -627,7 +628,7 @@ const templates = {
     return { subject, html };
   },
 
-  inspectionRequestStatusUpdated({ requesterName, equipment, status, quotedPrice, managerName, inspectionLocation }) {
+  inspectionRequestStatusUpdated({ requesterName, equipment, status, quotedPrice, managerName, inspectionLocation, inspectionSheetUrl, completedReportUrl, dashboardUrl, listingId }) {
     const normalizedStatus = String(status || 'Updated');
     const subject = `Inspection request ${normalizedStatus.toLowerCase()}: ${equipment}`;
     const html = baseLayout(subject, 'Inspection Request Updated', `
@@ -637,9 +638,15 @@ const templates = {
       <p>Your request for <strong>${equipment}</strong> has been updated by ${managerName || 'the Forestry Equipment Sales team'}.</p>
       ${renderInfoPanel([
         { label: 'Status', value: normalizedStatus },
+        { label: 'Listing ID', value: listingId || 'Not linked yet' },
         { label: 'Inspection Location', value: inspectionLocation },
         { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not provided') },
       ])}
+      ${inspectionSheetUrl ? '<p>Your inspection sheet is ready. Download it below and share it with the assigned inspector or dealer team.</p>' : ''}
+      ${completedReportUrl ? '<p>Your completed inspection report is now available for download below.</p>' : ''}
+      ${inspectionSheetUrl ? `<a href="${inspectionSheetUrl}" class="cta">Download Inspection Sheet</a>` : ''}
+      ${completedReportUrl ? `<a href="${completedReportUrl}" class="cta cta-secondary">Download Completed Inspection Report</a>` : ''}
+      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta cta-secondary">Open Inspection Dashboard</a>` : ''}
       <p>If you have questions about this update, reply directly to the Forestry Equipment Sales inspection desk.</p>
     `);
     return { subject, html };

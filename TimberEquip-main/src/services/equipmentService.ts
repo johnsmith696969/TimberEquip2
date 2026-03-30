@@ -1892,6 +1892,17 @@ export const equipmentService = {
       quotedPrice?: number | null;
       assignedToUid?: string | null;
       assignedToName?: string | null;
+      inspectionTemplateUrl?: string;
+      inspectionTemplateFileName?: string;
+      inspectionTemplateGeneratedAt?: string | null;
+      inspectionTemplateGeneratedByUid?: string | null;
+      inspectionTemplateGeneratedByName?: string | null;
+      inspectionReportUrl?: string;
+      inspectionReportFileName?: string;
+      inspectionReportContentType?: string;
+      inspectionReportUploadedAt?: string | null;
+      inspectionReportUploadedByUid?: string | null;
+      inspectionReportUploadedByName?: string | null;
     }
   ): Promise<void> {
     const path = `inspectionRequests/${id}`;
@@ -1922,6 +1933,50 @@ export const equipmentService = {
 
       if (updates.assignedToName !== undefined) {
         payload.assignedToName = updates.assignedToName || null;
+      }
+
+      if (updates.inspectionTemplateUrl !== undefined) {
+        payload.inspectionTemplateUrl = updates.inspectionTemplateUrl || null;
+      }
+
+      if (updates.inspectionTemplateFileName !== undefined) {
+        payload.inspectionTemplateFileName = updates.inspectionTemplateFileName || null;
+      }
+
+      if (updates.inspectionTemplateGeneratedAt !== undefined) {
+        payload.inspectionTemplateGeneratedAt = updates.inspectionTemplateGeneratedAt || null;
+      }
+
+      if (updates.inspectionTemplateGeneratedByUid !== undefined) {
+        payload.inspectionTemplateGeneratedByUid = updates.inspectionTemplateGeneratedByUid || null;
+      }
+
+      if (updates.inspectionTemplateGeneratedByName !== undefined) {
+        payload.inspectionTemplateGeneratedByName = updates.inspectionTemplateGeneratedByName || null;
+      }
+
+      if (updates.inspectionReportUrl !== undefined) {
+        payload.inspectionReportUrl = updates.inspectionReportUrl || null;
+      }
+
+      if (updates.inspectionReportFileName !== undefined) {
+        payload.inspectionReportFileName = updates.inspectionReportFileName || null;
+      }
+
+      if (updates.inspectionReportContentType !== undefined) {
+        payload.inspectionReportContentType = updates.inspectionReportContentType || null;
+      }
+
+      if (updates.inspectionReportUploadedAt !== undefined) {
+        payload.inspectionReportUploadedAt = updates.inspectionReportUploadedAt || null;
+      }
+
+      if (updates.inspectionReportUploadedByUid !== undefined) {
+        payload.inspectionReportUploadedByUid = updates.inspectionReportUploadedByUid || null;
+      }
+
+      if (updates.inspectionReportUploadedByName !== undefined) {
+        payload.inspectionReportUploadedByName = updates.inspectionReportUploadedByName || null;
       }
 
       await updateDoc(docRef, payload);
