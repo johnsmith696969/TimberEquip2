@@ -5,11 +5,6 @@ const { templates } = require('../functions/email-templates/index.js');
 
 const SENDGRID_API_KEY = String(process.env.SENDGRID_API_KEY || '').trim();
 
-if (!SENDGRID_API_KEY) {
-  console.error('SENDGRID_API_KEY is required.');
-  process.exit(1);
-}
-
 const SENDGRID_API_BASE = 'https://api.sendgrid.com/v3';
 const APP_URL = 'https://timberequip.com';
 const LISTING_URL = `${APP_URL}/equipment/2020-tigercat-635h-skidder`;
@@ -19,7 +14,8 @@ const CONTACT_URL = `${APP_URL}/contact`;
 const AD_PROGRAMS_URL = `${APP_URL}/ad-programs`;
 const LOGIN_URL = `${APP_URL}/login`;
 
-const SHARED_TEMPLATE_DATA = {
+function buildSharedTemplateData() {
+  return {
   sellerName: 'Caleb H',
   buyerName: 'Jordan Miller',
   buyerEmail: 'jordan.miller@example.com',
@@ -94,9 +90,12 @@ const SHARED_TEMPLATE_DATA = {
     { sellerName: 'North Country Equipment', totalListings: 18, leadForms: 27, connectedCalls: 18, qualifiedCalls: 9, missedCalls: 6 },
     { sellerName: 'Lake States Logging Supply', totalListings: 11, leadForms: 14, connectedCalls: 7, qualifiedCalls: 4, missedCalls: 2 },
   ],
-};
+  };
+}
 
-const TEMPLATE_SPECS = [
+function buildTemplateSpecs() {
+  const SHARED_TEMPLATE_DATA = buildSharedTemplateData();
+  return [
   {
     key: 'leadNotification',
     name: 'New Lead Notification | TimberEquip.com',
@@ -247,7 +246,8 @@ const TEMPLATE_SPECS = [
     name: 'Dealer Monthly Report Admin Summary | TimberEquip.com',
     render: () => templates.dealerMonthlyReportAdminSummary(SHARED_TEMPLATE_DATA),
   },
-];
+  ];
+}
 
 function htmlToPlainText(html) {
   return String(html || '')
@@ -329,6 +329,7 @@ async function updateVersion(templateId, versionId, spec, rendered) {
 }
 
 async function main() {
+  const TEMPLATE_SPECS = buildTemplateSpecs();
   const existingTemplates = await listDynamicTemplates();
   const byName = new Map(existingTemplates.map((template) => [String(template.name || '').trim(), template]));
   const results = [];
@@ -372,6 +373,25 @@ async function main() {
     timberEquipTemplateNames: TEMPLATE_SPECS.map((spec) => spec.name),
     currentDynamicTemplateNames: finalNames,
   }, null, 2));
+}
+
+if (process.env.PRINT_SENDGRID_TEMPLATE_SPECS === '1') {
+  const printable = buildTemplateSpecs().map((spec) => {
+    const rendered = spec.render();
+    return {
+      key: spec.key,
+      name: spec.name,
+      subject: rendered.subject,
+      html: rendered.html,
+    };
+  });
+  console.log(JSON.stringify(printable, null, 2));
+  process.exit(0);
+}
+
+if (!SENDGRID_API_KEY) {
+  console.error('SENDGRID_API_KEY is required.');
+  process.exit(1);
 }
 
 main().catch((error) => {
