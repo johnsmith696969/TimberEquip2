@@ -390,7 +390,7 @@ const templates = {
   financingRequestConfirmation({ applicantName, requestedAmount, company, dashboardUrl }) {
     const normalizedAmount = typeof requestedAmount === 'number'
       ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(requestedAmount)
-      : 'Not provided';
+      : String(requestedAmount || 'Not provided');
     const subject = 'Forestry Equipment Sales financing request received';
     const html = baseLayout(subject, 'Financing Request Received', `
       <p class="label">Financing Center</p>
@@ -602,7 +602,7 @@ const templates = {
         { label: 'Timeline', value: timeline || 'Not provided' },
         { label: 'Matched Dealer', value: matchedDealerName || 'No dealer matched yet' },
         { label: 'Dealer Location', value: matchedDealerLocation || 'Not provided' },
-        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not quoted yet' },
+        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not quoted yet') },
       ])}
       ${notes ? `<div class="message-box"><p>${notes}</p></div>` : ''}
       ${listingUrl ? `<a href="${listingUrl}" class="cta">Open Related Listing</a>` : ''}
@@ -622,7 +622,7 @@ const templates = {
       ${renderInfoPanel([
         { label: 'Status', value: normalizedStatus },
         { label: 'Inspection Location', value: inspectionLocation },
-        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not provided' },
+        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not provided') },
       ])}
       <p>If you have questions about this update, reply directly to the Forestry Equipment Sales inspection desk.</p>
     `);

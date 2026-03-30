@@ -49,7 +49,7 @@
 - [x] **3.1 - Test infrastructure** - Vitest + React Testing Library installed and configured. `vitest.config.ts` and `src/__tests__/setup.ts` created. Scripts: `test`, `test:watch`, `test:coverage`.
 - [x] **3.2 - Unit tests (core business logic)** - 8 test files, 138 unit tests covering: accountEntitlement, sellerAccess, userRoles, sellerPlans, seoRoutes, seoRouteQuality, privilegedAdmin, amvMatching.
 - [x] **3.3 - Smoke tests** - 32 tests verifying all 26 page modules and 4 core components import/export correctly. Firebase fully mocked.
-- [~] **3.4 - Additional unit test coverage** - `billingService`, `listingPath`, `equipmentService` market-value / market-match logic, public listing filter/sort behavior, cached public-list fallback, authenticated listing CRUD, featured-cap enforcement, saved-search cache behavior, and admin bootstrap cache fallbacks are now covered. Remaining gaps are the heavier seller/account mutation branches and some deeper admin/account service permutations.
+- [~] **3.4 - Additional unit test coverage** - `billingService`, `listingPath`, `equipmentService` market-value / market-match logic, public listing filter/sort behavior, cached public-list fallback, authenticated listing CRUD, featured-cap enforcement, saved-search cache behavior, admin bootstrap cache fallbacks, and email-template placeholder rendering branches are now covered. Remaining gaps are the heavier seller/account mutation branches and some deeper admin/account service permutations.
   - Effort remaining: 10-16 hours
 - [ ] **3.5 - Integration tests for Stripe flows** - Checkout session creation, webhook event processing (`invoice.paid`, subscription CRUD, `checkout.session.completed`), idempotency, subscription expiry, listing cap API enforcement.
   - Effort: 40-60 hours
@@ -122,7 +122,7 @@
 - [x] TypeScript errors resolved
 - [x] Helmet security headers enabled
 - [x] CORS locked to explicit origins
-- [x] Test suite passing (291 tests, 29 test files)
+- [x] Test suite passing (294 tests, 30 test files)
 - [x] package.json identity correct
 - [x] 404 page exists with noindex
 - [x] DMCA page exists with footer link
