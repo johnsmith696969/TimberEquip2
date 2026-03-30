@@ -51,4 +51,19 @@ describe('email templates', () => {
     expect(html).toContain('{{quotedPrice}}');
     expect(html).not.toContain('Not provided');
   });
+
+  it('preserves unsubscribe links in optional email templates', () => {
+    const { html } = templates.newMatchingListing({
+      displayName: '{{displayName}}',
+      searchName: '{{searchName}}',
+      listingTitle: '{{listingTitle}}',
+      listingUrl: '{{listingUrl}}',
+      listingPrice: '{{listingPrice}}',
+      location: '{{location}}',
+      unsubscribeUrl: '{{unsubscribeUrl}}',
+    });
+
+    expect(html).toContain('{{unsubscribeUrl}}');
+    expect(html).toContain('Unsubscribe from saved-search emails');
+  });
 });

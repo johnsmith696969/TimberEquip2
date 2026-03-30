@@ -63,6 +63,13 @@ export interface ProcessedImageVariants {
   formatUsed: SupportedImageOutput;
 }
 
+export interface UploadedImportAsset {
+  fileName: string;
+  downloadUrl: string;
+  storagePath: string;
+  kind: 'image' | 'video';
+}
+
 class StorageService {
   /**
    * Upload a file to Firebase Storage with progress tracking
@@ -409,6 +416,49 @@ class StorageService {
         }
       }).catch(reject);
     });
+  }
+
+  async uploadBulkImportAsset(
+    file: File,
+    ownerUid: string,
+    batchId: string
+  ): Promise<UploadedImportAsset> {
+    const normalizedType = String(file.type || '').toLowerCase();
+    const isImage = IMAGE_CONFIG.ALLOWED_TYPES.includes(normalizedType);
+    const isVideo = VIDEO_CONFIG.ALLOWED_TYPES.includes(normalizedType);
+
+    if (!isImage && !isVideo) {
+      throw new Error(`Only image or video files are supported for bulk import assets.`);
+    }
+
+    const sizeLimit = isImage ? IMAGE_CONFIG.MAX_SIZE : VIDEO_CONFIG.MAX_SIZE;
+    if (file.size > sizeLimit) {
+      throw new Error(`${isImage ? 'Image' : 'Video'} must be smaller than ${Math.round(sizeLimit / 1024 / 1024)}MB`);
+    }
+
+    const safeFileName = file.name
+      .replace(/[^a-zA-Z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 120);
+    const storagePath = `bulk-imports/${ownerUid}/${batchId}/${Date.now()}_${safeFileName}`;
+    const storageRef = ref(storage, storagePath);
+
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      customMetadata: {
+        uploadedBy: ownerUid,
+        uploadedAt: new Date().toISOString(),
+        batchId,
+        kind: isImage ? 'image' : 'video',
+      },
+    });
+
+    return {
+      fileName: file.name,
+      downloadUrl: await getDownloadURL(storageRef),
+      storagePath,
+      kind: isImage ? 'image' : 'video',
+    };
   }
 
   /**

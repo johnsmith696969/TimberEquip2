@@ -19,6 +19,7 @@ import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, Cont
 import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, type AdminBillingBootstrapResponse } from '../services/billingService';
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
+import { BulkImportToolkit } from '../components/BulkImportToolkit';
 import { InquiryList } from '../components/admin/InquiryList';
 import { VirtualizedListingsTable } from '../components/admin/VirtualizedListingsTable';
 import { CmsEditor } from '../components/admin/CmsEditor';
@@ -2040,6 +2041,12 @@ export function AdminDashboard() {
         </div>
       </div>
 
+      <BulkImportToolkit
+        ownerUid={authUser?.uid}
+        workspaceLabel={authUser?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+        listingAllowanceText="Unlimited unpaid listings"
+      />
+
       <div className="rounded-sm border border-line bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -3332,7 +3339,7 @@ export function AdminDashboard() {
               </div>
               <div>
                 <h4 className="text-xs font-black uppercase tracking-tight text-ink">Email Notifications</h4>
-                <p className="text-[10px] font-bold text-muted uppercase">Receive alerts for new inquiries and market news</p>
+                <p className="text-[10px] font-bold text-muted uppercase">Receive optional marketplace alerts and monthly performance summaries</p>
               </div>
             </div>
             <button

@@ -173,6 +173,50 @@ function resolveConfiguredAppUrl() {
   }
   return APP_URL;
 }
+
+function getEmailPreferenceSigningSecret() {
+  const seed = [
+    String(SENDGRID_API_KEY.value() || '').trim() || String(EMAIL_FROM.value() || '').trim() || 'timberequip-email',
+    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'timberequip').trim(),
+    'email-preferences',
+  ].join('|');
+
+  return createHash('sha256').update(seed).digest('hex');
+}
+
+function buildEmailPreferenceToken({ uid, email, scope = 'optional' }) {
+  return createHmac('sha256', getEmailPreferenceSigningSecret())
+    .update([
+      normalizeNonEmptyString(uid),
+      normalizeNonEmptyString(email).toLowerCase(),
+      normalizeNonEmptyString(scope, 'optional').toLowerCase(),
+    ].join('|'))
+    .digest('hex');
+}
+
+function verifyEmailPreferenceToken({ uid, email, scope = 'optional', token }) {
+  const expected = buildEmailPreferenceToken({ uid, email, scope });
+  return signaturesMatch(expected, token);
+}
+
+function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
+  const normalizedUid = normalizeNonEmptyString(uid);
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  if (!normalizedUid || !normalizedEmail) return '';
+
+  const params = new URLSearchParams({
+    uid: normalizedUid,
+    email: normalizedEmail,
+    scope: normalizeNonEmptyString(scope, 'optional').toLowerCase(),
+    token: buildEmailPreferenceToken({
+      uid: normalizedUid,
+      email: normalizedEmail,
+      scope,
+    }),
+  });
+
+  return `${resolveConfiguredAppUrl()}/unsubscribe?${params.toString()}`;
+}
 const PRIVILEGED_ADMIN_EMAILS = new Set([
   'caleb@forestryequipmentsales.com',
   'calebhappy@gmail.com',
@@ -955,6 +999,67 @@ function normalizeImageUrls(value) {
   return value
     .map((entry) => String(entry || '').trim())
     .filter((entry) => /^https?:\/\//i.test(entry));
+}
+
+function normalizeDelimitedStringList(value, maxItems = 40) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeNonEmptyString(entry))
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((entry) => normalizeNonEmptyString(entry))
+          .filter(Boolean)
+          .slice(0, maxItems);
+      }
+    } catch (_) {
+      // Fall back to delimiter parsing below.
+    }
+  }
+
+  return trimmed
+    .split(/[\n|]+/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeDelimitedUrlList(value, maxItems = 40) {
+  return normalizeDelimitedStringList(value, maxItems)
+    .filter((entry) => /^https?:\/\//i.test(entry));
+}
+
+function extractPrefixedSpecValues(item) {
+  if (!isPlainObject(item)) return {};
+
+  const specs = {};
+  const prefixes = ['specs.', 'spec.', 'specs_', 'spec_'];
+
+  for (const [rawKey, rawValue] of Object.entries(item)) {
+    const normalizedKey = String(rawKey || '').trim();
+    const lowerKey = normalizedKey.toLowerCase();
+    const prefix = prefixes.find((candidate) => lowerKey.startsWith(candidate));
+    if (!prefix) continue;
+
+    const specKey = normalizedKey.slice(prefix.length).trim();
+    if (!specKey || rawValue == null || rawValue === '') continue;
+    specs[specKey] = rawValue;
+  }
+
+  return specs;
 }
 
 function normalizeFeedKey(value) {
@@ -1758,8 +1863,19 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
     findFeedValue(item, new Set(['images', 'imageurls', 'gallery', 'photos', 'media'])) ||
     item;
   const images = Array.from(new Set(flattenFeedImageUrls(imageSource))).slice(0, 40);
+  const imageTitles = normalizeDelimitedStringList(
+    getMappedValue('imageTitles') ||
+      findFeedValue(item, new Set(['imagetitles', 'phototitles', 'captions', 'imagecaptions'])),
+    40
+  );
+  const videoUrls = normalizeDelimitedUrlList(
+    getMappedValue('videoUrls') ||
+      findFeedValue(item, new Set(['videourls', 'videos', 'videolinks', 'video'])),
+    6
+  );
   const detectedSpecs = findFeedValue(item, new Set(['specs', 'specifications', 'attributes']));
   const mappedSpecs = getMappedValue('specs');
+  const prefixedSpecs = extractPrefixedSpecValues(item);
 
   return {
     externalId,
@@ -1786,6 +1902,8 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
       ''
     ),
     imageUrls: images,
+    imageTitles,
+    videoUrls,
     description: normalizeNonEmptyString(
       getMappedValue('description') || findFeedValue(item, new Set(['description', 'comments', 'details', 'remark', 'remarks'])),
       ''
@@ -1810,6 +1928,7 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
     specs: {
       ...(isPlainObject(detectedSpecs) ? detectedSpecs : {}),
       ...(isPlainObject(mappedSpecs) ? mappedSpecs : {}),
+      ...prefixedSpecs,
     },
   };
 }
@@ -1901,6 +2020,8 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
   const price = Math.max(0, normalizeFiniteNumber(item?.price, normalizeFiniteNumber(existingListing?.price, 0)));
   const hours = Math.max(0, normalizeFiniteNumber(item?.hours, normalizeFiniteNumber(existingListing?.hours, 0)));
   const images = normalizeImageUrls(item?.images || item?.imageUrls || existingListing?.images);
+  const imageTitles = sanitizeListingCreateImageTitles(item?.imageTitles || existingListing?.imageTitles, images.length);
+  const videoUrls = normalizeDelimitedUrlList(item?.videoUrls || existingListing?.videoUrls, 6);
   const stockNumber = normalizeNonEmptyString(item?.stockNumber || existingListing?.stockNumber);
   const serialNumber = normalizeNonEmptyString(item?.serialNumber || existingListing?.serialNumber);
   const dealerSourceUrl = normalizeNonEmptyString(
@@ -1953,6 +2074,8 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
     description: normalizeNonEmptyString(item?.description || existingListing?.description, `${title} imported from dealer feed.`),
     location: normalizeNonEmptyString(item?.location || existingListing?.location, 'Unknown'),
     images,
+    imageTitles,
+    videoUrls,
     stockNumber,
     serialNumber,
     specs: {
@@ -2810,10 +2933,37 @@ async function getSavedSearchDisplayName(savedSearch) {
   return displayName;
 }
 
+async function getOptionalEmailUserContext(userUid, cache = new Map()) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) {
+    return {
+      displayName: 'there',
+      email: '',
+      emailNotificationsEnabled: true,
+    };
+  }
+
+  if (cache.has(normalizedUid)) {
+    return cache.get(normalizedUid);
+  }
+
+  const userSnap = await getDb().collection('users').doc(normalizedUid).get();
+  const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+  const context = {
+    displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+    email: normalizeNonEmptyString(userData.email).toLowerCase(),
+    emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+  };
+
+  cache.set(normalizedUid, context);
+  return context;
+}
+
 async function notifyMatchingSavedSearches(listingId, listing) {
   const listingUrl = `${APP_URL}/listing/${listingId}`;
   const listingPrice = formatListingMoney(listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
+  const userContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -2822,19 +2972,26 @@ async function notifyMatchingSavedSearches(listingId, listing) {
       const savedSearch = searchDoc.data();
       const recipient = savedSearch.alertEmail;
       if (!recipient) return;
+      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
+      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const unsubscribeUrl = buildEmailUnsubscribeUrl({
+        uid: savedSearch.userUid,
+        email: userContext.email || recipient,
+        scope: 'optional',
+      });
 
       const exactMatch = listingMatchesSavedSearch(listing, savedSearch);
       const similarMatch = listingLooselyMatchesSavedSearch(listing, savedSearch);
 
       if (savedSearch.alertPreferences?.newListingAlerts && exactMatch) {
-        const displayName = await getSavedSearchDisplayName(savedSearch);
         const emailPayload = templates.newMatchingListing({
-          displayName,
+          displayName: userContext.displayName,
           searchName: savedSearch.name || 'Saved Search',
           listingTitle: listing.title || 'New Equipment Listing',
           listingUrl,
           listingPrice,
           location: listing.location || 'Unknown',
+          unsubscribeUrl,
         });
 
         await sendEmail({ to: recipient, ...emailPayload });
@@ -2842,14 +2999,14 @@ async function notifyMatchingSavedSearches(listingId, listing) {
       }
 
       if (savedSearch.alertPreferences?.restockSimilarAlerts && similarMatch) {
-        const displayName = await getSavedSearchDisplayName(savedSearch);
         const emailPayload = templates.similarListingRestocked({
-          displayName,
+          displayName: userContext.displayName,
           searchName: savedSearch.name || 'Saved Search',
           listingTitle: listing.title || 'Equipment Listing',
           listingUrl,
           listingPrice,
           location: listing.location || 'Unknown',
+          unsubscribeUrl,
         });
 
         await sendEmail({ to: recipient, ...emailPayload });
@@ -2863,6 +3020,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
   const previousPrice = formatListingMoney(after, before.price);
   const currentPrice = formatListingMoney(after, after.price);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
+  const userContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -2872,16 +3030,22 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
       if (!savedSearch.alertPreferences?.priceDropAlerts) return;
       if (!savedSearch.alertEmail) return;
       if (!listingMatchesSavedSearch(after, savedSearch)) return;
+      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
+      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
 
-      const displayName = await getSavedSearchDisplayName(savedSearch);
       const emailPayload = templates.matchingListingPriceDrop({
-        displayName,
+        displayName: userContext.displayName,
         searchName: savedSearch.name || 'Saved Search',
         listingTitle: after.title || 'Equipment Listing',
         listingUrl,
         previousPrice,
         currentPrice,
         location: after.location || 'Unknown',
+        unsubscribeUrl: buildEmailUnsubscribeUrl({
+          uid: savedSearch.userUid,
+          email: userContext.email || savedSearch.alertEmail,
+          scope: 'optional',
+        }),
       });
 
       await sendEmail({ to: savedSearch.alertEmail, ...emailPayload });
@@ -2892,6 +3056,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
 async function notifySavedSearchSoldStatus(listingId, listing) {
   const listingUrl = `${APP_URL}/listing/${listingId}`;
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
+  const userContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -2901,14 +3066,20 @@ async function notifySavedSearchSoldStatus(listingId, listing) {
       if (!savedSearch.alertPreferences?.soldStatusAlerts) return;
       if (!savedSearch.alertEmail) return;
       if (!listingMatchesSavedSearch(listing, savedSearch)) return;
+      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
+      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
 
-      const displayName = await getSavedSearchDisplayName(savedSearch);
       const emailPayload = templates.matchingListingSold({
-        displayName,
+        displayName: userContext.displayName,
         searchName: savedSearch.name || 'Saved Search',
         listingTitle: listing.title || 'Equipment Listing',
         listingUrl,
         location: listing.location || 'Unknown',
+        unsubscribeUrl: buildEmailUnsubscribeUrl({
+          uid: savedSearch.userUid,
+          email: userContext.email || savedSearch.alertEmail,
+          scope: 'optional',
+        }),
       });
 
       await sendEmail({ to: savedSearch.alertEmail, ...emailPayload });
@@ -4156,6 +4327,11 @@ exports.monthlyDealerReport = onSchedule(
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
+      if (userData.emailNotificationsEnabled === false) {
+        logger.info(`monthlyDealerReport: skipped seller report for ${sellerUid} because optional emails are disabled`);
+        continue;
+      }
+
       try {
         const { subject, html } = templates.dealerMonthlyReport({
           sellerName,
@@ -4168,6 +4344,11 @@ exports.monthlyDealerReport = onSchedule(
           missedCalls,
           topMachines,
           dashboardUrl: 'https://timberequip.com/profile',
+          unsubscribeUrl: buildEmailUnsubscribeUrl({
+            uid: sellerUid,
+            email: sellerEmail,
+            scope: 'optional',
+          }),
         });
         await sendEmail({ to: sellerEmail, subject, html });
       } catch (emailError) {
@@ -9406,6 +9587,60 @@ exports.apiProxy = onRequest(
         }
 
         return res.status(200).json(result);
+      }
+
+      if ((req.method === 'GET' || req.method === 'POST') && path === '/email-preferences/unsubscribe') {
+        const payload = req.method === 'GET' ? req.query : req.body;
+        const uid = normalizeNonEmptyString(payload?.uid);
+        const email = normalizeNonEmptyString(payload?.email).toLowerCase();
+        const scope = normalizeNonEmptyString(payload?.scope, 'optional').toLowerCase();
+        const token = normalizeNonEmptyString(payload?.token);
+
+        if (!uid || !email || !token) {
+          return res.status(400).json({ error: 'Missing unsubscribe parameters.' });
+        }
+
+        if (!verifyEmailPreferenceToken({ uid, email, scope, token })) {
+          return res.status(401).json({ error: 'This unsubscribe link is invalid or has expired.' });
+        }
+
+        const userRef = getDb().collection('users').doc(uid);
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) {
+          return res.status(404).json({ error: 'Subscriber not found.' });
+        }
+
+        const userData = userSnap.data() || {};
+        const storedEmail = normalizeNonEmptyString(userData.email).toLowerCase();
+        if (!storedEmail || storedEmail !== email) {
+          return res.status(404).json({ error: 'Subscriber not found.' });
+        }
+
+        if (req.method === 'GET') {
+          return res.status(200).json({
+            email,
+            displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+            scope,
+            emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+          });
+        }
+
+        await userRef.set(
+          {
+            emailNotificationsEnabled: false,
+            emailOptOutAt: admin.firestore.FieldValue.serverTimestamp(),
+            emailOptOutSource: 'unsubscribe_link',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        return res.status(200).json({
+          success: true,
+          email,
+          scope,
+          emailNotificationsEnabled: false,
+        });
       }
 
       if (req.method === 'POST' && path === '/auth/send-verification-email') {

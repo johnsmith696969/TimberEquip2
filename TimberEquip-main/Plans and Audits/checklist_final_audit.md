@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
-**Last updated:** March 30, 2026 (session 9)
+**Last updated:** March 30, 2026 (session 10)
 
 ---
 
@@ -26,6 +26,7 @@
 - [x] **1.14 - Replace deprecated `csurf` package** - Replaced archived `csurf@1.11.0` with an in-repo double-submit CSRF token strategy that preserves the existing `/api/csrf-token` + `CSRF-Token` frontend contract, keeps Stripe webhook exemptions, and removes the deprecated package from `package.json`.
 - [x] **1.15 - HTTP 404 status for unknown routes** - SPA route allowlist implemented in `server.ts`. Unknown routes return 404 while still serving SPA shell.
 - [x] **1.16 - Fix dependency vulnerabilities** - `npm audit fix` resolved all 3 high-severity vulnerabilities (node-forge, path-to-regexp, picomatch). Current `npm audit --omit=dev` shows only 8 low-severity advisories in the `firebase-admin` transitive tree.
+- [x] **1.17 - Public unsubscribe flow for optional emails** - Added a signed public `/unsubscribe` page plus `/api/email-preferences/unsubscribe` GET/POST endpoints. Optional saved-search alerts and monthly dealer reports now honor `emailNotificationsEnabled === false`, while transactional security/billing/listing-service emails remain available.
 
 ---
 
@@ -49,13 +50,13 @@
 - [x] **3.1 - Test infrastructure** - Vitest + React Testing Library installed and configured. `vitest.config.ts` and `src/__tests__/setup.ts` created. Scripts: `test`, `test:watch`, `test:coverage`.
 - [x] **3.2 - Unit tests (core business logic)** - 8 test files, 138 unit tests covering: accountEntitlement, sellerAccess, userRoles, sellerPlans, seoRoutes, seoRouteQuality, privilegedAdmin, amvMatching.
 - [x] **3.3 - Smoke tests** - 32 tests verifying all 26 page modules and 4 core components import/export correctly. Firebase fully mocked.
-- [~] **3.4 - Additional unit test coverage** - `billingService`, `listingPath`, `equipmentService` market-value / market-match logic, public listing filter/sort behavior, cached public-list fallback, authenticated listing CRUD, featured-cap enforcement, saved-search cache behavior, admin bootstrap cache fallbacks, and email-template placeholder rendering branches are now covered. Remaining gaps are the heavier seller/account mutation branches and some deeper admin/account service permutations.
+- [~] **3.4 - Additional unit test coverage** - `billingService`, `listingPath`, `equipmentService` market-value / market-match logic, public listing filter/sort behavior, cached public-list fallback, authenticated listing CRUD, featured-cap enforcement, saved-search cache behavior, admin bootstrap cache fallbacks, import-template/media-manifest utilities, and email-template placeholder rendering branches are now covered. Remaining gaps are the heavier seller/account mutation branches and some deeper admin/account service permutations.
   - Effort remaining: 10-16 hours
 - [ ] **3.5 - Integration tests for Stripe flows** - Checkout session creation, webhook event processing (`invoice.paid`, subscription CRUD, `checkout.session.completed`), idempotency, subscription expiry, listing cap API enforcement.
   - Effort: 40-60 hours
 - [~] **3.6 - E2E tests (Playwright)** - In-repo Playwright coverage now exists for the first public critical journeys. `tests-e2e/public-critical-journeys.spec.ts` passes against staging and verifies the refreshed home hero image, category browse path, home quick-search -> results -> inquiry flow, listing-detail render, inquiry modal consent controls, the financing wizard step progression, and public seller-plan selection states on Ad Programs. Remaining work is to codify the rest of the journey matrix: register -> checkout -> list, seller billing, admin approve, and the authenticated listing form + upload flow. A staging protected-route blank-shell issue is still the main blocker for full seller/admin browser automation.
   - Effort remaining: 50-70 hours
-- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `InquiryModal`, `Register`, `Login`, `LoginPromptModal`, `SubscriptionPaymentModal`, `Sell`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, `Financing`, `AdPrograms`, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. `InquiryModal` covers seller-specific consent gating, successful inquiry submission state, and the unsaved-change close prompt; `Register` covers account-type step progression plus the verified free-member -> `/profile` and paid-seller -> checkout-start routing paths; `Login` covers the verification-email notice + email prefill, password-reset success flow, and Google unauthorized-domain handling; `LoginPromptModal` now covers email sign-in success, Google unauthorized-domain handling, and the unsaved-change discard prompt; `SubscriptionPaymentModal` covers account-settings intent routing, missing-listing validation, and surfaced Stripe checkout failures alongside the existing owner-operator quantity and Stripe redirect branches; `Sell` now covers account-checkout canceled, listing checkout canceled after save, and the paid review-queue confirmation branch; `ListingModal` covers minimum-photo validation, mocked image-upload behavior, per-photo title editing, and in-form image reordering; `SubscriptionSuccess` covers missing-session, processing, signed-in success, and signed-out continuation states; `Financing` covers step progression, consent-gated submission, and success state; `AdPrograms` covers unauthenticated enrollment CTA, owner-operator quantity controls, and current-plan messaging. Remaining gaps are the broader multi-file media-edit permutations and more end-to-end purchase states beyond the success-page and seller-shell surfaces.
+- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `InquiryModal`, `Register`, `Login`, `LoginPromptModal`, `SubscriptionPaymentModal`, `Sell`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, `Financing`, `AdPrograms`, the public `Unsubscribe` page, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. `InquiryModal` covers seller-specific consent gating, successful inquiry submission state, and the unsaved-change close prompt; `Register` covers account-type step progression plus the verified free-member -> `/profile` and paid-seller -> checkout-start routing paths; `Login` covers the verification-email notice + email prefill, password-reset success flow, and Google unauthorized-domain handling; `LoginPromptModal` now covers email sign-in success, Google unauthorized-domain handling, and the unsaved-change discard prompt; `SubscriptionPaymentModal` covers account-settings intent routing, missing-listing validation, and surfaced Stripe checkout failures alongside the existing owner-operator quantity and Stripe redirect branches; `Sell` now covers account-checkout canceled, listing checkout canceled after save, and the paid review-queue confirmation branch; `ListingModal` covers minimum-photo validation, mocked image-upload behavior, per-photo title editing, and in-form image reordering; `SubscriptionSuccess` covers missing-session, processing, signed-in success, and signed-out continuation states; `Financing` covers step progression, consent-gated submission, and success state; `AdPrograms` covers unauthenticated enrollment CTA, owner-operator quantity controls, and current-plan messaging; `Unsubscribe` covers signed-link validation and successful opt-out state. Remaining gaps are the broader multi-file media-edit permutations and more end-to-end purchase states beyond the success-page and seller-shell surfaces.
   - Effort remaining: 10-16 hours
 
 ---
@@ -122,7 +123,7 @@
 - [x] TypeScript errors resolved
 - [x] Helmet security headers enabled
 - [x] CORS locked to explicit origins
-- [x] Test suite passing (294 tests, 30 test files)
+- [x] Test suite passing (300 tests, 32 test files)
 - [x] package.json identity correct
 - [x] 404 page exists with noindex
 - [x] DMCA page exists with footer link
@@ -152,7 +153,7 @@
 
 ## Score
 
-**Completed:** 33 items
+**Completed:** 34 items
 **Partially complete:** 6 items (`2.6`, `3.4`, `3.7`, `5.2`, `5.3`, `5.4`)
 **Remaining Phase 1-3 (fully open):** 4 items
 **Remaining Phase 4-5 (fully open):** 6 items

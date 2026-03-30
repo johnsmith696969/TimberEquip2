@@ -108,6 +108,18 @@ function baseLayout(title, headerSubtitle, content) {
 </html>`;
 }
 
+function renderOptionalEmailFooter(unsubscribeUrl, label = 'Unsubscribe from optional TimberEquip emails') {
+  if (!unsubscribeUrl) return '';
+
+  return `
+    <hr class="divider" />
+    <p style="font-size:11px; color:#6b7280 !important;">
+      Prefer fewer emails? <a href="${unsubscribeUrl}">${label}</a>.<br />
+      You will still receive required account, billing, listing, and security emails.
+    </p>
+  `;
+}
+
 function renderInfoPanel(rows) {
   return `
     <div class="panel">
@@ -437,7 +449,7 @@ const templates = {
     return { subject, html };
   },
 
-  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
+  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
     const subject = `New Forestry Equipment Sales Match: ${listingTitle}`;
     const html = baseLayout(subject, 'New Matching Equipment', `
       <p class="label">Saved Search Match</p>
@@ -450,11 +462,12 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Matching Listing</a>
+      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location }) {
+  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location, unsubscribeUrl }) {
     const subject = `Price Drop Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Price Drop Alert', `
       <p class="label">Saved Search Match</p>
@@ -468,11 +481,12 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">Review Price Drop</a>
+      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location }) {
+  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location, unsubscribeUrl }) {
     const subject = `Sold Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Listing Sold Alert', `
       <p class="label">Saved Search Match</p>
@@ -484,11 +498,12 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Listing</a>
+      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
+  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
     const subject = `Similar Equipment Back In Stock: ${listingTitle}`;
     const html = baseLayout(subject, 'Similar Equipment Restocked', `
       <p class="label">Saved Search Match</p>
@@ -501,6 +516,7 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Similar Listing</a>
+      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
@@ -645,7 +661,7 @@ const templates = {
     return { subject, html };
   },
 
-  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, topMachines, dashboardUrl }) {
+  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, topMachines, dashboardUrl, unsubscribeUrl }) {
     const subject = `Your ${monthLabel} Forestry Equipment Sales Performance Report`;
     const topMachinesHtml = Array.isArray(topMachines) && topMachines.length > 0
       ? `<table style="width:100%; border-collapse:collapse; margin:16px 0;">
@@ -678,6 +694,7 @@ const templates = {
       <hr class="divider" />
       <p>Impressions and click data will be available in a future update. For questions about your report, contact the Forestry Equipment Sales team.</p>
       <a href="${dashboardUrl || 'https://timberequip.com/profile'}" class="cta">Open Seller Dashboard</a>
+      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from monthly performance emails')}
     `);
     return { subject, html };
   },

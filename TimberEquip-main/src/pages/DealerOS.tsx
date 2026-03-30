@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { ListingModal } from '../components/admin/ListingModal';
+import { BulkImportToolkit } from '../components/BulkImportToolkit';
 import {
   dealerFeedService,
   type DealerFeedIngestResult,
@@ -64,6 +65,11 @@ export function DealerOS() {
   const ownerUid = getDealerInventoryOwnerUid(user);
   const featuredCap = getFeaturedListingCap(user);
   const dealerAccess = canAccessDealerOs(user);
+  const listingAllowanceText = user?.listingCap
+    ? `${user.listingCap} managed listings`
+    : user?.role === 'pro_dealer'
+      ? '150 managed listings'
+      : '50 managed listings';
 
   const [listings, setListings] = useState<Listing[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
@@ -723,6 +729,12 @@ export function DealerOS() {
           <span className="text-sm font-bold">{actionError}</span>
         </div>
       ) : null}
+
+      <BulkImportToolkit
+        ownerUid={ownerUid}
+        workspaceLabel={user?.role === 'pro_dealer' ? 'Pro Dealer' : 'Dealer'}
+        listingAllowanceText={listingAllowanceText}
+      />
 
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="rounded-sm border border-line bg-surface p-6">

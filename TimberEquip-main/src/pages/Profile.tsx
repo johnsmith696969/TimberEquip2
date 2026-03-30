@@ -2701,8 +2701,8 @@ export function Profile() {
                 <p className="text-xs font-black uppercase tracking-widest">Account Notifications</p>
                 <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
                   {emailNotificationsEnabled
-                    ? 'Email alerts enabled for listings, buyer messages, and payments'
-                    : 'Email alerts are currently paused for listings, buyer messages, and payments'}
+                    ? 'Optional saved-search alerts and monthly marketplace emails are enabled'
+                    : 'Optional saved-search alerts and monthly marketplace emails are paused'}
                 </p>
               </div>
             </div>
