@@ -3,8 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListingModal } from '../components/admin/ListingModal';
 
-const { getFullTaxonomy } = vi.hoisted(() => ({
+const { getFullTaxonomy, uploadListingImageWithPublishingVariants } = vi.hoisted(() => ({
   getFullTaxonomy: vi.fn(),
+  uploadListingImageWithPublishingVariants: vi.fn(),
 }));
 
 vi.mock('framer-motion', () => {
@@ -39,18 +40,26 @@ vi.mock('../constants/categorySpecs', () => ({
 }));
 
 vi.mock('../services/storageService', () => ({
-  storageService: {},
+  storageService: {
+    uploadListingImageWithPublishingVariants,
+  },
 }));
 
 describe('ListingModal component', () => {
   beforeEach(() => {
     getFullTaxonomy.mockReset();
+    uploadListingImageWithPublishingVariants.mockReset();
     getFullTaxonomy.mockResolvedValue({
       'Logging Equipment': {
         Forwarders: {
           TIGERCAT: ['1075B'],
         },
       },
+    });
+    uploadListingImageWithPublishingVariants.mockResolvedValue({
+      detailUrl: 'https://example.com/uploaded-detail.jpg',
+      thumbnailUrl: 'https://example.com/uploaded-thumb.jpg',
+      formatUsed: 'image/webp',
     });
   });
 
@@ -126,5 +135,126 @@ describe('ListingModal component', () => {
         make: 'TIGERCAT',
       }));
     });
+  });
+
+  it('shows image-count validation when a machine has fewer than the required 5 photos', async () => {
+    render(
+      <ListingModal
+        isOpen
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        listing={{
+          id: 'listing-2',
+          title: '2020 TIGERCAT 1075B',
+          category: 'Logging Equipment',
+          subcategory: 'Forwarders',
+          manufacturer: 'TIGERCAT',
+          make: 'TIGERCAT',
+          model: '1075B',
+          year: 2020,
+          price: 299000,
+          currency: 'USD',
+          condition: 'Used',
+          location: 'Atlanta, Georgia',
+          hours: 2800,
+          stockNumber: 'QA-2',
+          serialNumber: 'SERIAL-2',
+          images: [
+            'https://example.com/1.jpg',
+            'https://example.com/2.jpg',
+            'https://example.com/3.jpg',
+            'https://example.com/4.jpg',
+          ],
+          imageVariants: [],
+          videoUrls: [],
+          description: 'Forwarder test listing',
+          featured: false,
+          sellerVerified: false,
+          conditionChecklist: {
+            engineChecked: false,
+            undercarriageChecked: false,
+            hydraulicsLeakStatus: '',
+            serviceRecordsAvailable: false,
+            partsManualAvailable: false,
+            serviceManualAvailable: false,
+          },
+          specs: {},
+        } as any}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2020 TIGERCAT 1075B')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update Machine' }));
+
+    expect(await screen.findByText('Minimum 5 images required. You have 4.')).toBeInTheDocument();
+  });
+
+  it('uploads an image file and appends it to the machine photo gallery', async () => {
+    const { container } = render(
+      <ListingModal
+        isOpen
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        listing={{
+          id: 'listing-3',
+          title: '2019 TIGERCAT 1075B',
+          category: 'Logging Equipment',
+          subcategory: 'Forwarders',
+          manufacturer: 'TIGERCAT',
+          make: 'TIGERCAT',
+          model: '1075B',
+          year: 2019,
+          price: 279000,
+          currency: 'USD',
+          condition: 'Used',
+          location: 'Atlanta, Georgia',
+          hours: 4100,
+          stockNumber: 'QA-3',
+          serialNumber: 'SERIAL-3',
+          images: [
+            'https://example.com/1.jpg',
+            'https://example.com/2.jpg',
+            'https://example.com/3.jpg',
+            'https://example.com/4.jpg',
+          ],
+          imageVariants: [],
+          videoUrls: [],
+          description: 'Forwarder test listing',
+          featured: false,
+          sellerVerified: false,
+          conditionChecklist: {
+            engineChecked: false,
+            undercarriageChecked: false,
+            hydraulicsLeakStatus: '',
+            serviceRecordsAvailable: false,
+            partsManualAvailable: false,
+            serviceManualAvailable: false,
+          },
+          specs: {},
+        } as any}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2019 TIGERCAT 1075B')).toBeInTheDocument();
+    });
+
+    const imageInput = container.querySelector('input[type="file"][accept="image/jpeg,image/png,image/webp,image/avif"]') as HTMLInputElement | null;
+    expect(imageInput).not.toBeNull();
+
+    const file = new File(['photo-bytes'], 'machine.jpg', { type: 'image/jpeg' });
+    fireEvent.change(imageInput!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(uploadListingImageWithPublishingVariants).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/5 \/ 40/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/need 1 more/i)).not.toBeInTheDocument();
   });
 });
