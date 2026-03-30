@@ -310,7 +310,7 @@ export const userService = {
       profileDocExists: true,
       firestoreQuotaLimited: false,
       seatContext: deriveSeatContextFromProfile(cachedProfile),
-      seatContextSource: 'profile_fallback',
+      seatContextSource: 'profile_fallback' as const,
       fetchedAt: new Date().toISOString(),
     };
   },

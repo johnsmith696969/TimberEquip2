@@ -260,7 +260,7 @@ function buildMarketplaceListingPayload(listingId: string, rawListing: Record<st
 }
 
 async function getFirestoreQueryCount(query: FirebaseFirestore.Query): Promise<number> {
-  const countMethod = (query as FirebaseFirestore.Query & { count?: () => FirebaseFirestore.AggregateQuery }).count;
+  const countMethod = (query as FirebaseFirestore.Query & { count?: () => FirebaseFirestore.AggregateQuery<any> }).count;
   if (typeof countMethod === 'function') {
     const aggregateSnapshot = await countMethod.call(query).get();
     const aggregateData = typeof aggregateSnapshot?.data === 'function'
@@ -763,14 +763,14 @@ async function findExistingStripeCustomerId(userUid: string, email?: string): Pr
     });
 
     const exactMatch = page.data.find((customer) => {
-      if (customer.deleted) return false;
+      if ('deleted' in customer) return false;
       return String(customer.metadata?.userUid || '').trim() === normalizedUserUid;
     });
     if (exactMatch?.id) {
       return exactMatch.id;
     }
 
-    const fallbackMatch = page.data.find((customer) => !customer.deleted);
+    const fallbackMatch = page.data.find((customer) => !('deleted' in customer));
     if (fallbackMatch?.id) {
       return fallbackMatch.id;
     }
@@ -1124,9 +1124,8 @@ async function startServer() {
           if (invoiceId && stripe) {
             try {
               const invoice = await stripe.invoices.retrieve(invoiceId);
-              const subId = typeof invoice.subscription === 'string'
-                ? invoice.subscription
-                : (invoice.subscription as any)?.id;
+              const invoiceSub = (invoice as any).subscription;
+              const subId = typeof invoiceSub === 'string' ? invoiceSub : invoiceSub?.id;
               if (subId) {
                 // Cancel the subscription immediately since a refund was issued
                 const canceledSub = await stripe.subscriptions.cancel(subId);

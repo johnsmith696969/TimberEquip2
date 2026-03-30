@@ -117,8 +117,8 @@ export function Financing() {
       <div className={`py-24 px-4 md:px-8 relative overflow-hidden transition-colors ${heroClasses.shell}`}>
         <div className="absolute inset-0">
           <img
-            src="/page-photos/pine-forest.jpg"
-            alt="Forestry financing backdrop"
+            src="/page-photos/ponsse-buffalo-loading.jpg"
+            alt="Ponsse Buffalo loading timber"
             className={`w-full h-full object-cover transition-opacity ${heroClasses.image}`}
           />
           <div className={`absolute inset-0 transition-colors ${heroClasses.gradient}`} />

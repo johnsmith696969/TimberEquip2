@@ -303,8 +303,8 @@ export function Home() {
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
         <div className="absolute inset-0 z-0">
           <img
-            src="/page-photos/pine-forest.jpg"
-            alt="Pine forest at sunrise"
+            src="/page-photos/pine-dirt-road.jpg"
+            alt="Pine dirt road through the forest"
             className="w-full h-full object-cover opacity-40"
           />
           <div
@@ -339,6 +339,7 @@ export function Home() {
             >
               {t('home.hero.line1', 'Industrial')} <br />
               <span className="text-accent">{t('home.hero.line2', 'Forestry')}</span> <br />
+              <span className="text-accent">{t('home.hero.line2b', 'Equipment')}</span> <br />
               {t('home.hero.line3', 'Marketplace')}
             </motion.h1>
 

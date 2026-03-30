@@ -78,30 +78,30 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
       {
         key: 'horsepower', label: 'Engine Horsepower', type: 'number',
-        required: true, unit: 'hp', min: 1,
-        description: 'Gross engine horsepower (SAE J1995)'
+        required: false, unit: 'hp', min: 1,
+        description: 'Gross engine horsepower'
       },
       {
         key: 'weight', label: 'Operating Weight', type: 'number',
-        required: true, unit: 'lbs', min: 100,
-        description: 'Machine weight with full fluids and standard grapple'
+        required: false, unit: 'lbs', min: 100,
+        description: 'Machine weight'
       },
       {
         key: 'driveType', label: 'Drive Configuration', type: 'select',
-        required: true,
-        options: ['4WD', '6WD', '8WD', 'Bogie / Dual-Tire Tandem', 'Cable Skidder'],
+        required: false,
+        options: ['4WD'],
       },
       {
         key: 'grappleType', label: 'Grapple Configuration', type: 'select',
         required: true,
         options: [
-          'Fixed Grapple', 'Rotating Grapple', 'Stroke Boom Grapple',
-          'Winch Only (No Grapple)', 'Dual Arch'
+          'Fixed Grapple', 'Rotating Grapple',
+          'Winch Only'
         ],
       },
       {
         key: 'grappleOpeningIn', label: 'Grapple Opening', type: 'number',
-        required: true, unit: 'in', min: 0,
+        required: false, unit: 'in', min: 0,
         description: 'Maximum jaw opening diameter in inches'
       },
       // ── Optional ──────────────────────────────────────────────────────────
@@ -132,13 +132,13 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
     ],
     attachmentOptions: [
       'Fixed Grapple', 'Rotating Grapple', 'Stroke Boom', 'Winch',
-      'Tire Chains', 'Tracks / Eco-Tracks', 'Olofsfors Eco-Tracks',
-      'Front Blade / Dozer Blade', 'Arch Candy', 'Snow Chains'
+      'Tire Chains', 'Tracks',
+      'Front Blade', 'Chains'
     ],
     checklist: [
       ...COMMON_CHECKLIST,
-      { key: 'grappleChecked',  label: 'Grapple / Winch Function Tested' },
-      { key: 'tiresChecked',    label: 'Tires / Tracks Inspected & Measured' },
+      { key: 'grappleChecked',  label: 'Grapple / Winch Functions' },
+      { key: 'tiresChecked',    label: 'Tires / Tracks Inspected' },
     ],
   },
 
@@ -153,38 +153,37 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
       {
         key: 'horsepower', label: 'Engine Horsepower', type: 'number',
-        required: true, unit: 'hp', min: 1
+        required: false, unit: 'hp', min: 1
       },
       {
         key: 'weight', label: 'Operating Weight', type: 'number',
-        required: true, unit: 'lbs', min: 100
+        required: false, unit: 'lbs', min: 100
       },
       {
         key: 'driveType', label: 'Carrier Type', type: 'select', required: true,
-        options: ['Track', 'Wheel', 'Swing-to-Tree (STT)', 'Rubber-Tracked Wheel']
+        options: ['Track', 'Wheel']
       },
       {
         key: 'headType', label: 'Cutting Head / Saw Type', type: 'select',
         required: true,
         options: [
-          'Disc Saw', 'Bar Saw', 'Chainsaw', 'Stroke Buncher',
-          'Tree Shear', 'Hot Saw', 'Combination Disc/Bar'
+          'Disc Saw', 'Bar Saw', 'Shear', 'Hot Saw'
         ],
-        description: 'Primary cutting mechanism on the felling head'
+        description: 'Primary cutting mechanism'
       },
       {
         key: 'headMake', label: 'Head Manufacturer', type: 'text',
         required: true,
-        placeholder: 'e.g. Tigercat, CTR, Quadco, Denharr, Risley',
-        description: 'The make of the felling/bunching head (may differ from carrier)'
+        placeholder: 'e.g. Quadco, John Deere, Tigercat, TimberPro',
+        description: 'The manufacturer of the felling head'
       },
       {
         key: 'headModel', label: 'Head Model', type: 'text',
-        required: true, placeholder: 'e.g. 5185, FS-22, Q76'
+        required: true, placeholder: 'e.g. FS-22, 21B, 22B'
       },
       {
         key: 'maxFellingDiameterIn', label: 'Max Felling Diameter', type: 'number',
-        required: true, unit: 'in', min: 1,
+        required: false, unit: 'in', min: 1,
         description: 'Maximum tree diameter the head is rated to fell'
       },
       // ── Optional ──────────────────────────────────────────────────────────
@@ -194,17 +193,12 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
         description: 'Disc saw blade diameter (applies to disc saw heads)'
       },
       {
-        key: 'accumulating', label: 'Accumulating / Multi-Tree Bunching',
-        type: 'boolean', required: false,
-        description: 'Can the head accumulate multiple trees before placing?'
-      },
-      {
         key: 'headSerialNumber', label: 'Head Serial Number', type: 'text',
         required: false
       },
       {
         key: 'cabType', label: 'Cab Type', type: 'select', required: false,
-        options: ['Enclosed ROPS/FOPS', 'Open ROPS']
+        options: ['Enclosed ROPS', 'Open ROPS']
       },
       {
         key: 'transmission', label: 'Transmission', type: 'text',
@@ -212,14 +206,13 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
     ],
     attachmentOptions: [
-      'Disc Saw Head', 'Bar Saw Head', 'Chainsaw Head', 'Hot Saw Head',
-      'Stroke Buncher Head', 'Tree Shear', 'Delimber Attachment',
-      'Mulching Head', 'Grapple Saw', 'Carrier Boom Extension'
+      'Disc Saw Head', 'Bar Saw Head',
+      'Tree Shear'
     ],
     checklist: [
       ...COMMON_CHECKLIST,
-      { key: 'headChecked',  label: 'Cutting / Saw Head Function Tested' },
-      { key: 'tiresChecked', label: 'Tracks / Undercarriage Inspected' },
+      { key: 'headChecked',  label: 'Felling Head Functional' },
+      { key: 'tiresChecked', label: 'Undercarriage / Tires Inspected' },
     ],
   },
 
@@ -229,21 +222,21 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
     specs: [
       // ── Required ──────────────────────────────────────────────────────────
       {
-        key: 'engine', label: 'Engine', type: 'text', required: true,
-        placeholder: 'e.g. Volvo D7E, Tier 4 Final'
+        key: 'engine', label: 'Engine', type: 'text', required: false,
+        placeholder: 'e.g. Mercedes OM926 Tier 4'
       },
       {
         key: 'horsepower', label: 'Engine Horsepower', type: 'number',
-        required: true, unit: 'hp', min: 1
+        required: false, unit: 'hp', min: 1
       },
       {
         key: 'weight', label: 'Operating Weight', type: 'number',
-        required: true, unit: 'lbs', min: 100
+        required: false, unit: 'lbs', min: 100
       },
       {
         key: 'driveType', label: 'Carrier / Drive Configuration', type: 'select',
         required: true,
-        options: ['Track', 'Wheel', 'Bogie', '6WD Articulated', '8WD Articulated']
+        options: ['Track', '6WD Articulated', '8WD Articulated']
       },
       {
         key: 'headType', label: 'Harvesting Head Type', type: 'select',
@@ -251,33 +244,27 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
         options: [
           'Single-Grip Harvesting Head',
           'Double-Grip Processing Head',
-          'Stroke / Bar Saw Processing Head',
-          'Combination Head',
         ],
         description: 'Single-grip fells and processes; double-grip processes pre-felled trees'
       },
       {
         key: 'headMake', label: 'Head Manufacturer', type: 'text',
         required: true,
-        placeholder: 'e.g. Waratah, Log Max, Kesla, Ponsse, Keto, SP Maskiner'
+        placeholder: 'e.g. Waratah, Log Max, Ponsse, Keto, SP Maskiner'
       },
       {
         key: 'headModel', label: 'Head Model', type: 'text',
-        required: true, placeholder: 'e.g. H215E, 7000HD, 928'
+        required: true, placeholder: 'e.g. H7, 7000XT, 761'
       },
       {
         key: 'maxFellingDiameterIn', label: 'Max Felling Diameter', type: 'number',
-        required: true, unit: 'in', min: 1
+        required: false, unit: 'in', min: 1
       },
       // ── Optional ──────────────────────────────────────────────────────────
       {
         key: 'maxFeedSpeedFtPerSec', label: 'Max Feed Speed', type: 'number',
         required: false, unit: 'ft/sec',
         description: 'Maximum delimbing and feeding speed'
-      },
-      {
-        key: 'delimbbingKnifeCount', label: 'Delimbing Knife Count', type: 'number',
-        required: false, min: 0
       },
       {
         key: 'barLengthIn', label: 'Bar / Guide Bar Length', type: 'number',
@@ -293,22 +280,17 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
       {
         key: 'cabType', label: 'Cab Type', type: 'select', required: false,
-        options: ['Enclosed ROPS/FOPS (360°)', 'Cab with Leveling', 'Open ROPS']
-      },
-      {
-        key: 'tiltingCab', label: 'Tilting Cab', type: 'boolean', required: false,
-        description: 'Does the cab tilt for uphill / steep-slope operation?'
+        options: ['Leveling', 'Fixed']
       },
     ],
     attachmentOptions: [
       'Single-Grip Harvesting Head', 'Double-Grip Processing Head',
-      'Tilting Cab Kit', 'Winch', 'Lean Tree Device',
-      'Stroke Delimber Attachment', 'Log Measurer / Scale'
+      'Leveling Cab', 'Winch'
     ],
     checklist: [
       ...COMMON_CHECKLIST,
-      { key: 'headChecked',  label: 'Harvesting Head Tested & Calibrated' },
-      { key: 'tiresChecked', label: 'Tracks / Undercarriage Inspected' },
+      { key: 'headChecked',  label: 'Harvesting Head Functional' },
+      { key: 'tiresChecked', label: 'Tires / Undercarriage Inspected' },
     ],
   },
 
@@ -323,15 +305,15 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
       {
         key: 'horsepower', label: 'Engine Horsepower', type: 'number',
-        required: true, unit: 'hp', min: 1
+        required: false, unit: 'hp', min: 1
       },
       {
         key: 'weight', label: 'Operating Weight', type: 'number',
-        required: true, unit: 'lbs', min: 100
+        required: false, unit: 'lbs', min: 100
       },
       {
         key: 'loadCapacityLbs', label: 'Rated Load Capacity', type: 'number',
-        required: true, unit: 'lbs', min: 1,
+        required: false, unit: 'lbs', min: 1,
         description: 'Manufacturer-rated payload in lbs'
       },
       {
@@ -339,16 +321,16 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
         required: true,
         options: [
           '4WD Articulated', '6WD Articulated', '8WD Articulated',
-          'Bogie / Dual-Tire Tandem', 'CTL Rubber Track'
+          'Rubber-Track'
         ]
       },
       {
         key: 'maxBoomReachFt', label: 'Max Crane / Boom Reach', type: 'number',
-        required: true, unit: 'ft', min: 1
+        required: false, unit: 'ft', min: 1
       },
       {
         key: 'bunkWidthIn', label: 'Bunk Width', type: 'number',
-        required: true, unit: 'in', min: 1
+        required: false, unit: 'in', min: 1
       },
       // ── Optional ──────────────────────────────────────────────────────────
       {
@@ -383,8 +365,8 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
     ],
     checklist: [
       ...COMMON_CHECKLIST,
-      { key: 'bunkChecked',  label: 'Bunk / Crane Function Tested' },
-      { key: 'tiresChecked', label: 'Tires / Tracks Inspected & Measured' },
+      { key: 'bunkChecked',  label: 'Crane Functional' },
+      { key: 'tiresChecked', label: 'Tires / Tracks Inspected' },
     ],
   },
 
@@ -399,35 +381,34 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
       {
         key: 'horsepower', label: 'Engine Horsepower', type: 'number',
-        required: true, unit: 'hp', min: 1
+        required: false, unit: 'hp', min: 1
       },
       {
         key: 'weight', label: 'Operating Weight', type: 'number',
-        required: true, unit: 'lbs', min: 100
+        required: false, unit: 'lbs', min: 100
       },
       {
         key: 'loaderType', label: 'Loader / Boom Type', type: 'select',
         required: true,
         options: [
-          'Knuckle Boom', 'Straight Boom', 'Pipe Boom',
-          'Log Grab / Swing Machine', 'Self-Loading Crane'
+          'Knuckle Boom', 'Self-Loading Crane', 'Swing'
         ]
       },
       {
         key: 'maxBoomReachFt', label: 'Max Boom Reach', type: 'number',
-        required: true, unit: 'ft', min: 1
+        required: false, unit: 'ft', min: 1
       },
       {
         key: 'grappleOpeningIn', label: 'Grapple / Grab Opening', type: 'number',
-        required: true, unit: 'in', min: 1
+        required: false, unit: 'in', min: 1
       },
       {
         key: 'carrierType', label: 'Carrier / Mount Type', type: 'select',
         required: true,
         options: [
           'Tracked Excavator Carrier', 'Wheeled Excavator Carrier',
-          'Self-Propelled (Rubber Track)', 'Stationary Mount',
-          'Truck Mounted', 'Log Trailer Mounted'
+          'Self-Propelled (6x6)', 'Stationary',
+          'Truck Mounted', 'Trailer Mounted'
         ]
       },
       // ── Optional ──────────────────────────────────────────────────────────
@@ -444,22 +425,21 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       {
         key: 'cabType', label: 'Operator Station', type: 'select',
         required: false,
-        options: ['Enclosed ROPS/FOPS', 'Open Frame / ROPS', 'Remote / No Cab']
+        options: ['Enclosed ROPS/FOPS', 'Open ROPS', 'Remote / No Cab']
       },
       {
         key: 'transmission', label: 'Travel Drive', type: 'text',
-        required: false, placeholder: 'e.g. Hydrostatic, Tracked Undercarriage'
+        required: false, placeholder: 'e.g. Hydrostatic'
       },
     ],
     attachmentOptions: [
-      'Log Grapple', 'Sorting Grapple', 'Orange Peel Grapple', 'Clamshell',
-      'Thumb Attachment', 'Sorting Fork', 'Tree Shear', 'Scale Package',
-      'Cab Protective Screen', 'Extended Boom'
+      'Log Grapple', 'Sorting Grapple', 'Clamshell', 'Sorting Fork', 'Tree Shear', 'Scale Package',
+      'Extended Boom'
     ],
     checklist: [
       ...COMMON_CHECKLIST,
-      { key: 'boomChecked',  label: 'Boom & Grapple Function Tested' },
-      { key: 'tiresChecked', label: 'Carrier / Undercarriage Inspected' },
+      { key: 'boomChecked',  label: 'Boom & Grapple Functional' },
+      { key: 'tiresChecked', label: 'Tires / Undercarriage Inspected' },
     ],
   },
 
@@ -471,53 +451,49 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       {
         key: 'engineType', label: 'Power Source', type: 'select',
         required: true,
-        options: ['Diesel', 'Gas / Petrol', 'Electric', 'PTO-Powered', 'Hydraulic-Driven (Host Machine)']
+        options: ['Diesel', 'Gas / Petrol', 'Electric', 'PTO']
       },
       {
         key: 'horsepower', label: 'Horsepower / Power Rating', type: 'number',
-        required: true, unit: 'hp', min: 1
+        required: false, unit: 'hp', min: 1
       },
       {
         key: 'maxLogDiameterIn', label: 'Max Log Diameter', type: 'number',
-        required: true, unit: 'in', min: 1,
-        description: 'Maximum diameter log the saw/processor can handle'
+        required: false, unit: 'in', min: 1,
+        description: 'Maximum diameter log that can be processed'
       },
       {
         key: 'maxLogLengthIn', label: 'Max Log Length', type: 'number',
-        required: true, unit: 'in', min: 1,
-        description: 'Maximum total log length the infeed can accept'
+        required: false, unit: 'in', min: 1,
+        description: 'Maximum total log length that can be on infeed'
       },
       {
         key: 'splittingForceTons', label: 'Splitting Force', type: 'number',
-        required: true, unit: 'tons', min: 1,
-        description: 'Hydraulic splitting force in short tons'
+        required: false, unit: 'tons', min: 1,
+        description: 'Hydraulic splitting force in tons'
       },
       {
         key: 'wedgePattern', label: 'Wedge / Splitting Pattern', type: 'select',
-        required: true,
+        required: false,
         options: [
           '2-Way (Straight Split)', '4-Way', '6-Way', '8-Way',
-          '12-Way', '16-Way', 'Variable / Adjustable Pattern'
+          '12-Way', '16-Way', 'Packaging', 'Box'
         ]
       },
       {
         key: 'cycleTimeSec', label: 'Full Cycle Time', type: 'number',
-        required: true, unit: 'sec', min: 0.1,
+        required: false, unit: 'sec', min: 0.1,
         description: 'Saw-to-split full cycle time in seconds'
       },
       {
         key: 'sawBladeSizeIn', label: 'Saw Blade Diameter', type: 'number',
-        required: true, unit: 'in', min: 1
+        required: false, unit: 'in', min: 1
       },
       {
         key: 'conveyorLengthFt', label: 'Outfeed Conveyor Length', type: 'number',
-        required: true, unit: 'ft', min: 1
+        required: false, unit: 'ft', min: 1
       },
       // ── Optional ──────────────────────────────────────────────────────────
-      {
-        key: 'minLogLengthIn', label: 'Min Log Length', type: 'number',
-        required: false, unit: 'in'
-      },
       {
         key: 'productionRateCordsPerHr', label: 'Production Rate', type: 'number',
         required: false, unit: 'cords/hr'
@@ -525,20 +501,12 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       {
         key: 'infeedType', label: 'Infeed / Log Feeding System', type: 'select',
         required: false,
-        options: ['Manual / Hand-Fed', 'Semi-Automatic', 'Fully Automatic Log Deck']
+        options: ['Manual / Hand-Fed', 'Semi-Automatic Log Deck', 'Fully Automatic Log Deck']
       },
       {
         key: 'conveyorType', label: 'Conveyor Type', type: 'select',
         required: false,
-        options: ['Chain Conveyor', 'Belt Conveyor', 'Elevator Belt', 'Cross Conveyor']
-      },
-      {
-        key: 'selfPropelled', label: 'Self-Propelled', type: 'boolean',
-        required: false
-      },
-      {
-        key: 'bulkBagSystem', label: 'Bulk Bag Filling System', type: 'boolean',
-        required: false
+        options: ['Chain Conveyor', 'Belt Conveyor', 'Hopper', 'Tumbler Outfeed']
       },
       {
         key: 'weight', label: 'Machine Weight', type: 'number',
@@ -546,16 +514,15 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
     ],
     attachmentOptions: [
-      'Log Deck / Infeed Deck', 'Infeed Conveyor', 'Cross Conveyor',
-      'Outfeed Elevator Conveyor', 'Bulk Bag Filler', 'Trailer Package',
-      'Log Splitter Attachment', 'Tumbler / Bark Tumbler', 'Log Grabs',
-      'Electric Motor Conversion Kit'
+      'Log Deck / Infeed Deck', 'Infeed Conveyor',
+      'Outfeed Elevator Conveyor', 'Trailer Package',
+      'Tumbler', 'Electric Motor Conversion Kit'
     ],
     checklist: [
       ...COMMON_CHECKLIST,
-      { key: 'sawChecked',       label: 'Saw / Cutting Mechanism Tested' },
-      { key: 'conveyorChecked',  label: 'Conveyor System Tested & Aligned' },
-      { key: 'splitterChecked',  label: 'Splitting Wedge & Ram Fully Tested' },
+      { key: 'sawChecked',       label: 'Saw Functional' },
+      { key: 'conveyorChecked',  label: 'Conveyor Functional' },
+      { key: 'splitterChecked',  label: 'Splitting Wedge & Ram Functional' },
     ],
   },
 
@@ -564,26 +531,26 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
     displayName: 'Dozers',
     specs: [
       {
-        key: 'engine', label: 'Engine', type: 'text', required: true,
+        key: 'engine', label: 'Engine', type: 'text', required: false,
         placeholder: 'e.g. CAT C9.3B, Tier 4 Final'
       },
       {
         key: 'horsepower', label: 'Engine Horsepower', type: 'number',
-        required: true, unit: 'hp', min: 1
+        required: false, unit: 'hp', min: 1
       },
       {
         key: 'weight', label: 'Operating Weight', type: 'number',
-        required: true, unit: 'lbs', min: 100
+        required: false, unit: 'lbs', min: 100
       },
       {
         key: 'driveType', label: 'Undercarriage Type', type: 'select',
-        required: true,
-        options: ['Crawler', 'LGP Crawler', 'PAT / 6-Way', 'Hydrostatic Track']
+        required: false,
+        options: ['Crawler', 'LGP Crawler']
       },
       {
         key: 'bladeType', label: 'Blade Type', type: 'select',
-        required: true,
-        options: ['S-Blade', 'U-Blade', 'Semi-U Blade', 'PAT / 6-Way Blade']
+        required: false,
+        options: ['U-Blade', 'Semi-U Blade', '4-Way Blade', '6-Way Blade']
       },
       {
         key: 'maxLiftCapacityLbs', label: 'Drawbar Pull / Push Force', type: 'number',
@@ -591,7 +558,7 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
       },
       {
         key: 'cabType', label: 'Cab Type', type: 'select', required: false,
-        options: ['Enclosed ROPS/FOPS', 'Open ROPS']
+        options: ['Enclosed ROPS', 'Open ROPS']
       },
       {
         key: 'transmission', label: 'Transmission', type: 'text', required: false,

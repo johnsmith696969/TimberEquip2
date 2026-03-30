@@ -2438,7 +2438,7 @@ export function AdminDashboard() {
           </div>
           <button
             type="button"
-            onClick={fetchUsers}
+            onClick={() => fetchUsers()}
             className="btn-industrial py-1.5 px-4 text-[10px] shrink-0"
           >
             <RefreshCw size={12} className="mr-1.5" /> Retry
@@ -2491,7 +2491,7 @@ export function AdminDashboard() {
           </button>
           <button
             type="button"
-            onClick={fetchUsers}
+            onClick={() => fetchUsers()}
             className="btn-industrial btn-outline py-2 px-4 text-[10px] flex items-center"
           >
             <RefreshCw size={12} className="mr-1.5" /> Refresh

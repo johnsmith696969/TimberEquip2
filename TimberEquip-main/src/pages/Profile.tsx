@@ -2909,7 +2909,7 @@ export function Profile() {
           {/* Main Content */}
           <div className="lg:col-span-9">
             <div>
-              {shouldShowProfileLoadingShell && activeTab !== 'Account Settings' && activeTab !== 'Privacy & Data' ? (
+              {shouldShowProfileLoadingShell ? (
                 <div className="space-y-4 animate-pulse">
                   <div className="h-10 bg-surface border border-line" />
                   <div className="h-40 bg-surface border border-line" />

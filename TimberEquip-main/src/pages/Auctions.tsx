@@ -80,11 +80,10 @@ export function Auctions() {
       />
       {/* Hero Section */}
       <section className="relative h-[400px] flex items-center justify-center overflow-hidden">
-        <img 
-          src="https://picsum.photos/seed/auction_hero/1920/1080?grayscale" 
-          alt="Auction Hero" 
+        <img
+          src="/page-photos/john-deere-harvester.jpg"
+          alt="John Deere harvester in the forest"
           className="absolute inset-0 w-full h-full object-cover opacity-40"
-          referrerPolicy="no-referrer"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-bg/0 via-bg/50 to-bg"></div>
         

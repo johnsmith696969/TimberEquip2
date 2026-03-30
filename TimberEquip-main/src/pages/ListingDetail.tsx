@@ -792,7 +792,7 @@ export function ListingDetail() {
     routeManufacturer && routeModel ? { label: routeModel, path: buildManufacturerModelPath(routeManufacturer, routeModel) } : null,
     routeState ? { label: `${routeState}`, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
     dealerPath ? { label: seller?.storefrontName || safeSellerName, path: dealerPath } : null,
-  ].filter((entry): entry is { label: string; path: string } => Boolean(entry) && entry.path);
+  ].filter((entry): entry is { label: string; path: string } => Boolean(entry) && Boolean(entry.path));
   const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 5);
   const breadcrumbItems = [
     {

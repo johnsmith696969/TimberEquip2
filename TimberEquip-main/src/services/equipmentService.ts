@@ -1200,6 +1200,7 @@ export const equipmentService = {
     const cacheScope = 'account-storefront';
     try {
       const payload = await getAuthorizedJson<{ seller?: Seller | null } & QuotaLimitedAccountPayload>('/api/account/storefront');
+      const resolvedSeller = payload.seller;
       if (isQuotaLimitedAccountPayload(payload)) {
         const cached = readPrivateBrowserCache<Seller | null>(cacheScope);
         if (cached) {
@@ -1212,8 +1213,8 @@ export const equipmentService = {
         }
         return undefined;
       }
-      writePrivateBrowserCache(cacheScope, payload.seller || null);
-      return payload.seller || undefined;
+      writePrivateBrowserCache(cacheScope, resolvedSeller || null);
+      return resolvedSeller || undefined;
     } catch (error) {
       const cached = readPrivateBrowserCache<Seller | null>(cacheScope);
       if (cached) {

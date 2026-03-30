@@ -501,8 +501,13 @@ export function AdPrograms() {
       />
       {/* Hero Section */}
       <section className="relative py-24 px-4 md:px-8 border-b border-line overflow-hidden">
-        <div className="absolute inset-0 opacity-5 pointer-events-none">
-          <div className="industrial-grid w-full h-full" />
+        <div className="absolute inset-0">
+          <img
+            src="/page-photos/winter-log-road.jpg"
+            alt="Winter logging road through snow-covered forest"
+            className="w-full h-full object-cover opacity-20"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
         </div>
         
         <div className="max-w-7xl mx-auto relative z-10">
