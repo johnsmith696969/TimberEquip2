@@ -1409,48 +1409,6 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // AI Proxy — keeps GEMINI_API_KEY server-side only
-  const aiRateLimit = rateLimit({ windowMs: 60_000, max: 20, message: { error: 'Too many AI requests. Try again later.' } });
-  app.post('/api/ai/generate', aiRateLimit, async (req, res) => {
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-      return res.status(503).json({ error: 'AI service is not configured.' });
-    }
-
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      await auth.verifyIdToken(idToken);
-    } catch {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-
-    const { prompt, responseSchema } = req.body;
-    if (!prompt || typeof prompt !== 'string') {
-      return res.status(400).json({ error: 'prompt is required' });
-    }
-
-    try {
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
-      const config: Record<string, unknown> = {};
-      if (responseSchema) {
-        config.responseMimeType = 'application/json';
-        config.responseSchema = responseSchema;
-      }
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: Object.keys(config).length > 0 ? config : undefined,
-      });
-      res.json({ text: response.text });
-    } catch (error: any) {
-      console.error('AI proxy error:', error.message);
-      res.status(502).json({ error: 'AI service temporarily unavailable.' });
-    }
-  });
-
   app.post('/api/billing/create-checkout-session', async (req, res) => {
     if (!stripe && isLocalBillingStubEnabled()) {
       const idToken = req.headers.authorization?.split('Bearer ')[1];

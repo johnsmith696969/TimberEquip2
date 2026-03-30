@@ -20,7 +20,7 @@
 - [x] **1.8 - Fix package.json identity** - Already `"name": "timberequip"` with correct metadata.
 - [x] **1.9 - Default noindex meta in index.html** - Added `<meta name="robots" content="noindex, nofollow" />` as safety net. `Seo.tsx` overrides per-page.
 - [x] **1.10 - Fix legal page contact emails** - All emails now reference `@timberequip.com`. Verified in `Privacy.tsx`, `Cookies.tsx`, `Terms.tsx`, `Contact.tsx`.
-- [x] **1.11 - Expand Privacy Policy** - Already comprehensive: covers Stripe, Firebase, SendGrid, reCAPTCHA, Gemini, Maps, GDPR Art 13/14, CCPA, COPPA, data breach 72h, cookie consent, data transfer.
+- [x] **1.11 - Expand Privacy Policy** - Already comprehensive: covers Stripe, Firebase, SendGrid, Twilio Voice, reCAPTCHA, Maps, GDPR Art 13/14, CCPA, COPPA, data breach 72h, cookie consent, data transfer.
 - [x] **1.12 - Fix Terms of Service gaps** - Already covers: IP license, indemnification, governing law (Minnesota), binding arbitration, class action waiver, force majeure.
 - [x] **1.13 - Implement consent logging** - `ConsentBanner` already logs accept/decline to Firestore `consentLogs` via `logConsentToFirestore()`. "Manage Cookies" button wired on `/cookies`.
 - [x] **1.14 - Replace deprecated `csurf` package** - Replaced archived `csurf@1.11.0` with an in-repo double-submit CSRF token strategy that preserves the existing `/api/csrf-token` + `CSRF-Token` frontend contract, keeps Stripe webhook exemptions, and removes the deprecated package from `package.json`.
@@ -49,8 +49,8 @@
 - [x] **3.1 - Test infrastructure** - Vitest + React Testing Library installed and configured. `vitest.config.ts` and `src/__tests__/setup.ts` created. Scripts: `test`, `test:watch`, `test:coverage`.
 - [x] **3.2 - Unit tests (core business logic)** - 8 test files, 138 unit tests covering: accountEntitlement, sellerAccess, userRoles, sellerPlans, seoRoutes, seoRouteQuality, privilegedAdmin, amvMatching.
 - [x] **3.3 - Smoke tests** - 32 tests verifying all 26 page modules and 4 core components import/export correctly. Firebase fully mocked.
-- [ ] **3.4 - Additional unit test coverage** - `billingService`, `equipmentService` (CRUD, search query building, cap enforcement), `listingPath` (URL generation, slugs).
-  - Effort: 30-40 hours
+- [~] **3.4 - Additional unit test coverage** - `billingService` and `listingPath` are covered, and `equipmentService` market-value / market-match logic is now covered. Remaining gaps are the heavier `equipmentService` CRUD/search-query/cap-enforcement paths.
+  - Effort remaining: 20-30 hours
 - [ ] **3.5 - Integration tests for Stripe flows** - Checkout session creation, webhook event processing (`invoice.paid`, subscription CRUD, `checkout.session.completed`), idempotency, subscription expiry, listing cap API enforcement.
   - Effort: 40-60 hours
 - [ ] **3.6 - E2E tests (Playwright)** - Install Playwright coverage for 6 critical journeys: register -> checkout -> list, search -> inquiry, seller billing, admin approve, category browse, listing form + upload.
@@ -92,7 +92,7 @@
 - [~] **5.4 - Database backup strategy** - Backup workflow, export script, retention policy, and restore runbook are now in the repo. Remaining work: configure the dedicated backup bucket and confirm IAM/variables in production so the scheduled export lane is truly active.
   - Files: `.github/workflows/firestore-backup.yml`, `scripts/firestore-backup.mjs`, `ops/runbooks/FIRESTORE_BACKUP_RESTORE.md`
   - Effort: 8-12 hours
-- [x] **5.5 - Rate limiting audit** - Added specific rate limiters for checkout (10/min), account deletion (3/min), billing portal (10/min). General API limiter (1000/15min) already covers `/api/` routes. AI generation is capped at 20/min. Cloud Functions auth endpoints now also have dedicated in-function rate limiting for password reset and verification email sends.
+- [x] **5.5 - Rate limiting audit** - Added specific rate limiters for checkout (10/min), account deletion (3/min), billing portal (10/min). General API limiter (1000/15min) already covers `/api/` routes. Cloud Functions auth endpoints now also have dedicated in-function rate limiting for password reset and verification email sends.
 - [ ] **5.6 - Split functions/index.js** - 12,166 lines -> `billing.js`, `email.js`, `scheduled.js`, `auth-triggers.js`, `dealer-feeds.js`. Keep `index.js` as a thin re-export.
   - Effort: 20-30 hours
 - [x] **5.7 - Local development parity** - Local `server.ts` now proxies the same shared Functions billing routes used in production, and an explicit `LOCAL_BILLING_STUB=true` mode now simulates checkout/portal/cancel/access flows when Stripe secrets are absent. The local setup docs now also call out `npm --prefix functions install`.

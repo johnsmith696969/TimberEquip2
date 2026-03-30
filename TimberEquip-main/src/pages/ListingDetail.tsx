@@ -9,7 +9,6 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
-import { geminiService } from '../services/geminiService';
 import {
   AMV_MATCH_HOURS_PERCENT,
   AMV_MATCH_PRICE_PERCENT,
@@ -69,8 +68,6 @@ export function ListingDetail() {
   const [financingConsentAccepted, setFinancingConsentAccepted] = useState(false);
   const [marketMatchRecommendations, setMarketMatchRecommendations] = useState<Listing[]>([]);
   const [amvExplanation, setAmvExplanation] = useState<string | null>(null);
-  const [aiSpecs, setAiSpecs] = useState<any>(null);
-  const [loadingAiData, setLoadingAiData] = useState(false);
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
@@ -257,10 +254,8 @@ export function ListingDetail() {
           marketValueEstimate: listingData.marketValueEstimate ?? null,
         });
         setSeller(null);
-        setAiSpecs(null);
         setAmvExplanation(null);
         setLoading(false);
-        setLoadingAiData(true);
         setLoadingMarketMatches(true);
 
         const sellerPromise = equipmentService
@@ -296,22 +291,14 @@ export function ListingDetail() {
           );
         }
 
-        const explanationPromise =
+        const explanationPromise = Promise.resolve(
           computedAmv !== null
-            ? geminiService
-                .explainAMV(listingData.title, listingData.price, computedAmv, listingData.specs)
-                .catch((error) => {
-                  console.error('Error explaining AMV:', error);
-                  return null;
-                })
-            : Promise.resolve<string | null>(null);
+            ? `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`
+            : null
+        );
 
-        const [sellerData, specs, explanation, recommendations] = await Promise.all([
+        const [sellerData, explanation, recommendations] = await Promise.all([
           sellerPromise,
-          geminiService.getMachineSpecs(listingData.title, listingData.category).catch((error) => {
-            console.error('Error fetching machine specs:', error);
-            return null;
-          }),
           explanationPromise,
           equipmentService
             .getMarketMatchRecommendations({
@@ -339,7 +326,6 @@ export function ListingDetail() {
             if (isActive) setSellerListingCount(count);
           }).catch(() => { /* non-critical */ });
         }
-        setAiSpecs(specs);
         setAmvExplanation(explanation || null);
         setMarketMatchRecommendations(recommendations);
       } catch (error) {
@@ -350,7 +336,6 @@ export function ListingDetail() {
         }
       } finally {
         if (isActive) {
-          setLoadingAiData(false);
           setLoadingMarketMatches(false);
         }
       }
@@ -1257,36 +1242,20 @@ export function ListingDetail() {
             {/* Technical Specifications */}
             <div className="flex flex-col space-y-6">
               <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.technicalSpecifications', 'Technical Specifications')}</h3>
-              
-              {loadingAiData ? (
-                <div className="flex items-center space-x-4 py-8">
-                  <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold uppercase tracking-widest text-muted">{t('listingDetail.retrievingTechnicalData', 'Retrieving Technical Data...')}</span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
-                  {/* AI Specs */}
-                  {aiSpecs && Object.entries(aiSpecs).map(([key, value], i) => {
-                    if (!value || key === 'additionalSpecs') return null;
-                    return (
-                      <div key={`ai-${i}`} className="data-row">
-                        <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
-                        <span className="value-mono uppercase">{String(value)}</span>
-                      </div>
-                    );
-                  })}
-                  
-                  {/* Original Specs */}
-                  {Object.entries(listingSpecs).map(([key, value], i) => (
-                    <div key={i} className="data-row">
-                      <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
-                      <span className="value-mono uppercase">
-                        {formatSpecValue(value)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
+                {Object.entries(listingSpecs).length > 0 ? Object.entries(listingSpecs).map(([key, value], i) => (
+                  <div key={i} className="data-row">
+                    <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
+                    <span className="value-mono uppercase">
+                      {formatSpecValue(value)}
+                    </span>
+                  </div>
+                )) : (
+                  <div className="md:col-span-2 border border-dashed border-line bg-surface p-6 text-sm font-medium leading-relaxed text-muted">
+                    Seller-provided technical specifications will appear here when they are included with the listing.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1685,7 +1654,7 @@ export function ListingDetail() {
                     <span className="text-sm font-black uppercase tracking-tighter">Equipment Market Value Index</span>
                   </div>
                   <p className="text-sm text-muted leading-relaxed font-medium">
-                    {amvExplanation || "Retrieving market intelligence..."}
+                    {amvExplanation || `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}.`}
                   </p>
                 </div>
 
