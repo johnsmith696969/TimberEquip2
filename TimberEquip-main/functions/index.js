@@ -31,6 +31,7 @@ const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('.
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
+const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
 const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -38,6 +39,7 @@ const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+initializeFunctionsSentry();
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 
@@ -12572,6 +12574,11 @@ exports.apiProxy = onRequest(
       return res.status(404).json({ error: 'Not found' });
     } catch (error) {
       logger.error('apiProxy failed', error);
+      captureFunctionsException(error, {
+        path,
+        method: req.method,
+        handler: 'apiProxy',
+      });
       if (isFirestoreQuotaExceeded(error)) {
         return res.status(503).json({
           error: getQuotaExceededApiMessage(path),

@@ -13,8 +13,24 @@ import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import multer from 'multer';
+import { captureServerException, initializeServerSentry } from './sentry.server.js';
 
 dotenv.config();
+initializeServerSentry();
+
+process.on('uncaughtException', (error) => {
+  captureServerException(error, {
+    tags: { process_event: 'uncaughtException' },
+  });
+  console.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  captureServerException(reason, {
+    tags: { process_event: 'unhandledRejection' },
+  });
+  console.error('Unhandled rejection:', reason);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2435,12 +2451,31 @@ async function startServer() {
     });
   }
 
+  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    captureServerException(error, {
+      path: req.originalUrl,
+      method: req.method,
+      tags: { handler: 'express' },
+    });
+
+    if (res.headersSent) {
+      return next(error);
+    }
+
+    return res.status(500).json({ error: 'Internal server error' });
+  });
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer().catch(console.error);
+startServer().catch((error) => {
+  captureServerException(error, {
+    tags: { process_event: 'startServer' },
+  });
+  console.error(error);
+});
 
 // ─── Daily Inventory Snapshot Job ────────────────────────────────────────────
 // Runs once on startup (writing today's snapshot if not already present) and

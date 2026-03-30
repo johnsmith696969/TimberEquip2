@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { AlertCircle, RefreshCw, Home } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { captureBrowserException } from '../services/sentry';
 
 interface Props {
   children: React.ReactNode;
@@ -27,6 +28,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+    captureBrowserException(error, {
+      componentStack: errorInfo.componentStack,
+      boundary: 'ErrorBoundary',
+    });
   }
 
   public render() {

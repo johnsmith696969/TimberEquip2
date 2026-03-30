@@ -83,9 +83,9 @@
 ## Phase 5: Infrastructure & Operations (Post-Launch, Week 2-4)
 
 - [x] **5.1 - CI/CD pipeline** - 3 workflows: PR (lint -> test -> build -> preview deploy), Staging (verify -> deploy -> smoke on push to main), Production (verify -> deploy -> smoke, manual trigger).
-- [ ] **5.2 - Error tracking (Sentry)** - Client + server integration, source maps, user context, alerting.
-  - Files: `src/main.tsx`, `src/components/ErrorBoundary.tsx`, `server.ts`, `functions/index.js`
-  - Effort: 10-15 hours
+- [~] **5.2 - Error tracking (Sentry)** - Optional client, local server, and Functions Sentry scaffolding is now wired with browser init, error-boundary capture, authenticated user context, backend exception capture hooks, and a hidden-sourcemap build toggle. Remaining work: configure DSNs/secrets, enable sourcemap upload in CI, validate staging events, and set alert routing.
+  - Files: `src/services/sentry.ts`, `src/main.tsx`, `src/components/ErrorBoundary.tsx`, `src/components/AuthContext.tsx`, `sentry.server.ts`, `server.ts`, `functions/sentry.js`, `functions/index.js`, `ops/runbooks/SENTRY_ERROR_TRACKING.md`
+  - Effort remaining: 4-8 hours
 - [ ] **5.3 - Application performance monitoring** - Firebase Performance Monitoring and custom traces for page load/search/checkout.
   - Files: `index.html`, `src/main.tsx`
   - Effort: 8-12 hours

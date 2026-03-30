@@ -46,6 +46,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sentry/node": "^10.46.0",
+    "@sentry/react": "^10.46.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/multer": "^2.1.0",
     "@vitejs/plugin-react": "^5.0.4",

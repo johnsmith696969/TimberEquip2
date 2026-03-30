@@ -5,11 +5,11 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
-  void env;
 
   return {
     plugins: [react(), tailwindcss()],
     build: {
+      sourcemap: env.SENTRY_SOURCE_MAPS === 'true' ? 'hidden' : false,
       rollupOptions: {
         output: {
           manualChunks(id) {
