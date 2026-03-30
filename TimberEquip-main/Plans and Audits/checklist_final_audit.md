@@ -2,7 +2,7 @@
 
 **Created:** March 29, 2026
 **Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
-**Last updated:** March 30, 2026 (session 6)
+**Last updated:** March 30, 2026 (session 7)
 
 ---
 
@@ -55,7 +55,7 @@
   - Effort: 40-60 hours
 - [~] **3.6 - E2E tests (Playwright)** - In-repo Playwright coverage now exists for the first public critical journeys. `tests-e2e/public-critical-journeys.spec.ts` passes against staging and verifies the refreshed home hero image, category browse path, home quick-search -> results -> inquiry flow, listing-detail render, inquiry modal consent controls, the financing wizard step progression, and public seller-plan selection states on Ad Programs. Remaining work is to codify the rest of the journey matrix: register -> checkout -> list, seller billing, admin approve, and the authenticated listing form + upload flow. A staging protected-route blank-shell issue is still the main blocker for full seller/admin browser automation.
   - Effort remaining: 50-70 hours
-- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `SubscriptionPaymentModal`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, `Financing`, `AdPrograms`, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. `ListingModal` covers minimum-photo validation, mocked image-upload behavior, per-photo title editing, and in-form image reordering; `SubscriptionSuccess` covers missing-session, processing, signed-in success, and signed-out continuation states; `Financing` covers step progression, consent-gated submission, and success state; `AdPrograms` covers unauthenticated enrollment CTA, owner-operator quantity controls, and current-plan messaging. Remaining gaps are the broader multi-file media-edit permutations and more end-to-end purchase states beyond the success-page surface.
+- [~] **3.7 - Component tests** - `Seo`, `ListingCard`, `ConsentBanner`, `InquiryModal`, `SubscriptionPaymentModal`, the admin `ListingModal`, the post-checkout `SubscriptionSuccess` page, `Financing`, `AdPrograms`, and `ListingDetail` fullscreen gallery navigation now have render/behavior coverage in Vitest + RTL. `InquiryModal` covers seller-specific consent gating, successful inquiry submission state, and the unsaved-change close prompt; `ListingModal` covers minimum-photo validation, mocked image-upload behavior, per-photo title editing, and in-form image reordering; `SubscriptionSuccess` covers missing-session, processing, signed-in success, and signed-out continuation states; `Financing` covers step progression, consent-gated submission, and success state; `AdPrograms` covers unauthenticated enrollment CTA, owner-operator quantity controls, and current-plan messaging. Remaining gaps are the broader multi-file media-edit permutations and more end-to-end purchase states beyond the success-page surface.
   - Effort remaining: 10-16 hours
 
 ---
@@ -122,7 +122,7 @@
 - [x] TypeScript errors resolved
 - [x] Helmet security headers enabled
 - [x] CORS locked to explicit origins
-- [x] Test suite passing (248 tests, 18 test files)
+- [x] Test suite passing (276 tests, 25 test files)
 - [x] package.json identity correct
 - [x] 404 page exists with noindex
 - [x] DMCA page exists with footer link
