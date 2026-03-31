@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   Mail,
   Lock,
@@ -62,7 +62,8 @@ export function Login() {
   const redirectTarget = typeof (location.state as { from?: unknown } | null)?.from === 'string'
     ? ((location.state as { from: string }).from || '')
     : queryRedirectTarget;
-  const hasActiveSession = Boolean(isAuthenticated || auth.currentUser);
+  const hasFirebaseSession = Boolean(auth.currentUser);
+  const hasResolvedSession = Boolean(isAuthenticated);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -90,24 +91,24 @@ export function Login() {
     mfaRecaptchaRef.current = null;
   }, []);
 
-  const navigateAfterSignIn = () => {
-    const signedInEmail = auth.currentUser?.email?.trim().toLowerCase() || email.trim().toLowerCase();
-    if (isPrivilegedAdminEmail(signedInEmail)) {
-      navigate('/admin', { replace: true });
-    } else if (redirectTarget) {
-      navigate(redirectTarget, { replace: true });
-    } else {
-      navigate('/profile', { replace: true });
-    }
-  };
+  const signedInEmail = auth.currentUser?.email?.trim().toLowerCase() || email.trim().toLowerCase();
+  const postSignInTarget = isPrivilegedAdminEmail(signedInEmail)
+    ? '/admin'
+    : redirectTarget || '/profile';
 
   useEffect(() => {
-    if (!hasActiveSession || mfaResolver) {
+    if ((!hasResolvedSession && !hasFirebaseSession) || mfaResolver) {
       return;
     }
 
-    navigateAfterSignIn();
-  }, [hasActiveSession, mfaResolver, redirectTarget, email]);
+    navigate(postSignInTarget, { replace: true });
+
+    const fallbackRedirect = window.setTimeout(() => {
+      window.location.replace(postSignInTarget);
+    }, 750);
+
+    return () => window.clearTimeout(fallbackRedirect);
+  }, [hasFirebaseSession, hasResolvedSession, mfaResolver, navigate, postSignInTarget]);
 
   const resetMfaChallenge = (notice = '') => {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
@@ -212,7 +213,7 @@ export function Login() {
     try {
       await completeSmsMfaSignIn(mfaResolver, mfaVerificationId, normalizedCode);
       resetMfaChallenge();
-      navigateAfterSignIn();
+      navigate(postSignInTarget, { replace: true });
     } catch (mfaError) {
       setError(getMfaErrorMessage(mfaError, 'Unable to complete SMS multi-factor sign-in right now.'));
     } finally {
@@ -281,7 +282,7 @@ export function Login() {
         return;
       }
 
-      navigateAfterSignIn();
+      setInfoMessage('Session active. Redirecting to your account...');
     } catch (loginFailure: any) {
       const code = loginFailure?.code || '';
       if (code === 'auth/multi-factor-auth-required') {
@@ -305,7 +306,7 @@ export function Login() {
 
     try {
       if (auth.currentUser || isAuthenticated) {
-        navigateAfterSignIn();
+        setInfoMessage('Session active. Redirecting to your account...');
         return;
       }
 
@@ -322,7 +323,7 @@ export function Login() {
         return;
       }
 
-      navigateAfterSignIn();
+      setInfoMessage('Session active. Redirecting to your account...');
     } catch (googleFailure: any) {
       const code = googleFailure?.code || '';
       if (code === 'auth/multi-factor-auth-required') {
@@ -345,16 +346,8 @@ export function Login() {
 
   const disablePrimaryAuth = loading || googleLoading || !!mfaResolver;
 
-  if (hasActiveSession && !mfaResolver) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center p-6">
-        <div className="w-full max-w-md border border-line bg-surface px-8 py-10 text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-accent mb-3">Session Active</p>
-          <h1 className="text-2xl font-black uppercase tracking-tight mb-3">Redirecting To Your Account</h1>
-          <p className="text-sm text-muted">Your session is already active. Taking you to the correct dashboard now.</p>
-        </div>
-      </div>
-    );
+  if ((hasResolvedSession || hasFirebaseSession) && !mfaResolver) {
+    return <Navigate replace to={postSignInTarget} />;
   }
 
   return (

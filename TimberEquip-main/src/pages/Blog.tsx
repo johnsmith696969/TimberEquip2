@@ -76,7 +76,15 @@ export function Blog() {
         canonicalPath="/blog"
       />
       {/* Editorial Header */}
-      <section className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
+      <section className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
+        <div className="absolute inset-0">
+          <img
+            src="/page-photos/pine-dirt-road.jpg"
+            alt="Pine dirt road through the forest"
+            className="w-full h-full object-cover opacity-20"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
+        </div>
         <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="flex items-center space-x-3 mb-6">

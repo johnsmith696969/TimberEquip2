@@ -5,9 +5,11 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Building2,
+  ClipboardList,
   Copy,
   Database,
   Eye,
+  Layers,
   Package,
   Plus,
   RefreshCw,
@@ -18,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { ListingModal } from '../components/admin/ListingModal';
+import { BulkImportToolkit } from '../components/BulkImportToolkit';
 import {
   dealerFeedService,
   type DealerFeedIngestResult,
@@ -26,11 +29,13 @@ import {
   type DealerFeedProfile,
 } from '../services/dealerFeedService';
 import { equipmentService } from '../services/equipmentService';
+import { storageService } from '../services/storageService';
 import { userService } from '../services/userService';
-import { type Inquiry, type Listing, type Seller } from '../types';
+import { type Inquiry, type InspectionRequest, type Listing, type Seller } from '../types';
 import { buildListingPath } from '../utils/listingPath';
-import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap } from '../utils/sellerAccess';
+import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap, getManagedListingCap } from '../utils/sellerAccess';
 import { useLocale } from '../components/LocaleContext';
+import { buildInspectionSheetFileName, buildInspectionSheetText } from '../utils/inspectionSheets';
 import {
   buildDealerFeedApiCurlSnippet,
   buildDealerFeedSampleUrl,
@@ -110,6 +115,13 @@ export function DealerOS() {
   const [leadActionError, setLeadActionError] = useState('');
   const [leadActionSuccess, setLeadActionSuccess] = useState('');
   const [leadNoteDraft, setLeadNoteDraft] = useState('');
+  const [inspectionRequests, setInspectionRequests] = useState<InspectionRequest[]>([]);
+  const [inspectionQuoteDrafts, setInspectionQuoteDrafts] = useState<Record<string, string>>({});
+  const [inspectionActionId, setInspectionActionId] = useState<string | null>(null);
+  const [inspectionDocumentActionId, setInspectionDocumentActionId] = useState<string | null>(null);
+  const [inspectionError, setInspectionError] = useState('');
+  const [inspectionNotice, setInspectionNotice] = useState('');
+  const inspectionReportInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const loadDealerOsData = async () => {
     if (!ownerUid) {
@@ -120,13 +132,14 @@ export function DealerOS() {
     setLoading(true);
     setPageError('');
     try {
-      const [inventory, leads, feedLogs, managedSeats, savedProfiles, sellerProfile] = await Promise.all([
+      const [inventory, leads, feedLogs, managedSeats, savedProfiles, sellerProfile, nextInspectionRequests] = await Promise.all([
         equipmentService.getSellerListings(ownerUid, { includeSold: true }),
         equipmentService.getInquiries(ownerUid),
         dealerFeedService.getRecentLogs(12, ownerUid),
         userService.getManagedAccountSeatContext(ownerUid),
         dealerFeedService.getSavedProfiles(ownerUid),
         equipmentService.getSeller(ownerUid),
+        user?.uid ? equipmentService.getInspectionRequests({ userUid: user.uid, role: user.role }) : Promise.resolve([]),
       ]);
 
       setListings(inventory);
@@ -135,6 +148,13 @@ export function DealerOS() {
       setSeatSummary({ seatLimit: managedSeats.seatLimit, seatCount: managedSeats.seatCount });
       setProfiles(savedProfiles);
       setStorefrontProfile(sellerProfile || null);
+      setInspectionRequests(nextInspectionRequests);
+      setInspectionQuoteDrafts(
+        nextInspectionRequests.reduce<Record<string, string>>((drafts, request) => {
+          drafts[request.id] = typeof request.quotedPrice === 'number' ? String(request.quotedPrice) : '';
+          return drafts;
+        }, {})
+      );
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'DealerOS could not load yet.');
     } finally {
@@ -144,7 +164,7 @@ export function DealerOS() {
 
   useEffect(() => {
     void loadDealerOsData();
-  }, [ownerUid]);
+  }, [ownerUid, user?.uid, user?.role]);
 
   useEffect(() => {
     if (inquiries.length === 0) {
@@ -183,6 +203,13 @@ export function DealerOS() {
     () => listings.filter((listing) => String(listing.status || 'active').toLowerCase() === 'active'),
     [listings]
   );
+  const finiteListingCap = getManagedListingCap(user);
+  const remainingListingSlots = finiteListingCap === null ? null : Math.max(finiteListingCap - activeListings.length, 0);
+  const listingAllowanceText = finiteListingCap !== null
+    ? `${finiteListingCap} managed listings • ${remainingListingSlots} remaining`
+    : user?.role === 'pro_dealer'
+      ? '150 managed listings'
+      : '50 managed listings';
   const featuredListings = useMemo(
     () => activeListings.filter((listing) => !!listing.featured),
     [activeListings]
@@ -211,6 +238,14 @@ export function DealerOS() {
     () => inquiries.find((inquiry) => inquiry.id === selectedInquiryId) || null,
     [inquiries, selectedInquiryId]
   );
+  const openInspectionCount = useMemo(
+    () => inspectionRequests.filter((request) => ['New', 'Quoted', 'Accepted'].includes(request.status)).length,
+    [inspectionRequests]
+  );
+  const completedInspectionCount = useMemo(
+    () => inspectionRequests.filter((request) => request.status === 'Completed').length,
+    [inspectionRequests]
+  );
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
   const publicDealerId = storefrontProfile?.storefrontSlug || ownerUid;
   const publicDealerPageUrl = publicDealerId ? `${appOrigin}/dealers/${encodeURIComponent(publicDealerId)}` : '';
@@ -230,6 +265,31 @@ export function DealerOS() {
         sourceType: activeFeedProfile.sourceType === 'csv' ? 'csv' : 'json',
       })
     : '';
+
+  const formatDateLabel = (value?: string | null) => {
+    if (!value) return 'Date unavailable';
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) return 'Date unavailable';
+    return new Date(parsed).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const getInspectionStatusClasses = (status: InspectionRequest['status']) => {
+    switch (status) {
+      case 'Accepted':
+      case 'Completed':
+        return 'bg-data/10 text-data';
+      case 'Declined':
+        return 'bg-accent/10 text-accent';
+      case 'Quoted':
+        return 'bg-amber-500/10 text-amber-700';
+      default:
+        return 'bg-ink text-white';
+    }
+  };
 
   const filteredListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -611,18 +671,190 @@ export function DealerOS() {
     setLeadActionError('');
     setLeadActionSuccess('');
     try {
+      const optimisticNote = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text,
+        authorUid: user?.uid,
+        authorName: user?.displayName || user?.storefrontName || user?.company || 'Dealer Team',
+        createdAt: new Date().toISOString(),
+      };
       await equipmentService.addInquiryInternalNote(selectedInquiry.id, {
         text,
         authorUid: user?.uid,
         authorName: user?.displayName || user?.storefrontName || user?.company || 'Dealer Team',
       });
+      setInquiries((prev) => prev.map((entry) => (
+        entry.id === selectedInquiry.id
+          ? { ...entry, internalNotes: [...(entry.internalNotes || []), optimisticNote] }
+          : entry
+      )));
       setLeadNoteDraft('');
-      await loadDealerOsData();
+      void loadDealerOsData();
       setLeadActionSuccess('Internal note added to the lead.');
     } catch (error) {
       setLeadActionError(error instanceof Error ? error.message : 'Unable to save the internal note.');
     } finally {
       setLeadActionLoading(false);
+    }
+  };
+
+  const patchInspectionRequestLocal = (requestId: string, patch: Partial<InspectionRequest>) => {
+    setInspectionRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, ...patch } : item)));
+  };
+
+  const handleInspectionQuoteDraftChange = (requestId: string, value: string) => {
+    setInspectionQuoteDrafts((prev) => ({ ...prev, [requestId]: value }));
+  };
+
+  const handleInspectionRequestUpdate = async (
+    request: InspectionRequest,
+    status: InspectionRequest['status'],
+    includeQuote: boolean
+  ) => {
+    if (!user?.uid) return;
+
+    setInspectionActionId(request.id);
+    setInspectionError('');
+    setInspectionNotice('');
+
+    let quotedPrice: number | null | undefined;
+    if (includeQuote) {
+      const rawQuote = (inspectionQuoteDrafts[request.id] ?? '').trim();
+      if (!rawQuote) {
+        quotedPrice = null;
+      } else {
+        const parsedQuote = Number(rawQuote);
+        if (!Number.isFinite(parsedQuote) || parsedQuote < 0) {
+          setInspectionError('Inspection quote must be a valid non-negative amount.');
+          setInspectionActionId(null);
+          return;
+        }
+        quotedPrice = parsedQuote;
+      }
+    }
+
+    try {
+      await equipmentService.updateInspectionRequest(request.id, {
+        status,
+        quotedPrice,
+        assignedToUid: user.uid,
+        assignedToName: user.displayName || user.company || user.email || 'Inspection Manager',
+      });
+
+      const updatedAt = new Date().toISOString();
+      setInspectionRequests((prev) =>
+        prev.map((item) =>
+          item.id === request.id
+            ? {
+                ...item,
+                status,
+                quotedPrice: quotedPrice === undefined ? item.quotedPrice : quotedPrice,
+                assignedToUid: user.uid,
+                assignedToName: user.displayName || user.company || user.email || 'Inspection Manager',
+                updatedAt,
+                reviewedAt: updatedAt,
+                respondedAt: ['Quoted', 'Accepted', 'Declined', 'Completed'].includes(status) ? updatedAt : item.respondedAt,
+              }
+            : item
+        )
+      );
+      setInspectionNotice(`Inspection request ${status.toLowerCase()} successfully.`);
+    } catch (error) {
+      setInspectionError(error instanceof Error ? error.message : 'Unable to update inspection request right now.');
+    } finally {
+      setInspectionActionId(null);
+    }
+  };
+
+  const handleGenerateInspectionTemplate = async (request: InspectionRequest) => {
+    if (!user?.uid) return;
+
+    setInspectionDocumentActionId(request.id);
+    setInspectionError('');
+    setInspectionNotice('');
+
+    try {
+      const linkedListing = request.listingId ? await equipmentService.getListing(request.listingId) : undefined;
+      const content = buildInspectionSheetText(request, linkedListing);
+      const fileName = buildInspectionSheetFileName(request, linkedListing);
+      const file = new File([content], fileName, { type: 'text/plain' });
+      const uploaded = await storageService.uploadInspectionDocument(file, request.id, {
+        listingId: request.listingId,
+        requesterUid: request.requesterUid || '',
+        assignedToUid: request.assignedToUid || user.uid,
+        kind: 'template',
+      });
+      const generatedAt = new Date().toISOString();
+      const generatedByName = user.displayName || user.company || user.email || 'Inspection Manager';
+
+      await equipmentService.updateInspectionRequest(request.id, {
+        inspectionTemplateUrl: uploaded.downloadUrl,
+        inspectionTemplateFileName: uploaded.fileName,
+        inspectionTemplateGeneratedAt: generatedAt,
+        inspectionTemplateGeneratedByUid: user.uid,
+        inspectionTemplateGeneratedByName: generatedByName,
+      });
+
+      patchInspectionRequestLocal(request.id, {
+        inspectionTemplateUrl: uploaded.downloadUrl,
+        inspectionTemplateFileName: uploaded.fileName,
+        inspectionTemplateGeneratedAt: generatedAt,
+        inspectionTemplateGeneratedByUid: user.uid,
+        inspectionTemplateGeneratedByName: generatedByName,
+        updatedAt: generatedAt,
+      });
+      setInspectionNotice('Inspection sheet generated and attached to the request.');
+    } catch (error) {
+      setInspectionError(error instanceof Error ? error.message : 'Unable to generate the inspection sheet right now.');
+    } finally {
+      setInspectionDocumentActionId(null);
+    }
+  };
+
+  const handleUploadInspectionReport = async (request: InspectionRequest, file?: File | null) => {
+    if (!user?.uid || !file) return;
+
+    setInspectionDocumentActionId(request.id);
+    setInspectionError('');
+    setInspectionNotice('');
+
+    try {
+      const uploaded = await storageService.uploadInspectionDocument(file, request.id, {
+        listingId: request.listingId,
+        requesterUid: request.requesterUid || '',
+        assignedToUid: request.assignedToUid || user.uid,
+        kind: 'report',
+      });
+      const uploadedAt = new Date().toISOString();
+      const uploadedByName = user.displayName || user.company || user.email || 'Inspection Manager';
+
+      await equipmentService.updateInspectionRequest(request.id, {
+        status: 'Completed',
+        inspectionReportUrl: uploaded.downloadUrl,
+        inspectionReportFileName: uploaded.fileName,
+        inspectionReportContentType: uploaded.contentType,
+        inspectionReportUploadedAt: uploadedAt,
+        inspectionReportUploadedByUid: user.uid,
+        inspectionReportUploadedByName: uploadedByName,
+      });
+
+      patchInspectionRequestLocal(request.id, {
+        status: 'Completed',
+        inspectionReportUrl: uploaded.downloadUrl,
+        inspectionReportFileName: uploaded.fileName,
+        inspectionReportContentType: uploaded.contentType,
+        inspectionReportUploadedAt: uploadedAt,
+        inspectionReportUploadedByUid: user.uid,
+        inspectionReportUploadedByName: uploadedByName,
+        updatedAt: uploadedAt,
+        reviewedAt: uploadedAt,
+        respondedAt: uploadedAt,
+      });
+      setInspectionNotice('Completed inspection report uploaded successfully.');
+    } catch (error) {
+      setInspectionError(error instanceof Error ? error.message : 'Unable to upload the completed inspection report right now.');
+    } finally {
+      setInspectionDocumentActionId(null);
     }
   };
 
@@ -695,6 +927,7 @@ export function DealerOS() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           {[
             { label: 'Active Inventory', value: activeListings.length, icon: Package },
+            { label: 'Listings Remaining', value: remainingListingSlots === null ? 'Unlimited' : remainingListingSlots, icon: Layers },
             { label: 'Featured Slots', value: `${featuredListings.length}/${featuredCap || 0}`, icon: Star },
             { label: 'New Leads', value: newLeadCount, icon: Building2 },
             { label: 'Imported Units', value: importedListings.length, icon: Database },
@@ -723,6 +956,12 @@ export function DealerOS() {
           <span className="text-sm font-bold">{actionError}</span>
         </div>
       ) : null}
+
+      <BulkImportToolkit
+        ownerUid={ownerUid}
+        workspaceLabel={user?.role === 'pro_dealer' ? 'Pro Dealer' : 'Dealer'}
+        listingAllowanceText={listingAllowanceText}
+      />
 
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="rounded-sm border border-line bg-surface p-6">
@@ -771,6 +1010,11 @@ export function DealerOS() {
         <div className="rounded-sm border border-line bg-surface p-6">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Account Capacity</h2>
           <div className="mt-5 space-y-3">
+            <div className="rounded-sm border border-line bg-bg p-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Listing Capacity</div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-ink">{finiteListingCap === null ? 'Unlimited' : `${activeListings.length}/${finiteListingCap}`}</div>
+              <div className="mt-1 text-xs text-muted">{remainingListingSlots === null ? 'Unlimited dealer inventory capacity' : `${remainingListingSlots} listing slots remaining.`}</div>
+            </div>
             <div className="rounded-sm border border-line bg-bg p-4">
               <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Managed Seats</div>
               <div className="mt-2 text-2xl font-black tracking-tight text-ink">{seatSummary.seatCount}/{seatSummary.seatLimit || 0}</div>
@@ -1465,6 +1709,240 @@ export function DealerOS() {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-sm border border-line bg-surface p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Inspection Queue</h2>
+            <p className="mt-1 text-sm text-muted">
+              Review routed inspection requests, quote them, send the machine sheet, and upload the completed field report back to the buyer.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: 'Total Requests', value: inspectionRequests.length.toString(), icon: ClipboardList },
+              { label: 'Open Requests', value: openInspectionCount.toString(), icon: AlertCircle },
+              { label: 'Completed Reports', value: completedInspectionCount.toString(), icon: BadgeCheck },
+            ].map((item) => (
+              <div key={item.label} className="rounded-sm border border-line bg-bg px-4 py-3">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                  <item.icon size={12} />
+                  <span>{item.label}</span>
+                </div>
+                <div className="mt-2 text-2xl font-black uppercase tracking-tight text-ink">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {inspectionError ? (
+          <div className="mt-4 flex items-start gap-3 rounded-sm border border-accent/30 bg-accent/10 p-4 text-accent">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <span className="text-sm font-bold">{inspectionError}</span>
+          </div>
+        ) : null}
+
+        {inspectionNotice ? (
+          <div className="mt-4 rounded-sm border border-data/30 bg-data/10 p-4 text-sm font-bold text-data">
+            {inspectionNotice}
+          </div>
+        ) : null}
+
+        <div className="mt-5 space-y-4">
+          {inspectionRequests.length === 0 ? (
+            <div className="rounded-sm border border-dashed border-line bg-bg px-4 py-10 text-center text-sm font-bold text-muted">
+              No routed inspection requests yet. New requests from the public inspection desk will appear here automatically.
+            </div>
+          ) : (
+            inspectionRequests.map((request) => {
+              const quoteDraft = inspectionQuoteDrafts[request.id] ?? '';
+              const isUpdatingRequest = inspectionActionId === request.id;
+              const isDocumentActionPending = inspectionDocumentActionId === request.id;
+
+              return (
+                <article key={request.id} className="rounded-sm border border-line bg-bg p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${getInspectionStatusClasses(request.status)}`}>
+                          {request.status}
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Request {request.id}</span>
+                      </div>
+                      <h3 className="mt-3 text-lg font-black uppercase tracking-tight text-ink">
+                        {request.listingTitle || request.equipment || 'Inspection Request'}
+                      </h3>
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.18em] text-muted">
+                        <span>Requester: {request.requesterName}</span>
+                        <span>{request.requesterCompany || 'No company supplied'}</span>
+                        <span>{request.requesterEmail}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 text-right text-xs text-muted lg:min-w-[220px]">
+                      <div>Submitted {formatDateLabel(request.createdAt)}</div>
+                      <div>Timeline: {request.timeline || 'Flexible'}</div>
+                      <div>Assigned To: {request.assignedToName || request.matchedDealerName || 'Inspection desk'}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-sm border border-line bg-surface p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Machine + Location</div>
+                      <div className="mt-2 text-sm font-bold text-ink">{request.equipment}</div>
+                      <div className="mt-2 text-sm text-muted">{request.inspectionLocation || 'No inspection location provided'}</div>
+                      {request.listingId ? (
+                        <div className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Listing ID {request.listingId}</div>
+                      ) : null}
+                      {request.listingUrl ? (
+                        <Link to={request.listingUrl.replace(window.location.origin, '')} className="mt-3 inline-flex text-xs font-bold text-data hover:underline">
+                          View Machine
+                        </Link>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-sm border border-line bg-surface p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Requester Notes</div>
+                      <p className="mt-2 text-sm leading-relaxed text-ink">
+                        {request.notes || 'No additional inspection notes were included.'}
+                      </p>
+                    </div>
+
+                    <div className="rounded-sm border border-line bg-surface p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Matched Coverage</div>
+                      <div className="mt-2 text-sm font-bold text-ink">{request.matchedDealerName || 'No dealer match saved yet'}</div>
+                      <div className="mt-2 text-sm text-muted">{request.matchedDealerLocation || 'No territory on file'}</div>
+                      {typeof request.matchedDealerDistanceMiles === 'number' ? (
+                        <div className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                          {request.matchedDealerDistanceMiles.toFixed(1)} mi away
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+                    <div className="rounded-sm border border-line bg-surface p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Quote</div>
+                      <input
+                        value={quoteDraft}
+                        onChange={(event) => handleInspectionQuoteDraftChange(request.id, event.target.value)}
+                        className="input-industrial mt-3 w-full"
+                        inputMode="decimal"
+                        placeholder="Enter quote amount"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleInspectionRequestUpdate(request, 'Quoted', true)}
+                        disabled={isUpdatingRequest}
+                        className="btn-industrial btn-accent mt-3 w-full px-4 py-3 text-[10px] disabled:opacity-50"
+                      >
+                        {isUpdatingRequest ? 'Sending Quote...' : 'Send Quote'}
+                      </button>
+                    </div>
+
+                    <div className="rounded-sm border border-line bg-surface p-4">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <button
+                          type="button"
+                          onClick={() => void handleInspectionRequestUpdate(request, 'Accepted', false)}
+                          disabled={isUpdatingRequest}
+                          className="btn-industrial px-4 py-3 text-[10px] disabled:opacity-50"
+                        >
+                          Accept Request
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleInspectionRequestUpdate(request, 'Declined', false)}
+                          disabled={isUpdatingRequest}
+                          className="btn-industrial px-4 py-3 text-[10px] disabled:opacity-50"
+                        >
+                          Decline Request
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleGenerateInspectionTemplate(request)}
+                          disabled={isDocumentActionPending}
+                          className="btn-industrial px-4 py-3 text-[10px] disabled:opacity-50"
+                        >
+                          {isDocumentActionPending ? 'Generating Sheet...' : 'Send Inspection Sheet'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => inspectionReportInputRefs.current[request.id]?.click()}
+                          disabled={isDocumentActionPending}
+                          className="btn-industrial px-4 py-3 text-[10px] disabled:opacity-50"
+                        >
+                          {isDocumentActionPending ? 'Uploading Report...' : 'Upload Completed Report'}
+                        </button>
+                      </div>
+
+                      <input
+                        ref={(node) => {
+                          inspectionReportInputRefs.current[request.id] = node;
+                        }}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          void handleUploadInspectionReport(request, file);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div className="rounded-sm border border-line bg-bg p-4">
+                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Inspection Sheet</div>
+                          {request.inspectionTemplateUrl ? (
+                            <div className="mt-3 space-y-2">
+                              <a
+                                href={request.inspectionTemplateUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 text-sm font-bold text-data hover:underline"
+                              >
+                                <ArrowUpRight size={14} />
+                                {request.inspectionTemplateFileName || 'Download inspection sheet'}
+                              </a>
+                              <div className="text-xs text-muted">
+                                Sent {request.inspectionTemplateGeneratedAt ? formatDateLabel(request.inspectionTemplateGeneratedAt) : 'recently'} by {request.inspectionTemplateGeneratedByName || 'inspection desk'}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 text-sm text-muted">No inspection sheet has been sent yet.</div>
+                          )}
+                        </div>
+
+                        <div className="rounded-sm border border-line bg-bg p-4">
+                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Completed Report</div>
+                          {request.inspectionReportUrl ? (
+                            <div className="mt-3 space-y-2">
+                              <a
+                                href={request.inspectionReportUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 text-sm font-bold text-data hover:underline"
+                              >
+                                <ArrowUpRight size={14} />
+                                {request.inspectionReportFileName || 'Download completed inspection report'}
+                              </a>
+                              <div className="text-xs text-muted">
+                                Uploaded {request.inspectionReportUploadedAt ? formatDateLabel(request.inspectionReportUploadedAt) : 'recently'} by {request.inspectionReportUploadedByName || 'inspection desk'}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 text-sm text-muted">Upload the signed field report after the machine inspection is complete.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })
           )}
         </div>
       </section>

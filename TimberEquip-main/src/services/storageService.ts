@@ -49,6 +49,19 @@ export const VIDEO_CONFIG = {
   ALLOWED_TYPES: ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/webm'],
 };
 
+export const DOCUMENT_CONFIG = {
+  MAX_SIZE: 25 * 1024 * 1024, // 25MB
+  ALLOWED_TYPES: [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ],
+};
+
 // Icon/Logo constraints
 export const ICON_CONFIG = {
   MAX_SIZE: 5 * 1024 * 1024, // 5MB
@@ -61,6 +74,20 @@ export interface ProcessedImageVariants {
   detailUrl: string;
   thumbnailUrl: string;
   formatUsed: SupportedImageOutput;
+}
+
+export interface UploadedImportAsset {
+  fileName: string;
+  downloadUrl: string;
+  storagePath: string;
+  kind: 'image' | 'video';
+}
+
+export interface UploadedInspectionDocument {
+  fileName: string;
+  downloadUrl: string;
+  storagePath: string;
+  contentType: string;
 }
 
 class StorageService {
@@ -409,6 +436,95 @@ class StorageService {
         }
       }).catch(reject);
     });
+  }
+
+  async uploadBulkImportAsset(
+    file: File,
+    ownerUid: string,
+    batchId: string
+  ): Promise<UploadedImportAsset> {
+    const normalizedType = String(file.type || '').toLowerCase();
+    const isImage = IMAGE_CONFIG.ALLOWED_TYPES.includes(normalizedType);
+    const isVideo = VIDEO_CONFIG.ALLOWED_TYPES.includes(normalizedType);
+
+    if (!isImage && !isVideo) {
+      throw new Error(`Only image or video files are supported for bulk import assets.`);
+    }
+
+    const sizeLimit = isImage ? IMAGE_CONFIG.MAX_SIZE : VIDEO_CONFIG.MAX_SIZE;
+    if (file.size > sizeLimit) {
+      throw new Error(`${isImage ? 'Image' : 'Video'} must be smaller than ${Math.round(sizeLimit / 1024 / 1024)}MB`);
+    }
+
+    const safeFileName = file.name
+      .replace(/[^a-zA-Z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 120);
+    const storagePath = `bulk-imports/${ownerUid}/${batchId}/${Date.now()}_${safeFileName}`;
+    const storageRef = ref(storage, storagePath);
+
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      customMetadata: {
+        uploadedBy: ownerUid,
+        uploadedAt: new Date().toISOString(),
+        batchId,
+        kind: isImage ? 'image' : 'video',
+      },
+    });
+
+    return {
+      fileName: file.name,
+      downloadUrl: await getDownloadURL(storageRef),
+      storagePath,
+      kind: isImage ? 'image' : 'video',
+    };
+  }
+
+  async uploadInspectionDocument(
+    file: File,
+    requestId: string,
+    metadata?: {
+      listingId?: string;
+      requesterUid?: string;
+      assignedToUid?: string;
+      kind?: 'template' | 'report';
+    }
+  ): Promise<UploadedInspectionDocument> {
+    if (!DOCUMENT_CONFIG.ALLOWED_TYPES.includes(file.type)) {
+      throw new Error(`Only ${DOCUMENT_CONFIG.ALLOWED_TYPES.join(', ')} files are supported for inspection documents.`);
+    }
+
+    if (file.size > DOCUMENT_CONFIG.MAX_SIZE) {
+      throw new Error(`Inspection document must be smaller than ${Math.round(DOCUMENT_CONFIG.MAX_SIZE / 1024 / 1024)}MB.`);
+    }
+
+    const safeFileName = file.name
+      .replace(/[^a-zA-Z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 140);
+    const storagePath = `inspection-requests/${requestId}/documents/${Date.now()}_${safeFileName}`;
+    const storageRef = ref(storage, storagePath);
+
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      customMetadata: {
+        uploadedBy: auth.currentUser?.uid || '',
+        uploadedAt: new Date().toISOString(),
+        inspectionRequestId: requestId,
+        listingId: metadata?.listingId || '',
+        requesterUid: metadata?.requesterUid || '',
+        assignedToUid: metadata?.assignedToUid || '',
+        kind: metadata?.kind || 'report',
+      },
+    });
+
+    return {
+      fileName: file.name,
+      downloadUrl: await getDownloadURL(storageRef),
+      storagePath,
+      contentType: file.type,
+    };
   }
 
   /**

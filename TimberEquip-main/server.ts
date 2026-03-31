@@ -3,18 +3,34 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import crypto from 'crypto';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import csurf from 'csurf';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import multer from 'multer';
+import { captureServerException, initializeServerSentry } from './sentry.server.js';
 
 dotenv.config();
+initializeServerSentry();
+
+process.on('uncaughtException', (error) => {
+  captureServerException(error, {
+    tags: { process_event: 'uncaughtException' },
+  });
+  console.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  captureServerException(reason, {
+    tags: { process_event: 'unhandledRejection' },
+  });
+  console.error('Unhandled rejection:', reason);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -95,6 +111,67 @@ type DealerFeedItem = {
 
 let marketplaceStatsCache: { value: MarketplaceStatsPayload; fetchedAt: number } | null = null;
 const MARKETPLACE_STATS_TTL_MS = 10 * 60 * 1000;
+const CSRF_COOKIE_NAME = '_csrf';
+const CSRF_HEADER_NAMES = ['csrf-token', 'x-csrf-token'];
+
+function getCsrfCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+}
+
+function generateCsrfToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function getRequestCsrfCookieToken(req: express.Request): string | null {
+  const raw = req.cookies?.[CSRF_COOKIE_NAME];
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim();
+  return normalized || null;
+}
+
+function ensureCsrfCookieToken(req: express.Request, res: express.Response): string {
+  const existingToken = getRequestCsrfCookieToken(req);
+  if (existingToken) return existingToken;
+
+  const freshToken = generateCsrfToken();
+  res.cookie(CSRF_COOKIE_NAME, freshToken, getCsrfCookieOptions());
+  return freshToken;
+}
+
+function getRequestCsrfHeaderToken(req: express.Request): string | null {
+  for (const headerName of CSRF_HEADER_NAMES) {
+    const raw = req.get(headerName);
+    if (typeof raw === 'string' && raw.trim()) {
+      return raw.trim();
+    }
+  }
+  return null;
+}
+
+function tokensMatch(expected: string, actual: string): boolean {
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  if (expectedBuffer.length !== actualBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function csrfProtection(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (req.path === '/billing/webhook' || req.path === '/webhooks/stripe') return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) return next();
+
+  const cookieToken = ensureCsrfCookieToken(req, res);
+  const headerToken = getRequestCsrfHeaderToken(req);
+  if (!headerToken || !tokensMatch(cookieToken, headerToken)) {
+    return res.status(403).json({ error: 'Invalid CSRF token.' });
+  }
+
+  return next();
+}
 
 function parseDate(value: unknown): Date | null {
   if (!value) return null;
@@ -222,6 +299,66 @@ function serializeCallDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot):
     source: normalizeNonEmptyString(data.source) || undefined,
     isAuthenticated: Boolean(data.isAuthenticated),
     createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
+  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
+    type: isDealerRole ? 'Dealer' : 'Private',
+    role: normalizeNonEmptyString(data.role, 'buyer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    location: normalizeNonEmptyString(data.location, 'Unknown'),
+    phone: normalizeNonEmptyString(data.phone),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.logo),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
+    rating: 5,
+    totalListings: 0,
+    memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    verified: Boolean(data.storefrontEnabled),
+  };
+}
+
+function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
+  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
+    type: isDealerRole ? 'Dealer' : 'Private',
+    role: normalizeNonEmptyString(data.role, 'buyer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    location: normalizeNonEmptyString(data.location, 'Unknown'),
+    phone: normalizeNonEmptyString(data.phoneNumber),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.photoURL || data.profileImage),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
+    rating: 5,
+    totalListings: 0,
+    memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    verified: true,
   };
 }
 
@@ -582,6 +719,63 @@ const DEALER_MANAGED_ACCOUNT_LIMIT = 3;
 const MANAGED_ACCOUNT_PLAN_IDS: ListingCheckoutPlanId[] = ['dealer', 'fleet_dealer'];
 
 const checkoutPriceCache: Partial<Record<ListingCheckoutPlanId, string>> = {};
+const LOCAL_BILLING_STUB_SESSION_PREFIX = 'local_stub';
+
+function isLocalBillingStubEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production'
+    && String(process.env.LOCAL_BILLING_STUB || '').trim().toLowerCase() === 'true';
+}
+
+function buildLocalBillingStubSessionId(scope: 'listing' | 'account', planId: string, listingId: string | null, uid: string): string {
+  const safePlanId = String(planId || 'unknown').trim() || 'unknown';
+  const safeListingId = String(listingId || '').trim() || 'none';
+  const safeUid = String(uid || 'anonymous').trim() || 'anonymous';
+  return [LOCAL_BILLING_STUB_SESSION_PREFIX, scope, safePlanId, safeListingId, safeUid].join('__');
+}
+
+function parseLocalBillingStubSessionId(sessionId: string): {
+  scope: 'listing' | 'account';
+  planId: string | null;
+  listingId: string | null;
+  uid: string | null;
+} | null {
+  const normalized = String(sessionId || '').trim();
+  if (!normalized.startsWith(`${LOCAL_BILLING_STUB_SESSION_PREFIX}__`)) {
+    return null;
+  }
+
+  const parts = normalized.split('__');
+  if (parts.length < 5) return null;
+
+  const scope = parts[1] === 'account' ? 'account' : parts[1] === 'listing' ? 'listing' : null;
+  if (!scope) return null;
+
+  return {
+    scope,
+    planId: parts[2] && parts[2] !== 'unknown' ? parts[2] : null,
+    listingId: parts[3] && parts[3] !== 'none' ? parts[3] : null,
+    uid: parts[4] && parts[4] !== 'anonymous' ? parts[4] : null,
+  };
+}
+
+function buildLocalBillingStubSummary(decodedToken: admin.auth.DecodedIdToken): Record<string, unknown> {
+  const claimedRole = String(decodedToken.role || '').trim() || 'buyer';
+  return {
+    stripeCustomerId: 'cus_local_stub',
+    planId: null,
+    subscriptionStatus: null,
+    listingCap: 0,
+    managedAccountCap: 0,
+    currentSubscriptionId: null,
+    currentPeriodEnd: null,
+    subscriptionStartDate: null,
+    role: claimedRole,
+    accountAccessSource: claimedRole === 'buyer' ? 'free_member' : 'admin_override',
+    accountStatus: 'active',
+    entitlement: null,
+    localBillingStub: true,
+  };
+}
 
 function getListingCheckoutPlan(rawPlanId: unknown): ListingCheckoutPlan | null {
   const planId = String(rawPlanId || '').trim() as ListingCheckoutPlanId;
@@ -867,7 +1061,7 @@ async function finalizeListingPaymentFromCheckoutSession(
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   app.get('/server-test', (req, res) => res.send('Server is alive and reachable'));
 
@@ -897,12 +1091,35 @@ async function startServer() {
   // 2. Rate Limiting (DDoS protection)
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Increased for dev environment
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
     message: 'Too many requests from this IP, please try again after 15 minutes',
   });
   app.use('/api/', limiter);
+
+  // Stricter rate limits for sensitive endpoints
+  const checkoutLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Too many checkout requests. Please try again in a minute.' },
+  });
+  app.use('/api/billing/create-checkout-session', checkoutLimiter);
+  app.use('/api/billing/create-account-checkout-session', checkoutLimiter);
+
+  const accountDeletionLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 3,
+    message: { error: 'Too many account deletion requests. Please try again later.' },
+  });
+  app.use('/api/user/delete', accountDeletionLimiter);
+
+  const portalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Too many billing portal requests. Please try again in a minute.' },
+  });
+  app.use('/api/billing/create-portal-session', portalLimiter);
 
   // 3. CORS
   const ALLOWED_ORIGINS = [
@@ -1207,7 +1424,11 @@ async function startServer() {
   app.use(cookieParser());
 
   if (sharedDealerApiProxy) {
-    app.all(/^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit)$/i, async (req, res, next) => {
+    const proxiedApiPattern = isLocalBillingStubEnabled()
+      ? /^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit)$/i
+      : /^\/api\/(admin\/dealer-feeds(?:\/.*)?|admin\/billing\/bootstrap|admin\/listings\/review-summaries|dealer(?:\/.*)?|public\/dealers\/.*|public\/dealer-embed\.js|account\/listings(?:\/.*)?|listings\/[^/]+\/lifecycle|admin\/listings\/[^/]+\/lifecycle-audit|billing\/(?:create-checkout-session|create-account-checkout-session|create-portal-session|cancel-subscription|refresh-account-access|checkout-session\/[^/]+))$/i;
+
+    app.all(proxiedApiPattern, async (req, res, next) => {
       try {
         await sharedDealerApiProxy?.(req, res);
       } catch (error) {
@@ -1247,26 +1468,16 @@ async function startServer() {
   }
 
   // 6. CSRF Protection
-  const csrfProtection = csurf({
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    },
-  });
-
-  // Apply CSRF to all non-webhook API routes
+  // Double-submit token strategy that preserves the existing frontend contract
+  // without depending on the archived `csurf` package.
   app.use('/api', (req, res, next) => {
-    // Skip CSRF for webhook endpoints (raw body needed for Stripe signature)
-    if (req.path === '/billing/webhook' || req.path === '/webhooks/stripe') return next();
-    // Skip CSRF for GET requests (read-only, no state mutation)
-    if (req.method === 'GET') return next();
     csrfProtection(req, res, next);
   });
 
   // Provide CSRF token to frontend
-  app.get('/api/csrf-token', csrfProtection, (req, res) => {
-    res.json({ csrfToken: req.csrfToken() });
+  app.get('/api/csrf-token', (req, res) => {
+    const csrfToken = ensureCsrfCookieToken(req, res);
+    res.json({ csrfToken });
   });
 
   // 7. API Routes
@@ -1274,49 +1485,35 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // AI Proxy — keeps GEMINI_API_KEY server-side only
-  const aiRateLimit = rateLimit({ windowMs: 60_000, max: 20, message: { error: 'Too many AI requests. Try again later.' } });
-  app.post('/api/ai/generate', aiRateLimit, async (req, res) => {
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-      return res.status(503).json({ error: 'AI service is not configured.' });
-    }
-
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      await auth.verifyIdToken(idToken);
-    } catch {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-
-    const { prompt, responseSchema } = req.body;
-    if (!prompt || typeof prompt !== 'string') {
-      return res.status(400).json({ error: 'prompt is required' });
-    }
-
-    try {
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
-      const config: Record<string, unknown> = {};
-      if (responseSchema) {
-        config.responseMimeType = 'application/json';
-        config.responseSchema = responseSchema;
-      }
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: Object.keys(config).length > 0 ? config : undefined,
-      });
-      res.json({ text: response.text });
-    } catch (error: any) {
-      console.error('AI proxy error:', error.message);
-      res.status(502).json({ error: 'AI service temporarily unavailable.' });
-    }
-  });
-
   app.post('/api/billing/create-checkout-session', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        const plan = getListingCheckoutPlan(req.body?.planId);
+        const listingId = String(req.body?.listingId || '').trim();
+
+        if (!plan) {
+          return res.status(400).json({ error: 'Invalid listing plan.' });
+        }
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const sessionId = buildLocalBillingStubSessionId('listing', plan.id, listingId, decodedToken.uid);
+        const baseUrl = getRequestBaseUrl(req);
+        return res.json({
+          sessionId,
+          url: `${baseUrl}/sell?checkout=success&session_id=${encodeURIComponent(sessionId)}&listingId=${encodeURIComponent(listingId)}&localBillingStub=1`,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1414,6 +1611,31 @@ async function startServer() {
   });
 
   app.get('/api/billing/checkout-session/:sessionId', async (req, res) => {
+    const stubSession = parseLocalBillingStubSessionId(String(req.params.sessionId || ''));
+    if (!stripe && isLocalBillingStubEnabled() && stubSession) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        if (stubSession.uid && stubSession.uid !== decodedToken.uid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        return res.json({
+          sessionId: req.params.sessionId,
+          status: 'complete',
+          paid: true,
+          listingId: stubSession.listingId,
+          planId: stubSession.planId,
+          scope: stubSession.scope,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1453,6 +1675,25 @@ async function startServer() {
   });
 
   app.post('/api/billing/create-portal-session', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        await auth.verifyIdToken(idToken);
+        const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
+        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
+        const baseUrl = getRequestBaseUrl(req);
+        const separator = returnPath.includes('?') ? '&' : '?';
+        return res.json({
+          url: `${baseUrl}${returnPath}${separator}billingPortal=local-stub`,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1496,6 +1737,22 @@ async function startServer() {
   });
 
   app.post('/api/billing/cancel-subscription', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        await auth.verifyIdToken(idToken);
+        return res.json({
+          success: true,
+          message: 'Local billing stub: subscription cancellation simulated.',
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -1524,6 +1781,57 @@ async function startServer() {
     }
   });
 
+  app.post('/api/billing/create-account-checkout-session', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        const plan = getListingCheckoutPlan(req.body?.planId);
+        if (!plan) {
+          return res.status(400).json({ error: 'Invalid seller plan.' });
+        }
+
+        const returnPathRaw = String(req.body?.returnPath || '/sell').trim();
+        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/sell';
+        const baseUrl = getRequestBaseUrl(req);
+        const separator = returnPath.includes('?') ? '&' : '?';
+        const sessionId = buildLocalBillingStubSessionId('account', plan.id, null, decodedToken.uid);
+
+        return res.json({
+          sessionId,
+          url: `${baseUrl}${returnPath}${separator}accountCheckout=success&session_id=${encodeURIComponent(sessionId)}&localBillingStub=1`,
+          localBillingStub: true,
+        });
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
+    return res.status(503).json({
+      error: 'Account checkout should be served by the shared billing proxy in local development. If Stripe is unavailable locally, enable LOCAL_BILLING_STUB=true.',
+    });
+  });
+
+  app.post('/api/billing/refresh-account-access', async (req, res) => {
+    if (!stripe && isLocalBillingStubEnabled()) {
+      const idToken = req.headers.authorization?.split('Bearer ')[1];
+      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+      try {
+        const decodedToken = await auth.verifyIdToken(idToken);
+        return res.json(buildLocalBillingStubSummary(decodedToken));
+      } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
+    return res.status(503).json({
+      error: 'Account access refresh should be served by the shared billing proxy in local development. If Stripe is unavailable locally, enable LOCAL_BILLING_STUB=true.',
+    });
+  });
+
   app.get('/api/marketplace-stats', async (req, res) => {
     try {
       const payload = await getMarketplaceStats();
@@ -1532,6 +1840,54 @@ async function startServer() {
     } catch (error: any) {
       console.error('Failed to compute marketplace stats:', error);
       res.status(500).json({ error: error?.message || 'Failed to load marketplace stats' });
+    }
+  });
+
+  app.get('/api/public/sellers/:identity', async (req, res) => {
+    const requestedIdentity = normalizeNonEmptyString(req.params.identity);
+    if (!requestedIdentity) {
+      return res.status(400).json({ error: 'Seller identifier is required.' });
+    }
+
+    try {
+      let storefrontSnapshot = await db.collection('storefronts').doc(requestedIdentity).get();
+      if (!storefrontSnapshot.exists) {
+        const storefrontSlugSnapshot = await db
+          .collection('storefronts')
+          .where('storefrontSlug', '==', requestedIdentity)
+          .limit(1)
+          .get();
+        if (!storefrontSlugSnapshot.empty) {
+          storefrontSnapshot = storefrontSlugSnapshot.docs[0];
+        }
+      }
+
+      if (storefrontSnapshot.exists) {
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+      }
+
+      let userSnapshot = await db.collection('users').doc(requestedIdentity).get();
+      if (!userSnapshot.exists) {
+        const userSlugSnapshot = await db
+          .collection('users')
+          .where('storefrontSlug', '==', requestedIdentity)
+          .limit(1)
+          .get();
+        if (!userSlugSnapshot.empty) {
+          userSnapshot = userSlugSnapshot.docs[0];
+        }
+      }
+
+      if (userSnapshot.exists) {
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+      }
+
+      return res.json({ seller: null });
+    } catch (error: any) {
+      console.error('Failed to resolve public seller:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to load seller.' });
     }
   });
 
@@ -2072,17 +2428,54 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    // Known SPA routes — return 200 for these, 404 for everything else
+    const SPA_ROUTES = new Set([
+      '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',
+      '/login', '/register', '/sell', '/dealer-os', '/financing', '/profile',
+      '/about', '/contact', '/ad-programs', '/subscription-success', '/inspections',
+      '/auctions', '/privacy', '/terms', '/cookies', '/dmca', '/bookmarks', '/404',
+      '/forestry-equipment-for-sale', '/logging-equipment-for-sale',
+    ]);
+    const SPA_ROUTE_PREFIXES = [
+      '/equipment/', '/listing/', '/seller/', '/blog/', '/categories/',
+      '/manufacturers/', '/states/', '/dealers/',
+    ];
+
     app.get('*', (req, res) => {
+      const cleanPath = req.path.split('?')[0].replace(/\/+$/, '') || '/';
+      const isKnownRoute = SPA_ROUTES.has(cleanPath) || SPA_ROUTE_PREFIXES.some((prefix) => cleanPath.startsWith(prefix));
+      if (!isKnownRoute) {
+        res.status(404);
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    captureServerException(error, {
+      path: req.originalUrl,
+      method: req.method,
+      tags: { handler: 'express' },
+    });
+
+    if (res.headersSent) {
+      return next(error);
+    }
+
+    return res.status(500).json({ error: 'Internal server error' });
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer().catch(console.error);
+startServer().catch((error) => {
+  captureServerException(error, {
+    tags: { process_event: 'startServer' },
+  });
+  console.error(error);
+});
 
 // ─── Daily Inventory Snapshot Job ────────────────────────────────────────────
 // Runs once on startup (writing today's snapshot if not already present) and

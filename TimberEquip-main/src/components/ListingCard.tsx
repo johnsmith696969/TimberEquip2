@@ -56,7 +56,7 @@ export function ListingCard({
   const listingPath = buildListingPath(listing);
 
   return (
-    <div className="bg-bg border border-line group relative flex flex-col h-full hover:-translate-y-1 transition-transform duration-200 ease-out">
+    <div className={`bg-bg border group relative flex flex-col h-full hover:-translate-y-1 transition-transform duration-200 ease-out ${listing.featured ? 'border-accent' : 'border-line'}`}>
       {/* Image Section */}
       <div className="relative aspect-[4/3] overflow-hidden bg-surface">
         <img

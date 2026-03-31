@@ -17,6 +17,7 @@ import { userService } from '../services/userService';
 import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
 import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../utils/accountEntitlement';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+import { setSentryUserContext } from '../services/sentry';
 
 type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
 
@@ -346,6 +347,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const billingRefreshAttemptsRef = useRef<Set<string>>(new Set());
   const currentUserRef = useRef<UserProfile | null>(null);
+
+  useEffect(() => {
+    setSentryUserContext(user);
+  }, [user]);
 
   const normalizeProfile = (profile: UserProfile): UserProfile => withResolvedAccountEntitlement({
     ...profile,
