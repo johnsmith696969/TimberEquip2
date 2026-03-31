@@ -13236,7 +13236,7 @@ exports.nightlyDataRefresh = onSchedule(
     schedule: '0 2 * * *',
     timeZone: 'America/Chicago',
     region: 'us-central1',
-    memory: '512MiB',
+    memory: '256MiB',
   },
   async () => {
     const db = getDb();
@@ -13320,7 +13320,7 @@ exports.weeklyMarketPulse = onSchedule(
     schedule: '0 3 * * 1',
     timeZone: 'America/Chicago',
     region: 'us-central1',
-    memory: '512MiB',
+    memory: '256MiB',
   },
   async () => {
     const db = getDb();
