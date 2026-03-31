@@ -402,17 +402,9 @@ export function Search() {
   }, [user?.email]);
 
   const closeAlertModal = () => {
-    const defaultEmail = user?.email || '';
-    const hasUnsavedChanges =
-      savedSearchName.trim().length > 0 ||
-      alertEmail.trim() !== defaultEmail.trim() ||
-      JSON.stringify(alertPreferences) !== JSON.stringify(DEFAULT_ALERT_PREFERENCES);
-
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
-
     setShowAlertModal(false);
     setSavedSearchName('');
-    setAlertEmail(defaultEmail);
+    setAlertEmail(user?.email || '');
     setAlertPreferences(DEFAULT_ALERT_PREFERENCES);
   };
 
@@ -749,6 +741,47 @@ export function Search() {
     <div className="flex flex-col min-h-screen bg-bg">
       <Seo title={seoTitle} description={seoDescription} canonicalPath="/search" jsonLd={itemListJsonLd} />
       <Breadcrumbs />
+
+      {/* Active filter pills bar */}
+      {countActiveFilters(filters) > 0 && (
+        <div className="bg-surface border-b border-line px-4 md:px-8 py-3 overflow-x-auto">
+          <div className="max-w-[1600px] mx-auto flex items-center gap-2 whitespace-nowrap">
+            <span className="text-[9px] font-black uppercase tracking-widest text-muted mr-1 flex-shrink-0">Filters:</span>
+            {(Object.entries(filters) as [keyof SearchFilters, string][])
+              .filter(([key, value]) => key !== 'sortBy' && Boolean(value))
+              .map(([key, value]) => {
+                const labels: Record<string, string> = {
+                  q: 'Search', category: 'Category', subcategory: 'Subcategory', manufacturer: 'Manufacturer',
+                  model: 'Model', state: 'State', country: 'Country', minPrice: 'Min Price', maxPrice: 'Max Price',
+                  minYear: 'Min Year', maxYear: 'Max Year', minHours: 'Min Hours', maxHours: 'Max Hours',
+                  condition: 'Condition', location: 'Location', locationRadius: 'Radius', attachment: 'Attachment',
+                  feature: 'Feature', stockNumber: 'Stock #', serialNumber: 'Serial #',
+                };
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      const updated = { ...filters, [key]: '' };
+                      setFilters(updated);
+                      setDraftFilters(updated);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-line text-[10px] font-bold uppercase tracking-wider hover:border-accent transition-colors rounded-sm flex-shrink-0"
+                  >
+                    <span className="text-muted">{labels[key] || key}:</span>
+                    <span className="text-ink">{value}</span>
+                    <X size={10} className="text-muted hover:text-ink ml-0.5" />
+                  </button>
+                );
+              })}
+            <button
+              onClick={resetFilters}
+              className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline flex-shrink-0 ml-2"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-surface border-b border-line py-8 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto">

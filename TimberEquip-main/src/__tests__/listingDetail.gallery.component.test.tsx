@@ -57,6 +57,19 @@ vi.mock('../components/LocaleContext', () => ({
   useLocale: useLocaleMock,
 }));
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  updateDoc: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../firebase', () => ({
+  db: {},
+}));
+
 vi.mock('../services/recaptchaService', () => ({
   getRecaptchaToken: vi.fn(),
   assessRecaptcha: vi.fn(),

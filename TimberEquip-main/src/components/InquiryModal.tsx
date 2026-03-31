@@ -40,16 +40,8 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
     setContactConsentAccepted(false);
   }, [initialMessage, isOpen, listing.id]);
 
-  const hasUnsavedChanges =
-    !inquirySent &&
-    (inquiryForm.name.trim().length > 0 ||
-      inquiryForm.email.trim().length > 0 ||
-      inquiryForm.phone.trim().length > 0 ||
-      inquiryForm.message.trim() !== initialMessage.trim());
-
   const handleClose = () => {
     if (submitting) return;
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
     onClose();
   };
 

@@ -75,16 +75,6 @@ export function PaymentCalculatorModal({
   const monthly     = calcMonthlyPayment(principal, ratePct, termMonths);
   const totalCost   = monthly * termMonths + downAmount;
   const totalInterest = totalCost - price;
-  const hasUnsavedChanges =
-    !submitted &&
-    (termMonths !== 60 ||
-      ratePct !== 8.5 ||
-      downPct !== 10 ||
-      buyerName.trim().length > 0 ||
-      buyerEmail.trim().length > 0 ||
-      buyerPhone.trim().length > 0 ||
-      company.trim().length > 0 ||
-      message.trim().length > 0);
 
   const fmt = useCallback(
     (n: number) =>
@@ -139,7 +129,6 @@ export function PaymentCalculatorModal({
 
   const handleClose = () => {
     if (submitting) return;
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
     onClose();
   };
 

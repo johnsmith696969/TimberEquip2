@@ -85,10 +85,8 @@ describe('LoginPromptModal component', () => {
     expect(await screen.findByText(/google sign-in is not authorized for this domain in firebase auth yet/i)).toBeInTheDocument();
   });
 
-  it('prompts before discarding unsaved changes', async () => {
+  it('closes directly without confirm prompt', async () => {
     const onClose = vi.fn();
-    const confirmMock = vi.spyOn(window, 'confirm');
-    confirmMock.mockReturnValue(false);
 
     const { container } = render(
       <MemoryRouter>
@@ -100,14 +98,6 @@ describe('LoginPromptModal component', () => {
     const backdrop = container.querySelector('.fixed.inset-0');
     expect(backdrop).toBeTruthy();
     fireEvent.click(backdrop!);
-
-    expect(confirmMock).toHaveBeenCalledWith('Are you sure you want to discard changes?');
-    expect(onClose).not.toHaveBeenCalled();
-
-    confirmMock.mockReturnValue(true);
-    fireEvent.click(backdrop!);
     expect(onClose).toHaveBeenCalledTimes(1);
-
-    confirmMock.mockRestore();
   });
 });

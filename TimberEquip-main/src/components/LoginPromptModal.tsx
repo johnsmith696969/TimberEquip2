@@ -80,11 +80,8 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
     }
   };
 
-  const hasUnsavedChanges = email.trim().length > 0 || password.trim().length > 0;
-
   const handleClose = () => {
     if (loading) return;
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
     setEmail('');
     setPassword('');
     setError('');

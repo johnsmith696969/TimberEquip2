@@ -93,9 +93,6 @@ export function Auctions() {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center"
           >
-            <div className="w-16 h-16 bg-accent flex items-center justify-center rounded-sm mb-6">
-              <Gavel size={32} className="text-white" />
-            </div>
             <h1 className="text-5xl md:text-7xl font-black tracking-tighter uppercase mb-4">
               {hasLiveAuctions ? 'Live Auctions' : 'Auction Desk'}
             </h1>

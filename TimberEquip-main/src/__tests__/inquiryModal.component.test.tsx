@@ -94,19 +94,14 @@ describe('InquiryModal component', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('prompts before closing when there are unsaved changes', async () => {
+  it('closes directly without confirm prompt', async () => {
     const onClose = vi.fn();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     render(<InquiryModal isOpen onClose={onClose} listing={baseListing} />);
 
     fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Caleb Happy' } });
     const closeButton = screen.getAllByRole('button').find((button) => button.querySelector('svg'));
     expect(closeButton).toBeTruthy();
-    fireEvent.click(closeButton!);
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-
     fireEvent.click(closeButton!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

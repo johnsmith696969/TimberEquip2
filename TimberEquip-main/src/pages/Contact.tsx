@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Mail, Phone, MapPin, 
   Globe, ShieldCheck, Clock, 
@@ -215,10 +216,10 @@ export function Contact() {
               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Contact Information</h4>
               <div className="space-y-10">
                 {[
-                  { title: 'Global Support', desc: '+1 (800) TIMBER-EQUIP', icon: Headphones, link: 'tel:+18008462373' },
+                  { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933' },
                   { title: 'Email Support', desc: 'SUPPORT@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com' },
-                  { title: 'Global HQ', desc: '4335 KINGSTON RD, DULUTH, MN 55803', icon: MapPin, link: '#' },
-                  { title: 'Market Hours', desc: '24/7 GLOBAL ACCESS', icon: Clock, link: '#' }
+                  { title: 'HQ', desc: '4788 RICE LAKE RD, DULUTH, MN 55803', icon: MapPin, link: '#' },
+                  { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST · EMAIL 8AM-10PM CST', icon: Clock, link: '#' }
                 ].map((item, i) => (
                   <a 
                     key={i} 
@@ -240,12 +241,12 @@ export function Contact() {
             <div className="bg-ink p-8 text-white rounded-sm">
               <div className="flex items-center space-x-3 mb-6">
                 <HelpCircle className="text-accent" size={24} />
-                <h4 className="text-sm font-black uppercase tracking-tighter">Knowledge Base</h4>
+                <h4 className="text-sm font-black uppercase tracking-tighter">Frequently Asked Questions</h4>
               </div>
               <p className="text-[11px] font-medium text-white/60 leading-relaxed mb-8">
-                Access our comprehensive documentation and FAQ center for immediate assistance.
+                Find answers to common questions about buying, selling, subscriptions, financing, and more.
               </p>
-              <button className="btn-industrial btn-accent w-full py-4">Access FAQ Center</button>
+              <Link to="/faq" className="btn-industrial btn-accent w-full py-4 text-center block">View FAQ</Link>
             </div>
           </div>
         </div>

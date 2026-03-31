@@ -28,7 +28,6 @@ import { useAuth } from '../components/AuthContext';
 import { appendReturnToParam, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 import {
   buildMarketplaceCategoryFamilies,
-  getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
 
 const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
@@ -167,11 +166,6 @@ export function Home() {
     if (categoryCards.some((category) => category.name === selectedCategoryFamily)) return;
     setSelectedCategoryFamily(categoryCards[0].name);
   }, [categoryCards, selectedCategoryFamily]);
-
-  const selectedFamilySubcategories = useMemo(
-    () => getMarketplaceSubcategories(selectedCategoryFamily).slice(0, 18),
-    [selectedCategoryFamily]
-  );
 
   const totalActiveListings = heroStats.totalActive;
   const totalMarketValue = heroStats.totalMarketValue;
@@ -362,7 +356,7 @@ export function Home() {
                 theme === 'light' ? 'text-ink/70' : 'text-white/70'
               }`}
             >
-              {t('home.hero.description', 'The world\'s premier platform for buying and selling heavy forestry equipment. Real-time market data, equipment financing, and global logistics.')}
+              {t('home.hero.description', 'The premier platform for buying and selling heavy forestry equipment. Real-time market data, equipment financing, and global logistics.')}
             </motion.p>
 
             <motion.div
@@ -393,7 +387,7 @@ export function Home() {
               {[
                 { label: t('home.activeListings', 'Active Listings'), value: totalActiveListings > 0 ? formatNumber(totalActiveListings) : '—', icon: Activity },
                 {
-                  label: t('home.marketValue', 'Market Value'),
+                  label: t('home.marketValue', 'Listed Equipment Value'),
                   value: (() => {
                     if (totalMarketValue <= 0) return 'N/A';
                     if (totalMarketValue >= 1_000_000_000) return `${formatCurrency(totalMarketValue / 1_000_000_000, 'USD', 1)}B`;
@@ -509,17 +503,6 @@ export function Home() {
                     Browse {selectedCategoryFamily}
                   </Link>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {selectedFamilySubcategories.map((subcategory) => (
-                  <Link
-                    key={subcategory}
-                    to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}&subcategory=${encodeURIComponent(subcategory)}`}
-                    className="px-4 py-2 border border-line text-[10px] font-black uppercase tracking-widest hover:border-ink hover:text-ink transition-colors"
-                  >
-                    {subcategory}
-                  </Link>
-                ))}
               </div>
             </div>
           </div>

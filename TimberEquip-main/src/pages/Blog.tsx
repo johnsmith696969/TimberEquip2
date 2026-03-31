@@ -85,17 +85,6 @@ export function Blog() {
             Institutional-grade analysis, regulatory updates, and global market reports for the forestry equipment industry.
             Stay ahead of the market with real-time data and expert insights.
           </p>
-          <div className="mt-10 flex flex-wrap gap-3">
-            <Link to="/forestry-equipment-for-sale" className="btn-industrial btn-accent px-6 py-3 text-center">
-              Browse Live Inventory
-            </Link>
-            <Link to="/categories" className="btn-industrial bg-bg px-6 py-3 text-center">
-              Explore Categories
-            </Link>
-            <Link to="/dealers" className="btn-industrial bg-bg px-6 py-3 text-center">
-              View Dealers
-            </Link>
-          </div>
         </div>
       </section>
 
@@ -160,7 +149,7 @@ export function Blog() {
                     </div>
                     <div className="flex items-center">
                       <ShieldCheck size={12} className="mr-2" />
-                      Verified Report
+                      {post.author || 'Forestry Equipment Sales'}
                     </div>
                   </div>
 

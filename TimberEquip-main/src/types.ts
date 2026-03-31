@@ -66,6 +66,7 @@ export interface Seller {
   totalListings: number;
   memberSince: string;
   verified: boolean;
+  manuallyVerified?: boolean;
   twilioPhoneNumber?: string;
 }
 

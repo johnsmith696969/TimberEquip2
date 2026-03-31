@@ -43,6 +43,10 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
 vi.mock('../components/AuthContext', () => ({
   useAuth: () => ({
     login: loginMock,

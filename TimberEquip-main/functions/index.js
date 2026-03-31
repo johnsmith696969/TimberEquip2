@@ -3037,7 +3037,7 @@ async function getWatermarkBuffer() {
  * Places an upright watermark at ~9 % of image width, ~28 % opacity,
  * in the bottom-right corner with a small margin.
  */
-async function applyWatermark(imageBuffer) {
+async function applyWatermark(imageBuffer, opacity = 0.28) {
   const wmSource = await getWatermarkBuffer();
   if (!wmSource) return imageBuffer;
 
@@ -3061,7 +3061,7 @@ async function applyWatermark(imageBuffer) {
       .png()
       .toBuffer();
 
-    // Apply 28 % opacity by reducing alpha channel
+    // Apply opacity by reducing alpha channel
     const wmMeta = await sharp(resizedWatermark).metadata();
     const wmH = wmMeta.height || wmWidth;
     const opacityWatermark = await sharp(resizedWatermark)
@@ -3069,9 +3069,8 @@ async function applyWatermark(imageBuffer) {
       .raw()
       .toBuffer()
       .then((rawBuf) => {
-        // Multiply alpha channel (every 4th byte) by 0.28
         for (let i = 3; i < rawBuf.length; i += 4) {
-          rawBuf[i] = Math.round(rawBuf[i] * 0.28);
+          rawBuf[i] = Math.round(rawBuf[i] * opacity);
         }
         return sharp(rawBuf, { raw: { width: wmMeta.width || wmWidth, height: wmH, channels: 4 } })
           .png()
@@ -3090,7 +3089,7 @@ async function applyWatermark(imageBuffer) {
   }
 }
 
-async function compressToAvifTarget(inputBuffer, width, targetBytes) {
+async function compressToAvifTarget(inputBuffer, width, targetBytes, watermarkOpacity = 0.28) {
   const widthSteps = [width, Math.round(width * 0.85), Math.round(width * 0.72), Math.round(width * 0.6), Math.round(width * 0.5), Math.round(width * 0.4)]
     .filter((candidate, index, array) => candidate > 0 && array.indexOf(candidate) === index);
   let best = null;
@@ -3107,7 +3106,7 @@ async function compressToAvifTarget(inputBuffer, width, targetBytes) {
         .png()
         .toBuffer();
 
-      const watermarked = await applyWatermark(resized);
+      const watermarked = await applyWatermark(resized, watermarkOpacity);
 
       const output = await sharp(watermarked)
         .avif({ quality })
@@ -3166,8 +3165,8 @@ exports.generateListingImageVariants = onObjectFinalized(
     const [sourceBuffer] = await sourceFile.download();
 
     const [detailBuffer, thumbBuffer] = await Promise.all([
-      compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES),
-      compressToAvifTarget(sourceBuffer, THUMB_MAX_WIDTH, THUMB_MAX_BYTES),
+      compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES, 0.28),
+      compressToAvifTarget(sourceBuffer, THUMB_MAX_WIDTH, THUMB_MAX_BYTES, 0.08),
     ]);
 
     const detailToken = randomUUID();
@@ -4976,7 +4975,8 @@ function normalizeMarketplaceText(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function isVerifiedSellerRole(role) {
+function isVerifiedSellerRole(role, manuallyVerified) {
+  if (manuallyVerified === true) return true;
   return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalizeUserRole(role));
 }
 
@@ -10828,7 +10828,7 @@ exports.apiProxy = onRequest(
           id: listingRef.id,
           sellerUid: requestedSellerUid,
           sellerId: requestedSellerUid,
-          sellerVerified: isVerifiedSellerRole(sellerRole),
+          sellerVerified: isVerifiedSellerRole(sellerRole, sellerAccountState.manuallyVerified),
           qualityValidated: true,
           status: 'draft',
           approvalStatus: 'pending',
@@ -10976,7 +10976,7 @@ exports.apiProxy = onRequest(
         const nextStatus = normalizeMarketplaceText(existingData.status || 'draft');
 
         sanitizedUpdates.qualityValidated = true;
-        sanitizedUpdates.sellerVerified = isVerifiedSellerRole(sellerRole);
+        sanitizedUpdates.sellerVerified = isVerifiedSellerRole(sellerRole, sellerAccountState.manuallyVerified);
         sanitizedUpdates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
         if (shouldValidateQuality && nextApprovalStatus === 'approved' && nextStatus !== 'sold' && nextStatus !== 'archived') {
@@ -13230,3 +13230,137 @@ exports.apiProxy = onRequest(
   }
 );
 
+// ── Nightly Data Refresh (2AM CST) ─────────────────────────────────────────
+exports.nightlyDataRefresh = onSchedule(
+  {
+    schedule: '0 2 * * *',
+    timeZone: 'America/Chicago',
+    region: 'us-central1',
+    memory: '512MiB',
+  },
+  async () => {
+    const db = getDb();
+    const listingsSnap = await db.collection('listings')
+      .where('status', '==', 'active')
+      .where('approvalStatus', '==', 'approved')
+      .get();
+
+    const listings = listingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let totalMarketValue = 0;
+    const subcategoryAggregates = {};
+
+    for (const listing of listings) {
+      const price = parseFloat(listing.price) || 0;
+      const subcategory = normalizeMarketplaceText(listing.subcategory || listing.category || 'other');
+      const make = normalizeMarketplaceText(listing.make || listing.manufacturer || '');
+      const model = normalizeMarketplaceText(listing.model || '');
+      const year = parseInt(listing.year, 10) || 0;
+      const hours = parseFloat(listing.hours || (listing.specs && listing.specs.hours) || 0) || 0;
+
+      totalMarketValue += price;
+
+      if (!subcategoryAggregates[subcategory]) {
+        subcategoryAggregates[subcategory] = { totalPrice: 0, count: 0 };
+      }
+      subcategoryAggregates[subcategory].totalPrice += price;
+      subcategoryAggregates[subcategory].count += 1;
+
+      // Compute AMV: same make+model, +/-10% price, +/-10% hours, +/-2 years
+      const comparables = listings.filter((comp) => {
+        if (comp.id === listing.id) return false;
+        if (normalizeMarketplaceText(comp.make || comp.manufacturer || '') !== make) return false;
+        if (normalizeMarketplaceText(comp.model || '') !== model) return false;
+        const compPrice = parseFloat(comp.price) || 0;
+        const compYear = parseInt(comp.year, 10) || 0;
+        const compHours = parseFloat(comp.hours || (comp.specs && comp.specs.hours) || 0) || 0;
+        if (price > 0 && Math.abs(compPrice - price) > price * 0.10) return false;
+        if (Math.abs(compYear - year) > 2) return false;
+        if (hours > 0 && compHours > 0 && Math.abs(compHours - hours) > hours * 0.10) return false;
+        return true;
+      });
+
+      if (comparables.length >= 2) {
+        const amvValue = comparables.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0) / comparables.length;
+        await db.collection('listings').doc(listing.id).update({
+          computedAmv: Math.round(amvValue),
+          amvComparableCount: comparables.length,
+          amvComputedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    const statsRef = db.collection('system').doc('stats');
+    const prevSnap = await statsRef.get();
+    const prevData = prevSnap.exists ? prevSnap.data() : {};
+
+    const subcategoryStats = {};
+    for (const [key, agg] of Object.entries(subcategoryAggregates)) {
+      subcategoryStats[key] = {
+        avgPrice: agg.count > 0 ? Math.round(agg.totalPrice / agg.count) : 0,
+        supplyCount: agg.count,
+      };
+    }
+
+    await statsRef.set({
+      totalActiveListings: listings.length,
+      totalMarketValue: Math.round(totalMarketValue),
+      previousDayTotalMarketValue: prevData.totalMarketValue || 0,
+      previousDayTotalActiveListings: prevData.totalActiveListings || 0,
+      subcategoryStats,
+      dataRefreshedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    logger.info(`Nightly refresh: ${listings.length} listings, $${Math.round(totalMarketValue)} total value.`);
+  }
+);
+
+// ── Weekly Market Pulse (Monday 3AM CST) ────────────────────────────────────
+exports.weeklyMarketPulse = onSchedule(
+  {
+    schedule: '0 3 * * 1',
+    timeZone: 'America/Chicago',
+    region: 'us-central1',
+    memory: '512MiB',
+  },
+  async () => {
+    const db = getDb();
+    const listingsSnap = await db.collection('listings')
+      .where('status', '==', 'active')
+      .where('approvalStatus', '==', 'approved')
+      .get();
+
+    const listings = listingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const pulseRef = db.collection('system').doc('marketPulse');
+    const prevPulse = await pulseRef.get();
+    const prevSubcategoryPulse = prevPulse.exists ? (prevPulse.data().subcategoryPulse || {}) : {};
+
+    const subcategoryPulse = {};
+    for (const listing of listings) {
+      const price = parseFloat(listing.price) || 0;
+      const key = normalizeMarketplaceText(listing.subcategory || listing.category || 'other');
+      if (!subcategoryPulse[key]) subcategoryPulse[key] = { totalPrice: 0, count: 0 };
+      subcategoryPulse[key].totalPrice += price;
+      subcategoryPulse[key].count += 1;
+    }
+
+    const pulseData = {};
+    for (const [key, agg] of Object.entries(subcategoryPulse)) {
+      const avgPrice = agg.count > 0 ? Math.round(agg.totalPrice / agg.count) : 0;
+      const prevAvg = prevSubcategoryPulse[key]?.avgPrice || 0;
+      const prevCount = prevSubcategoryPulse[key]?.supplyCount || 0;
+      const priceChangePct = prevAvg > 0 ? parseFloat(((avgPrice - prevAvg) / prevAvg * 100).toFixed(1)) : 0;
+      const supplyChangePct = prevCount > 0 ? parseFloat(((agg.count - prevCount) / prevCount * 100).toFixed(1)) : 0;
+
+      pulseData[key] = { avgPrice, supplyCount: agg.count, priceChangePct, supplyChangePct };
+    }
+
+    await pulseRef.set({
+      subcategoryPulse: pulseData,
+      totalListings: listings.length,
+      pulseGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    logger.info(`Weekly market pulse: ${Object.keys(pulseData).length} subcategories analyzed.`);
+  }
+);

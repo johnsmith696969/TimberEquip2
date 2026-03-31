@@ -18,6 +18,9 @@ import { useAuth } from '../components/AuthContext';
 import { LoginPromptModal } from '../components/LoginPromptModal';
 import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
+import { useTheme } from '../components/ThemeContext';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 import WatermarkOverlay from '../components/WatermarkOverlay';
@@ -91,6 +94,7 @@ export function ListingDetail() {
   const location = useLocation();
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
+  const { theme } = useTheme();
   const [listing, setListing] = useState<Listing | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
   const [sellerListingCount, setSellerListingCount] = useState<number | null>(null);
@@ -104,6 +108,8 @@ export function ListingDetail() {
   const [showAMVModal, setShowAMVModal] = useState(false);
   const [showPaymentCalcModal, setShowPaymentCalcModal] = useState(false);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [inquirySent, setInquirySent] = useState(false);
   const [financingSent, setFinancingSent] = useState(false);
   const [shippingSent, setShippingSent] = useState(false);
@@ -428,34 +434,9 @@ export function ListingDetail() {
     return () => media.removeEventListener?.('change', update);
   }, []);
 
-  const hasDirtyInquiryForm = Boolean(
-    inquiryForm.name.trim() || inquiryForm.email.trim() || inquiryForm.phone.trim() || inquiryForm.message.trim()
-  );
 
-  const hasDirtyFinancingForm = Boolean(
-    financingForm.name.trim() ||
-      financingForm.email.trim() ||
-      financingForm.phone.trim() ||
-      financingForm.company.trim() ||
-      financingForm.requestedAmount.trim() ||
-      financingForm.message.trim()
-  );
 
-  const shippingDefaults = createInitialShippingForm(listing);
-  const hasDirtyShippingForm = Boolean(
-    shippingForm.name.trim() ||
-      shippingForm.company.trim() ||
-      shippingForm.phone.trim() ||
-      shippingForm.destination.trim() ||
-      shippingForm.timeline.trim() ||
-      shippingForm.trailerType.trim() ||
-      shippingForm.notes.trim() ||
-      shippingForm.loadReady !== shippingDefaults.loadReady ||
-      shippingForm.email.trim() !== shippingDefaults.email.trim() ||
-      shippingForm.pickupLocation.trim() !== shippingDefaults.pickupLocation.trim()
-  );
 
-  const confirmDiscardChanges = () => window.confirm('Are you sure you want to discard changes?');
   const machineLatitude = toFiniteNumber(listing?.latitude);
   const machineLongitude = toFiniteNumber(listing?.longitude);
   const machineMapQuery = [listing?.location || '', seller?.storefrontName || seller?.name || '', seller?.location || '']
@@ -490,21 +471,18 @@ export function ListingDetail() {
   };
 
   const dismissInquiryModal = () => {
-    if (hasDirtyInquiryForm && !inquirySent && !confirmDiscardChanges()) return;
     setShowInquiryModal(false);
     setInquiryForm(createInitialInquiryForm());
     setInquiryConsentAccepted(false);
   };
 
   const dismissFinancingModal = () => {
-    if (hasDirtyFinancingForm && !financingSent && !confirmDiscardChanges()) return;
     setShowFinancingModal(false);
     setFinancingForm(createInitialFinancingForm());
     setFinancingConsentAccepted(false);
   };
 
   const dismissShippingModal = () => {
-    if (hasDirtyShippingForm && !shippingSent && !confirmDiscardChanges()) return;
     setShowShippingModal(false);
     setShippingForm(createInitialShippingForm(listing));
   };
@@ -844,12 +822,12 @@ export function ListingDetail() {
   );
   const detailRobots = !isLiveApprovedListing || isQaOrTestListing ? NOINDEX_ROBOTS : undefined;
   const pricingCard = (
-    <div className="bg-[#1C1917] text-white p-8 rounded-sm shadow-2xl">
+    <div className={`p-8 rounded-sm shadow-2xl ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border border-line'}`}>
       <div className="flex flex-col mb-8">
         <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Listed Price</span>
         <div className="flex items-baseline space-x-3">
           <span className="text-4xl font-black tracking-tighter">{formatPrice(safePrice, listing.currency || 'USD', 0)}</span>
-          <span className="text-white/40 text-xs font-bold uppercase">{t('listingDetail.exclVat', 'Excl. VAT')}</span>
+          <span className={`text-xs font-bold uppercase ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>{t('listingDetail.exclVat', 'Excl. VAT')}</span>
         </div>
       </div>
 
@@ -862,31 +840,31 @@ export function ListingDetail() {
         </button>
         <button
           onClick={handleCallSeller}
-          className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
+          className={`btn-industrial w-full py-5 text-base ${theme === 'dark' ? 'bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]' : 'bg-ink text-bg border-line hover:opacity-90'}`}
         >
           <Phone size={18} className="mr-3" />
           {t('listingDetail.callSeller', 'Call Seller')}
         </button>
       </div>
 
-      <div className="flex items-center justify-center space-x-6 pt-6 border-t border-white/10">
+      <div className={`flex items-center justify-center space-x-6 pt-6 border-t ${theme === 'dark' ? 'border-white/10' : 'border-line'}`}>
         <button
           onClick={() => setShowPaymentCalcModal(true)}
-          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+          className={`flex items-center text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/60 hover:text-white' : 'text-muted hover:text-ink'}`}
         >
           <Calculator size={14} className="mr-2" />
           {t('listingDetail.calcPayment', 'Calc Payment')}
         </button>
         <button
           onClick={() => setShowFinancingModal(true)}
-          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+          className={`flex items-center text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/60 hover:text-white' : 'text-muted hover:text-ink'}`}
         >
           <Landmark size={14} className="mr-2" />
           {t('listingDetail.financing', 'Financing')}
         </button>
         <button
           onClick={() => setShowShippingModal(true)}
-          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+          className={`flex items-center text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/60 hover:text-white' : 'text-muted hover:text-ink'}`}
         >
           <Truck size={14} className="mr-2" />
           {t('listingDetail.logistics', 'Logistics')}
@@ -1031,19 +1009,43 @@ export function ListingDetail() {
             {t('listingDetail.backToInventory', 'Back to Inventory')}
           </Link>
           <div className="flex items-center space-x-4">
-            <button
-              onClick={() => {
-                const url = window.location.href;
-                if (navigator.share) {
-                  navigator.share({ title: `${safeYear} ${safeMake} ${safeModel}`, url }).catch(() => {});
-                } else {
-                  navigator.clipboard.writeText(url).then(() => {
-                    window.alert('Link copied to clipboard');
-                  }).catch(() => {});
-                }
-              }}
-              className="p-2 text-muted hover:text-ink"
-            ><Share2 size={18} /></button>
+            <div className="relative">
+              <button
+                onClick={() => setShowShareMenu((prev) => !prev)}
+                className="p-2 text-muted hover:text-ink"
+              ><Share2 size={18} /></button>
+              {showShareMenu && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-line shadow-xl rounded-sm z-50 py-1">
+                  <a
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowShareMenu(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors"
+                  >Facebook</a>
+                  <a
+                    href={`sms:?body=${encodeURIComponent(`${safeYear} ${safeMake} ${safeModel} - ${window.location.href}`)}`}
+                    onClick={() => setShowShareMenu(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors"
+                  >Text (SMS)</a>
+                  <a
+                    href={`mailto:?subject=${encodeURIComponent(`${safeYear} ${safeMake} ${safeModel} for Sale`)}&body=${encodeURIComponent(window.location.href)}`}
+                    onClick={() => setShowShareMenu(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors"
+                  >Email</a>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.href).then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      }).catch(() => {});
+                      setShowShareMenu(false);
+                    }}
+                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors w-full text-left"
+                  >{linkCopied ? 'Copied!' : 'Copy URL'}</button>
+                </div>
+              )}
+            </div>
             <button 
               onClick={handleToggleFavorite}
               className={`p-2 transition-colors ${isFavorite ? 'text-accent' : 'text-muted hover:text-ink'}`}
@@ -1540,12 +1542,28 @@ export function ListingDetail() {
                 </div>
 
                 <div className="flex flex-col space-y-3">
-                  <div className={`flex items-center space-x-3 text-xs font-bold ${listing.sellerVerified ? 'text-data' : 'text-muted'}`}>
+                  <div className={`flex items-center space-x-3 text-xs font-bold ${listing.sellerVerified || seller?.manuallyVerified ? 'text-data' : 'text-muted'}`}>
                     <ShieldCheck size={16} />
                     <span className="uppercase tracking-widest">
-                      {listing.sellerVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
+                      {listing.sellerVerified || seller?.manuallyVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
                     </span>
                   </div>
+                  {['super_admin', 'admin'].includes(user?.role || '') && seller?.id && (
+                    <button
+                      onClick={async () => {
+                        const newVal = !seller.manuallyVerified;
+                        try {
+                          await updateDoc(doc(db, 'users', seller.id), { manuallyVerified: newVal });
+                          setSeller((prev) => prev ? { ...prev, manuallyVerified: newVal } : prev);
+                        } catch (err) {
+                          console.error('Failed to update verification:', err);
+                        }
+                      }}
+                      className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline text-left"
+                    >
+                      {seller.manuallyVerified ? 'Remove Manual Verification' : 'Manually Verify Seller'}
+                    </button>
+                  )}
                   <div className="flex items-center space-x-3 text-xs font-bold text-muted">
                     <Clock size={16} />
                     <span className="uppercase tracking-widest">
