@@ -67,6 +67,13 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
       .sort((a, b) => b.total - a.total);
   }, [inquiries, listingMap]);
 
+  const averageResponseTime = useMemo(() => {
+    const values = inquiries
+      .map((inq) => inq.responseTimeMinutes)
+      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    if (values.length === 0) return null;
+    return Math.round(values.reduce((sum, val) => sum + val, 0) / values.length);
+  }, [inquiries]);
 
   // ── Filtered results ────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -122,7 +129,7 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
   return (
     <div className="space-y-4">
       {/* ── Summary panels ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Per-listing history — click to drill down */}
         <div className="bg-bg border border-line rounded-sm p-4">
           <p className="text-[9px] font-black uppercase tracking-widest text-muted mb-2">Per-Listing Inquiry History</p>
@@ -167,6 +174,29 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
           </div>
         </div>
 
+        {/* Response time */}
+        <div className="bg-bg border border-line rounded-sm p-4">
+          <p className="text-[9px] font-black uppercase tracking-widest text-muted mb-2">Response Time Reporting</p>
+          <div className="text-2xl font-black tracking-tighter text-ink">
+            {averageResponseTime === null ? 'N/A' : `${averageResponseTime}m`}
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted mt-1">Average first response</p>
+          <div className="mt-3 space-y-1">
+            {PIPELINE_STAGES.filter((s) => s !== 'New').map((stage) => {
+              const rt = inquiries
+                .filter((i) => i.status === stage && typeof i.responseTimeMinutes === 'number')
+                .map((i) => i.responseTimeMinutes as number);
+              if (rt.length === 0) return null;
+              const avg = Math.round(rt.reduce((a, b) => a + b, 0) / rt.length);
+              return (
+                <div key={stage} className="flex justify-between text-[9px] font-bold uppercase tracking-widest">
+                  <span className="text-muted">{stage}</span>
+                  <span className="text-ink">{avg}m avg</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* ── Filter bar ──────────────────────────────────────────── */}
@@ -282,6 +312,11 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
                   }`}>
                     Spam {(inquiry.spamScore ?? 0)}/100
                   </span>
+                  {!!inquiry.responseTimeMinutes && (
+                    <span className="bg-bg border border-line px-2 py-1 rounded-sm text-muted">
+                      First response: {inquiry.responseTimeMinutes}m
+                    </span>
+                  )}
                 </div>
 
                 {/* Message */}

@@ -25,7 +25,6 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
-import { startPerformanceTrace } from '../services/performance';
 import { buildListingPath } from '../utils/listingPath';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
@@ -254,26 +253,6 @@ const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey):
   return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : ''].filter(Boolean).join(' | ') || 'Location and radius';
 };
 
-function FilterSectionPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
-  return (
-    <motion.div
-      initial={false}
-      animate={open ? 'open' : 'collapsed'}
-      variants={{
-        open: { height: 'auto', opacity: 1 },
-        collapsed: { height: 0, opacity: 0 },
-      }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className="overflow-hidden"
-      aria-hidden={!open}
-    >
-      <div className="border-t border-line bg-surface/40 p-4 space-y-4">
-        {children}
-      </div>
-    </motion.div>
-  );
-}
-
 const PAGE_SIZE = 18;
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
@@ -321,10 +300,6 @@ export function Search() {
   useEffect(() => {
     const fetchData = async () => {
       const cachedListings = equipmentService.getCachedPublicListings();
-      const loadTrace = await startPerformanceTrace('search_inventory_load', {
-        route: '/search',
-        has_cached_inventory: cachedListings.length > 0,
-      });
       if (cachedListings.length > 0) {
         setAllListings(cachedListings);
         setLoading(false);
@@ -343,47 +318,31 @@ export function Search() {
 
         if (listingsResult.status === 'fulfilled') {
           setAllListings(listingsResult.value);
-          loadTrace?.putMetric('result_count', listingsResult.value.length);
-          loadTrace?.putAttribute('inventory_source', 'live');
         } else if (cachedListings.length > 0) {
           console.warn('Falling back to cached listings in search view:', listingsResult.reason);
           setInventoryNotice('Showing the latest available inventory snapshot while live inventory recovers.');
-          loadTrace?.putMetric('result_count', cachedListings.length);
-          loadTrace?.putAttribute('inventory_source', 'cache');
         } else {
           const message =
             listingsResult.reason instanceof Error
               ? listingsResult.reason.message
               : 'Live inventory is temporarily unavailable.';
           setInventoryError(message);
-          loadTrace?.putMetric('result_count', 0);
-          loadTrace?.putAttribute('inventory_source', 'error');
         }
 
         if (taxonomyResult.status === 'fulfilled') {
           setTaxonomy(taxonomyResult.value);
-          loadTrace?.putMetric('taxonomy_category_count', Object.keys(taxonomyResult.value).length);
-          loadTrace?.putAttribute('taxonomy_source', 'live');
         } else {
           console.warn('Error fetching taxonomy for search view:', taxonomyResult.reason);
-          loadTrace?.putAttribute('taxonomy_source', 'error');
         }
       } catch (error) {
         console.error('Error fetching listings:', error);
         if (cachedListings.length > 0) {
           setInventoryNotice('Showing the latest available inventory snapshot while live inventory recovers.');
-          loadTrace?.putMetric('result_count', cachedListings.length);
-          loadTrace?.putAttribute('inventory_source', 'cache');
         } else {
           setInventoryError(error instanceof Error ? error.message : 'Live inventory is temporarily unavailable.');
-          loadTrace?.putMetric('result_count', 0);
-          loadTrace?.putAttribute('inventory_source', 'error');
         }
       } finally {
         setLoading(false);
-        await loadTrace?.stop({
-          active_filter_count: countActiveFilters(getInitialFilters(searchParams)),
-        });
       }
     };
 
@@ -425,7 +384,7 @@ export function Search() {
 
   useEffect(() => {
     const params = serializeFiltersToParams(filters);
-    setSearchParams(params, { replace: true, preventScrollReset: true });
+    setSearchParams(params, { replace: true });
   }, [filters, setSearchParams]);
 
   const taxonomyCategories = useMemo(() => Object.keys(taxonomy).sort((a, b) => a.localeCompare(b)), [taxonomy]);
@@ -725,7 +684,7 @@ export function Search() {
       item: {
         '@type': 'Product',
         name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
-        sku: listing.id,
+        sku: listing.stockNumber || listing.id,
         brand: {
           '@type': 'Brand',
           name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales'
@@ -788,7 +747,6 @@ export function Search() {
               <div className="space-y-4">
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
-                    type="button"
                     onClick={() => toggleSection('equipment')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -800,7 +758,8 @@ export function Search() {
                     </div>
                     {openSections.equipment ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  <FilterSectionPanel open={openSections.equipment}>
+                  {openSections.equipment && (
+                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Category</span>
                         <select
@@ -865,12 +824,12 @@ export function Search() {
                           ))}
                         </datalist>
                       </div>
-                  </FilterSectionPanel>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
-                    type="button"
                     onClick={() => toggleSection('pricing')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -882,7 +841,8 @@ export function Search() {
                     </div>
                     {openSections.pricing ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  <FilterSectionPanel open={openSections.pricing}>
+                  {openSections.pricing && (
+                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
                           <span className="label-micro">Min Price</span>
@@ -951,12 +911,12 @@ export function Search() {
                           />
                         </div>
                       </div>
-                  </FilterSectionPanel>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
-                    type="button"
                     onClick={() => toggleSection('specs')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -968,7 +928,8 @@ export function Search() {
                     </div>
                     {openSections.specs ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  <FilterSectionPanel open={openSections.specs}>
+                  {openSections.specs && (
+                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Condition</span>
                         <select
@@ -1040,12 +1001,12 @@ export function Search() {
                           />
                         </div>
                       </div>
-                  </FilterSectionPanel>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
-                    type="button"
                     onClick={() => toggleSection('location')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -1057,7 +1018,8 @@ export function Search() {
                     </div>
                     {openSections.location ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  <FilterSectionPanel open={openSections.location}>
+                  {openSections.location && (
+                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2 flex flex-col space-y-2">
                           <span className="label-micro">Location / Center</span>
@@ -1118,14 +1080,15 @@ export function Search() {
                           </select>
                         </div>
                       </div>
-                  </FilterSectionPanel>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button type="button" onClick={clearDraftFilters} className="btn-industrial bg-bg py-3 text-[10px]">
+                  <button onClick={clearDraftFilters} className="btn-industrial bg-bg py-3 text-[10px]">
                     {t('search.clear', 'Clear')}
                   </button>
-                  <button type="button" onClick={applyDraftFilters} className="btn-industrial btn-accent py-3 text-[10px]">
+                  <button onClick={applyDraftFilters} className="btn-industrial btn-accent py-3 text-[10px]">
                     {t('search.applyFilters', 'Apply Filters')}
                   </button>
                 </div>

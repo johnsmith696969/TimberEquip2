@@ -57,8 +57,6 @@ const SUBCATEGORY_MARKET_ORDER = [
   'Skidders',
 ];
 
-const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.jpeg?v=20260330a';
-
 const formatChange = (value: unknown) => {
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
   return `${numericValue >= 0 ? '+' : ''}${numericValue.toFixed(1)}%`;
@@ -305,19 +303,15 @@ export function Home() {
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
         <div className="absolute inset-0 z-0">
           <img
-            src={HERO_IMAGE_PATH}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 h-full w-full object-cover object-center"
-            loading="eager"
-            decoding="async"
+            src="/page-photos/pine-dirt-road.jpg"
+            alt="Pine dirt road through the forest"
+            className="w-full h-full object-cover opacity-40"
           />
-          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-white/72' : 'bg-black/58'}`}></div>
           <div
             className={`absolute inset-0 ${
               theme === 'light'
-                ? 'bg-[linear-gradient(90deg,rgba(249,247,242,0.96)_0%,rgba(249,247,242,0.86)_34%,rgba(249,247,242,0.32)_70%,rgba(249,247,242,0.08)_100%)]'
-                : 'bg-[linear-gradient(90deg,rgba(10,10,10,0.92)_0%,rgba(10,10,10,0.80)_36%,rgba(10,10,10,0.36)_72%,rgba(10,10,10,0.12)_100%)]'
+                ? 'bg-gradient-to-r from-bg/95 via-bg/80 to-bg/45'
+                : 'bg-gradient-to-r from-black/85 via-black/60 to-transparent'
             }`}
           ></div>
         </div>
@@ -329,8 +323,8 @@ export function Home() {
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center space-x-3 mb-8"
             >
-              <div className="w-12 h-12 bg-accent flex items-center justify-center rounded-sm shadow-2xl overflow-hidden">
-                <img src="/logos/icons/global-equipment-icon.svg" alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
+              <div className="w-12 h-12 bg-accent flex items-center justify-center rounded-sm shadow-2xl">
+                <LayoutDashboard className="text-white" size={28} />
               </div>
               <span className="text-xs font-black tracking-[0.4em] text-accent uppercase">{t('home.network', 'Global Equipment Network')}</span>
             </motion.div>
@@ -459,7 +453,7 @@ export function Home() {
                 <Link
                   key={i}
                   to={cat.searchPath}
-                  className={`group bg-bg border p-8 flex flex-col text-left hover:border-ink transition-all duration-300 ${selectedCategoryFamily === cat.name ? 'border-ink shadow-md' : 'border-line'}`}
+                  className={`group bg-bg border p-8 flex flex-col text-left hover:border-accent transition-all duration-300 ${selectedCategoryFamily === cat.name ? 'border-accent' : 'border-line'}`}
                 >
                   <div className={`w-16 h-16 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
                     <cat.icon size={32} />
@@ -486,11 +480,11 @@ export function Home() {
                   <span className="label-micro text-accent mb-2 block">Category Selector</span>
                   <h4 className="text-2xl font-black uppercase tracking-tighter">{selectedCategoryFamily} Subcategories</h4>
                 </div>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                <div className="flex items-center gap-4">
                   <select
                     value={selectedCategoryFamily}
                     onChange={(event) => setSelectedCategoryFamily(event.target.value)}
-                    className="bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none min-w-0"
+                    className="bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none"
                   >
                     {categoryCards.map((category) => (
                       <option key={category.name} value={category.name}>
@@ -498,7 +492,7 @@ export function Home() {
                       </option>
                     ))}
                   </select>
-                  <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 text-center whitespace-nowrap">
+                  <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 w-fit whitespace-nowrap">
                     Browse {selectedCategoryFamily}
                   </Link>
                 </div>
@@ -508,7 +502,7 @@ export function Home() {
                   <Link
                     key={subcategory}
                     to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}&subcategory=${encodeURIComponent(subcategory)}`}
-                    className="px-4 py-2 border border-line text-[10px] font-black uppercase tracking-widest hover:border-ink hover:text-ink transition-colors"
+                    className="px-4 py-2 border border-line text-[10px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
                   >
                     {subcategory}
                   </Link>

@@ -177,12 +177,6 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('about' in payload) sanitized.about = sanitizeOptionalString(payload.about, 5000) || '';
   if ('bio' in payload) sanitized.bio = sanitizeOptionalString(payload.bio, 1000) || '';
   if ('location' in payload) sanitized.location = sanitizeOptionalString(payload.location, 200) || '';
-  if ('inspectionCoverageEnabled' in payload) sanitized.inspectionCoverageEnabled = Boolean(payload.inspectionCoverageEnabled);
-  if ('inspectionCoverageTerritory' in payload) sanitized.inspectionCoverageTerritory = sanitizeOptionalString(payload.inspectionCoverageTerritory, 240) || '';
-  if ('inspectionEquipmentFocus' in payload) sanitized.inspectionEquipmentFocus = sanitizeOptionalString(payload.inspectionEquipmentFocus, 240) || '';
-  if ('inspectionCertifications' in payload) sanitized.inspectionCertifications = sanitizeOptionalString(payload.inspectionCertifications, 240) || '';
-  if ('inspectionCoverageNotes' in payload) sanitized.inspectionCoverageNotes = sanitizeOptionalString(payload.inspectionCoverageNotes, 2000) || '';
-  if ('inspectionCoverageUpdatedAt' in payload) sanitized.inspectionCoverageUpdatedAt = payload.inspectionCoverageUpdatedAt ? String(payload.inspectionCoverageUpdatedAt) : null;
   if ('photoURL' in payload) sanitized.photoURL = sanitizeOptionalUrl(payload.photoURL) ?? null;
   if ('coverPhotoUrl' in payload) sanitized.coverPhotoUrl = sanitizeOptionalUrl(payload.coverPhotoUrl) ?? null;
   if ('storefrontName' in payload) sanitized.storefrontName = sanitizeOptionalString(payload.storefrontName, 180) || '';

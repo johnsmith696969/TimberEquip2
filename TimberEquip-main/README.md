@@ -7,32 +7,14 @@ Prerequisites: Node.js
 
 1. Install dependencies:
    `npm install`
-2. Install the Firebase Functions dependencies too so the local server can proxy shared Functions routes:
-   `npm --prefix functions install`
-3. Set environment values in `.env.local`:
+2. Set environment values in `.env.local`:
    `VITE_FIREBASE_API_KEY=your_firebase_web_api_key`
    `GEMINI_API_KEY=your_gemini_api_key` (only if Gemini features are enabled)
    Optional alternative: add `.firebase-web-config.local.json` with environment-specific web API keys (this file is gitignored).
    Optional for staging-local testing:
    `FIREBASE_ENVIRONMENT=staging`
-   Optional for local billing when Stripe secrets are not configured:
-   `LOCAL_BILLING_STUB=true`
-4. Run the app:
+3. Run the app:
    `npm run dev`
-   Optional custom port:
-   `PORT=3001 npm run dev`
-
-### Local Billing Notes
-
-- The local server now proxies the shared account billing routes through `functions/index.js` when the Functions bundle is available.
-- If local Stripe secrets are not configured, set `LOCAL_BILLING_STUB=true` to simulate:
-  - seller account checkout
-  - listing checkout
-  - checkout confirmation
-  - billing portal return
-  - subscription cancellation
-  - account access refresh
-- The billing stub is local-only and never runs in production.
 
 ## Build
 

@@ -108,18 +108,6 @@ function baseLayout(title, headerSubtitle, content) {
 </html>`;
 }
 
-function renderOptionalEmailFooter(unsubscribeUrl, label = 'Unsubscribe from optional TimberEquip emails') {
-  if (!unsubscribeUrl) return '';
-
-  return `
-    <hr class="divider" />
-    <p style="font-size:11px; color:#6b7280 !important;">
-      Prefer fewer emails? <a href="${unsubscribeUrl}">${label}</a>.<br />
-      You will still receive required account, billing, listing, and security emails.
-    </p>
-  `;
-}
-
 function renderInfoPanel(rows) {
   return `
     <div class="panel">
@@ -402,7 +390,7 @@ const templates = {
   financingRequestConfirmation({ applicantName, requestedAmount, company, dashboardUrl }) {
     const normalizedAmount = typeof requestedAmount === 'number'
       ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(requestedAmount)
-      : String(requestedAmount || 'Not provided');
+      : 'Not provided';
     const subject = 'Forestry Equipment Sales financing request received';
     const html = baseLayout(subject, 'Financing Request Received', `
       <p class="label">Financing Center</p>
@@ -449,7 +437,7 @@ const templates = {
     return { subject, html };
   },
 
-  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
+  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
     const subject = `New Forestry Equipment Sales Match: ${listingTitle}`;
     const html = baseLayout(subject, 'New Matching Equipment', `
       <p class="label">Saved Search Match</p>
@@ -462,12 +450,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Matching Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location, unsubscribeUrl }) {
+  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location }) {
     const subject = `Price Drop Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Price Drop Alert', `
       <p class="label">Saved Search Match</p>
@@ -481,12 +468,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">Review Price Drop</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location, unsubscribeUrl }) {
+  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location }) {
     const subject = `Sold Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Listing Sold Alert', `
       <p class="label">Saved Search Match</p>
@@ -498,12 +484,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
+  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
     const subject = `Similar Equipment Back In Stock: ${listingTitle}`;
     const html = baseLayout(subject, 'Similar Equipment Restocked', `
       <p class="label">Saved Search Match</p>
@@ -516,7 +501,6 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Similar Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
@@ -584,7 +568,7 @@ const templates = {
     return { subject, html };
   },
 
-  inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl, listingId }) {
+  inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl }) {
     const subject = `Forestry Equipment Sales inspection request received for ${equipment}`;
     const html = baseLayout(subject, 'Inspection Request Received', `
       <p class="label">Inspection Desk</p>
@@ -593,7 +577,6 @@ const templates = {
       <p>We received your Forestry Equipment Sales inspection request and routed it to the inspection management desk.</p>
       ${renderInfoPanel([
         { label: 'Equipment', value: equipment },
-        { label: 'Listing ID', value: listingId || 'Not linked yet' },
         { label: 'Location', value: inspectionLocation },
         { label: 'Requested Timeline', value: timeline || 'Not provided' },
         { label: 'Recommended Dealer', value: matchedDealerName || 'No dealer matched yet' },
@@ -619,7 +602,7 @@ const templates = {
         { label: 'Timeline', value: timeline || 'Not provided' },
         { label: 'Matched Dealer', value: matchedDealerName || 'No dealer matched yet' },
         { label: 'Dealer Location', value: matchedDealerLocation || 'Not provided' },
-        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not quoted yet') },
+        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not quoted yet' },
       ])}
       ${notes ? `<div class="message-box"><p>${notes}</p></div>` : ''}
       ${listingUrl ? `<a href="${listingUrl}" class="cta">Open Related Listing</a>` : ''}
@@ -628,7 +611,7 @@ const templates = {
     return { subject, html };
   },
 
-  inspectionRequestStatusUpdated({ requesterName, equipment, status, quotedPrice, managerName, inspectionLocation, inspectionSheetUrl, completedReportUrl, dashboardUrl, listingId }) {
+  inspectionRequestStatusUpdated({ requesterName, equipment, status, quotedPrice, managerName, inspectionLocation }) {
     const normalizedStatus = String(status || 'Updated');
     const subject = `Inspection request ${normalizedStatus.toLowerCase()}: ${equipment}`;
     const html = baseLayout(subject, 'Inspection Request Updated', `
@@ -638,15 +621,9 @@ const templates = {
       <p>Your request for <strong>${equipment}</strong> has been updated by ${managerName || 'the Forestry Equipment Sales team'}.</p>
       ${renderInfoPanel([
         { label: 'Status', value: normalizedStatus },
-        { label: 'Listing ID', value: listingId || 'Not linked yet' },
         { label: 'Inspection Location', value: inspectionLocation },
-        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not provided') },
+        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : 'Not provided' },
       ])}
-      ${inspectionSheetUrl ? '<p>Your inspection sheet is ready. Download it below and share it with the assigned inspector or dealer team.</p>' : ''}
-      ${completedReportUrl ? '<p>Your completed inspection report is now available for download below.</p>' : ''}
-      ${inspectionSheetUrl ? `<a href="${inspectionSheetUrl}" class="cta">Download Inspection Sheet</a>` : ''}
-      ${completedReportUrl ? `<a href="${completedReportUrl}" class="cta cta-secondary">Download Completed Inspection Report</a>` : ''}
-      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta cta-secondary">Open Inspection Dashboard</a>` : ''}
       <p>If you have questions about this update, reply directly to the Forestry Equipment Sales inspection desk.</p>
     `);
     return { subject, html };
@@ -668,17 +645,15 @@ const templates = {
     return { subject, html };
   },
 
-  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, totalViews, topMachines, dashboardUrl, unsubscribeUrl }) {
+  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, topMachines, dashboardUrl }) {
     const subject = `Your ${monthLabel} Forestry Equipment Sales Performance Report`;
     const topMachinesHtml = Array.isArray(topMachines) && topMachines.length > 0
       ? `<table style="width:100%; border-collapse:collapse; margin:16px 0;">
           <tr style="background:#f8fafc;">
             <th style="text-align:left; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Machine</th>
             <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Inquiries</th>
-            <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
-            <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
           </tr>
-          ${topMachines.map((m) => `<tr><td style="padding:8px 12px; font-size:13px; color:#111827; border-bottom:1px solid #f3f4f6;">${m.title || 'Untitled'}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#2f6f2d; border-bottom:1px solid #f3f4f6;">${m.inquiryCount ?? m.count ?? 0}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#111827; border-bottom:1px solid #f3f4f6;">${m.callCount ?? 0}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#111827; border-bottom:1px solid #f3f4f6;">${m.viewCount ?? 0}</td></tr>`).join('')}
+          ${topMachines.map((m) => `<tr><td style="padding:8px 12px; font-size:13px; color:#111827; border-bottom:1px solid #f3f4f6;">${m.title || 'Untitled'}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#2f6f2d; border-bottom:1px solid #f3f4f6;">${m.count}</td></tr>`).join('')}
         </table>`
       : '<p style="color:#6b7280; font-size:13px;">No inquiries recorded this period.</p>';
 
@@ -695,16 +670,14 @@ const templates = {
         <div class="info-row"><span class="info-label">Connected Calls</span><span class="info-value">${connectedCalls}</span></div>
         <div class="info-row"><span class="info-label">Qualified Calls (60s+)</span><span class="info-value">${qualifiedCalls}</span></div>
         <div class="info-row"><span class="info-label">Missed Calls</span><span class="info-value">${missedCalls}</span></div>
-        <div class="info-row"><span class="info-label">Listing Views</span><span class="info-value">${totalViews || 0}</span></div>
       </div>
 
       <h2>Top Machines by Inquiry Volume</h2>
       ${topMachinesHtml}
 
       <hr class="divider" />
-      <p>These rolling 30-day totals combine listing views, inquiry submissions, and tracked calls. For questions about your report, contact the Forestry Equipment Sales team.</p>
+      <p>Impressions and click data will be available in a future update. For questions about your report, contact the Forestry Equipment Sales team.</p>
       <a href="${dashboardUrl || 'https://timberequip.com/profile'}" class="cta">Open Seller Dashboard</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from monthly performance emails')}
     `);
     return { subject, html };
   },
@@ -717,7 +690,6 @@ const templates = {
           <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.leads}</td>
           <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.calls}</td>
           <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.qualifiedCalls}</td>
-          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.totalViews ?? 0}</td>
         </tr>`).join('')
       : '';
 
@@ -734,7 +706,6 @@ const templates = {
           <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Leads</th>
           <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
           <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Qualified</th>
-          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
         </tr>
         ${tableRows}
       </table>

@@ -45,7 +45,6 @@ const Terms = lazy(() => import('./pages/Terms').then((module) => ({ default: mo
 const Cookies = lazy(() => import('./pages/Cookies').then((module) => ({ default: module.Cookies })));
 const Bookmarks = lazy(() => import('./pages/Bookmarks').then((module) => ({ default: module.Bookmarks })));
 const Dmca = lazy(() => import('./pages/Dmca').then((module) => ({ default: module.Dmca })));
-const Unsubscribe = lazy(() => import('./pages/Unsubscribe').then((module) => ({ default: module.Unsubscribe })));
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 
 function RouteLoadingFallback() {
@@ -120,7 +119,6 @@ function App() {
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/cookies" element={<Cookies />} />
                     <Route path="/dmca" element={<Dmca />} />
-                    <Route path="/unsubscribe" element={<Unsubscribe />} />
                     <Route path="/bookmarks" element={<ProtectedRoute><Bookmarks /></ProtectedRoute>} />
                     <Route path="/404" element={<NotFound />} />
                     <Route path="*" element={<NotFound />} />

@@ -351,17 +351,15 @@ function shouldValidateListingQualityOnUpdate(updates: Partial<Listing>): boolea
 function normalizeListingImages(listing: Listing): Listing {
   const variants = Array.isArray(listing.imageVariants) ? listing.imageVariants : [];
   const hasImages = Array.isArray(listing.images) && listing.images.length > 0;
-  const normalizedImages = hasImages
-    ? listing.images
-    : variants.map((v) => v.detailUrl).filter(Boolean);
-  const rawTitles = Array.isArray(listing.imageTitles) ? listing.imageTitles : [];
-  const imageTitles = normalizedImages.map((_, index) => String(rawTitles[index] || '').trim()).slice(0, normalizedImages.length);
 
-  return {
-    ...listing,
-    images: normalizedImages,
-    imageTitles,
-  };
+  if (!hasImages && variants.length > 0) {
+    return {
+      ...listing,
+      images: variants.map((v) => v.detailUrl).filter(Boolean),
+    };
+  }
+
+  return listing;
 }
 
 function isAdminPublisherRole(role?: string | null): boolean {
@@ -658,50 +656,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-function getApiRequestUrls(input: RequestInfo | URL): string[] {
-  const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
-  if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
-    return [rawInput];
-  }
-
-  const urls = [rawInput];
-  const hostname = window.location.hostname.trim().toLowerCase();
-  if (hostname === 'www.timberequip.com') {
-    urls.push(`https://timberequip.com${rawInput}`);
-  }
-
-  return Array.from(new Set(urls));
-}
-
-async function fetchApiWithFallback(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const urls = getApiRequestUrls(input);
-  let lastError: unknown = null;
-  let lastResponse: Response | null = null;
-
-  for (let index = 0; index < urls.length; index += 1) {
-    const url = urls[index];
-
-    try {
-      const response = await fetch(url, init);
-      if (response.ok || index === urls.length - 1 || response.status !== 404) {
-        return response;
-      }
-      lastResponse = response;
-    } catch (error) {
-      lastError = error;
-      if (index === urls.length - 1) {
-        throw error;
-      }
-    }
-  }
-
-  if (lastResponse) {
-    return lastResponse;
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Equipment API request failed');
-}
-
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   if (typeof auth.authStateReady === 'function') {
     await auth.authStateReady();
@@ -713,7 +667,7 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
   }
 
   const idToken = await currentUser.getIdToken();
-  const response = await fetchApiWithFallback(input, {
+  const response = await fetch(input, {
     ...init,
     headers: {
       Authorization: `Bearer ${idToken}`,
@@ -769,7 +723,7 @@ async function waitForAuthenticatedUser(timeoutMs = 4000): Promise<FirebaseAuthU
 }
 
 async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const response = await fetchApiWithFallback(input, {
+  const response = await fetch(input, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -1190,9 +1144,9 @@ export const equipmentService = {
         };
 
         if (sortBy === 'price_asc') {
-          sortWithFeaturedPriority((a, b) => a.price - b.price);
+          listings = [...listings].sort((a, b) => a.price - b.price);
         } else if (sortBy === 'price_desc') {
-          sortWithFeaturedPriority((a, b) => b.price - a.price);
+          listings = [...listings].sort((a, b) => b.price - a.price);
         } else if (sortBy === 'popular') {
           sortWithFeaturedPriority((a, b) => (b.views + b.leads * 3) - (a.views + a.leads * 3));
         } else if (sortBy === 'relevance' && filters.q) {
@@ -1387,7 +1341,6 @@ export const equipmentService = {
     const path = 'listings';
     const normalizedSellerUid = String(sellerUid || '').trim();
     if (!normalizedSellerUid) return 0;
-    if (!auth.currentUser) return 0;
 
     try {
       const snapshot = await getDocs(query(collection(db, path), where('sellerUid', '==', normalizedSellerUid)));
@@ -1491,25 +1444,6 @@ export const equipmentService = {
     }
 
     return undefined;
-  },
-
-  async recordListingView(listingId: string): Promise<boolean> {
-    const normalizedListingId = String(listingId || '').trim();
-    if (!normalizedListingId) return false;
-
-    try {
-      const payload = await getPublicJson<{ recorded?: boolean; warning?: string }>(
-        `/api/public/listings/${encodeURIComponent(normalizedListingId)}/view`,
-        { method: 'POST' }
-      );
-      if (payload?.warning) {
-        console.warn(payload.warning);
-      }
-      return Boolean(payload?.recorded);
-    } catch (error) {
-      console.warn('Unable to record listing view:', error);
-      return false;
-    }
   },
 
   async addListing(
@@ -1955,17 +1889,6 @@ export const equipmentService = {
       quotedPrice?: number | null;
       assignedToUid?: string | null;
       assignedToName?: string | null;
-      inspectionTemplateUrl?: string;
-      inspectionTemplateFileName?: string;
-      inspectionTemplateGeneratedAt?: string | null;
-      inspectionTemplateGeneratedByUid?: string | null;
-      inspectionTemplateGeneratedByName?: string | null;
-      inspectionReportUrl?: string;
-      inspectionReportFileName?: string;
-      inspectionReportContentType?: string;
-      inspectionReportUploadedAt?: string | null;
-      inspectionReportUploadedByUid?: string | null;
-      inspectionReportUploadedByName?: string | null;
     }
   ): Promise<void> {
     const path = `inspectionRequests/${id}`;
@@ -1996,50 +1919,6 @@ export const equipmentService = {
 
       if (updates.assignedToName !== undefined) {
         payload.assignedToName = updates.assignedToName || null;
-      }
-
-      if (updates.inspectionTemplateUrl !== undefined) {
-        payload.inspectionTemplateUrl = updates.inspectionTemplateUrl || null;
-      }
-
-      if (updates.inspectionTemplateFileName !== undefined) {
-        payload.inspectionTemplateFileName = updates.inspectionTemplateFileName || null;
-      }
-
-      if (updates.inspectionTemplateGeneratedAt !== undefined) {
-        payload.inspectionTemplateGeneratedAt = updates.inspectionTemplateGeneratedAt || null;
-      }
-
-      if (updates.inspectionTemplateGeneratedByUid !== undefined) {
-        payload.inspectionTemplateGeneratedByUid = updates.inspectionTemplateGeneratedByUid || null;
-      }
-
-      if (updates.inspectionTemplateGeneratedByName !== undefined) {
-        payload.inspectionTemplateGeneratedByName = updates.inspectionTemplateGeneratedByName || null;
-      }
-
-      if (updates.inspectionReportUrl !== undefined) {
-        payload.inspectionReportUrl = updates.inspectionReportUrl || null;
-      }
-
-      if (updates.inspectionReportFileName !== undefined) {
-        payload.inspectionReportFileName = updates.inspectionReportFileName || null;
-      }
-
-      if (updates.inspectionReportContentType !== undefined) {
-        payload.inspectionReportContentType = updates.inspectionReportContentType || null;
-      }
-
-      if (updates.inspectionReportUploadedAt !== undefined) {
-        payload.inspectionReportUploadedAt = updates.inspectionReportUploadedAt || null;
-      }
-
-      if (updates.inspectionReportUploadedByUid !== undefined) {
-        payload.inspectionReportUploadedByUid = updates.inspectionReportUploadedByUid || null;
-      }
-
-      if (updates.inspectionReportUploadedByName !== undefined) {
-        payload.inspectionReportUploadedByName = updates.inspectionReportUploadedByName || null;
       }
 
       await updateDoc(docRef, payload);
@@ -2145,8 +2024,10 @@ export const equipmentService = {
       const existingFirstResponseAt = existing?.firstResponseAt;
       const respondedStatuses: Inquiry['status'][] = ['Contacted', 'Qualified', 'Won', 'Lost', 'Closed'];
       if (!existingFirstResponseAt && respondedStatuses.includes(status)) {
+        const createdAtMs = toMillis(existing?.createdAt);
         const nowMs = Date.now();
         nextUpdate.firstResponseAt = new Date(nowMs).toISOString();
+        nextUpdate.responseTimeMinutes = createdAtMs ? Math.max(0, Math.round((nowMs - createdAtMs) / 60000)) : null;
       }
 
       await updateDoc(docRef, nextUpdate);
@@ -2218,15 +2099,6 @@ export const equipmentService = {
       if (accountStorefront) {
         return accountStorefront;
       }
-    }
-
-    try {
-      const payload = await getPublicJson<{ seller?: Seller | null }>(`/api/public/sellers/${encodeURIComponent(normalizedId)}`);
-      if (payload?.seller) {
-        return payload.seller;
-      }
-    } catch (error) {
-      console.warn('Public seller API unavailable, falling back to Firestore lookup:', error);
     }
 
     const storefrontPath = `storefronts/${normalizedId}`;
@@ -2463,6 +2335,7 @@ export const equipmentService = {
         assignedToName: null,
         internalNotes: [],
         firstResponseAt: null,
+        responseTimeMinutes: null,
         spamScore: spamSignal.spamScore,
         spamFlags: spamSignal.spamFlags,
         updatedAt: serverTimestamp(),

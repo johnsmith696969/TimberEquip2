@@ -2,7 +2,6 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
-import { auth } from '../firebase';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
 
@@ -13,12 +12,9 @@ interface ProtectedRouteProps {
   requireVerified?: boolean;
 }
 
-export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs = false, requireVerified = false }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs = false, requireVerified = true }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
-  const hasFirebaseSession = Boolean(auth.currentUser);
-  const hasResolvedProfile = Boolean(user);
-  const hasSession = Boolean(isAuthenticated || hasFirebaseSession);
 
   const hasAdminAccess = !!(
     user && (
@@ -34,16 +30,8 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
     )
   );
 
-  if (!hasSession) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
-  }
-
-  if (!hasResolvedProfile) {
-    return (
-      <div className="mx-auto flex min-h-[40vh] max-w-[1600px] items-center justify-center px-4 py-16 md:px-8">
-        <div className="text-[11px] font-black uppercase tracking-widest text-muted">Loading Account...</div>
-      </div>
-    );
   }
 
   if (requireAdmin && !hasAdminAccess) {

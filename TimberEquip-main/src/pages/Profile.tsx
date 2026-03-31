@@ -9,7 +9,7 @@ import {
   ExternalLink, MapPin, Phone,
   Mail, Building2, Wrench, MessageSquare,
   Shield, Download, ClipboardList, AlertTriangle,
-  Activity, Users, FileText, Database, Star, Upload
+  Activity, Users, FileText, Database
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
@@ -24,12 +24,11 @@ import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile, type RecaptchaVerifier } from 'firebase/auth';
 import { getUserRoleDisplayLabel } from '../utils/userRoles';
-import { canAccessDealerOs, canUserPostListings, getFeaturedListingCap, getManagedListingCap, hasAdminPublishingAccess } from '../utils/sellerAccess';
+import { canAccessDealerOs, canUserPostListings } from '../utils/sellerAccess';
 import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import { Seo } from '../components/Seo';
-import { buildInspectionSheetFileName, buildInspectionSheetText } from '../utils/inspectionSheets';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
@@ -43,7 +42,6 @@ import {
 
 const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
-const CONTENT_STUDIO_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer', 'content_manager', 'editor']);
 const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
 const CURRENCY_OPTIONS: Currency[] = ['USD', 'CAD', 'EUR', 'GBP', 'NOK', 'SEK', 'CHF', 'PLN', 'CZK', 'RON', 'DKK', 'HUF'];
 const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
@@ -84,7 +82,6 @@ export function Profile() {
     userService.supportsEnterpriseStorefront(normalizedRole)
   );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
-  const hasContentStudioProfileScope = Boolean(normalizedRole && CONTENT_STUDIO_PROFILE_ROLES.has(normalizedRole));
   const canManageInspectionRequests = Boolean(
     normalizedRole &&
     INSPECTION_MANAGER_ROLES.has(normalizedRole) &&
@@ -187,15 +184,8 @@ export function Profile() {
     storefrontTabLabel,
   ]);
   const adminProfileLinks = useMemo(() => {
-    if (!hasContentStudioProfileScope) {
-      return [];
-    }
-
     if (!hasAdminProfileScope) {
-      return [
-        { label: 'Content Studio', icon: FileText, href: '/admin?tab=content' },
-        { label: 'Editor Settings', icon: Settings, href: '/admin?tab=settings' },
-      ];
+      return [];
     }
 
     const items = [
@@ -203,7 +193,7 @@ export function Profile() {
       { label: 'Performance', icon: Activity, href: '/admin?tab=tracking' },
       { label: 'Accounts', icon: Building2, href: '/admin?tab=accounts' },
       { label: 'Billing', icon: CreditCard, href: '/admin?tab=billing' },
-      { label: 'Content Studio', icon: FileText, href: '/admin?tab=content' },
+      { label: 'Content', icon: FileText, href: '/admin?tab=content' },
       { label: 'Dealer Feeds', icon: Database, href: '/admin?tab=dealer_feeds' },
       { label: 'Admin Settings', icon: Settings, href: '/admin?tab=settings' },
     ];
@@ -213,7 +203,7 @@ export function Profile() {
     }
 
     return items;
-  }, [hasAdminProfileScope, hasContentStudioProfileScope, normalizedRole]);
+  }, [hasAdminProfileScope, normalizedRole]);
   const resolveRequestedProfileTab = useCallback((requestedTab: string | null) => {
     const normalizedRequestedTab = requestedTab?.trim().toLowerCase() || '';
     const tabAlias =
@@ -396,7 +386,6 @@ export function Profile() {
           managedAccountCap: typeof refreshedAccess.managedAccountCap === 'number' ? refreshedAccess.managedAccountCap : user?.managedAccountCap,
           currentSubscriptionId: refreshedAccess.currentSubscriptionId || null,
           currentPeriodEnd: refreshedAccess.currentPeriodEnd || null,
-          subscriptionStartDate: refreshedAccess.subscriptionStartDate || user?.subscriptionStartDate || null,
           accountAccessSource: refreshedAccess.accountAccessSource || null,
           accountStatus: refreshedAccess.accountStatus || user?.accountStatus || 'active',
           entitlement: refreshedAccess.entitlement ?? user?.entitlement,
@@ -892,7 +881,6 @@ export function Profile() {
         managedAccountCap: typeof refreshedAccess.managedAccountCap === 'number' ? refreshedAccess.managedAccountCap : user.managedAccountCap,
         currentSubscriptionId: refreshedAccess.currentSubscriptionId || null,
         currentPeriodEnd: refreshedAccess.currentPeriodEnd || null,
-        subscriptionStartDate: refreshedAccess.subscriptionStartDate || user.subscriptionStartDate || null,
         accountAccessSource: refreshedAccess.accountAccessSource || null,
         accountStatus: refreshedAccess.accountStatus || user.accountStatus || 'active',
         entitlement: refreshedAccess.entitlement ?? user.entitlement,
@@ -951,11 +939,9 @@ export function Profile() {
   const [inspectionRequests, setInspectionRequests] = useState<InspectionRequest[]>([]);
   const [inspectionQuoteDrafts, setInspectionQuoteDrafts] = useState<Record<string, string>>({});
   const [inspectionActionId, setInspectionActionId] = useState<string | null>(null);
-  const [inspectionDocumentActionId, setInspectionDocumentActionId] = useState<string | null>(null);
   const [inspectionError, setInspectionError] = useState('');
   const [inspectionNotice, setInspectionNotice] = useState('');
   const [inspectionRequestsLoading, setInspectionRequestsLoading] = useState(false);
-  const inspectionReportInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const listingTitleLookup = useMemo(
     () => new Map(myListings.map((listing) => [listing.id, listing.title])),
     [myListings]
@@ -1206,24 +1192,6 @@ export function Profile() {
     void fetchInspectionRequests();
   }, [activeTab, canViewInspectionRequests, user?.uid, user?.role]);
 
-  const activeManagedListingsCount = useMemo(
-    () => myListings.filter((listing) => !['sold', 'archived', 'expired'].includes(String(listing.status || 'active').toLowerCase())).length,
-    [myListings]
-  );
-  const finiteListingCap = getManagedListingCap(user);
-  const remainingManagedListings = finiteListingCap === null ? null : Math.max(finiteListingCap - activeManagedListingsCount, 0);
-  const featuredListingCount = useMemo(
-    () => myListings.filter((listing) => !['sold', 'archived', 'expired'].includes(String(listing.status || 'active').toLowerCase()) && !!listing.featured).length,
-    [myListings]
-  );
-  const featuredListingCap = useMemo(
-    () => (hasAdminPublishingAccess(user) ? Number.POSITIVE_INFINITY : getFeaturedListingCap(user)),
-    [user]
-  );
-  const remainingFeaturedSlots = Number.isFinite(featuredListingCap)
-    ? Math.max(featuredListingCap - featuredListingCount, 0)
-    : null;
-
   const formatDateLabel = (value?: string) => {
     if (!value) return 'Date unavailable';
     const parsed = Date.parse(value);
@@ -1386,128 +1354,6 @@ export function Profile() {
       setInspectionError(error instanceof Error ? error.message : 'Unable to update inspection request right now.');
     } finally {
       setInspectionActionId(null);
-    }
-  };
-
-  const patchInspectionRequestLocal = useCallback((requestId: string, patch: Partial<InspectionRequest>) => {
-    setInspectionRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, ...patch } : item)));
-  }, []);
-
-  const handleGenerateInspectionTemplate = async (request: InspectionRequest) => {
-    if (!user?.uid) return;
-
-    setInspectionDocumentActionId(request.id);
-    setInspectionError('');
-    setInspectionNotice('');
-
-    try {
-      const linkedListing = request.listingId ? await equipmentService.getListing(request.listingId) : undefined;
-      const content = buildInspectionSheetText(request, linkedListing);
-      const fileName = buildInspectionSheetFileName(request, linkedListing);
-      const file = new File([content], fileName, { type: 'text/plain' });
-      const uploaded = await storageService.uploadInspectionDocument(file, request.id, {
-        listingId: request.listingId,
-        requesterUid: request.requesterUid || '',
-        assignedToUid: request.assignedToUid || user.uid,
-        kind: 'template',
-      });
-      const generatedAt = new Date().toISOString();
-      const generatedByName = user.displayName || user.company || user.email || 'Inspection Manager';
-
-      await equipmentService.updateInspectionRequest(request.id, {
-        inspectionTemplateUrl: uploaded.downloadUrl,
-        inspectionTemplateFileName: uploaded.fileName,
-        inspectionTemplateGeneratedAt: generatedAt,
-        inspectionTemplateGeneratedByUid: user.uid,
-        inspectionTemplateGeneratedByName: generatedByName,
-      });
-
-      patchInspectionRequestLocal(request.id, {
-        inspectionTemplateUrl: uploaded.downloadUrl,
-        inspectionTemplateFileName: uploaded.fileName,
-        inspectionTemplateGeneratedAt: generatedAt,
-        inspectionTemplateGeneratedByUid: user.uid,
-        inspectionTemplateGeneratedByName: generatedByName,
-        updatedAt: generatedAt,
-      });
-      setInspectionNotice('Inspection sheet generated and attached to the request.');
-    } catch (error) {
-      setInspectionError(error instanceof Error ? error.message : 'Unable to generate the inspection sheet right now.');
-    } finally {
-      setInspectionDocumentActionId(null);
-    }
-  };
-
-  const handleUploadInspectionReport = async (request: InspectionRequest, file?: File | null) => {
-    if (!user?.uid || !file) return;
-
-    setInspectionDocumentActionId(request.id);
-    setInspectionError('');
-    setInspectionNotice('');
-
-    try {
-      const uploaded = await storageService.uploadInspectionDocument(file, request.id, {
-        listingId: request.listingId,
-        requesterUid: request.requesterUid || '',
-        assignedToUid: request.assignedToUid || user.uid,
-        kind: 'report',
-      });
-      const uploadedAt = new Date().toISOString();
-      const uploadedByName = user.displayName || user.company || user.email || 'Inspection Manager';
-
-      await equipmentService.updateInspectionRequest(request.id, {
-        status: 'Completed',
-        inspectionReportUrl: uploaded.downloadUrl,
-        inspectionReportFileName: uploaded.fileName,
-        inspectionReportContentType: uploaded.contentType,
-        inspectionReportUploadedAt: uploadedAt,
-        inspectionReportUploadedByUid: user.uid,
-        inspectionReportUploadedByName: uploadedByName,
-      });
-
-      patchInspectionRequestLocal(request.id, {
-        status: 'Completed',
-        inspectionReportUrl: uploaded.downloadUrl,
-        inspectionReportFileName: uploaded.fileName,
-        inspectionReportContentType: uploaded.contentType,
-        inspectionReportUploadedAt: uploadedAt,
-        inspectionReportUploadedByUid: user.uid,
-        inspectionReportUploadedByName: uploadedByName,
-        updatedAt: uploadedAt,
-        reviewedAt: uploadedAt,
-        respondedAt: uploadedAt,
-      });
-      setInspectionNotice('Completed inspection report uploaded successfully.');
-    } catch (error) {
-      setInspectionError(error instanceof Error ? error.message : 'Unable to upload the completed inspection report right now.');
-    } finally {
-      setInspectionDocumentActionId(null);
-    }
-  };
-
-  const handleToggleFeaturedListing = async (listing: Listing) => {
-    const nextFeatured = !listing.featured;
-    const actionKey = getLifecycleActionKey(listing.id, nextFeatured ? 'feature' : 'unfeature');
-    setListingActionId(actionKey);
-    setListingActionError('');
-    setListingActionNotice('');
-
-    try {
-      await equipmentService.updateListing(listing.id, {
-        featured: nextFeatured,
-        sellerUid: listing.sellerUid || user?.uid,
-        sellerId: listing.sellerId || user?.uid,
-      });
-      setMyListings((prev) => prev.map((entry) => (
-        entry.id === listing.id
-          ? { ...entry, featured: nextFeatured, updatedAt: new Date().toISOString() }
-          : entry
-      )));
-      setListingActionNotice(nextFeatured ? 'Listing added to featured inventory.' : 'Listing removed from featured inventory.');
-    } catch (error) {
-      setListingActionError(error instanceof Error ? error.message : 'Unable to update the featured listing state right now.');
-    } finally {
-      setListingActionId('');
     }
   };
 
@@ -1771,30 +1617,6 @@ export function Profile() {
           {listingActionNotice}
         </div>
       )}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-sm border border-line bg-surface p-4">
-          <p className="label-micro text-muted mb-2">Active Listings</p>
-          <p className="text-2xl font-black uppercase tracking-tighter">{activeManagedListingsCount}</p>
-        </div>
-        <div className="rounded-sm border border-line bg-surface p-4">
-          <p className="label-micro text-muted mb-2">Listings Remaining</p>
-          <p className="text-2xl font-black uppercase tracking-tighter">
-            {remainingManagedListings === null ? 'Unlimited' : remainingManagedListings}
-          </p>
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-            {finiteListingCap === null ? 'Admin / super admin unlimited posting access' : `${finiteListingCap} listing allowance`}
-          </p>
-        </div>
-        <div className="rounded-sm border border-line bg-surface p-4">
-          <p className="label-micro text-muted mb-2">Featured Slots</p>
-          <p className="text-2xl font-black uppercase tracking-tighter">
-            {Number.isFinite(featuredListingCap) ? `${featuredListingCount}/${featuredListingCap}` : `${featuredListingCount}/Unlimited`}
-          </p>
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-            {remainingFeaturedSlots === null ? 'Unlimited featured control' : `${remainingFeaturedSlots} slots remaining`}
-          </p>
-        </div>
-      </div>
       <div className="grid grid-cols-1 gap-4">
         {myListings.map((listing) => (
            <div key={listing.id} className="bg-surface border border-line p-4 flex flex-col sm:flex-row gap-4 shadow-sm hover:border-accent/50 transition-colors">
@@ -1807,9 +1629,6 @@ export function Profile() {
                    <span className="label-micro text-accent">{listing.category}</span>
                    <h4 className="text-base md:text-lg font-black uppercase tracking-tighter leading-tight">{listing.title}</h4>
                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                     <span className="rounded-sm bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted">
-                       Listing ID: {listing.id}
-                     </span>
                      <span className="rounded-sm bg-bg px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted">
                        {String(listing.status || 'pending')}
                      </span>
@@ -1833,28 +1652,11 @@ export function Profile() {
                    </div>
                  </div>
                </div>
-              <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+               <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
                 <span className="flex items-center"><Clock size={12} className="mr-1" /> {listing.hours} HRS</span>
                 <span className="flex items-center"><MapPin size={12} className="mr-1" /> {listing.location}</span>
-                {listing.featured ? <span className="flex items-center text-accent"><Star size={12} className="mr-1" /> FEATURED</span> : null}
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
-                {(Number.isFinite(featuredListingCap) ? featuredListingCap > 0 : true) ? (
-                  <button
-                    type="button"
-                    disabled={listingActionId === getLifecycleActionKey(listing.id, listing.featured ? 'unfeature' : 'feature')}
-                    onClick={() => void handleToggleFeaturedListing(listing)}
-                    className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-60 ${
-                      listing.featured
-                        ? 'border-accent/40 bg-accent/10 text-accent hover:border-accent'
-                        : 'border-line bg-bg text-muted hover:border-accent hover:text-accent'
-                    }`}
-                  >
-                    {listingActionId === getLifecycleActionKey(listing.id, listing.featured ? 'unfeature' : 'feature')
-                      ? 'Working...'
-                      : listing.featured ? 'Unfeature' : 'Feature'}
-                  </button>
-                ) : null}
                 {getListingLifecycleActions(listing).map(({ action, label, tone }) => {
                   const actionKey = getLifecycleActionKey(listing.id, action);
                   const isPending = listingActionId === actionKey;
@@ -2284,7 +2086,6 @@ export function Profile() {
             {inspectionRequests.map((request) => {
               const quoteDraft = inspectionQuoteDrafts[request.id] ?? '';
               const isUpdatingRequest = inspectionActionId === request.id;
-              const isDocumentActionPending = inspectionDocumentActionId === request.id;
 
               return (
                 <div key={request.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
@@ -2348,51 +2149,6 @@ export function Profile() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 text-[10px] font-bold uppercase tracking-widest">
-                    <div className="bg-bg border border-line p-4 space-y-3">
-                      <p className="text-muted">Inspection Sheet</p>
-                      {request.inspectionTemplateUrl ? (
-                        <>
-                          <a
-                            href={request.inspectionTemplateUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 text-accent hover:underline"
-                          >
-                            <Download size={12} />
-                            {request.inspectionTemplateFileName || 'Download inspection sheet'}
-                          </a>
-                          <p className="text-muted normal-case">
-                            Sent {request.inspectionTemplateGeneratedAt ? formatDateLabel(request.inspectionTemplateGeneratedAt) : 'recently'} by {request.inspectionTemplateGeneratedByName || 'inspection desk'}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-muted normal-case">No inspection sheet has been sent yet.</p>
-                      )}
-                    </div>
-                    <div className="bg-bg border border-line p-4 space-y-3">
-                      <p className="text-muted">Completed Inspection Report</p>
-                      {request.inspectionReportUrl ? (
-                        <>
-                          <a
-                            href={request.inspectionReportUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 text-accent hover:underline"
-                          >
-                            <Download size={12} />
-                            {request.inspectionReportFileName || 'Download completed inspection report'}
-                          </a>
-                          <p className="text-muted normal-case">
-                            Uploaded {request.inspectionReportUploadedAt ? formatDateLabel(request.inspectionReportUploadedAt) : 'recently'} by {request.inspectionReportUploadedByName || 'inspection desk'}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-muted normal-case">No completed report has been uploaded yet.</p>
-                      )}
-                    </div>
-                  </div>
-
                   {canManageInspectionRequests ? (
                     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,220px)_1fr] gap-4 items-end">
                       <div className="space-y-2">
@@ -2424,36 +2180,6 @@ export function Profile() {
                         >
                           Accept
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleGenerateInspectionTemplate(request)}
-                          disabled={isDocumentActionPending}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          {isDocumentActionPending ? 'Working...' : 'Send Inspection Sheet'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => inspectionReportInputRefs.current[request.id]?.click()}
-                          disabled={isDocumentActionPending}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          <Upload size={12} className="mr-1 inline" />
-                          Upload Completed Report
-                        </button>
-                        <input
-                          ref={(node) => {
-                            inspectionReportInputRefs.current[request.id] = node;
-                          }}
-                          type="file"
-                          accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.webp"
-                          className="hidden"
-                          onChange={(event) => {
-                            const nextFile = event.target.files?.[0] || null;
-                            void handleUploadInspectionReport(request, nextFile);
-                            event.currentTarget.value = '';
-                          }}
-                        />
                         <button
                           type="button"
                           onClick={() => void handleInspectionRequestUpdate(request, 'Declined', false)}
@@ -2787,14 +2513,10 @@ export function Profile() {
               value: user?.currentPeriodEnd
                 ? new Date(typeof user.currentPeriodEnd === 'string' ? user.currentPeriodEnd : Number(user.currentPeriodEnd)).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
                 : hasPaidSellerSubscription ? 'pending' : 'n/a' },
-            { label: 'Subscribed Since',
-              value: user?.subscriptionStartDate
-                ? new Date(user.subscriptionStartDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-                : hasPaidSellerSubscription ? 'pending' : 'n/a' },
             { label: 'Billing Label', value: billingLabel },
             { label: 'Listing Visibility', value: listingVisibilityLabel },
             { label: 'SMS MFA', value: smsMfaFactors.length > 0 ? 'enabled' : 'not enrolled' },
-            { label: 'Listing Capacity', value: hasAdminPublishingAccess(user) ? 'unlimited' : String(getManagedListingCap(user) ?? 0) },
+            { label: 'Listing Capacity', value: typeof user?.listingCap === 'number' ? String(user.listingCap) : '0' },
             { label: 'Managed Seats', value: typeof user?.managedAccountCap === 'number' ? String(user.managedAccountCap) : '0' },
             { label: 'Email Verified', value: user?.emailVerified ? 'verified' : 'unverified' },
             { label: 'Storefront Access', value: hasStorefrontAccess ? 'enabled' : 'not available' },
@@ -2973,8 +2695,8 @@ export function Profile() {
                 <p className="text-xs font-black uppercase tracking-widest">Account Notifications</p>
                 <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
                   {emailNotificationsEnabled
-                    ? 'Optional saved-search alerts and monthly marketplace emails are enabled'
-                    : 'Optional saved-search alerts and monthly marketplace emails are paused'}
+                    ? 'Email alerts enabled for listings, buyer messages, and payments'
+                    : 'Email alerts are currently paused for listings, buyer messages, and payments'}
                 </p>
               </div>
             </div>

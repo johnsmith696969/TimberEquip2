@@ -192,23 +192,6 @@ service cloud.firestore {
       return isAdmin() || isDealer();
     }
 
-    function canReadInspectionRequest(data) {
-      return isAuthenticated() && (
-        isInspectionManager() ||
-        data.requesterUid == request.auth.uid ||
-        data.matchedDealerUid == request.auth.uid ||
-        data.assignedToUid == request.auth.uid
-      );
-    }
-
-    function canManageInspectionRequest(data) {
-      return isAuthenticated() && (
-        isAdmin() ||
-        data.matchedDealerUid == request.auth.uid ||
-        data.assignedToUid == request.auth.uid
-      );
-    }
-
     function isListingOwner(data) {
       return isAuthenticated() && (
         (('sellerUid' in data) && data.sellerUid == request.auth.uid) ||
@@ -454,7 +437,7 @@ service cloud.firestore {
     }
 
     function isValidInspectionRequest(data) {
-      return data.keys().hasOnly(['id', 'listingId', 'listingTitle', 'listingUrl', 'reference', 'requesterUid', 'requesterName', 'requesterEmail', 'requesterPhone', 'requesterCompany', 'equipment', 'inspectionLocation', 'timeline', 'notes', 'matchedDealerUid', 'matchedDealerName', 'matchedDealerLocation', 'matchedDealerDistanceMiles', 'assignedToUid', 'assignedToName', 'quotedPrice', 'inspectionTemplateUrl', 'inspectionTemplateFileName', 'inspectionTemplateGeneratedAt', 'inspectionTemplateGeneratedByUid', 'inspectionTemplateGeneratedByName', 'inspectionReportUrl', 'inspectionReportFileName', 'inspectionReportContentType', 'inspectionReportUploadedAt', 'inspectionReportUploadedByUid', 'inspectionReportUploadedByName', 'status', 'createdAt', 'updatedAt', 'reviewedAt', 'respondedAt']) &&
+      return data.keys().hasOnly(['id', 'listingId', 'listingTitle', 'listingUrl', 'reference', 'requesterUid', 'requesterName', 'requesterEmail', 'requesterPhone', 'requesterCompany', 'equipment', 'inspectionLocation', 'timeline', 'notes', 'matchedDealerUid', 'matchedDealerName', 'matchedDealerLocation', 'matchedDealerDistanceMiles', 'assignedToUid', 'assignedToName', 'quotedPrice', 'status', 'createdAt', 'updatedAt', 'reviewedAt', 'respondedAt']) &&
              isNonEmptyString(data.id, 128) &&
              (!('listingId' in data) || data.listingId is string) &&
              (!('listingTitle' in data) || data.listingTitle is string) &&
@@ -476,17 +459,6 @@ service cloud.firestore {
              (!('assignedToUid' in data) || data.assignedToUid == null || data.assignedToUid is string) &&
              (!('assignedToName' in data) || data.assignedToName == null || data.assignedToName is string) &&
              (!('quotedPrice' in data) || data.quotedPrice == null || (data.quotedPrice is number && data.quotedPrice >= 0)) &&
-             (!('inspectionTemplateUrl' in data) || data.inspectionTemplateUrl == null || data.inspectionTemplateUrl is string) &&
-             (!('inspectionTemplateFileName' in data) || data.inspectionTemplateFileName == null || data.inspectionTemplateFileName is string) &&
-             (!('inspectionTemplateGeneratedAt' in data) || data.inspectionTemplateGeneratedAt == null || data.inspectionTemplateGeneratedAt is string) &&
-             (!('inspectionTemplateGeneratedByUid' in data) || data.inspectionTemplateGeneratedByUid == null || data.inspectionTemplateGeneratedByUid is string) &&
-             (!('inspectionTemplateGeneratedByName' in data) || data.inspectionTemplateGeneratedByName == null || data.inspectionTemplateGeneratedByName is string) &&
-             (!('inspectionReportUrl' in data) || data.inspectionReportUrl == null || data.inspectionReportUrl is string) &&
-             (!('inspectionReportFileName' in data) || data.inspectionReportFileName == null || data.inspectionReportFileName is string) &&
-             (!('inspectionReportContentType' in data) || data.inspectionReportContentType == null || data.inspectionReportContentType is string) &&
-             (!('inspectionReportUploadedAt' in data) || data.inspectionReportUploadedAt == null || data.inspectionReportUploadedAt is string) &&
-             (!('inspectionReportUploadedByUid' in data) || data.inspectionReportUploadedByUid == null || data.inspectionReportUploadedByUid is string) &&
-             (!('inspectionReportUploadedByName' in data) || data.inspectionReportUploadedByName == null || data.inspectionReportUploadedByName is string) &&
              data.status in ['New', 'Quoted', 'Accepted', 'Declined', 'Completed'] &&
              data.createdAt is timestamp &&
              data.updatedAt is timestamp &&
@@ -778,7 +750,10 @@ service cloud.firestore {
     }
 
     match /inspectionRequests/{requestId} {
-      allow read: if canReadInspectionRequest(resource.data);
+      allow read: if isAuthenticated() && (
+        isInspectionManager() ||
+        request.auth.uid == resource.data.requesterUid
+      );
       allow create: if isValidInspectionRequest(request.resource.data) &&
         request.resource.data.status == 'New' &&
         (
@@ -786,7 +761,7 @@ service cloud.firestore {
           request.resource.data.requesterUid == null ||
           (isAuthenticated() && request.resource.data.requesterUid == request.auth.uid)
         );
-      allow update: if canManageInspectionRequest(resource.data) && isValidInspectionRequest(request.resource.data);
+      allow update: if isAuthenticated() && isInspectionManager() && isValidInspectionRequest(request.resource.data);
       allow delete: if isAdmin();
     }
 

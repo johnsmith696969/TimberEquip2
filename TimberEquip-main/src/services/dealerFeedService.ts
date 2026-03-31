@@ -33,8 +33,6 @@ export interface DealerFeedItem {
   location?: string;
   imageUrls?: string[];
   images?: string[];
-  imageTitles?: string[];
-  videoUrls?: string[];
   description?: string;
   hours?: number;
   stockNumber?: string;

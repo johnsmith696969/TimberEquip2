@@ -33,9 +33,6 @@ jobs:
       - name: Type check
         run: npm run lint
 
-      - name: Run tests
-        run: npm test
-
       - name: Build preview bundle
         run: npm run build:noindex
 

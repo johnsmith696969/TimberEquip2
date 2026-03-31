@@ -199,6 +199,7 @@ export function Privacy() {
                 <li><strong>Lead Attribution &amp; Call Routing:</strong> Measuring inquiry volume, call clicks, connected calls, missed calls, and response quality for dealer reporting and platform operations.</li>
                 <li><strong>Security &amp; Fraud Prevention:</strong> Detecting and preventing unauthorized access, bot activity, payment fraud, listing fraud, and abuse of the platform.</li>
                 <li><strong>Platform Improvement:</strong> Analyzing usage patterns to improve search algorithms, user experience, and feature development.</li>
+                <li><strong>AI-Powered Features:</strong> Providing equipment specification lookups and market value context via Google Gemini AI (no personal data is sent to AI services — only equipment-related queries).</li>
                 <li><strong>Legal Compliance:</strong> Responding to legal requests, maintaining records required by law, and enforcing our Terms of Service.</li>
                 <li><strong>Audit &amp; Accountability:</strong> Maintaining internal audit logs for consent, billing events, subscription lifecycle, and account administration.</li>
               </ul>
@@ -233,6 +234,10 @@ export function Privacy() {
                 <div className="border border-line p-6 space-y-2">
                   <h4 className="text-xs font-black uppercase tracking-widest text-ink">Google reCAPTCHA Enterprise</h4>
                   <p className="text-sm">Bot protection and fraud prevention on forms, authentication pages, and inquiry submissions. reCAPTCHA may collect hardware and software information, such as device and application data, to generate a risk assessment. <em>Data shared: IP address, browser data, interaction patterns.</em></p>
+                </div>
+                <div className="border border-line p-6 space-y-2">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-ink">Google Gemini AI</h4>
+                  <p className="text-sm">Equipment specification lookups, market value explanations, and AI-powered listing assistance. <em>No personal data is sent to this service.</em> Only equipment-related queries (make, model, category, specifications) are transmitted.</p>
                 </div>
                 <div className="border border-line p-6 space-y-2">
                   <h4 className="text-xs font-black uppercase tracking-widest text-ink">Google Maps Platform</h4>

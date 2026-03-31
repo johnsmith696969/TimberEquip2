@@ -56,13 +56,6 @@ service firebase.storage {
       allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
     }
 
-    // Inspection request documents (blank sheets + completed reports)
-    match /inspection-requests/{requestId}/documents/{fileName} {
-      allow read: if request.auth != null && canReadInspectionRequestDocument(request.auth.uid, requestId);
-      allow write: if request.auth != null && canManageInspectionRequestDocument(request.auth.uid, requestId) && validateDocument(request.resource);
-      allow delete: if request.auth != null && canManageInspectionRequestDocument(request.auth.uid, requestId);
-    }
-
     // Temporary uploads (auto-delete files)
     match /temp/{userId}/{fileName} {
       allow read: if request.auth != null && request.auth.uid == userId;
@@ -107,44 +100,6 @@ service firebase.storage {
       // Max 500MB for videos
       return resource.size < 500 * 1024 * 1024 
         && resource.contentType.matches('video/.*');
-    }
-
-    function validateDocument(resource) {
-      return resource.size < 25 * 1024 * 1024 &&
-        (
-          resource.contentType.matches('application/pdf') ||
-          resource.contentType.matches('application/msword') ||
-          resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
-          resource.contentType.matches('text/plain') ||
-          resource.contentType.matches('image/.*')
-        );
-    }
-
-    function inspectionRequestDoc(requestId) {
-      return get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/inspectionRequests/$(requestId)).data;
-    }
-
-    function canReadInspectionRequestDocument(uid, requestId) {
-      return isAdmin(uid) ||
-        inspectionRequestDoc(requestId).requesterUid == uid ||
-        inspectionRequestDoc(requestId).matchedDealerUid == uid ||
-        inspectionRequestDoc(requestId).assignedToUid == uid ||
-        resource.metadata.uploadedBy == uid ||
-        resource.metadata.requesterUid == uid ||
-        resource.metadata.assignedToUid == uid;
-    }
-
-    function canManageInspectionRequestDocument(uid, requestId) {
-      return isAdmin(uid) ||
-        inspectionRequestDoc(requestId).matchedDealerUid == uid ||
-        inspectionRequestDoc(requestId).assignedToUid == uid ||
-        (
-          request.resource.metadata.inspectionRequestId == requestId &&
-          (
-            request.resource.metadata.uploadedBy == uid ||
-            request.resource.metadata.assignedToUid == uid
-          )
-        );
     }
   }
 }

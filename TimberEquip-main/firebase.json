@@ -5,9 +5,7 @@
   "firestore": {
     "rules": "firestore.rules"
   },
-  "storage": {
-    "rules": "storage.rules"
-  },  "hosting": {
+  "hosting": {
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -69,15 +67,6 @@
       }
     ],
     "headers": [
-      {
-        "source": "/index.html",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
-          }
-        ]
-      },
       {
         "source": "**",
         "headers": [

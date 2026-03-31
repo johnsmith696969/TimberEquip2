@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, Navigate, useLocation } from 'react-router-dom';
-import {
+import { 
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
-  Phone, Calculator, AlertCircle, Landmark, ClipboardCheck
+  Phone, Calculator, AlertCircle, Landmark
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
+import { geminiService } from '../services/geminiService';
 import {
   AMV_MATCH_HOURS_PERCENT,
   AMV_MATCH_PRICE_PERCENT,
@@ -24,7 +25,7 @@ import { useLocale } from '../components/LocaleContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 import WatermarkOverlay from '../components/WatermarkOverlay';
-import { buildListingPath, decodeListingPublicKey, extractListingPublicKeyFromSlug, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
+import { buildListingPath, decodeListingPublicKey, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import {
   buildCategoryPath,
   buildDealerPath,
@@ -43,52 +44,8 @@ const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w
 const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
 const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
 
-function getVideoEmbedDescriptor(rawUrl: string): { kind: 'embed' | 'video' | 'link'; src: string } {
-  const normalizedUrl = String(rawUrl || '').trim();
-  if (!normalizedUrl) {
-    return { kind: 'link', src: '' };
-  }
-
-  try {
-    const parsedUrl = new URL(normalizedUrl);
-    const hostname = parsedUrl.hostname.toLowerCase();
-    const pathname = parsedUrl.pathname;
-    const pathnameLower = pathname.toLowerCase();
-
-    const directVideoExtensions = ['.mp4', '.webm', '.mov', '.m4v', '.ogg', '.ogv'];
-    if (directVideoExtensions.some((extension) => pathnameLower.endsWith(extension))) {
-      return { kind: 'video', src: normalizedUrl };
-    }
-
-    if (hostname.includes('youtu.be')) {
-      const videoId = pathname.replace(/^\/+/, '').split('/')[0];
-      if (videoId) {
-        return { kind: 'embed', src: `https://www.youtube.com/embed/${videoId}?rel=0` };
-      }
-    }
-
-    if (hostname.includes('youtube.com')) {
-      const videoId = parsedUrl.searchParams.get('v') || pathname.split('/').filter(Boolean).pop();
-      if (videoId) {
-        return { kind: 'embed', src: `https://www.youtube.com/embed/${videoId}?rel=0` };
-      }
-    }
-
-    if (hostname.includes('vimeo.com')) {
-      const videoId = pathname.split('/').filter(Boolean).find((segment) => /^\d+$/.test(segment));
-      if (videoId) {
-        return { kind: 'embed', src: `https://player.vimeo.com/video/${videoId}` };
-      }
-    }
-
-    return { kind: 'link', src: normalizedUrl };
-  } catch {
-    return { kind: 'link', src: normalizedUrl };
-  }
-}
-
 export function ListingDetail() {
-  const { id, publicKey, slug } = useParams<{ id?: string; publicKey?: string; slug?: string }>();
+  const { id, publicKey } = useParams<{ id?: string; publicKey?: string; slug?: string }>();
   const location = useLocation();
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
@@ -112,6 +69,8 @@ export function ListingDetail() {
   const [financingConsentAccepted, setFinancingConsentAccepted] = useState(false);
   const [marketMatchRecommendations, setMarketMatchRecommendations] = useState<Listing[]>([]);
   const [amvExplanation, setAmvExplanation] = useState<string | null>(null);
+  const [aiSpecs, setAiSpecs] = useState<any>(null);
+  const [loadingAiData, setLoadingAiData] = useState(false);
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
@@ -201,7 +160,7 @@ export function ListingDetail() {
     timeline: '',
     trailerType: '',
     loadReady: 'Yes',
-    reference: targetListing?.id?.trim() || getListingUrl(targetListing),
+    reference: targetListing?.stockNumber?.trim() || getListingUrl(targetListing),
     notes: ''
   });
 
@@ -259,18 +218,14 @@ export function ListingDetail() {
   };
 
   const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
-  const slugPublicKey = extractListingPublicKeyFromSlug(slug || '');
-  const slugDerivedListingId = slug?.includes('--')
-    ? slugPublicKey
-    : decodeListingPublicKey(publicKey || slugPublicKey || '');
-  const resolvedListingId = String(listing?.id || slugDerivedListingId || id || '').trim();
+  const resolvedListingId = String(listing?.id || decodeListingPublicKey(publicKey || '') || id || '').trim();
   const isFavorite = resolvedListingId ? favoriteIds.includes(resolvedListingId) : false;
 
   useEffect(() => {
     let isActive = true;
 
     const fetchData = async () => {
-      const requestedListingId = String(slugDerivedListingId || id || '').trim();
+      const requestedListingId = String(decodeListingPublicKey(publicKey || '') || id || '').trim();
       if (!requestedListingId) {
         if (isActive) {
           setLoading(false);
@@ -282,6 +237,7 @@ export function ListingDetail() {
         setLoadError('');
         setMarketMatchRecommendations([]);
         setLoadingMarketMatches(false);
+        setLoadingAiData(false);
       }
       try {
         const listingData = await equipmentService.getListing(requestedListingId);
@@ -301,8 +257,10 @@ export function ListingDetail() {
           marketValueEstimate: listingData.marketValueEstimate ?? null,
         });
         setSeller(null);
+        setAiSpecs(null);
         setAmvExplanation(null);
         setLoading(false);
+        setLoadingAiData(true);
         setLoadingMarketMatches(true);
 
         const sellerPromise = equipmentService
@@ -338,14 +296,22 @@ export function ListingDetail() {
           );
         }
 
-        const explanationPromise = Promise.resolve(
+        const explanationPromise =
           computedAmv !== null
-            ? `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`
-            : null
-        );
+            ? geminiService
+                .explainAMV(listingData.title, listingData.price, computedAmv, listingData.specs)
+                .catch((error) => {
+                  console.error('Error explaining AMV:', error);
+                  return null;
+                })
+            : Promise.resolve<string | null>(null);
 
-        const [sellerData, explanation, recommendations] = await Promise.all([
+        const [sellerData, specs, explanation, recommendations] = await Promise.all([
           sellerPromise,
+          geminiService.getMachineSpecs(listingData.title, listingData.category).catch((error) => {
+            console.error('Error fetching machine specs:', error);
+            return null;
+          }),
           explanationPromise,
           equipmentService
             .getMarketMatchRecommendations({
@@ -373,6 +339,7 @@ export function ListingDetail() {
             if (isActive) setSellerListingCount(count);
           }).catch(() => { /* non-critical */ });
         }
+        setAiSpecs(specs);
         setAmvExplanation(explanation || null);
         setMarketMatchRecommendations(recommendations);
       } catch (error) {
@@ -383,6 +350,7 @@ export function ListingDetail() {
         }
       } finally {
         if (isActive) {
+          setLoadingAiData(false);
           setLoadingMarketMatches(false);
         }
       }
@@ -391,7 +359,7 @@ export function ListingDetail() {
     return () => {
       isActive = false;
     };
-  }, [id, publicKey, slugPublicKey]);
+  }, [id, publicKey]);
 
   useEffect(() => {
     if (!listing) return;
@@ -401,24 +369,9 @@ export function ListingDetail() {
       ...prev,
       email: prev.email || user?.email || '',
       pickupLocation: prev.pickupLocation || listing.location || '',
-      reference: prev.reference || listing.id || getListingUrl(listing),
+      reference: prev.reference || listing.stockNumber?.trim() || getListingUrl(listing),
     }));
   }, [listing, user?.email]);
-
-  useEffect(() => {
-    if (!listing?.id || typeof window === 'undefined') return;
-
-    const viewKey = `te-listing-view:${listing.id}:${new Date().toISOString().slice(0, 10)}`;
-    if (window.sessionStorage.getItem(viewKey) === '1') {
-      return;
-    }
-
-    void equipmentService.recordListingView(listing.id).then((recorded) => {
-      if (recorded) {
-        window.sessionStorage.setItem(viewKey, '1');
-      }
-    });
-  }, [listing?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -610,7 +563,7 @@ export function ListingDetail() {
       if (!(await runRecaptchaCheck('DETAIL_LOGISTICS'))) return;
       const sellerUid = listing.sellerUid || listing.sellerId || seller?.id || '';
       const listingUrl = getListingUrl(listing);
-      const reference = shippingForm.reference.trim() || listing.id || listingUrl;
+      const reference = shippingForm.reference.trim() || listing.stockNumber?.trim() || listingUrl;
       const logisticsSummary = [
         'Logistics Trucking Request',
         `Equipment: ${listing.title}`,
@@ -794,18 +747,10 @@ export function ListingDetail() {
         ? listing.images.filter(Boolean)
         : [];
   const galleryImages = detailImages.length ? detailImages : [LISTING_IMAGE_PLACEHOLDER];
-  const galleryImageTitles = galleryImages.map((_, index) => {
-    const rawTitle = Array.isArray(listing.imageTitles) ? listing.imageTitles[index] : '';
-    return String(rawTitle || '').trim();
-  });
-  const activeImageTitle = galleryImageTitles[activeImage] || '';
   const hasGallery = detailImages.length > 0;
-  const listingVideos = Array.isArray(listing.videoUrls)
-    ? listing.videoUrls.map((entry) => String(entry || '').trim()).filter(Boolean)
-    : [];
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
-  const safeListingId = String(listing.id || 'pending').trim() || 'pending';
+  const safeStockId = String(listing.id || 'pending').slice(0, 8).toUpperCase();
   const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
   const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
   const routeCategory = getListingCategoryLabel(listing) || safeCategory;
@@ -900,7 +845,7 @@ export function ListingDetail() {
         description: safeDescription,
         category: routeCategory,
         model: routeModel || undefined,
-        sku: listing.id,
+        sku: listing.stockNumber || listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
         url: `https://timberequip.com${listingPath}`,
@@ -1011,7 +956,7 @@ export function ListingDetail() {
                   {safeCategory}
                 </span>
                 <span className="text-xs font-bold text-muted uppercase tracking-widest">
-                  {t('listingDetail.stockId', 'Listing ID')}: {safeListingId}
+                  {t('listingDetail.stockId', 'Stock ID')}: {safeStockId}
                 </span>
               </div>
               <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none">
@@ -1063,7 +1008,7 @@ export function ListingDetail() {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
                     src={galleryImages[activeImage]} 
-                    alt={activeImageTitle || listing.title}
+                    alt={listing.title}
                     className="w-full h-full object-cover cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
@@ -1107,81 +1052,11 @@ export function ListingDetail() {
                     onClick={() => setActiveImage(i)}
                     className={`aspect-square border-2 transition-all overflow-hidden ${activeImage === i ? 'border-accent' : 'border-line hover:border-muted'}`}
                   >
-                    <img
-                      src={img}
-                      alt={galleryImageTitles[i] || `${listing.title} photo ${i + 1}`}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
-                      decoding="async"
-                    />
+                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" decoding="async" />
                   </button>
                 ))}
               </div>
-              {activeImageTitle && (
-                <p className="text-xs font-bold uppercase tracking-widest text-muted">
-                  {activeImageTitle}
-                </p>
-              )}
             </div>
-
-            {listingVideos.length > 0 && (
-              <div className="flex flex-col space-y-6">
-                <div className="flex items-center justify-between border-b border-line pb-4">
-                  <h3 className="text-xl font-black uppercase tracking-tighter">Walkaround Videos</h3>
-                  <span className="label-micro">{listingVideos.length} video{listingVideos.length === 1 ? '' : 's'}</span>
-                </div>
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                  {listingVideos.map((videoUrl, index) => {
-                    const descriptor = getVideoEmbedDescriptor(videoUrl);
-                    const label = `${listing.title} walkaround video ${index + 1}`;
-
-                    return (
-                      <div key={`${videoUrl}-${index}`} className="overflow-hidden border border-line bg-surface">
-                        <div className="aspect-video bg-bg">
-                          {descriptor.kind === 'embed' ? (
-                            <iframe
-                              src={descriptor.src}
-                              title={label}
-                              className="h-full w-full"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                              allowFullScreen
-                              loading="lazy"
-                              referrerPolicy="strict-origin-when-cross-origin"
-                            />
-                          ) : descriptor.kind === 'video' ? (
-                            <video
-                              controls
-                              preload="metadata"
-                              className="h-full w-full bg-black"
-                            >
-                              <source src={descriptor.src} />
-                              Your browser does not support embedded video playback.
-                            </video>
-                          ) : (
-                            <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-                              <Landmark size={24} className="text-accent" />
-                              <p className="text-sm font-bold uppercase tracking-widest text-ink">External Walkaround Video</p>
-                              <a
-                                href={descriptor.src}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="btn-industrial btn-accent px-4 py-3 text-[10px]"
-                              >
-                                Open Video
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                        <div className="border-t border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted">
-                          Walkaround Video {index + 1}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Core Specs Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-1 bg-line border border-line">
@@ -1263,33 +1138,6 @@ export function ListingDetail() {
                 </div>
               </div>
             )}
-
-            {/* Description */}
-            <div className="flex flex-col space-y-6">
-              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.equipmentOverview', 'Equipment Overview')}</h3>
-              <p className="text-muted font-medium leading-loose whitespace-pre-line">
-                {safeDescription}
-              </p>
-            </div>
-
-            {/* Technical Specifications */}
-            <div className="flex flex-col space-y-6">
-              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.technicalSpecifications', 'Technical Specifications')}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
-                {Object.entries(listingSpecs).length > 0 ? Object.entries(listingSpecs).map(([key, value], i) => (
-                  <div key={i} className="data-row">
-                    <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
-                    <span className="value-mono uppercase">
-                      {formatSpecValue(value)}
-                    </span>
-                  </div>
-                )) : (
-                  <div className="md:col-span-2 border border-dashed border-line bg-surface p-6 text-sm font-medium leading-relaxed text-muted">
-                    Seller-provided technical specifications will appear here when they are included with the listing.
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* Market Match Recommendations */}
             <div className="flex flex-col space-y-6">
@@ -1397,6 +1245,49 @@ export function ListingDetail() {
                 </div>
               )}
             </div>
+
+            {/* Description */}
+            <div className="flex flex-col space-y-6">
+              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.equipmentOverview', 'Equipment Overview')}</h3>
+              <p className="text-muted font-medium leading-loose whitespace-pre-line">
+                {safeDescription}
+              </p>
+            </div>
+
+            {/* Technical Specifications */}
+            <div className="flex flex-col space-y-6">
+              <h3 className="text-xl font-black uppercase tracking-tighter border-b border-line pb-4">{t('listingDetail.technicalSpecifications', 'Technical Specifications')}</h3>
+              
+              {loadingAiData ? (
+                <div className="flex items-center space-x-4 py-8">
+                  <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs font-bold uppercase tracking-widest text-muted">{t('listingDetail.retrievingTechnicalData', 'Retrieving Technical Data...')}</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
+                  {/* AI Specs */}
+                  {aiSpecs && Object.entries(aiSpecs).map(([key, value], i) => {
+                    if (!value || key === 'additionalSpecs') return null;
+                    return (
+                      <div key={`ai-${i}`} className="data-row">
+                        <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
+                        <span className="value-mono uppercase">{String(value)}</span>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Original Specs */}
+                  {Object.entries(listingSpecs).map(([key, value], i) => (
+                    <div key={i} className="data-row">
+                      <span className="label-micro">{key.replace(/([A-Z])/g, ' $1')}</span>
+                      <span className="value-mono uppercase">
+                        {formatSpecValue(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Sidebar (Right) */}
@@ -1419,13 +1310,6 @@ export function ListingDetail() {
                   >
                     {t('listingDetail.sendInquiry', 'Send Inquiry')}
                   </button>
-                  <Link
-                    to={`/inspections?listingId=${encodeURIComponent(listing.id)}`}
-                    className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917] flex items-center justify-center"
-                  >
-                    <ClipboardCheck size={18} className="mr-3" />
-                    Request Inspection
-                  </Link>
                   <button
                     onClick={handleCallSeller}
                     className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
@@ -1623,7 +1507,7 @@ export function ListingDetail() {
                           <motion.img
                             key={galleryImages[activeImage]}
                             src={galleryImages[activeImage]}
-                            alt={activeImageTitle || listing.title}
+                            alt={listing.title}
                             className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
                             referrerPolicy="no-referrer"
                             initial={{ opacity: 0 }}
@@ -1801,7 +1685,7 @@ export function ListingDetail() {
                     <span className="text-sm font-black uppercase tracking-tighter">Equipment Market Value Index</span>
                   </div>
                   <p className="text-sm text-muted leading-relaxed font-medium">
-                    {amvExplanation || `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}.`}
+                    {amvExplanation || "Retrieving market intelligence..."}
                   </p>
                 </div>
 
@@ -1965,9 +1849,9 @@ export function ListingDetail() {
                           <p className="text-sm font-black tracking-tight uppercase">{listing.title}</p>
                         </div>
                         <div className="text-right">
-                          <span className="label-micro block mb-2">Listing ID</span>
+                          <span className="label-micro block mb-2">Stock / Listing</span>
                           <p className="text-[10px] font-black uppercase tracking-widest text-accent break-all">
-                            {shippingForm.reference || listing.id}
+                            {shippingForm.reference || listing.stockNumber || listing.id}
                           </p>
                         </div>
                       </div>

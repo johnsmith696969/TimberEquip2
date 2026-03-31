@@ -1,15 +1,13 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import {defineConfig, loadEnv} from 'vite';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
-
   return {
     plugins: [react(), tailwindcss()],
     build: {
-      sourcemap: env.SENTRY_SOURCE_MAPS === 'true' ? 'hidden' : false,
       rollupOptions: {
         output: {
           manualChunks(id) {
@@ -37,6 +35,10 @@ export default defineConfig(({ mode }) => {
               return 'icons-vendor';
             }
 
+            if (id.includes('/@google/genai/')) {
+              return 'ai-vendor';
+            }
+
             if (id.includes('/stripe/')) {
               return 'stripe-vendor';
             }
@@ -54,6 +56,9 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    define: {
+      // GEMINI_API_KEY removed from client bundle — proxied via /api/ai/generate
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -61,7 +66,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify; file watching is disabled to prevent flickering during agent edits.
+      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

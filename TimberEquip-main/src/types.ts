@@ -175,7 +175,6 @@ export interface Listing {
   condition: string;
   description: string;
   images: string[];
-  imageTitles?: string[];
   imageVariants?: Array<{
     thumbnailUrl: string;
     detailUrl: string;
@@ -310,6 +309,7 @@ export interface Inquiry {
     createdAt: string;
   }>;
   firstResponseAt?: string;
+  responseTimeMinutes?: number | null;
   spamScore?: number;
   spamFlags?: string[];
   contactConsentAccepted?: boolean;
@@ -366,17 +366,6 @@ export interface InspectionRequest {
   assignedToUid?: string | null;
   assignedToName?: string | null;
   quotedPrice?: number | null;
-  inspectionTemplateUrl?: string;
-  inspectionTemplateFileName?: string;
-  inspectionTemplateGeneratedAt?: string | null;
-  inspectionTemplateGeneratedByUid?: string | null;
-  inspectionTemplateGeneratedByName?: string | null;
-  inspectionReportUrl?: string;
-  inspectionReportFileName?: string;
-  inspectionReportContentType?: string;
-  inspectionReportUploadedAt?: string | null;
-  inspectionReportUploadedByUid?: string | null;
-  inspectionReportUploadedByName?: string | null;
   status: InspectionRequestStatus;
   createdAt: string;
   updatedAt?: string;
@@ -436,7 +425,6 @@ export interface Account {
   managedAccountCap?: number | null;
   currentSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
-  subscriptionStartDate?: string | null;
   entitlement?: AccountEntitlement | null;
 }
 
@@ -539,12 +527,6 @@ export interface UserProfile {
   about?: string;
   bio?: string;
   location?: string;
-  inspectionCoverageEnabled?: boolean;
-  inspectionCoverageTerritory?: string;
-  inspectionEquipmentFocus?: string;
-  inspectionCertifications?: string;
-  inspectionCoverageNotes?: string;
-  inspectionCoverageUpdatedAt?: string | null;
   storefrontEnabled?: boolean;
   storefrontSlug?: string;
   storefrontName?: string;
@@ -563,7 +545,6 @@ export interface UserProfile {
   managedAccountCap?: number | null;
   currentSubscriptionId?: string | null;
   currentPeriodEnd?: string | null;
-  subscriptionStartDate?: string | null;
   entitlement?: AccountEntitlement | null;
   stripeCustomerId?: string;
   mfaEnabled?: boolean;
