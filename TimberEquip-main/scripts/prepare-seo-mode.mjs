@@ -33,21 +33,30 @@ const hostingConfig = {
       { source: '/dealers/**', function: 'publicPages' },
       { source: '**', destination: '/index.html' },
     ],
+    headers: [
+      {
+        source: '/index.html',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
+      },
+    ],
   },
 };
 
 if (!allowIndexing) {
-  hostingConfig.hosting.headers = [
-    {
-      source: '**',
-      headers: [
-        {
-          key: 'X-Robots-Tag',
-          value: 'noindex, nofollow, noarchive, nosnippet, noimageindex',
-        },
-      ],
-    },
-  ];
+  hostingConfig.hosting.headers.push({
+    source: '**',
+    headers: [
+      {
+        key: 'X-Robots-Tag',
+        value: 'noindex, nofollow, noarchive, nosnippet, noimageindex',
+      },
+    ],
+  });
 }
 
 const robotsPath = path.join(rootDir, 'public', 'robots.txt');
