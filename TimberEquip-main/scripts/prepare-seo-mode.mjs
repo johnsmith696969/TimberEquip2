@@ -35,6 +35,15 @@ const hostingConfig = {
     ],
     headers: [
       {
+        source: '/',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
+      },
+      {
         source: '/index.html',
         headers: [
           {
