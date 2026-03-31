@@ -1,6 +1,6 @@
 # Final Tier 2 Scope — Staging to Production Checklist
 
-**Project:** TimberEquip2 (Forestry Equipment Sales)  
+**Project:** Forestry Equipment Sales  
 **Purpose:** Close every remaining gap between the current Tier 2.5 state and a production-publishable Tier 2 Enterprise marketplace.  
 **Created:** March 29, 2026  
 **Estimated Total Effort:** 560–815 hours  
@@ -70,10 +70,10 @@ Each task includes:
 **Files:** `src/pages/Privacy.tsx`, `src/pages/Cookies.tsx`  
 **Effort:** 1 hour  
 **Work:**
-- Privacy.tsx: Change `privacy@timberequip.run.app` → `privacy@timberequip.com`
-- Cookies.tsx: Change `support@timberequip.run.app` → `support@timberequip.com`
+- Privacy.tsx: replace the old run.app privacy email with `privacy@forestryequipmentsales.com`
+- Cookies.tsx: replace the old run.app support email with `support@forestryequipmentsales.com`
 - Verify these email addresses actually receive mail (check DNS MX records and forwarding)  
-**Acceptance:** All legal pages reference `@timberequip.com` domain emails.
+**Acceptance:** All legal pages reference `@forestryequipmentsales.com` domain emails.
 
 ### 1.6 — Expand Privacy Policy
 **Files:** `src/pages/Privacy.tsx`  
@@ -113,10 +113,10 @@ Each task includes:
 **Files:** `package.json`  
 **Effort:** 0.5 hours  
 **Work:**
-- Change `"name": "react-example"` → `"name": "timberequip"`
+- Change `"name": "react-example"` -> `"name": "forestry-equipment-sales"`
 - Add `"description": "Forestry Equipment Sales — Enterprise logging equipment marketplace"`
 - Add `"author": "Forestry Equipment Sales"`
-- Add `"homepage": "https://www.timberequip.com"`  
+- Add `"homepage": "https://www.forestryequipmentsales.com"`  
 **Acceptance:** `package.json` reflects the actual project identity.
 
 ---
@@ -407,21 +407,21 @@ Before flipping the `VITE_ALLOW_INDEXING=true` flag and deploying to production:
 - [ ] Phase 1 complete — all critical security and legal fixes shipped
 - [ ] Phase 2 complete — Stripe Customer Portal live, subscription dates displayed
 - [ ] Phase 3 complete — test suite passing, minimum 60% overall coverage
-- [ ] `package.json` name updated to `timberequip`
-- [ ] All legal page emails reference `@timberequip.com`
+- [ ] `package.json` name updated to `forestry-equipment-sales`
+- [ ] All legal page emails reference `@forestryequipmentsales.com`
 - [ ] DMCA page exists at `/dmca` with footer link
 - [ ] 404 page exists and returns HTTP 404
 - [ ] CSRF protection enabled
 - [ ] Gemini API key removed from client bundle
 - [ ] Consent banner logs to Firestore
 - [ ] Stripe Customer Portal configured in Stripe Dashboard
-- [ ] DNS verified: `timberequip.com` and `www.timberequip.com` resolve correctly
+- [ ] DNS verified: `forestryequipmentsales.com` and `www.forestryequipmentsales.com` resolve correctly
 - [ ] SSL certificate valid and auto-renewing
 - [ ] Firebase Hosting production channel configured
 - [ ] Stripe webhooks pointing to production URL
-- [ ] SendGrid sender domain verified for `timberequip.com`
+- [ ] SendGrid sender domain verified for `forestryequipmentsales.com`
 - [ ] reCAPTCHA Enterprise site key matches production domain
-- [ ] Google Search Console verified for `timberequip.com`
+- [ ] Google Search Console verified for `forestryequipmentsales.com`
 - [ ] `robots.txt` allows crawling
 - [ ] Sitemap.xml generates and is accessible
 - [ ] Run Lighthouse audit — target: 75+ mobile, 90+ desktop

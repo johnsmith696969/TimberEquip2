@@ -1,18 +1,27 @@
+import fs from 'fs';
+import path from 'path';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { templates } = require('../functions/email-templates/index.js');
 
 const SENDGRID_API_KEY = String(process.env.SENDGRID_API_KEY || '').trim();
+const SENDGRID_AUTH_HEADER = String(process.env.SENDGRID_AUTH_HEADER || '').trim();
+const AUTHORIZATION_HEADER = SENDGRID_AUTH_HEADER || (SENDGRID_API_KEY ? `Bearer ${SENDGRID_API_KEY}` : '');
 
 const SENDGRID_API_BASE = 'https://api.sendgrid.com/v3';
-const APP_URL = 'https://timberequip.com';
+const APP_URL = String(process.env.SENDGRID_APP_URL || process.env.APP_URL || 'https://www.forestryequipmentsales.com').trim().replace(/\/+$/, '');
 const LISTING_URL = `${APP_URL}/equipment/2020-tigercat-635h-skidder`;
 const DASHBOARD_URL = `${APP_URL}/profile`;
 const SEARCH_URL = `${APP_URL}/search`;
 const CONTACT_URL = `${APP_URL}/contact`;
 const AD_PROGRAMS_URL = `${APP_URL}/ad-programs`;
 const LOGIN_URL = `${APP_URL}/login`;
+const MANIFEST_PATH = path.resolve(process.cwd(), process.env.SENDGRID_TEMPLATE_MANIFEST_PATH || 'sendgrid-template-manifest.json');
+
+function templateName(label) {
+  return `${label} | Forestry Equipment Sales`;
+}
 
 function token(name) {
   return `{{${name}}}`;
@@ -66,17 +75,6 @@ function buildSharedTemplateData() {
   inquiryType: 'Inquiry',
   sellerUid: token('sellerUid'),
   listingId: token('listingId'),
-  requesterEmail: token('requesterEmail'),
-  requesterPhone: token('requesterPhone'),
-  requesterCompany: token('requesterCompany'),
-  equipment: token('equipment'),
-  inspectionLocation: token('inspectionLocation'),
-  timeline: token('timeline'),
-  matchedDealerName: token('matchedDealerName'),
-  matchedDealerLocation: token('matchedDealerLocation'),
-  quotedPrice: token('quotedPrice'),
-  status: token('status'),
-  managerName: token('managerName'),
   source: token('source'),
   monthLabel: token('monthLabel'),
   totalListings: token('totalListings'),
@@ -102,12 +100,12 @@ function buildTemplateSpecs() {
   return [
   {
     key: 'leadNotification',
-    name: 'New Lead Notification | TimberEquip.com',
+    name: templateName('New Lead Notification'),
     render: () => templates.leadNotification(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'inquiryConfirmation',
-    name: 'Inquiry Received | TimberEquip.com',
+    name: templateName('Inquiry Received'),
     render: () => templates.inquiryConfirmation({ ...SHARED_TEMPLATE_DATA, inquiryType: 'Inquiry' }),
   },
   {
@@ -117,57 +115,57 @@ function buildTemplateSpecs() {
   },
   {
     key: 'financingInquiryConfirmation',
-    name: 'Financing Inquiry Submitted | TimberEquip.com',
+    name: templateName('Financing Inquiry Submitted'),
     render: () => templates.inquiryConfirmation({ ...SHARED_TEMPLATE_DATA, inquiryType: 'Financing' }),
   },
   {
     key: 'welcomeVerification',
-    name: 'Verify your email on TimberEquip.com',
+    name: templateName('Verify Your Email'),
     render: () => templates.welcomeVerification(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'subscriptionExpiring',
-    name: 'Subscription Expiring | TimberEquip.com',
+    name: templateName('Subscription Expiring'),
     render: () => templates.subscriptionExpiring(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'listingApproved',
-    name: 'Listing Approved | TimberEquip.com',
+    name: templateName('Listing Approved'),
     render: () => templates.listingApproved(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'listingSubmitted',
-    name: 'Listing Submitted | TimberEquip.com',
+    name: templateName('Listing Submitted'),
     render: () => templates.listingSubmitted(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'listingRejected',
-    name: 'Listing Rejected | TimberEquip.com',
+    name: templateName('Listing Rejected'),
     render: () => templates.listingRejected({ ...SHARED_TEMPLATE_DATA, editUrl: `${DASHBOARD_URL}?tab=My%20Listings` }),
   },
   {
     key: 'invoicePaidReceipt',
-    name: 'Invoice Paid Receipt | TimberEquip.com',
+    name: templateName('Invoice Paid Receipt'),
     render: () => templates.invoicePaidReceipt(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'subscriptionExpired',
-    name: 'Subscription Expired | TimberEquip.com',
+    name: templateName('Subscription Expired'),
     render: () => templates.subscriptionExpired(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'mediaKitRequest',
-    name: 'Media Kit Request Admin Alert | TimberEquip.com',
+    name: templateName('Media Kit Request Admin Alert'),
     render: () => templates.mediaKitRequest(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'mediaKitRequestConfirmation',
-    name: 'Media Kit Download | TimberEquip.com',
+    name: templateName('Media Kit Download'),
     render: () => templates.mediaKitRequestConfirmation(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'partnerRequestConfirmation',
-    name: 'Partner Request Submitted | TimberEquip.com',
+    name: templateName('Partner Request Submitted'),
     render: () => templates.mediaKitRequestConfirmation({ ...SHARED_TEMPLATE_DATA, requestType: 'support' }),
   },
   {
@@ -177,77 +175,62 @@ function buildTemplateSpecs() {
   },
   {
     key: 'contactRequestConfirmation',
-    name: 'Contact Request Submitted | TimberEquip.com',
+    name: templateName('Contact Request Submitted'),
     render: () => templates.contactRequestConfirmation(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'subscriptionCreated',
-    name: 'Subscription Created | TimberEquip.com',
+    name: templateName('Subscription Created'),
     render: () => templates.subscriptionCreated(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'newMatchingListing',
-    name: 'New Matching Listing Alert | TimberEquip.com',
+    name: templateName('New Matching Listing Alert'),
     render: () => templates.newMatchingListing(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'matchingListingPriceDrop',
-    name: 'Matching Listing Price Drop | TimberEquip.com',
+    name: templateName('Matching Listing Price Drop'),
     render: () => templates.matchingListingPriceDrop(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'matchingListingSold',
-    name: 'Matching Listing Sold | TimberEquip.com',
+    name: templateName('Matching Listing Sold'),
     render: () => templates.matchingListingSold(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'similarListingRestocked',
-    name: 'Similar Listing Restocked | TimberEquip.com',
+    name: templateName('Similar Listing Restocked'),
     render: () => templates.similarListingRestocked(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'managedAccountInvite',
-    name: 'Managed Account Invite | TimberEquip.com',
+    name: templateName('Managed Account Invite'),
     render: () => templates.managedAccountInvite(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'adminInquiryAlert',
-    name: 'Admin Inquiry Alert | TimberEquip.com',
+    name: templateName('Admin Inquiry Alert'),
     render: () => templates.adminInquiryAlert(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'financingRequestAdmin',
-    name: 'Financing Request Admin Alert | TimberEquip.com',
+    name: templateName('Financing Request Admin Alert'),
     render: () => templates.financingRequestAdmin(SHARED_TEMPLATE_DATA),
   },
   {
-    key: 'inspectionRequestReceived',
-    name: 'Inspection Request Received | TimberEquip.com',
-    render: () => templates.inspectionRequestReceived(SHARED_TEMPLATE_DATA),
-  },
-  {
-    key: 'inspectionRequestAdmin',
-    name: 'Inspection Request Admin Alert | TimberEquip.com',
-    render: () => templates.inspectionRequestAdmin(SHARED_TEMPLATE_DATA),
-  },
-  {
-    key: 'inspectionRequestStatusUpdated',
-    name: 'Inspection Request Status Updated | TimberEquip.com',
-    render: () => templates.inspectionRequestStatusUpdated(SHARED_TEMPLATE_DATA),
-  },
-  {
     key: 'contactRequestAdmin',
-    name: 'Contact Request Admin Alert | TimberEquip.com',
+    name: templateName('Contact Request Admin Alert'),
     render: () => templates.contactRequestAdmin(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'dealerMonthlyReport',
-    name: 'Dealer Monthly Report | TimberEquip.com',
+    name: templateName('Dealer Monthly Report'),
     render: () => templates.dealerMonthlyReport(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'dealerMonthlyReportAdminSummary',
-    name: 'Dealer Monthly Report Admin Summary | TimberEquip.com',
+    name: templateName('Dealer Monthly Report Admin Summary'),
     render: () => templates.dealerMonthlyReportAdminSummary(SHARED_TEMPLATE_DATA),
   },
   ];
@@ -268,7 +251,7 @@ async function sendgridFetch(path, options = {}) {
   const response = await fetch(`${SENDGRID_API_BASE}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${SENDGRID_API_KEY}`,
+      Authorization: AUTHORIZATION_HEADER,
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
@@ -370,12 +353,21 @@ async function main() {
 
   const finalTemplates = await listDynamicTemplates();
   const finalNames = finalTemplates.map((template) => String(template.name || '').trim()).sort((a, b) => a.localeCompare(b));
+  const manifest = {
+    syncedAt: new Date().toISOString(),
+    appUrl: APP_URL,
+    totalDynamicTemplates: finalTemplates.length,
+    templates: results,
+  };
+
+  fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
   console.log(JSON.stringify({
     synced: results,
     totalDynamicTemplates: finalTemplates.length,
-    timberEquipTemplateNames: TEMPLATE_SPECS.map((spec) => spec.name),
+    templateNames: TEMPLATE_SPECS.map((spec) => spec.name),
     currentDynamicTemplateNames: finalNames,
+    manifestPath: MANIFEST_PATH,
   }, null, 2));
 }
 
@@ -393,8 +385,8 @@ if (process.env.PRINT_SENDGRID_TEMPLATE_SPECS === '1') {
   process.exit(0);
 }
 
-if (!SENDGRID_API_KEY) {
-  console.error('SENDGRID_API_KEY is required.');
+if (!AUTHORIZATION_HEADER) {
+  console.error('Either SENDGRID_API_KEY or SENDGRID_AUTH_HEADER is required.');
   process.exit(1);
 }
 

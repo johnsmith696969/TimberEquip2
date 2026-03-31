@@ -102,7 +102,7 @@ export function Auctions() {
             <p className="text-muted font-bold tracking-widest uppercase text-sm max-w-2xl mx-auto">
               {hasLiveAuctions
                 ? 'Verified auction schedules for buyers and sellers who need a structured liquidation or bidding event.'
-                : 'Timed and live auctions are not yet open for direct bidding on TimberEquip. Use this desk for launch updates and support.'}
+                : 'Timed and live auctions are not yet open for direct bidding on Forestry Equipment Sales. Use this desk for launch updates and support.'}
             </p>
           </motion.div>
         </div>
@@ -167,7 +167,7 @@ export function Auctions() {
                   <div className="mb-8 p-6 bg-bg border border-line rounded-sm">
                     <span className="block text-[10px] text-muted font-black uppercase tracking-[0.2em] mb-2">Registration Status</span>
                     <p className="text-[11px] font-bold uppercase tracking-widest text-muted">
-                      Auction registration is handled by the TimberEquip support team until the bidder workflow is live.
+                      Auction registration is handled by the Forestry Equipment Sales support team until the bidder workflow is live.
                     </p>
                   </div>
 
@@ -257,7 +257,7 @@ export function Auctions() {
                     Auctions Are Not Yet Open For Direct Bidding
                   </h2>
                   <p className="text-[12px] font-bold uppercase tracking-widest text-muted leading-relaxed max-w-3xl">
-                    TimberEquip is still building the operator workflow for live auction registration, bidder verification,
+                    Forestry Equipment Sales is still building the operator workflow for live auction registration, bidder verification,
                     catalog publishing, and settlement. This page now reflects the real launch state instead of showing demo events.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-4">

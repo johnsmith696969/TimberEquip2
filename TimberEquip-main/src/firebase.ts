@@ -10,7 +10,7 @@ function resolveFirebaseConfigValue(value: unknown, fallback = ''): string {
 }
 
 const resolvedFirebaseConfig = {
-  apiKey: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_API_KEY, ''),
+  apiKey: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_API_KEY, firebaseConfig.apiKey || ''),
   projectId: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_PROJECT_ID, firebaseConfig.projectId),
   appId: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_APP_ID, firebaseConfig.appId),
   authDomain: resolveFirebaseConfigValue(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, firebaseConfig.authDomain),

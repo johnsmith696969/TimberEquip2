@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   UserPlus, Mail, Lock, 
   ArrowRight, ShieldCheck, Globe, 
@@ -13,6 +13,7 @@ import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { type AccountOnboardingChoice } from '../services/billingService';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+import { appendReturnToParam } from '../utils/sellerAccess';
 
 const ACCOUNT_OPTIONS: Array<{
   id: AccountOnboardingChoice;
@@ -63,10 +64,19 @@ export function Register() {
     password: '',
   });
   const navigate = useNavigate();
+  const location = useLocation();
   const { register, login } = useAuth();
-  const postRegistrationPath = selectedAccountType === 'free_member'
+  const requestedRedirectRaw = new URLSearchParams(location.search).get('redirect') || '';
+  const requestedRedirect = requestedRedirectRaw.startsWith('/') ? requestedRedirectRaw : '';
+  const requestedReturnToRaw = new URLSearchParams(location.search).get('returnTo') || '';
+  const requestedReturnTo = requestedReturnToRaw.startsWith('/') ? requestedReturnToRaw : '';
+  const defaultPostRegistrationPath = selectedAccountType === 'free_member'
     ? '/profile'
     : `/ad-programs?plan=${encodeURIComponent(selectedAccountType)}&startCheckout=1`;
+  const postRegistrationPath = requestedRedirect || defaultPostRegistrationPath;
+  const postRegistrationHref = postRegistrationPath.startsWith('/sell')
+    ? appendReturnToParam(postRegistrationPath, requestedReturnTo)
+    : postRegistrationPath;
 
   const handleNext = () => setStep(prev => prev + 1);
 
@@ -88,7 +98,7 @@ export function Register() {
 
       if (!registrationResult.emailVerified) {
         navigate(
-          `/login?verifyEmailSent=${registrationResult.verificationEmailSent ? '1' : '0'}&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationPath)}`,
+          `/login?verifyEmailSent=${registrationResult.verificationEmailSent ? '1' : '0'}&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationHref)}`,
           { replace: true }
         );
         return;
@@ -99,15 +109,15 @@ export function Register() {
         return;
       }
 
-      navigate(postRegistrationPath, { replace: true });
+      navigate(postRegistrationHref, { replace: true });
     } catch (err: any) {
       if (auth.currentUser) {
         const createdEmail = formData.email.trim();
         if (!auth.currentUser.emailVerified) {
-          navigate(`/login?verifyEmailSent=0&email=${encodeURIComponent(createdEmail)}&redirect=${encodeURIComponent(postRegistrationPath)}`, { replace: true });
+          navigate(`/login?verifyEmailSent=0&email=${encodeURIComponent(createdEmail)}&redirect=${encodeURIComponent(postRegistrationHref)}`, { replace: true });
           return;
         }
-        navigate(postRegistrationPath, { replace: true });
+        navigate(postRegistrationHref, { replace: true });
         return;
       }
 
@@ -117,10 +127,10 @@ export function Register() {
           await login(formData.email.trim(), formData.password);
           if (auth.currentUser && !auth.currentUser.emailVerified) {
             setError('That account exists but email is not verified yet. Verify your email, then sign in.');
-            navigate(`/login?verifyEmailSent=1&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationPath)}`, { replace: true });
+            navigate(`/login?verifyEmailSent=1&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationHref)}`, { replace: true });
             return;
           }
-          navigate(postRegistrationPath, { replace: true });
+          navigate(postRegistrationHref, { replace: true });
           return;
         } catch {
           setError('That email is already registered. Try logging in instead.');

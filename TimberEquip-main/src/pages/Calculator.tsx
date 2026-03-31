@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Calculator as CalcIcon, DollarSign, 
+import {
+  Calculator as CalcIcon, DollarSign,
   Percent, Calendar, ArrowRight,
   ShieldCheck, Clock, Activity,
   TrendingUp, Info, ChevronRight
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLocale } from '../components/LocaleContext';
+import { Seo } from '../components/Seo';
 
 export function Calculator() {
   const { formatPrice } = useLocale();
@@ -32,6 +33,11 @@ export function Calculator() {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Seo
+        title="Equipment Financing Calculator | Forestry Equipment Sales"
+        description="Estimate monthly payments on forestry and logging equipment. Adjust price, down payment, term, and interest rate to plan your next purchase."
+        canonicalPath="/calculator"
+      />
       {/* Header */}
       <div className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>

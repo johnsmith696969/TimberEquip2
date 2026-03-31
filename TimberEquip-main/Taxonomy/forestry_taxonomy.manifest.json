@@ -25,13 +25,13 @@
   "implementationSummary": {
     "categoryCount": 8,
     "categorySubcategoryBranchCount": 54,
-    "manufacturerBranchCount": 431,
-    "modelCountAfterBranchLevelDeduping": 3945,
+    "manufacturerBranchCount": 430,
+    "modelCountAfterBranchLevelDeduping": 3944,
     "categorySummaries": [
       {
         "category": "Firewood Equipment",
         "categoryId": "firewood-equipment",
-        "subcategoryCount": 5,
+        "subcategoryCount": 6,
         "manufacturerCount": 49,
         "modelCount": 203
       },
@@ -45,9 +45,9 @@
       {
         "category": "Logging Equipment",
         "categoryId": "logging-equipment",
-        "subcategoryCount": 14,
-        "manufacturerCount": 180,
-        "modelCount": 2414
+        "subcategoryCount": 13,
+        "manufacturerCount": 179,
+        "modelCount": 2413
       },
       {
         "category": "Parts And Attachments",
@@ -86,21 +86,17 @@
       }
     ],
     "reusedSubcategoryLabelsAcrossDifferentCategories": {
-      "Feller Bunchers": [
-        "Land Clearing Equipment",
-        "Logging Equipment"
-      ],
-      "Graders": [
-        "Land Clearing Equipment",
-        "Logging Equipment"
+      "Bucket Trucks": [
+        "Tree Service Equipment",
+        "Trucks"
       ],
       "Chippers": [
         "Logging Equipment",
         "Tree Service Equipment"
       ],
-      "Bucket Trucks": [
-        "Tree Service Equipment",
-        "Trucks"
+      "Feller Bunchers": [
+        "Land Clearing Equipment",
+        "Logging Equipment"
       ],
       "Lifts": [
         "Tree Service Equipment",
@@ -637,7 +633,8 @@
         "XPAK": [
           "XP-W9800"
         ]
-      }
+      },
+      "Kilns": {}
     },
     "Land Clearing Equipment": {
       "Backhoes": {
@@ -3332,11 +3329,6 @@
         ],
         "WOODSMAN": [
           "790 MODEL 22"
-        ]
-      },
-      "Graders": {
-        "JOHN DEERE": [
-          "770D"
         ]
       },
       "Log Loaders": {

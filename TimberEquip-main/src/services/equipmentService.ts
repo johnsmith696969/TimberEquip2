@@ -15,9 +15,10 @@ import {
   serverTimestamp,
   arrayUnion,
   onSnapshot,
-  getDocFromServer
+  getDocFromServer,
+  runTransaction
 } from 'firebase/firestore';
-import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, ListingLifecycleStateSnapshot, Seller, NewsPost, Inquiry, FinancingRequest, InspectionRequest, InspectionRequestStatus, Account, CallLog, Auction, ListingFilters } from '../types';
+import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, ListingLifecycleStateSnapshot, Seller, NewsPost, Inquiry, FinancingRequest, Account, CallLog, Auction, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   AMV_MATCH_HOURS_PERCENT,
@@ -27,6 +28,7 @@ import {
   isWithinPercentRange,
 } from '../utils/amvMatching';
 import { isPrivilegedAdminEmail, SUPERADMIN_EMAIL } from '../utils/privilegedAdmin';
+import { taxonomyService } from './taxonomyService';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
   'Logging Equipment': ['Wisconsin, USA', 'Georgia, USA', 'Ontario, Canada'],
@@ -45,12 +47,42 @@ const DEMO_CATEGORY_BASE_PRICES: Record<string, number> = {
 };
 
 const FEATURED_LISTING_CAPS: Record<string, number> = {
+  individual_seller: 1,
   dealer: 3,
   pro_dealer: 6,
 };
+const LISTING_SEQUENCE_COUNTER_PATH = ['systemCounters', 'listingSequence'] as const;
+const FIRST_SEQUENTIAL_LISTING_ID = 12000;
 
 function normalize(value?: string | null): string {
   return (value || '').trim().toLowerCase();
+}
+
+async function reserveNextSequentialListingId(): Promise<string> {
+  const counterRef = doc(db, ...LISTING_SEQUENCE_COUNTER_PATH);
+  const listingsCollectionRef = collection(db, 'listings');
+
+  return runTransaction(db, async (transaction) => {
+    const counterSnapshot = await transaction.get(counterRef);
+    const currentValue = Number(counterSnapshot.data()?.lastIssuedId);
+    let nextValue = Number.isFinite(currentValue) && currentValue >= FIRST_SEQUENTIAL_LISTING_ID
+      ? Math.trunc(currentValue) + 1
+      : FIRST_SEQUENTIAL_LISTING_ID;
+
+    while (true) {
+      const listingRef = doc(listingsCollectionRef, String(nextValue));
+      const existingListingSnapshot = await transaction.get(listingRef);
+      if (!existingListingSnapshot.exists()) {
+        transaction.set(counterRef, {
+          lastIssuedId: nextValue,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        return String(nextValue);
+      }
+
+      nextValue += 1;
+    }
+  });
 }
 
 type MarketComparableSpecs = {
@@ -276,6 +308,54 @@ const toMillis = (value: unknown): number | undefined => {
   return undefined;
 };
 
+const stripHtml = (value: unknown): string =>
+  String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isPublicBlogPost = (post: Record<string, unknown> | null | undefined) => {
+  const status = String(post?.status || '').trim().toLowerCase();
+  const reviewStatus = String(post?.reviewStatus || '').trim().toLowerCase();
+  return status === 'published' || reviewStatus === 'published';
+};
+
+const mapBlogPostToNewsPost = (postId: string, post: Record<string, unknown>): NewsPost => {
+  const dateMs = toMillis(post.updatedAt) || toMillis(post.createdAt) || Date.now();
+  return {
+    id: `blog-${postId}`,
+    title: String(post.title || 'Untitled'),
+    summary: String(post.excerpt || '').trim() || stripHtml(post.content).slice(0, 220),
+    content: String(post.content || ''),
+    author: String(post.authorName || 'Forestry Equipment Sales Editorial'),
+    date: new Date(dateMs).toISOString(),
+    image: String(post.image || '').trim() || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    category: String(post.category || 'Industry News'),
+    seoTitle: String(post.seoTitle || '').trim(),
+    seoDescription: String(post.seoDescription || '').trim(),
+    seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords.filter((keyword): keyword is string => typeof keyword === 'string') : [],
+    seoSlug: String(post.seoSlug || '').trim(),
+  };
+};
+
+const normalizeLegacyNewsPost = (postId: string, post: Record<string, unknown>): NewsPost => {
+  const dateMs = toMillis(post.date) || toMillis(post.updatedAt) || toMillis(post.createdAt) || Date.now();
+  return {
+    id: postId,
+    title: String(post.title || 'Untitled'),
+    summary: String(post.summary || '').trim() || stripHtml(post.content).slice(0, 220),
+    content: String(post.content || ''),
+    author: String(post.author || 'Forestry Equipment Sales Editorial'),
+    date: new Date(dateMs).toISOString(),
+    image: String(post.image || '').trim() || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    category: String(post.category || 'Industry News'),
+    seoTitle: String(post.seoTitle || '').trim(),
+    seoDescription: String(post.seoDescription || '').trim(),
+    seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords.filter((keyword): keyword is string => typeof keyword === 'string') : [],
+    seoSlug: String(post.seoSlug || '').trim(),
+  };
+};
+
 const wasActiveAt = (listing: Listing, snapshotMs: number): boolean => {
   const createdMs = toMillis(listing.createdAt);
   if (createdMs === undefined || createdMs > snapshotMs) return false;
@@ -370,18 +450,6 @@ function isAdminPublisherRole(role?: string | null): boolean {
 
 function isVerifiedSellerRole(role?: string | null): boolean {
   return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
-}
-
-function isInspectionManagerRole(role?: string | null): boolean {
-  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager'].includes(normalize(role));
-}
-
-function canReadAllInspectionRequests(role?: string | null): boolean {
-  return ['super_admin', 'admin', 'developer'].includes(normalize(role));
-}
-
-function canManageAssignedInspectionRequests(role?: string | null): boolean {
-  return ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
 }
 
 function getFeaturedListingCapForRole(role?: string | null): number {
@@ -666,8 +734,8 @@ function getApiRequestUrls(input: RequestInfo | URL): string[] {
 
   const urls = [rawInput];
   const hostname = window.location.hostname.trim().toLowerCase();
-  if (hostname === 'www.timberequip.com') {
-    urls.push(`https://timberequip.com${rawInput}`);
+  if (hostname === 'www.forestryequipmentsales.com') {
+    urls.push(`https://www.forestryequipmentsales.com${rawInput}`);
   }
 
   return Array.from(new Set(urls));
@@ -797,6 +865,7 @@ async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): P
 
 const PUBLIC_LISTINGS_CACHE_KEY = 'te-public-listings-cache-v1';
 const HOME_MARKETPLACE_CACHE_KEY = 'te-home-marketplace-cache-v1';
+const PUBLIC_NEWS_CACHE_KEY = 'te-public-news-cache-v1';
 const PRIVATE_ACCOUNT_CACHE_PREFIX = 'te-account-cache-v1';
 
 type BrowserCacheEnvelope<T> = {
@@ -889,6 +958,19 @@ function isQuotaLimitedAccountPayload(payload: unknown): payload is QuotaLimited
   return Boolean(payload)
     && typeof payload === 'object'
     && Boolean((payload as QuotaLimitedAccountPayload).firestoreQuotaLimited);
+}
+
+function autoAddTaxonomyEntry(listing: Partial<Listing>): void {
+  const category = normalize(listing.category);
+  const subcategory = normalize(listing.subcategory);
+  const manufacturer = normalize((listing as any).make || (listing as any).manufacturer || '');
+  const model = normalize(listing.model);
+
+  if (category && subcategory && manufacturer) {
+    taxonomyService.ensureTaxonomyEntry(category, subcategory, manufacturer, model).catch((error) => {
+      console.warn('Auto-add taxonomy entry failed (non-blocking):', error);
+    });
+  }
 }
 
 function invalidateListingRelatedCaches(listingId?: string): void {
@@ -1570,10 +1652,12 @@ export const equipmentService = {
 
         const createdListingId = String(payload.listing?.id || '').trim();
         invalidateListingRelatedCaches(createdListingId);
+        autoAddTaxonomyEntry(listing);
         return createdListingId;
       }
 
-      const docRef = listing.id ? doc(db, path, listing.id) : doc(collection(db, path));
+      const resolvedListingId = listing.id ? String(listing.id).trim() : await reserveNextSequentialListingId();
+      const docRef = doc(db, path, resolvedListingId);
       await setDoc(docRef, {
         ...listing,
         id: docRef.id,
@@ -1594,6 +1678,7 @@ export const equipmentService = {
         updatedAt: serverTimestamp()
       });
       invalidateListingRelatedCaches(docRef.id);
+      autoAddTaxonomyEntry(listing);
       return docRef.id;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -1846,205 +1931,6 @@ export const equipmentService = {
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
-    }
-  },
-
-  async createInspectionRequest(payload: {
-    listingId?: string;
-    listingTitle?: string;
-    listingUrl?: string;
-    reference?: string;
-    requesterName: string;
-    requesterEmail: string;
-    requesterPhone: string;
-    requesterCompany?: string;
-    equipment: string;
-    inspectionLocation: string;
-    timeline?: string;
-    notes?: string;
-    matchedDealerUid?: string | null;
-    matchedDealerName?: string;
-    matchedDealerLocation?: string;
-    matchedDealerDistanceMiles?: number | null;
-    assignedToUid?: string | null;
-    assignedToName?: string | null;
-  }): Promise<string> {
-    const path = 'inspectionRequests';
-    try {
-      const docRef = doc(collection(db, path));
-      await setDoc(docRef, {
-        id: docRef.id,
-        listingId: payload.listingId || '',
-        listingTitle: payload.listingTitle || payload.equipment,
-        listingUrl: payload.listingUrl || '',
-        reference: payload.reference || '',
-        requesterUid: auth.currentUser?.uid || null,
-        requesterName: payload.requesterName,
-        requesterEmail: payload.requesterEmail,
-        requesterPhone: payload.requesterPhone,
-        requesterCompany: payload.requesterCompany || '',
-        equipment: payload.equipment,
-        inspectionLocation: payload.inspectionLocation,
-        timeline: payload.timeline || '',
-        notes: payload.notes || '',
-        matchedDealerUid: payload.matchedDealerUid || null,
-        matchedDealerName: payload.matchedDealerName || '',
-        matchedDealerLocation: payload.matchedDealerLocation || '',
-        matchedDealerDistanceMiles: typeof payload.matchedDealerDistanceMiles === 'number' ? payload.matchedDealerDistanceMiles : null,
-        assignedToUid: payload.assignedToUid || payload.matchedDealerUid || null,
-        assignedToName: payload.assignedToName || payload.matchedDealerName || null,
-        quotedPrice: null,
-        status: 'New',
-        reviewedAt: null,
-        respondedAt: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      return docRef.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      return '';
-    }
-  },
-
-  async getInspectionRequests(options?: { userUid?: string; role?: string }): Promise<InspectionRequest[]> {
-    const path = 'inspectionRequests';
-    const userUid = options?.userUid || auth.currentUser?.uid;
-    const role = options?.role || '';
-
-    try {
-      if (canReadAllInspectionRequests(role)) {
-        const snapshot = await getDocs(query(collection(db, path), orderBy('createdAt', 'desc')));
-        return snapshot.docs.map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest));
-      }
-
-      if (!userUid) return [];
-
-      if (canManageAssignedInspectionRequests(role)) {
-        const [assignedSnapshot, matchedSnapshot] = await Promise.all([
-          getDocs(query(collection(db, path), where('assignedToUid', '==', userUid))),
-          getDocs(query(collection(db, path), where('matchedDealerUid', '==', userUid))),
-        ]);
-
-        const seen = new Set<string>();
-        const merged = [...assignedSnapshot.docs, ...matchedSnapshot.docs].filter((snapshot) => {
-          if (seen.has(snapshot.id)) return false;
-          seen.add(snapshot.id);
-          return true;
-        });
-
-        return merged
-          .map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest))
-          .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
-      }
-
-      const snapshot = await getDocs(query(collection(db, path), where('requesterUid', '==', userUid)));
-      return snapshot.docs
-        .map((inspectionDoc) => ({ id: inspectionDoc.id, ...inspectionDoc.data() } as InspectionRequest))
-        .sort((a, b) => (toMillis(b.createdAt) || 0) - (toMillis(a.createdAt) || 0));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
-      return [];
-    }
-  },
-
-  async updateInspectionRequest(
-    id: string,
-    updates: {
-      status?: InspectionRequestStatus;
-      quotedPrice?: number | null;
-      assignedToUid?: string | null;
-      assignedToName?: string | null;
-      inspectionTemplateUrl?: string;
-      inspectionTemplateFileName?: string;
-      inspectionTemplateGeneratedAt?: string | null;
-      inspectionTemplateGeneratedByUid?: string | null;
-      inspectionTemplateGeneratedByName?: string | null;
-      inspectionReportUrl?: string;
-      inspectionReportFileName?: string;
-      inspectionReportContentType?: string;
-      inspectionReportUploadedAt?: string | null;
-      inspectionReportUploadedByUid?: string | null;
-      inspectionReportUploadedByName?: string | null;
-    }
-  ): Promise<void> {
-    const path = `inspectionRequests/${id}`;
-    try {
-      const docRef = doc(db, 'inspectionRequests', id);
-      const nextStatus = updates.status;
-      const payload: Record<string, unknown> = {
-        updatedAt: serverTimestamp(),
-      };
-
-      if (nextStatus) {
-        payload.status = nextStatus;
-        payload.reviewedAt = serverTimestamp();
-        if (nextStatus === 'Accepted' || nextStatus === 'Declined' || nextStatus === 'Quoted') {
-          payload.respondedAt = serverTimestamp();
-        }
-      }
-
-      if (updates.quotedPrice === null) {
-        payload.quotedPrice = null;
-      } else if (typeof updates.quotedPrice === 'number' && Number.isFinite(updates.quotedPrice)) {
-        payload.quotedPrice = updates.quotedPrice;
-      }
-
-      if (updates.assignedToUid !== undefined) {
-        payload.assignedToUid = updates.assignedToUid || null;
-      }
-
-      if (updates.assignedToName !== undefined) {
-        payload.assignedToName = updates.assignedToName || null;
-      }
-
-      if (updates.inspectionTemplateUrl !== undefined) {
-        payload.inspectionTemplateUrl = updates.inspectionTemplateUrl || null;
-      }
-
-      if (updates.inspectionTemplateFileName !== undefined) {
-        payload.inspectionTemplateFileName = updates.inspectionTemplateFileName || null;
-      }
-
-      if (updates.inspectionTemplateGeneratedAt !== undefined) {
-        payload.inspectionTemplateGeneratedAt = updates.inspectionTemplateGeneratedAt || null;
-      }
-
-      if (updates.inspectionTemplateGeneratedByUid !== undefined) {
-        payload.inspectionTemplateGeneratedByUid = updates.inspectionTemplateGeneratedByUid || null;
-      }
-
-      if (updates.inspectionTemplateGeneratedByName !== undefined) {
-        payload.inspectionTemplateGeneratedByName = updates.inspectionTemplateGeneratedByName || null;
-      }
-
-      if (updates.inspectionReportUrl !== undefined) {
-        payload.inspectionReportUrl = updates.inspectionReportUrl || null;
-      }
-
-      if (updates.inspectionReportFileName !== undefined) {
-        payload.inspectionReportFileName = updates.inspectionReportFileName || null;
-      }
-
-      if (updates.inspectionReportContentType !== undefined) {
-        payload.inspectionReportContentType = updates.inspectionReportContentType || null;
-      }
-
-      if (updates.inspectionReportUploadedAt !== undefined) {
-        payload.inspectionReportUploadedAt = updates.inspectionReportUploadedAt || null;
-      }
-
-      if (updates.inspectionReportUploadedByUid !== undefined) {
-        payload.inspectionReportUploadedByUid = updates.inspectionReportUploadedByUid || null;
-      }
-
-      if (updates.inspectionReportUploadedByName !== undefined) {
-        payload.inspectionReportUploadedByName = updates.inspectionReportUploadedByName || null;
-      }
-
-      await updateDoc(docRef, payload);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
 
@@ -2314,6 +2200,16 @@ export const equipmentService = {
     }
   },
 
+  async getPublicDealerDirectory(): Promise<Seller[]> {
+    try {
+      const payload = await getPublicJson<{ dealers?: Seller[] }>('/api/public/dealers');
+      return Array.isArray(payload.dealers) ? payload.dealers : [];
+    } catch (error) {
+      console.warn('Public dealer directory unavailable:', error);
+      return [];
+    }
+  },
+
   async getAuctions(): Promise<Auction[]> {
     const path = 'auctions';
     try {
@@ -2328,34 +2224,26 @@ export const equipmentService = {
   async getNews(): Promise<NewsPost[]> {
     const path = 'news|blogPosts';
     try {
-      const isPublicBlogPost = (post: any) => {
-        const status = String(post?.status || '').trim().toLowerCase();
-        const reviewStatus = String(post?.reviewStatus || '').trim().toLowerCase();
-        return status === 'published' || reviewStatus === 'published';
-      };
+      try {
+        const payload = await getPublicJson<{ posts?: NewsPost[] }>('/api/public/news');
+        const posts = Array.isArray(payload.posts) ? payload.posts : [];
+        if (posts.length > 0) {
+          writeBrowserCache(PUBLIC_NEWS_CACHE_KEY, posts);
+          return posts;
+        }
+      } catch (publicError) {
+        console.warn('Public Equipment News API unavailable, falling back to browser cache / Firestore:', publicError);
+      }
 
-      const mapBlogPostToNewsPost = (postId: string, post: any): NewsPost => {
-        const dateMs = toMillis(post.updatedAt) || toMillis(post.createdAt) || Date.now();
-        return {
-          id: `blog-${postId}`,
-          title: String(post.title || 'Untitled'),
-          summary: String(post.excerpt || '').trim() || String(post.content || '').replace(/<[^>]*>/g, '').slice(0, 220),
-          content: String(post.content || ''),
-          author: String(post.authorName || 'Forestry Equipment Sales Editorial'),
-          date: new Date(dateMs).toISOString(),
-          image: String(post.image || '').trim() || 'https://picsum.photos/seed/forestry-equipment-sales-news/1600/900',
-          category: String(post.category || 'Industry News'),
-          seoTitle: String(post.seoTitle || '').trim(),
-          seoDescription: String(post.seoDescription || '').trim(),
-          seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords.filter((keyword: unknown) => typeof keyword === 'string') : [],
-          seoSlug: String(post.seoSlug || '').trim(),
-        } as NewsPost;
-      };
+      const cachedNews = readBrowserCache<NewsPost[]>(PUBLIC_NEWS_CACHE_KEY);
+      if (Array.isArray(cachedNews) && cachedNews.length > 0) {
+        return cachedNews;
+      }
 
       let legacyNews: NewsPost[] = [];
       try {
         const legacyNewsSnapshot = await getDocs(collection(db, 'news'));
-        legacyNews = legacyNewsSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as NewsPost));
+        legacyNews = legacyNewsSnapshot.docs.map((docSnap) => normalizeLegacyNewsPost(docSnap.id, docSnap.data() as Record<string, unknown>));
       } catch (legacyError) {
         console.warn('Legacy news collection unavailable, continuing with CMS posts only.', legacyError);
       }
@@ -2370,7 +2258,7 @@ export const equipmentService = {
         const mergedPosts = new Map<string, NewsPost>();
         cmsSnapshots.forEach((snapshot) => {
           snapshot.docs.forEach((docSnap) => {
-            const post = docSnap.data() as any;
+            const post = docSnap.data() as Record<string, unknown>;
             if (!isPublicBlogPost(post)) {
               return;
             }
@@ -2384,12 +2272,21 @@ export const equipmentService = {
         console.warn('Published CMS posts unavailable for Equipment News feed.', cmsError);
       }
 
-      return [...cmsPublishedNews, ...legacyNews].sort((a, b) => {
+      const newsPosts = [...cmsPublishedNews, ...legacyNews].sort((a, b) => {
         const left = Date.parse(a.date || '') || 0;
         const right = Date.parse(b.date || '') || 0;
         return right - left;
       });
+      if (newsPosts.length > 0) {
+        writeBrowserCache(PUBLIC_NEWS_CACHE_KEY, newsPosts);
+      }
+      return newsPosts;
     } catch (error) {
+      const cachedNews = readBrowserCache<NewsPost[]>(PUBLIC_NEWS_CACHE_KEY);
+      if (Array.isArray(cachedNews) && cachedNews.length > 0) {
+        console.warn('Using cached Equipment News feed because the live request is unavailable:', error);
+        return cachedNews;
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -2398,44 +2295,48 @@ export const equipmentService = {
   async getNewsPost(id: string): Promise<NewsPost | null> {
     const path = `news|blogPosts/${id}`;
     try {
-      const isPublicBlogPost = (post: any) => {
-        const status = String(post?.status || '').trim().toLowerCase();
-        const reviewStatus = String(post?.reviewStatus || '').trim().toLowerCase();
-        return status === 'published' || reviewStatus === 'published';
-      };
-
       const normalizedId = String(id || '').trim();
       if (!normalizedId) return null;
+
+      try {
+        const payload = await getPublicJson<{ post?: NewsPost | null }>(`/api/public/news/${encodeURIComponent(normalizedId)}`);
+        if (payload.post) {
+          const cachedFeed = readBrowserCache<NewsPost[]>(PUBLIC_NEWS_CACHE_KEY) || [];
+          const mergedFeed = [payload.post, ...cachedFeed.filter((entry) => entry.id !== payload.post?.id)];
+          writeBrowserCache(PUBLIC_NEWS_CACHE_KEY, mergedFeed);
+          return payload.post;
+        }
+      } catch (publicError) {
+        console.warn('Public Equipment News article API unavailable, falling back to cache / Firestore:', publicError);
+      }
+
+      const cachedFeed = readBrowserCache<NewsPost[]>(PUBLIC_NEWS_CACHE_KEY);
+      const cachedPost = Array.isArray(cachedFeed) ? cachedFeed.find((entry) => entry.id === normalizedId) || null : null;
+      if (cachedPost) {
+        return cachedPost;
+      }
 
       if (normalizedId.startsWith('blog-')) {
         const blogPostId = normalizedId.slice(5);
         const blogPostSnap = await getDoc(doc(db, 'blogPosts', blogPostId));
         if (!blogPostSnap.exists()) return null;
 
-        const post = blogPostSnap.data() as any;
+        const post = blogPostSnap.data() as Record<string, unknown>;
         if (!isPublicBlogPost(post)) return null;
 
-        const dateMs = toMillis(post.updatedAt) || toMillis(post.createdAt) || Date.now();
-        return {
-          id: normalizedId,
-          title: String(post.title || 'Untitled'),
-          summary: String(post.excerpt || '').trim() || String(post.content || '').replace(/<[^>]*>/g, '').slice(0, 220),
-          content: String(post.content || ''),
-          author: String(post.authorName || 'Forestry Equipment Sales Editorial'),
-          date: new Date(dateMs).toISOString(),
-          image: String(post.image || '').trim() || 'https://picsum.photos/seed/forestry-equipment-sales-news/1600/900',
-          category: String(post.category || 'Industry News'),
-          seoTitle: String(post.seoTitle || '').trim(),
-          seoDescription: String(post.seoDescription || '').trim(),
-          seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords.filter((keyword: unknown) => typeof keyword === 'string') : [],
-          seoSlug: String(post.seoSlug || '').trim(),
-        };
+        return mapBlogPostToNewsPost(blogPostId, post);
       }
 
       const legacyPostSnap = await getDoc(doc(db, 'news', normalizedId));
       if (!legacyPostSnap.exists()) return null;
-      return { id: legacyPostSnap.id, ...(legacyPostSnap.data() as NewsPost) };
+      return normalizeLegacyNewsPost(legacyPostSnap.id, legacyPostSnap.data() as Record<string, unknown>);
     } catch (error) {
+      const cachedFeed = readBrowserCache<NewsPost[]>(PUBLIC_NEWS_CACHE_KEY);
+      const cachedPost = Array.isArray(cachedFeed) ? cachedFeed.find((entry) => entry.id === String(id || '').trim()) || null : null;
+      if (cachedPost) {
+        console.warn('Using cached Equipment News article because the live request is unavailable:', error);
+        return cachedPost;
+      }
       handleFirestoreError(error, OperationType.GET, path);
       return null;
     }

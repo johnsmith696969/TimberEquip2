@@ -4,7 +4,7 @@
 
 - Stripe webhook delivery failures
 - subscription state not updating after checkout
-- invoice payment or failure events not syncing into TimberEquip
+- invoice payment or failure events not syncing into Forestry Equipment Sales
 
 ## Immediate checks
 

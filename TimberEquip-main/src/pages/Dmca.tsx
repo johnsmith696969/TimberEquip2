@@ -359,7 +359,7 @@ export function Dmca() {
               </p>
               <p>
                 For non-copyright intellectual property concerns (e.g., trademark infringement, trade secret misappropriation),
-                please contact our Legal Department at legal@timberequip.com. These matters are not governed by the DMCA but
+                please contact our Legal Department at legal@forestryequipmentsales.com. These matters are not governed by the DMCA but
                 will be addressed under our Terms of Service and applicable law.
               </p>
             </section>

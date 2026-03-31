@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Truck, Hammer, Settings, Activity,
-  Zap, ArrowRight, Info, TrendingUp
+  Zap, ArrowRight
 } from 'lucide-react';
 import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { useTheme } from '../components/ThemeContext';
 import { buildMarketplaceCategoryFamilies } from '../utils/marketplaceCategoryFamilies';
 
 const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
@@ -22,6 +23,7 @@ const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: numb
 };
 
 export function Categories() {
+  const { theme } = useTheme();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() =>
     (cachedMarketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
@@ -81,6 +83,26 @@ export function Categories() {
     () => [...categoryCards].sort((a, b) => b.count - a.count),
     [categoryCards]
   );
+  const isDuskMode = theme === 'dark';
+  const marketNewsStyles = isDuskMode
+    ? {
+        section: 'py-24 bg-ink px-4 md:px-8',
+        heading: 'text-white',
+        body: 'text-white/60',
+        card: 'bg-white/5 border border-white/10',
+        statBorder: 'border-white/10',
+        statLabel: 'text-white/40',
+        statValue: 'text-white',
+      }
+    : {
+        section: 'py-24 bg-surface px-4 md:px-8 border-y border-line',
+        heading: 'text-ink',
+        body: 'text-muted',
+        card: 'bg-bg border border-line shadow-sm',
+        statBorder: 'border-line',
+        statLabel: 'text-muted',
+        statValue: 'text-ink',
+      };
 
   const mostActive = sortedByInventory[0];
   const highestVelocity = [...categoryCards].sort((a, b) => Math.abs(b.weeklyChangePercent) - Math.abs(a.weeklyChangePercent))[0];
@@ -100,12 +122,12 @@ export function Categories() {
     '@type': 'CollectionPage',
     name: 'Equipment Categories',
     description: seoDescription,
-    url: 'https://timberequip.com/categories',
+    url: 'https://www.forestryequipmentsales.com/categories',
     hasPart: categoryCards.map(cat => ({
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://timberequip.com/search?category=${encodeURIComponent(cat.name)}`
+      url: `https://www.forestryequipmentsales.com/search?category=${encodeURIComponent(cat.name)}`
     }))
   };
 
@@ -131,8 +153,7 @@ export function Categories() {
             <span className="text-muted">Categories</span>
           </h1>
           <p className="text-muted font-medium max-w-2xl leading-relaxed">
-            Browse our global inventory of heavy forestry equipment classified by operational utility. 
-            All units are indexed with real-time market intelligence and technical specifications.
+            Find the right machine by category. Every listing includes specs, photos, and pricing.
           </p>
         </div>
       </div>
@@ -165,13 +186,9 @@ export function Categories() {
                   Browse Inventory
                   <ArrowRight className="ml-2" size={14} />
                 </Link>
-                <div className="flex items-center justify-between pt-6 border-t border-line">
-                  <div className="flex items-center text-[10px] font-bold text-data uppercase tracking-widest">
-                    <TrendingUp size={12} className="mr-2" />
-                    {`${cat.weeklyChangePercent >= 0 ? '+' : ''}${cat.weeklyChangePercent.toFixed(1)}% WoW`}
-                  </div>
-                  <span className="text-[10px] font-bold text-muted uppercase flex items-center">
-                    {formatNumber(cat.subcategoryCount)} Types <Info size={12} className="ml-1.5" />
+                <div className="pt-6 border-t border-line">
+                  <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                    {formatNumber(cat.subcategoryCount)} Types
                   </span>
                 </div>
               </div>
@@ -180,23 +197,23 @@ export function Categories() {
         </div>
       </div>
 
-      {/* Market Pulse CTA */}
-      <section className="py-24 bg-ink px-4 md:px-8">
+      {/* Market News CTA */}
+      <section className={marketNewsStyles.section}>
         <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div className="flex flex-col">
-            <span className="label-micro text-accent mb-4 block">Market Intelligence</span>
-            <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter uppercase mb-8 leading-none">
+            <span className="label-micro text-accent mb-4 block">Market News</span>
+            <h2 className={`text-4xl md:text-5xl font-black tracking-tighter uppercase mb-8 leading-none ${marketNewsStyles.heading}`}>
               Access The <br />
-              <span className="text-accent">Intelligence Report</span>
+              <span className="text-accent">Industry Insights</span>
             </h2>
-            <p className="text-white/60 text-lg font-medium mb-12 max-w-lg">
-              Get detailed analysis on price trends, inventory velocity, and regional demand across all equipment categories.
+            <p className={`text-lg font-medium mb-12 max-w-lg ${marketNewsStyles.body}`}>
+              Read the latest equipment news, price reports, and industry updates.
             </p>
             <Link to="/blog" className="btn-industrial btn-accent py-5 px-12 w-fit">
-              View Market Reports
+              View Equipment News
             </Link>
           </div>
-          <div className="bg-white/5 border border-white/10 p-12 rounded-sm">
+          <div className={`${marketNewsStyles.card} p-12 rounded-sm`}>
             <div className="flex flex-col space-y-8">
               {[
                 {
@@ -215,10 +232,10 @@ export function Categories() {
                   change: `${inventoryChange >= 0 ? '+' : ''}${inventoryChange.toFixed(1)}%`
                 }
               ].map((stat, i) => (
-                <div key={i} className="flex justify-between items-end border-b border-white/10 pb-6">
+                <div key={i} className={`flex justify-between items-end border-b pb-6 ${marketNewsStyles.statBorder}`}>
                   <div className="flex flex-col">
-                    <span className="label-micro text-white/40 mb-1">{stat.label}</span>
-                    <span className="text-2xl font-black text-white tracking-tighter uppercase">{stat.value}</span>
+                    <span className={`label-micro mb-1 ${marketNewsStyles.statLabel}`}>{stat.label}</span>
+                    <span className={`text-2xl font-black tracking-tighter uppercase ${marketNewsStyles.statValue}`}>{stat.value}</span>
                   </div>
                   <span className="text-xs font-black text-data uppercase tracking-widest">{stat.change}</span>
                 </div>

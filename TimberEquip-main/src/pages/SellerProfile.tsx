@@ -27,6 +27,7 @@ import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
+import { useTheme } from '../components/ThemeContext';
 import { evaluateRouteQuality } from '../utils/seoRouteQuality';
 import { buildListingPath } from '../utils/listingPath';
 
@@ -73,6 +74,7 @@ export function SellerProfile() {
   const { id, categorySlug } = useParams<{ id: string; categorySlug?: string }>();
   const location = useLocation();
   const { user: currentUser } = useAuth();
+  const { theme } = useTheme();
   const [seller, setSeller] = useState<Seller | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -350,7 +352,7 @@ export function SellerProfile() {
       {
         '@type': 'Organization',
         name: headline,
-        url: `https://timberequip.com${canonicalPath}`,
+        url: `https://www.forestryequipmentsales.com${canonicalPath}`,
         logo: logoImage,
         description,
         email: seller.email || undefined,
@@ -360,10 +362,10 @@ export function SellerProfile() {
       {
         '@type': 'BreadcrumbList',
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
-          { '@type': 'ListItem', position: 2, name: 'Dealers', item: 'https://timberequip.com/dealers' },
-          { '@type': 'ListItem', position: 3, name: headline, item: `https://timberequip.com${preferredDealerPath}` },
-          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: `https://timberequip.com${canonicalPath}` }] : []),
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
+          { '@type': 'ListItem', position: 2, name: 'Dealers', item: 'https://www.forestryequipmentsales.com/dealers' },
+          { '@type': 'ListItem', position: 3, name: headline, item: `https://www.forestryequipmentsales.com${preferredDealerPath}` },
+          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: `https://www.forestryequipmentsales.com${canonicalPath}` }] : []),
         ],
       },
       {
@@ -372,7 +374,7 @@ export function SellerProfile() {
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://timberequip.com${buildListingPath(listing)}`,
+          url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
           item: {
             '@type': 'Product',
             name: `${listing.year} ${listing.make || listing.manufacturer || listing.brand || ''} ${listing.model || ''}`.trim(),
@@ -401,10 +403,10 @@ export function SellerProfile() {
         imagePath={logoImage}
       />
 
-      <section className="text-white px-4 md:px-8 relative overflow-hidden border-b border-line">
+      <section className={`px-4 md:px-8 relative overflow-hidden border-b border-line ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
         <div className="absolute inset-0">
-          <img src={coverImage} alt={`${headline} cover`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/45" />
+          <img src={coverImage} alt={`${headline} cover`} className={`w-full h-full object-cover ${theme === 'dark' ? 'opacity-30' : 'opacity-20 saturate-[0.85] brightness-110'}`} referrerPolicy="no-referrer" />
+          <div className={`absolute inset-0 ${theme === 'dark' ? 'bg-gradient-to-r from-black/90 via-black/70 to-black/45' : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76'}`} />
         </div>
 
         <div className="max-w-[1600px] mx-auto relative z-10 py-20 md:py-24">

@@ -277,7 +277,7 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           <div className="space-y-3">
             {[
               { label: 'Dealers',     count: dealerAccounts,  color: 'bg-accent' },
-              { label: 'Sellers',     count: sellerAccounts,  color: 'bg-data' },
+              { label: 'Owner-Operators', count: sellerAccounts, color: 'bg-data' },
               { label: 'Admin Team',  count: adminAccounts,   color: 'bg-secondary' },
               { label: 'Other',       count: totalAccounts - dealerAccounts - sellerAccounts - adminAccounts, color: 'bg-line' },
             ].map(s => (

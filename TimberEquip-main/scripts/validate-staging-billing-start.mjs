@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
 const DEFAULT_BASE_URL = 'https://timberequip-staging.web.app';
-const DEFAULT_PASSWORD = 'TimberEquip!QA2026';
+const DEFAULT_PASSWORD = 'Forestry Equipment Sales!QA2026';
 
 function parseArgs(argv) {
   const result = {};

@@ -1,0 +1,140 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Mail, Phone, Users } from 'lucide-react';
+import { Seo } from '../components/Seo';
+
+const teamMembers = [
+  {
+    name: 'Aaron Blake',
+    role: 'Co-Owner & Sales',
+    image: 'https://ik.imagekit.io/aqa9zbltl/images/1b63bbd7f47bcd5731c901a5ad68fa48393c8482.webp',
+    bio: 'With more than 22 years of experience in logging and equipment sales, Aaron has built a reputation as someone you can trust and who knows how to get deals done. He manages risk, supports all sales, and helps clients secure financing to close deals.',
+  },
+  {
+    name: 'Erik Madsen',
+    role: 'Co-Owner & Sales',
+    image: 'https://ik.imagekit.io/aqa9zbltl/images/2b41123220474453445f2a2e50123f64cafd5d0b.jpg',
+    bio: 'Erik brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
+  },
+  {
+    name: 'Kelly Brooks',
+    role: 'Front Office & Logistics',
+    image: 'https://ik.imagekit.io/aqa9zbltl/images/9d11f5ae877b93e2968e86026c9558ab7e740108.jpg',
+    bio: 'Kelly keeps our front office running like a machine. She handles phones, logistics, customs, overseas shipping, customer support, and website updates to make sure everything stays organized and efficient.',
+  },
+  {
+    name: 'Caleb Happy',
+    role: 'Marketing & Platform Development',
+    image: 'https://ik.imagekit.io/aqa9zbltl/images/675a11d33eca36acc1fa34fa96075f11c1302b2a.jpg',
+    bio: 'Caleb brings eight years of marketing experience and a hands-on systems mindset. He handles marketing, infrastructure, and customer relations to keep the platform running smoothly.',
+  },
+];
+
+export function OurTeam() {
+  return (
+    <div className="min-h-screen bg-bg">
+      <Seo
+        title="Our Team | Forestry Equipment Sales"
+        description="Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development."
+        canonicalPath="/our-team"
+      />
+
+      <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">
+        <div className="absolute right-0 top-0 h-full w-1/3 translate-x-1/2 skew-x-12 bg-accent/10" />
+        <div className="relative z-10 mx-auto max-w-[1600px]">
+          <div className="mb-6 flex items-center space-x-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-ink">
+              <Users className="text-accent" size={20} />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">Our Team</span>
+          </div>
+          <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
+            We Know The Industry
+            <br />
+            <span className="text-muted">Because We Are From It</span>
+          </h1>
+          <p className="max-w-3xl text-base font-medium leading-relaxed text-muted md:text-lg">
+            This platform was not built by tech investors. It was built by people who have spent years around
+            equipment, sellers, buyers, shipping, and the real work it takes to move iron.
+          </p>
+        </div>
+      </section>
+
+      <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
+        <div className="mx-auto max-w-[1600px]">
+          <div className="mb-12 max-w-4xl">
+            <span className="label-micro mb-4 block text-accent">Meet The Team</span>
+            <p className="text-sm font-medium leading-relaxed text-muted md:text-base">
+              We understand what it takes to move equipment and how frustrating outdated listing platforms can be.
+              Our team stays lean, responsive, and focused on helping buyers and sellers move faster with less hassle.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4">
+            {teamMembers.map((member) => (
+              <div key={member.name} className="flex flex-col overflow-hidden border border-line bg-surface">
+                <div className="aspect-[4/5] overflow-hidden bg-bg">
+                  <img
+                    src={member.image}
+                    alt={member.name}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col p-6">
+                  <h2 className="text-2xl font-black uppercase tracking-tight">{member.name}</h2>
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent">{member.role}</p>
+                  <p className="mt-5 text-sm font-medium leading-relaxed text-muted">{member.bio}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-line bg-surface px-4 py-20 md:px-8 md:py-24">
+        <div className="mx-auto max-w-[1600px] grid grid-cols-1 gap-8 lg:grid-cols-[1fr_0.8fr]">
+          <div className="border border-line bg-bg p-8 md:p-10">
+            <span className="label-micro mb-4 block text-accent">Our Pledge</span>
+            <h2 className="mb-4 text-3xl font-black uppercase tracking-tighter md:text-5xl">
+              We Keep It
+              <span className="text-muted"> Straightforward</span>
+            </h2>
+            <p className="text-sm font-medium leading-relaxed text-muted md:text-base">
+              We answer the phone. We respond to emails. And we do everything we can to help contractors and equipment
+              dealers move machines faster without the BS. This platform is built on hard work, relationships, and
+              respect for the industry we serve.
+            </p>
+          </div>
+
+          <div className="border border-line bg-ink p-8 text-white md:p-10">
+            <span className="label-micro mb-4 block text-accent">Reach Us</span>
+            <div className="space-y-4">
+              <a href="tel:+12187200933" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">
+                <Phone className="mt-0.5 text-accent" size={18} />
+                <div>
+                  <span className="label-micro block text-white/60">Customer Support</span>
+                  <span className="text-sm font-black tracking-tight text-white">(218) 720-0933</span>
+                </div>
+              </a>
+              <a href="mailto:info@forestryequipmentsales.com" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">
+                <Mail className="mt-0.5 text-accent" size={18} />
+                <div>
+                  <span className="label-micro block text-white/60">Email</span>
+                  <span className="text-sm font-black tracking-tight text-white">info@forestryequipmentsales.com</span>
+                </div>
+              </a>
+              <div className="pt-2">
+                <Link to="/contact" className="btn-industrial btn-accent px-8 py-4">
+                  Contact Us
+                  <ArrowRight className="ml-2 inline" size={16} />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

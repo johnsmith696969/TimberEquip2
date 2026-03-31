@@ -1,0 +1,316 @@
+# Meta Ads + Catalog Automation Plan (Dealer System)
+
+## Objective
+Build a fully automated system that:
+- Ingests dealer inventory from your website
+- Syncs it to a centralized Meta catalog
+- Segments inventory by dealer
+- Prepares ads in a paused state
+- Waits 7 days for validation and funding
+- Automatically launches ads if conditions are met
+- Prevents overspending using strict guardrails
+
+---
+
+## System Architecture
+
+### Source of Truth
+- Website: forestryequipmentsales.com
+- All listings originate here
+- Listings must be clean, published, and accessible
+
+### Meta Assets (Centralized)
+- One Meta Business Manager
+- One Ad Account
+- One Master Catalog
+- One Pixel
+- Product Sets (one per dealer)
+
+### Automation Layers
+- Playwright → setup, login, verification
+- Meta Marketing API → catalog sync, ads, budgets, automation
+
+---
+
+## Budget Model
+
+### Pro Dealer Plan Example
+- Pro Dealer pays: $1,000/month
+- Ad Spend Allocation: 30% = $300/month
+
+### Daily Budget
+$300 / 30 = $10/day
+
+### Budget Guardrails
+- Daily budget set at ad set level
+- Optional lifetime budget cap
+- Auto-pause rules if spend exceeds limits
+- No campaign launches without funding verification
+
+---
+
+## Step 1: Meta Setup (Playwright)
+
+### Goal
+Automate initial setup and extract required IDs
+
+### Tasks
+- Login to Meta Business Manager
+- Create or verify:
+  - Ad Account
+  - Catalog
+  - Pixel
+- Navigate to:
+  - Ads Manager
+  - Commerce Manager
+
+### Extract and Store:
+- ad_account_id (act_XXXX)
+- catalog_id
+- pixel_id
+- page_id
+
+### Output
+Store all IDs in your database per environment
+
+---
+
+## Step 2: Dealer Onboarding Flow
+
+### Trigger
+Dealer signs up on your website
+
+### Flow
+1. Assign unique `dealer_id`
+2. Dealer uploads inventory
+3. Listings are published and live
+
+### Required Listing Fields
+- id
+- title
+- description
+- price
+- image_url
+- condition
+- availability
+- location (city, state)
+- url (canonical listing URL)
+- dealer_id
+
+---
+
+## Step 3: Catalog Feed Automation
+
+### Feed URL
+https://www.forestryequipmentsales.com/feed/meta-catalog.xml
+
+### Feed Requirements
+Each item must include:
+- id
+- title
+- description
+- availability
+- condition
+- price
+- link
+- image_link
+- brand (manufacturer)
+- custom_label_0 = dealer_id
+- seller name
+
+### Sync Frequency
+- Daily
+
+### API Endpoint
+POST /{catalog_id}/items_batch
+
+### Behavior
+- Add new listings
+- Update existing listings
+- Remove sold listings
+
+---
+
+## Step 4: Product Set Creation (Per Dealer / Pro Dealer)
+
+### Logic
+Each dealer gets a product set
+
+### Filter Rule
+custom_label_0 = dealer_id
+
+### Example
+Dealer A → Product Set A  
+Dealer B → Product Set B
+
+### Automation
+- Create via API when dealer signs up
+- Store product_set_id
+
+---
+
+## Step 5: Campaign Creation (Paused)
+
+### Trigger
+Dealer has:
+- Inventory uploaded
+- Product set created
+
+### Campaign Setup
+
+#### Campaign
+- Objective: Sales
+- Type: Catalog Sales
+- Status: PAUSED
+
+#### Ad Set
+- Product Set: dealer-specific
+- Budget: $10/day (based on 30%) for pro dealer, and 30% of subscription cost for dealer too
+- Optimization: Conversions
+- Pixel: assigned
+- Status: PAUSED
+
+#### Targeting
+- Location:
+  - Option A: United States
+  - Option B: Radius 250 miles from dealer
+- Age: 35–65+
+- Gender: Men
+- Interests (max 3–5):
+  - Forestry
+  - Logging
+  - Heavy Equipment
+
+#### Ad
+- Format: Dynamic Catalog Ad
+- Creative pulled from feed
+- Status: PAUSED
+
+---
+
+## Step 6: 3-Day Delay System
+
+### Purpose
+Ensure:
+- Inventory is valid
+- Feed is syncing correctly
+- Account is funded
+- No broken listings
+
+### Logic
+Wait 7 days after:
+- First listing is published
+
+### Store:
+launch_date = created_at + 3 days
+
+---
+
+## Step 7: Funding Verification
+
+### Before Launch
+Check:
+- Payment method exists OR
+- Available funds > threshold
+
+### If NOT funded:
+- Do NOT launch ads
+- Retry daily
+
+---
+
+## Step 8: Launch Automation
+
+### Conditions Required
+- Current date >= launch_date
+- Inventory count > minimum threshold
+- Catalog sync successful
+- Account funded
+
+### Action
+- Activate campaign
+- Activate ad sets
+- Activate ads
+
+---
+
+## Step 9: Overspend Protection
+
+### Rules
+- Daily budget enforced at ad set level
+- Optional lifetime budget cap
+- Monitor spend via API
+
+### Auto Pause Conditions
+- Spend > 110% of monthly budget
+- No inventory remaining
+- Feed errors detected
+
+### Monitoring Frequency
+- Every 6–12 hours
+
+---
+
+## Step 10: Playwright Responsibilities
+
+### Use Playwright for:
+- Logging into Meta
+- Creating initial assets
+- Verifying:
+  - Catalog exists
+  - Product sets exist
+  - Campaign exists
+- Extracting IDs
+- Screenshot logging (QA)
+
+### DO NOT use Playwright for:
+- Daily ad management
+- Budget control
+- Campaign automation
+
+---
+
+## Step 11: API Responsibilities
+
+### Use Meta Marketing API for:
+- Catalog sync
+- Product set creation
+- Campaign creation
+- Budget updates
+- Ad activation/pause
+- Spend monitoring
+
+---
+
+## Step 12: Automation Flow Summary
+
+1. Dealer signs up
+2. Inventory uploaded
+3. Feed syncs to catalog
+4. Product set created
+5. Campaign created (paused)
+6. Wait 7 days
+7. Check funding
+8. Launch ads
+9. Monitor + enforce budget rules
+
+---
+
+## Key Principles
+
+- One master catalog (never per dealer)
+- Dealer segmentation via product sets
+- API handles all ongoing logic
+- Playwright only sets up and verifies
+- Never launch ads immediately
+- Always enforce budget caps
+
+---
+
+## Final Outcome
+
+- Fully automated dealer onboarding
+- Inventory → catalog → ads pipeline
+- Controlled ad spend (30% rule)
+- Zero manual ad setup after system is built
+- Scalable to unlimited dealers

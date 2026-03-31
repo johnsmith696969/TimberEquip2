@@ -1,10 +1,1 @@
-{
-  "apiKey": "",
-  "projectId": "mobile-app-equipment-sales",
-  "appId": "1:547811102681:web:3065d1745c6b8dac4993c8",
-  "authDomain": "mobile-app-equipment-sales.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c",
-  "storageBucket": "mobile-app-equipment-sales.firebasestorage.app",
-  "messagingSenderId": "547811102681",
-  "measurementId": ""
-}
+{"apiKey":"","projectId":"mobile-app-equipment-sales","appId":"","authDomain":"mobile-app-equipment-sales.firebaseapp.com","firestoreDatabaseId":"","storageBucket":"mobile-app-equipment-sales.firebasestorage.app","messagingSenderId":"","measurementId":""}

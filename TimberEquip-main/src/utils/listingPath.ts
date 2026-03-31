@@ -124,7 +124,13 @@ function normalizeSeoSlug(value: string, fallback = ''): string {
 }
 
 function getLocationSeoParts(value: string): { city: string; state: string } {
-  const parts = String(value || '')
+  const raw = String(value || '').trim();
+
+  if (!raw || /^(location\s*pending|pending|tbd|tba|n\/?a|unknown|not\s*specified)$/i.test(raw)) {
+    return { city: '', state: '' };
+  }
+
+  const parts = raw
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
@@ -203,16 +209,21 @@ export function extractListingPublicKeyFromSlug(slugOrKey: string): string {
   if (!normalizedValue) return '';
 
   const delimiterIndex = normalizedValue.lastIndexOf('--');
-  if (delimiterIndex === -1) {
-    const trailingRawIdMatch = normalizedValue.match(/-([A-Za-z0-9]{8,})$/);
-    if (trailingRawIdMatch) {
-      return trailingRawIdMatch[1].trim();
-    }
-
-    return normalizedValue;
+  if (delimiterIndex !== -1) {
+    return normalizedValue.slice(delimiterIndex + 2).trim();
   }
 
-  return normalizedValue.slice(delimiterIndex + 2).trim();
+  const trailingRawIdMatch = normalizedValue.match(/-([A-Za-z0-9]{8,})$/);
+  if (trailingRawIdMatch) {
+    return trailingRawIdMatch[1].trim();
+  }
+
+  const trailingNumericIdMatch = normalizedValue.match(/-(\d{5,})$/);
+  if (trailingNumericIdMatch) {
+    return trailingNumericIdMatch[1].trim();
+  }
+
+  return normalizedValue;
 }
 
 export function decodeListingPublicKey(publicKey: string): string {
@@ -260,7 +271,7 @@ export function buildListingPath(listing: ListingPathRecord): string {
     return `/equipment/${safeSlug}`;
   }
 
-  if (/^[A-Za-z0-9]{8,}$/.test(publicKey)) {
+  if (/^\d+$/.test(publicKey) || /^[A-Za-z0-9]{8,}$/.test(publicKey)) {
     return `/equipment/${safeSlug}-${publicKey}`;
   }
 

@@ -4,6 +4,7 @@ export const EQUIPMENT_TAXONOMY = {
       "MULTITEK",
       "TIMBERWOLF"
     ],
+    "Kilns": [],
     "Firewood Processors": [
       "BELL",
       "BLOCKBUSTER",
@@ -300,9 +301,6 @@ export const EQUIPMENT_TAXONOMY = {
       "VALMET",
       "WEILER",
       "WOODSMAN"
-    ],
-    "Graders": [
-      "JOHN DEERE"
     ],
     "Log Loaders": [
       "AM MACHINERY",

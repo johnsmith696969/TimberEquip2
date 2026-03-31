@@ -1,4 +1,4 @@
-# TimberEquip Data Connect Scaffold
+# Forestry Equipment Sales Data Connect Scaffold
 
 This directory is the Phase 1 scaffold for moving listing governance onto Firebase Data Connect backed by Cloud SQL for PostgreSQL.
 

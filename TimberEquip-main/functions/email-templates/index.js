@@ -8,6 +8,21 @@
  *   firebase functions:secrets:set SENDGRID_API_KEY EMAIL_FROM ADMIN_EMAILS
  */
 
+const DEFAULT_MARKETPLACE_URL = 'https://www.forestryequipmentsales.com';
+
+function normalizeMarketplaceUrl(url) {
+  return String(url || DEFAULT_MARKETPLACE_URL).trim().replace(/\/+$/, '') || DEFAULT_MARKETPLACE_URL;
+}
+
+const MARKETPLACE_URL = normalizeMarketplaceUrl(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL);
+const SEARCH_URL = `${MARKETPLACE_URL}/search`;
+const PROFILE_URL = `${MARKETPLACE_URL}/profile`;
+const ADMIN_URL = `${MARKETPLACE_URL}/admin`;
+const PRIVACY_URL = `${MARKETPLACE_URL}/privacy`;
+const TERMS_URL = `${MARKETPLACE_URL}/terms`;
+const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260327c`;
+const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=20260327c`;
+
 const BASE_STYLES = `
   :root { color-scheme: light only; supported-color-schemes: light only; }
   body { margin: 0; padding: 0; background: #f3f4f6 !important; font-family: 'Avenir Next', 'Segoe UI', sans-serif; color: #111827 !important; }
@@ -77,7 +92,7 @@ function baseLayout(title, headerSubtitle, content) {
       <div class="header">
         <p class="eyebrow">Forestry Equipment Sales Marketplace</p>
         <div class="header-logo-wrap">
-          <img class="header-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Header.png?v=20260327c" alt="Forestry Equipment Sales" />
+          <img class="header-logo-img" src="${EMAIL_HEADER_ASSET_URL}" alt="Forestry Equipment Sales" />
         </div>
         <h1 class="hero-title">${headerSubtitle}</h1>
         <p class="hero-copy">Industrial forestry equipment leads, listings, financing, and marketplace updates from the Forestry Equipment Sales network.</p>
@@ -89,7 +104,7 @@ function baseLayout(title, headerSubtitle, content) {
       </div>
       <div class="footer">
         <div class="footer-logo-wrap">
-          <img class="footer-logo-img" src="https://timberequip.com/Forestry_Equipment_Sales_Email_Footer.png?v=20260327c" alt="Forestry Equipment Sales" />
+          <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales" />
         </div>
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>
@@ -97,9 +112,9 @@ function baseLayout(title, headerSubtitle, content) {
         </div>
         <p>
           &copy; ${new Date().getFullYear()} Forestry Equipment Sales &mdash; The Forestry Equipment Marketplace<br />
-          <a href="https://timberequip.com">Forestry Equipment Sales</a> &middot;
-          <a href="https://timberequip.com/privacy">Privacy Policy</a> &middot;
-          <a href="https://timberequip.com/terms">Terms</a>
+          <a href="${MARKETPLACE_URL}">Forestry Equipment Sales</a> &middot;
+          <a href="${PRIVACY_URL}">Privacy Policy</a> &middot;
+          <a href="${TERMS_URL}">Terms</a>
         </p>
       </div>
     </div>
@@ -108,7 +123,7 @@ function baseLayout(title, headerSubtitle, content) {
 </html>`;
 }
 
-function renderOptionalEmailFooter(unsubscribeUrl, label = 'Unsubscribe from optional TimberEquip emails') {
+function renderOptionalEmailFooter(unsubscribeUrl, label = 'Unsubscribe from optional Forestry Equipment Sales emails') {
   if (!unsubscribeUrl) return '';
 
   return `
@@ -206,7 +221,7 @@ const templates = {
         { label: 'Seller', value: sellerName },
       ])}
       <a href="${listingUrl}" class="cta">View Listing</a>
-      <a href="https://timberequip.com/search" class="cta cta-secondary">Browse More</a>
+      <a href="${SEARCH_URL}" class="cta cta-secondary">Browse More</a>
     `);
     return { subject, html };
   },
@@ -444,7 +459,7 @@ const templates = {
       <h2>Welcome to Forestry Equipment Sales subscriptions</h2>
       <p>Hi <strong>${displayName}</strong>,</p>
       <p>Your <span class="badge success-badge">${planName}</span> plan has been created successfully. Your account is now set up to publish and manage seller listings inside Forestry Equipment Sales.</p>
-      <a href="https://timberequip.com/profile" class="cta">Manage Subscription</a>
+      <a href="${PROFILE_URL}" class="cta">Manage Subscription</a>
     `);
     return { subject, html };
   },
@@ -584,74 +599,6 @@ const templates = {
     return { subject, html };
   },
 
-  inspectionRequestReceived({ requesterName, equipment, inspectionLocation, timeline, matchedDealerName, dashboardUrl, listingId }) {
-    const subject = `Forestry Equipment Sales inspection request received for ${equipment}`;
-    const html = baseLayout(subject, 'Inspection Request Received', `
-      <p class="label">Inspection Desk</p>
-      <h2>Your inspection request is now in the queue</h2>
-      <p>Hi <strong>${requesterName}</strong>,</p>
-      <p>We received your Forestry Equipment Sales inspection request and routed it to the inspection management desk.</p>
-      ${renderInfoPanel([
-        { label: 'Equipment', value: equipment },
-        { label: 'Listing ID', value: listingId || 'Not linked yet' },
-        { label: 'Location', value: inspectionLocation },
-        { label: 'Requested Timeline', value: timeline || 'Not provided' },
-        { label: 'Recommended Dealer', value: matchedDealerName || 'No dealer matched yet' },
-      ])}
-      <p>An inspection-capable dealer or Forestry Equipment Sales administrator will review the request and respond with acceptance, decline, or a quoted inspection price.</p>
-      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta">Open Forestry Equipment Sales</a>` : ''}
-    `);
-    return { subject, html };
-  },
-
-  inspectionRequestAdmin({ requesterName, requesterEmail, requesterPhone, requesterCompany, equipment, inspectionLocation, timeline, notes, matchedDealerName, matchedDealerLocation, listingUrl, quotedPrice, dashboardUrl }) {
-    const subject = `New Inspection Request: ${equipment}`;
-    const html = baseLayout(subject, 'Inspection Request Submitted', `
-      <p class="label">Inspection Desk</p>
-      <h2>A new inspection request needs review</h2>
-      ${renderInfoPanel([
-        { label: 'Requester', value: requesterName },
-        { label: 'Email', value: requesterEmail },
-        { label: 'Phone', value: requesterPhone },
-        { label: 'Company', value: requesterCompany || 'Not provided' },
-        { label: 'Equipment', value: equipment },
-        { label: 'Inspection Location', value: inspectionLocation },
-        { label: 'Timeline', value: timeline || 'Not provided' },
-        { label: 'Matched Dealer', value: matchedDealerName || 'No dealer matched yet' },
-        { label: 'Dealer Location', value: matchedDealerLocation || 'Not provided' },
-        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not quoted yet') },
-      ])}
-      ${notes ? `<div class="message-box"><p>${notes}</p></div>` : ''}
-      ${listingUrl ? `<a href="${listingUrl}" class="cta">Open Related Listing</a>` : ''}
-      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta cta-secondary">Open Inspection Queue</a>` : ''}
-    `);
-    return { subject, html };
-  },
-
-  inspectionRequestStatusUpdated({ requesterName, equipment, status, quotedPrice, managerName, inspectionLocation, inspectionSheetUrl, completedReportUrl, dashboardUrl, listingId }) {
-    const normalizedStatus = String(status || 'Updated');
-    const subject = `Inspection request ${normalizedStatus.toLowerCase()}: ${equipment}`;
-    const html = baseLayout(subject, 'Inspection Request Updated', `
-      <p class="label">Inspection Desk</p>
-      <h2>Your inspection request has been updated</h2>
-      <p>Hi <strong>${requesterName}</strong>,</p>
-      <p>Your request for <strong>${equipment}</strong> has been updated by ${managerName || 'the Forestry Equipment Sales team'}.</p>
-      ${renderInfoPanel([
-        { label: 'Status', value: normalizedStatus },
-        { label: 'Listing ID', value: listingId || 'Not linked yet' },
-        { label: 'Inspection Location', value: inspectionLocation },
-        { label: 'Quoted Price', value: typeof quotedPrice === 'number' ? `$${quotedPrice.toLocaleString()}` : String(quotedPrice || 'Not provided') },
-      ])}
-      ${inspectionSheetUrl ? '<p>Your inspection sheet is ready. Download it below and share it with the assigned inspector or dealer team.</p>' : ''}
-      ${completedReportUrl ? '<p>Your completed inspection report is now available for download below.</p>' : ''}
-      ${inspectionSheetUrl ? `<a href="${inspectionSheetUrl}" class="cta">Download Inspection Sheet</a>` : ''}
-      ${completedReportUrl ? `<a href="${completedReportUrl}" class="cta cta-secondary">Download Completed Inspection Report</a>` : ''}
-      ${dashboardUrl ? `<a href="${dashboardUrl}" class="cta cta-secondary">Open Inspection Dashboard</a>` : ''}
-      <p>If you have questions about this update, reply directly to the Forestry Equipment Sales inspection desk.</p>
-    `);
-    return { subject, html };
-  },
-
   contactRequestAdmin({ name, email, category, message, source }) {
     const subject = `New Contact Request: ${name || email || 'Unknown contact'}`;
     const html = baseLayout(subject, 'Contact Request', `
@@ -703,7 +650,7 @@ const templates = {
 
       <hr class="divider" />
       <p>These rolling 30-day totals combine listing views, inquiry submissions, and tracked calls. For questions about your report, contact the Forestry Equipment Sales team.</p>
-      <a href="${dashboardUrl || 'https://timberequip.com/profile'}" class="cta">Open Seller Dashboard</a>
+      <a href="${dashboardUrl || PROFILE_URL}" class="cta">Open Seller Dashboard</a>
       ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from monthly performance emails')}
     `);
     return { subject, html };
@@ -739,7 +686,7 @@ const templates = {
         ${tableRows}
       </table>
 
-      <a href="${dashboardUrl || 'https://timberequip.com/admin'}" class="cta">Open Admin Dashboard</a>
+      <a href="${dashboardUrl || ADMIN_URL}" class="cta">Open Admin Dashboard</a>
     `);
     return { subject, html };
   },

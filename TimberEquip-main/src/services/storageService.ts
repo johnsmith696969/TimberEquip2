@@ -83,13 +83,6 @@ export interface UploadedImportAsset {
   kind: 'image' | 'video';
 }
 
-export interface UploadedInspectionDocument {
-  fileName: string;
-  downloadUrl: string;
-  storagePath: string;
-  contentType: string;
-}
-
 class StorageService {
   /**
    * Upload a file to Firebase Storage with progress tracking
@@ -478,52 +471,6 @@ class StorageService {
       downloadUrl: await getDownloadURL(storageRef),
       storagePath,
       kind: isImage ? 'image' : 'video',
-    };
-  }
-
-  async uploadInspectionDocument(
-    file: File,
-    requestId: string,
-    metadata?: {
-      listingId?: string;
-      requesterUid?: string;
-      assignedToUid?: string;
-      kind?: 'template' | 'report';
-    }
-  ): Promise<UploadedInspectionDocument> {
-    if (!DOCUMENT_CONFIG.ALLOWED_TYPES.includes(file.type)) {
-      throw new Error(`Only ${DOCUMENT_CONFIG.ALLOWED_TYPES.join(', ')} files are supported for inspection documents.`);
-    }
-
-    if (file.size > DOCUMENT_CONFIG.MAX_SIZE) {
-      throw new Error(`Inspection document must be smaller than ${Math.round(DOCUMENT_CONFIG.MAX_SIZE / 1024 / 1024)}MB.`);
-    }
-
-    const safeFileName = file.name
-      .replace(/[^a-zA-Z0-9._-]/g, '-')
-      .replace(/-+/g, '-')
-      .slice(0, 140);
-    const storagePath = `inspection-requests/${requestId}/documents/${Date.now()}_${safeFileName}`;
-    const storageRef = ref(storage, storagePath);
-
-    await uploadBytes(storageRef, file, {
-      contentType: file.type,
-      customMetadata: {
-        uploadedBy: auth.currentUser?.uid || '',
-        uploadedAt: new Date().toISOString(),
-        inspectionRequestId: requestId,
-        listingId: metadata?.listingId || '',
-        requesterUid: metadata?.requesterUid || '',
-        assignedToUid: metadata?.assignedToUid || '',
-        kind: metadata?.kind || 'report',
-      },
-    });
-
-    return {
-      fileName: file.name,
-      downloadUrl: await getDownloadURL(storageRef),
-      storagePath,
-      contentType: file.type,
     };
   }
 

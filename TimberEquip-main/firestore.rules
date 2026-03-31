@@ -188,27 +188,6 @@ service cloud.firestore {
       );
     }
 
-    function isInspectionManager() {
-      return isAdmin() || isDealer();
-    }
-
-    function canReadInspectionRequest(data) {
-      return isAuthenticated() && (
-        isInspectionManager() ||
-        data.requesterUid == request.auth.uid ||
-        data.matchedDealerUid == request.auth.uid ||
-        data.assignedToUid == request.auth.uid
-      );
-    }
-
-    function canManageInspectionRequest(data) {
-      return isAuthenticated() && (
-        isAdmin() ||
-        data.matchedDealerUid == request.auth.uid ||
-        data.assignedToUid == request.auth.uid
-      );
-    }
-
     function isListingOwner(data) {
       return isAuthenticated() && (
         (('sellerUid' in data) && data.sellerUid == request.auth.uid) ||
@@ -451,47 +430,6 @@ service cloud.firestore {
              (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
              data.createdAt is timestamp &&
              data.updatedAt is timestamp;
-    }
-
-    function isValidInspectionRequest(data) {
-      return data.keys().hasOnly(['id', 'listingId', 'listingTitle', 'listingUrl', 'reference', 'requesterUid', 'requesterName', 'requesterEmail', 'requesterPhone', 'requesterCompany', 'equipment', 'inspectionLocation', 'timeline', 'notes', 'matchedDealerUid', 'matchedDealerName', 'matchedDealerLocation', 'matchedDealerDistanceMiles', 'assignedToUid', 'assignedToName', 'quotedPrice', 'inspectionTemplateUrl', 'inspectionTemplateFileName', 'inspectionTemplateGeneratedAt', 'inspectionTemplateGeneratedByUid', 'inspectionTemplateGeneratedByName', 'inspectionReportUrl', 'inspectionReportFileName', 'inspectionReportContentType', 'inspectionReportUploadedAt', 'inspectionReportUploadedByUid', 'inspectionReportUploadedByName', 'status', 'createdAt', 'updatedAt', 'reviewedAt', 'respondedAt']) &&
-             isNonEmptyString(data.id, 128) &&
-             (!('listingId' in data) || data.listingId is string) &&
-             (!('listingTitle' in data) || data.listingTitle is string) &&
-             (!('listingUrl' in data) || data.listingUrl is string) &&
-             (!('reference' in data) || data.reference is string) &&
-             (!('requesterUid' in data) || data.requesterUid == null || data.requesterUid is string) &&
-             isNonEmptyString(data.requesterName, 160) &&
-             isValidEmail(data.requesterEmail) &&
-             isNonEmptyString(data.requesterPhone, 40) &&
-             (!('requesterCompany' in data) || (data.requesterCompany is string && data.requesterCompany.size() <= 200)) &&
-             isNonEmptyString(data.equipment, 240) &&
-             isNonEmptyString(data.inspectionLocation, 240) &&
-             (!('timeline' in data) || (data.timeline is string && data.timeline.size() <= 160)) &&
-             (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
-             (!('matchedDealerUid' in data) || data.matchedDealerUid == null || data.matchedDealerUid is string) &&
-             (!('matchedDealerName' in data) || data.matchedDealerName is string) &&
-             (!('matchedDealerLocation' in data) || data.matchedDealerLocation is string) &&
-             (!('matchedDealerDistanceMiles' in data) || data.matchedDealerDistanceMiles == null || (data.matchedDealerDistanceMiles is number && data.matchedDealerDistanceMiles >= 0)) &&
-             (!('assignedToUid' in data) || data.assignedToUid == null || data.assignedToUid is string) &&
-             (!('assignedToName' in data) || data.assignedToName == null || data.assignedToName is string) &&
-             (!('quotedPrice' in data) || data.quotedPrice == null || (data.quotedPrice is number && data.quotedPrice >= 0)) &&
-             (!('inspectionTemplateUrl' in data) || data.inspectionTemplateUrl == null || data.inspectionTemplateUrl is string) &&
-             (!('inspectionTemplateFileName' in data) || data.inspectionTemplateFileName == null || data.inspectionTemplateFileName is string) &&
-             (!('inspectionTemplateGeneratedAt' in data) || data.inspectionTemplateGeneratedAt == null || data.inspectionTemplateGeneratedAt is string) &&
-             (!('inspectionTemplateGeneratedByUid' in data) || data.inspectionTemplateGeneratedByUid == null || data.inspectionTemplateGeneratedByUid is string) &&
-             (!('inspectionTemplateGeneratedByName' in data) || data.inspectionTemplateGeneratedByName == null || data.inspectionTemplateGeneratedByName is string) &&
-             (!('inspectionReportUrl' in data) || data.inspectionReportUrl == null || data.inspectionReportUrl is string) &&
-             (!('inspectionReportFileName' in data) || data.inspectionReportFileName == null || data.inspectionReportFileName is string) &&
-             (!('inspectionReportContentType' in data) || data.inspectionReportContentType == null || data.inspectionReportContentType is string) &&
-             (!('inspectionReportUploadedAt' in data) || data.inspectionReportUploadedAt == null || data.inspectionReportUploadedAt is string) &&
-             (!('inspectionReportUploadedByUid' in data) || data.inspectionReportUploadedByUid == null || data.inspectionReportUploadedByUid is string) &&
-             (!('inspectionReportUploadedByName' in data) || data.inspectionReportUploadedByName == null || data.inspectionReportUploadedByName is string) &&
-             data.status in ['New', 'Quoted', 'Accepted', 'Declined', 'Completed'] &&
-             data.createdAt is timestamp &&
-             data.updatedAt is timestamp &&
-             (!('reviewedAt' in data) || data.reviewedAt == null || data.reviewedAt is timestamp) &&
-             (!('respondedAt' in data) || data.respondedAt == null || data.respondedAt is timestamp);
     }
 
     function isValidDealerFeedIngestLog(data) {
@@ -777,19 +715,6 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    match /inspectionRequests/{requestId} {
-      allow read: if canReadInspectionRequest(resource.data);
-      allow create: if isValidInspectionRequest(request.resource.data) &&
-        request.resource.data.status == 'New' &&
-        (
-          !('requesterUid' in request.resource.data) ||
-          request.resource.data.requesterUid == null ||
-          (isAuthenticated() && request.resource.data.requesterUid == request.auth.uid)
-        );
-      allow update: if canManageInspectionRequest(resource.data) && isValidInspectionRequest(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
     match /invoices/{invoiceId} {
       allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
       allow write: if isAdmin();
@@ -938,6 +863,11 @@ service cloud.firestore {
       match /dealerAuditLogs/{logId} {
         allow read: if isAdmin() || (isAuthenticated() && isDealerAccountScope(resource.data.sellerUid));
         allow create, update, delete: if false;
+      }
+
+      match /publicConfigs/{configId} {
+        allow read: if configId == 'equipmentTaxonomy';
+        allow create, update, delete: if isAdmin() && configId == 'equipmentTaxonomy';
       }
 
       match /twilioNumbers/{numberId} {

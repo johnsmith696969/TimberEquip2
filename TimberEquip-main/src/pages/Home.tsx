@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   TrendingUp,
   ShieldCheck,
@@ -25,7 +25,7 @@ import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { useLocale } from '../components/LocaleContext';
 import { useAuth } from '../components/AuthContext';
-import { getListEquipmentPath } from '../utils/sellerAccess';
+import { appendReturnToParam, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
@@ -108,6 +108,7 @@ const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentSer
   }, {});
 
 export function Home() {
+  const location = useLocation();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const { theme } = useTheme();
   const { t, formatNumber, formatCurrency } = useLocale();
@@ -118,6 +119,10 @@ export function Home() {
   const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildTopLevelMetricMap(cachedMarketplaceData));
   const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
+  const currentReturnPath = `${location.pathname}${location.search}`;
+  const listEquipmentHref = appendReturnToParam(listEquipmentPath, currentReturnPath);
+  const listEquipmentState = currentReturnPath.startsWith('/') ? { returnTo: currentReturnPath } : undefined;
+  const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -260,30 +265,30 @@ export function Home() {
         {
           '@type': 'Organization',
           name: 'Forestry Equipment Sales',
-          alternateName: 'TimberEquip',
-          url: 'https://timberequip.com/',
-          logo: 'https://timberequip.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+          alternateName: 'Forestry Equipment Sales',
+          url: 'https://www.forestryequipmentsales.com/',
+          logo: 'https://www.forestryequipmentsales.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
         },
         {
           '@type': 'WebSite',
           name: 'Forestry Equipment Sales',
-          url: 'https://timberequip.com/',
+          url: 'https://www.forestryequipmentsales.com/',
           inLanguage: 'en-US',
         },
         {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
           description: 'Browse in-stock forestry equipment across categories, manufacturers, models, dealers, and state markets.',
-          url: 'https://timberequip.com/',
+          url: 'https://www.forestryequipmentsales.com/',
         },
         {
           '@type': 'ItemList',
           name: 'Primary marketplace routes',
           itemListElement: [
-            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
-            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
-            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
+            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://www.forestryequipmentsales.com/forestry-equipment-for-sale' },
+            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://www.forestryequipmentsales.com/categories' },
+            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://www.forestryequipmentsales.com/manufacturers' },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://www.forestryequipmentsales.com/dealers' },
           ],
         },
       ],
@@ -371,7 +376,9 @@ export function Home() {
                 <ArrowRight className="ml-3" size={18} />
               </Link>
               <Link
-                to={listEquipmentPath}
+                to={listEquipmentHref}
+                state={listEquipmentState}
+                onClick={handleListEquipmentClick}
                 className={`btn-industrial py-5 px-10 text-base ${
                   theme === 'light'
                     ? 'bg-ink text-bg border-line hover:opacity-90'
@@ -444,7 +451,7 @@ export function Home() {
                 {t('home.browseByCategory', 'Browse by')} <span className="text-muted">{t('layout.categories', 'Category')}</span>
               </h2>
               <p className="text-muted font-medium max-w-3xl mx-auto">
-                Live inventory counts now roll up by major equipment family, so buyers can jump directly into logging, land clearing, trucks, trailers, and other active marketplace segments.
+                Select a category below to see what is currently listed for sale.
               </p>
             </div>
 
@@ -459,7 +466,7 @@ export function Home() {
                 <Link
                   key={i}
                   to={cat.searchPath}
-                  className={`group bg-bg border p-8 flex flex-col text-left hover:border-ink transition-all duration-300 ${selectedCategoryFamily === cat.name ? 'border-ink shadow-md' : 'border-line'}`}
+                  className="group bg-bg border border-line p-8 flex flex-col text-left hover:border-ink transition-all duration-300"
                 >
                   <div className={`w-16 h-16 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
                     <cat.icon size={32} />
@@ -529,7 +536,7 @@ export function Home() {
                   <span className="text-muted">{t('home.analyticsTitleLine2', 'Equipment Analytics')}</span>
                 </h2>
                 <p className="text-muted font-medium">
-                  {t('home.analyticsDescription', 'Access market data to make informed buying and selling decisions. Our AMV (Average Market Value) index tracks live listings across every category.')}
+                  {t('home.analyticsDescription', 'See average market values, recent price changes, and listing counts across every equipment category.')}
                 </p>
               </div>
               <div className="flex items-center space-x-3 mt-8 md:mt-0">
@@ -649,19 +656,25 @@ export function Home() {
       </section>
 
       {/* Financing CTA */}
-      <section className="py-24 bg-[#111827] px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/2 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
+      <section
+        className={`py-24 px-4 md:px-8 relative overflow-hidden ${
+          theme === 'dark'
+            ? 'bg-[#111827]'
+            : 'bg-gradient-to-br from-[#f7f4ec] via-white to-[#eef6f0] border-y border-line'
+        }`}
+      >
+        <div className={`absolute top-0 right-0 w-1/2 h-full skew-x-12 translate-x-1/2 ${theme === 'dark' ? 'bg-accent/10' : 'bg-accent/8'}`}></div>
+        <div className={`absolute inset-y-0 left-0 w-1/3 ${theme === 'dark' ? 'bg-transparent' : 'bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.08),transparent_65%)]'}`}></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div>
               <span className="label-micro text-accent mb-4 block">Equipment Financing</span>
-              <h2 className="text-5xl md:text-7xl font-black text-white tracking-tighter uppercase leading-none mb-8">
+              <h2 className={`text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
                 Flexible <br />
                 <span className="text-accent">Financing</span>
               </h2>
-              <p className="text-white/60 text-lg font-medium mb-12 max-w-lg">
-                Customized credit for forestry operations. 
-                Fast approvals, flexible terms, and competitive rates tailored to your business.
+              <p className={`text-lg font-medium mb-12 max-w-lg ${theme === 'dark' ? 'text-white/60' : 'text-muted'}`}>
+                Apply for equipment financing and get a credit decision, typically within one business day.
               </p>
               <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                 <Link to="/financing" className="btn-industrial btn-accent py-5 px-10">
@@ -676,10 +689,17 @@ export function Home() {
                 { label: 'Terms Up To', value: '84 Months', icon: Activity },
                 { label: 'Down Payment', value: 'From 0%', icon: Calculator }
               ].map((item, i) => (
-                <div key={i} className="bg-white/5 border border-white/10 p-8">
+                <div
+                  key={i}
+                  className={`p-8 ${
+                    theme === 'dark'
+                      ? 'bg-white/5 border border-white/10'
+                      : 'bg-white/90 border border-line shadow-sm'
+                  }`}
+                >
                   <item.icon className="text-accent mb-4" size={24} />
-                  <span className="label-micro text-white/40 block mb-1">{item.label}</span>
-                  <span className="text-2xl font-black text-white tracking-tighter">{item.value}</span>
+                  <span className={`label-micro block mb-1 ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>{item.label}</span>
+                  <span className={`text-2xl font-black tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>{item.value}</span>
                 </div>
               ))}
             </div>

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, LoaderCircle, MailX } from 'lucide-react';
+import { Seo } from '../components/Seo';
+import { NOINDEX_ROBOTS } from '../utils/listingPath';
 
 type UnsubscribeState = {
   email: string;
@@ -97,6 +99,11 @@ export function Unsubscribe() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-12 md:px-8">
+      <Seo
+        title="Unsubscribe | Forestry Equipment Sales"
+        description="Manage your email notification preferences for Forestry Equipment Sales."
+        robots={NOINDEX_ROBOTS}
+      />
       <div className="rounded-sm border border-line bg-surface p-8 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-sm border border-accent/30 bg-accent/10 p-3 text-accent">
@@ -109,7 +116,7 @@ export function Unsubscribe() {
         </div>
 
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted">
-          Use this page to stop optional saved-search alerts and monthly performance emails. TimberEquip may still send required
+          Use this page to stop optional saved-search alerts and monthly performance emails. Forestry Equipment Sales may still send required
           security, billing, listing-status, and account-service messages.
         </p>
 
@@ -132,7 +139,7 @@ export function Unsubscribe() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Subscriber</p>
-                <p className="mt-2 text-lg font-black tracking-tight text-ink">{state.displayName || 'TimberEquip subscriber'}</p>
+                <p className="mt-2 text-lg font-black tracking-tight text-ink">{state.displayName || 'Forestry Equipment Sales subscriber'}</p>
                 <p className="mt-1 text-sm text-muted">{state.email}</p>
               </div>
               <div>
@@ -164,7 +171,7 @@ export function Unsubscribe() {
               <div className="mt-6 flex items-start gap-3 rounded-sm border border-data/30 bg-data/10 px-4 py-4 text-sm font-bold text-data">
                 <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
                 <span>
-                  Optional TimberEquip emails are turned off for {state.email}. Required security, billing, and listing-service emails may still be sent.
+                  Optional Forestry Equipment Sales emails are turned off for {state.email}. Required security, billing, and listing-service emails may still be sent.
                 </span>
               </div>
             ) : null}

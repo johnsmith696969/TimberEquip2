@@ -62,6 +62,36 @@ function resolveFirestoreDatabaseId() {
 
 const FIRESTORE_DB_ID = resolveFirestoreDatabaseId();
 function getDb() { return getFirestore(resolveFirestoreDatabaseId()); }
+const LISTING_SEQUENCE_COUNTER_COLLECTION = 'systemCounters';
+const LISTING_SEQUENCE_COUNTER_DOC = 'listingSequence';
+const FIRST_SEQUENTIAL_LISTING_ID = 12000;
+
+async function reserveNextSequentialListingId() {
+  const db = getDb();
+  const counterRef = db.collection(LISTING_SEQUENCE_COUNTER_COLLECTION).doc(LISTING_SEQUENCE_COUNTER_DOC);
+
+  return db.runTransaction(async (transaction) => {
+    const counterSnapshot = await transaction.get(counterRef);
+    const currentValue = Number(counterSnapshot.data()?.lastIssuedId);
+    let nextValue = Number.isFinite(currentValue) && currentValue >= FIRST_SEQUENTIAL_LISTING_ID
+      ? Math.trunc(currentValue) + 1
+      : FIRST_SEQUENTIAL_LISTING_ID;
+
+    while (true) {
+      const listingRef = db.collection('listings').doc(String(nextValue));
+      const listingSnapshot = await transaction.get(listingRef);
+      if (!listingSnapshot.exists) {
+        transaction.set(counterRef, {
+          lastIssuedId: nextValue,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return String(nextValue);
+      }
+
+      nextValue += 1;
+    }
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SendGrid configuration via Firebase secrets.
@@ -85,6 +115,8 @@ const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
+let publicNewsCache = null;
+const PUBLIC_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
 const dealerFeedXmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '',
@@ -121,8 +153,8 @@ function htmlToText(html) {
 
 async function sendEmail({ to, subject, html, replyTo }) {
   ensureSendGridClientConfigured();
-  const from = String(EMAIL_FROM.value() || '"Forestry Equipment Sales" <noreply@timberequip.com>').trim();
-  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || 'info@timberequip.com').trim();
+  const from = String(EMAIL_FROM.value() || '"Forestry Equipment Sales" <caleb@forestryequipmentsales.com>').trim();
+  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || 'caleb@forestryequipmentsales.com').trim();
   const recipients = (Array.isArray(to) ? to : [to])
     .map((recipient) => String(recipient || '').trim())
     .filter(Boolean);
@@ -160,11 +192,11 @@ function getAdminRecipients() {
     return fromSecret;
   }
 
-  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || 'noreply@timberequip.com').trim());
-  return fallback ? [fallback] : ['noreply@timberequip.com'];
+  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || 'caleb@forestryequipmentsales.com').trim());
+  return fallback ? [fallback] : ['caleb@forestryequipmentsales.com'];
 }
 
-const APP_URL = 'https://timberequip.com';
+const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://www.forestryequipmentsales.com');
 const STAGING_APP_URL = 'https://timberequip-staging.web.app';
 function resolveConfiguredAppUrl() {
   const projectId = String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || '').trim().toLowerCase();
@@ -176,8 +208,8 @@ function resolveConfiguredAppUrl() {
 
 function getEmailPreferenceSigningSecret() {
   const seed = [
-    String(SENDGRID_API_KEY.value() || '').trim() || String(EMAIL_FROM.value() || '').trim() || 'timberequip-email',
-    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'timberequip').trim(),
+    String(SENDGRID_API_KEY.value() || '').trim() || String(EMAIL_FROM.value() || '').trim() || 'forestry-equipment-sales-email',
+    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'forestry-equipment-sales').trim(),
     'email-preferences',
   ].join('|');
 
@@ -746,188 +778,6 @@ async function geocodeLocation(address) {
 
   geocodeCache.set(cacheKey, geocoded);
   return geocoded;
-}
-
-async function resolveInspectionTarget({ listingId, reference, inspectionLocation }) {
-  const db = getDb();
-  const directListingId = String(listingId || '').trim() || parseListingIdFromReference(reference);
-  const explicitInspectionLocation = String(inspectionLocation || '').trim();
-  let listingSnap = null;
-
-  if (directListingId) {
-    const possibleListingSnap = await db.collection('listings').doc(directListingId).get();
-    if (possibleListingSnap.exists) {
-      listingSnap = possibleListingSnap;
-    }
-  }
-
-  if (!listingSnap && reference) {
-    const byStockNumber = await db
-      .collection('listings')
-      .where('stockNumber', '==', String(reference || '').trim())
-      .limit(1)
-      .get();
-    if (!byStockNumber.empty) {
-      listingSnap = byStockNumber.docs[0];
-    }
-  }
-
-  if (!listingSnap) {
-    return {
-      listing: null,
-      targetLocation: explicitInspectionLocation,
-      targetCoordinates: await geocodeLocation(inspectionLocation),
-    };
-  }
-
-  const listingData = listingSnap.data() || {};
-  const listingCoordinates = extractListingCoordinates(listingData);
-  const targetLocation = explicitInspectionLocation || String(listingData.location || '').trim();
-  const geocodedLocation = listingCoordinates ? null : await geocodeLocation(targetLocation);
-
-  return {
-    listing: {
-      id: listingSnap.id,
-      title: String(listingData.title || '').trim(),
-      stockNumber: String(listingData.stockNumber || '').trim(),
-      location: String(listingData.location || '').trim(),
-      latitude: listingCoordinates?.lat,
-      longitude: listingCoordinates?.lng,
-      sellerUid: String(listingData.sellerUid || listingData.sellerId || '').trim(),
-      url: `${APP_URL}${buildListingPublicPath({
-        id: listingSnap.id,
-        title: listingData.title,
-        year: listingData.year,
-        make: listingData.make,
-        manufacturer: listingData.manufacturer,
-        brand: listingData.brand,
-        model: listingData.model,
-        category: listingData.category,
-        subcategory: listingData.subcategory,
-        location: listingData.location,
-      })}`,
-    },
-    targetLocation,
-    targetCoordinates: listingCoordinates || geocodedLocation,
-  };
-}
-
-async function getInspectionDealerCandidates() {
-  const roles = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'];
-  const snapshot = await getDb().collection('users').where('role', 'in', roles).get();
-
-  return snapshot.docs
-    .map((doc) => {
-      const data = doc.data() || {};
-      if (data.inspectionCoverageEnabled !== true) return null;
-
-      const location = String(data.inspectionCoverageTerritory || data.location || '').trim();
-      if (!location) return null;
-
-      const candidateName = String(data.storefrontName || data.displayName || data.company || data.name || '').trim();
-      return {
-        uid: doc.id,
-        name: candidateName || 'Forestry Equipment Sales Dealer',
-        storefrontName: String(data.storefrontName || '').trim(),
-        company: String(data.company || '').trim(),
-        email: String(data.email || '').trim(),
-        phone: String(data.phoneNumber || data.phone || '').trim(),
-        website: String(data.website || '').trim(),
-        role: String(data.role || '').trim(),
-        location,
-        storefrontSlug: String(data.storefrontSlug || '').trim(),
-      };
-    })
-    .filter(Boolean);
-}
-
-async function findClosestInspectionDealer(input) {
-  const { listing, targetLocation, targetCoordinates } = await resolveInspectionTarget(input);
-  const candidates = await getInspectionDealerCandidates();
-
-  if (candidates.length === 0) {
-    return {
-      listing,
-      targetLocation,
-      targetCoordinates,
-      recommendedDealer: null,
-      alternatives: [],
-      geocodingConfigured: Boolean(String(GOOGLE_MAPS_API_KEY.value() || '').trim()),
-      matchType: 'none',
-    };
-  }
-
-  const geocodedCandidates = await Promise.all(
-    candidates.map(async (candidate) => {
-      const coordinates = await geocodeLocation(candidate.location);
-      const fallbackScore = buildLocationFallbackScore(targetLocation, candidate.location);
-      const distance = targetCoordinates && coordinates
-        ? distanceMiles(targetCoordinates.lat, targetCoordinates.lng, coordinates.lat, coordinates.lng)
-        : null;
-
-      return {
-        ...candidate,
-        distanceMiles: distance,
-        locationCoordinates: coordinates,
-        fallbackScore,
-      };
-    })
-  );
-
-  const ranked = geocodedCandidates
-    .filter((candidate) => candidate.distanceMiles !== null || candidate.fallbackScore > 0)
-    .sort((a, b) => {
-      if (a.distanceMiles !== null && b.distanceMiles !== null) return a.distanceMiles - b.distanceMiles;
-      if (a.distanceMiles !== null) return -1;
-      if (b.distanceMiles !== null) return 1;
-      if (b.fallbackScore !== a.fallbackScore) return b.fallbackScore - a.fallbackScore;
-      return a.name.localeCompare(b.name);
-    });
-
-  const topMatches = ranked.slice(0, 3).map((candidate) => ({
-    uid: candidate.uid,
-    name: candidate.name,
-    storefrontName: candidate.storefrontName,
-    company: candidate.company,
-    email: candidate.email,
-    phone: candidate.phone,
-    website: candidate.website,
-    role: candidate.role,
-    location: candidate.location,
-    storefrontSlug: candidate.storefrontSlug,
-    distanceMiles: candidate.distanceMiles,
-  }));
-
-  return {
-    listing,
-    targetLocation,
-    targetCoordinates,
-    recommendedDealer: topMatches[0] || null,
-    alternatives: topMatches.slice(1),
-    geocodingConfigured: Boolean(String(GOOGLE_MAPS_API_KEY.value() || '').trim()),
-    matchType: topMatches[0]?.distanceMiles !== undefined && topMatches[0]?.distanceMiles !== null ? 'distance' : 'location-fallback',
-  };
-}
-
-async function getInspectionNotificationRecipients() {
-  const roles = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'];
-  const snapshot = await getDb().collection('users').where('role', 'in', roles).get();
-  const recipients = new Map();
-
-  snapshot.docs.forEach((doc) => {
-    const data = doc.data() || {};
-    const email = String(data.email || '').trim().toLowerCase();
-    if (!email) return;
-
-    recipients.set(email, {
-      uid: doc.id,
-      email,
-      name: String(data.displayName || data.storefrontName || data.company || 'Inspection Manager').trim(),
-      role: String(data.role || '').trim(),
-    });
-  });
-
-  return Array.from(recipients.values());
 }
 
 async function buildEmailVerificationLink(email) {
@@ -3466,108 +3316,6 @@ exports.onInquiryCreated = onDocumentCreated(
   }
 );
 
-exports.onInspectionRequestCreated = onDocumentCreated(
-  {
-    document: 'inspectionRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const requesterEmail = String(request.requesterEmail || '').trim();
-    const inspectionManagers = await getInspectionNotificationRecipients();
-    const dashboardUrl = `${APP_URL}/profile?tab=${encodeURIComponent('Inspections')}`;
-    const listingUrl = String(request.listingUrl || '').trim();
-
-    await Promise.all(
-      inspectionManagers.map(async (recipient) => {
-        try {
-          const payload = templates.inspectionRequestAdmin({
-            requesterName: request.requesterName || 'Unknown requester',
-            requesterEmail: requesterEmail || '',
-            requesterPhone: request.requesterPhone || '',
-            requesterCompany: request.requesterCompany || '',
-            equipment: request.equipment || request.listingTitle || 'Equipment inspection',
-            inspectionLocation: request.inspectionLocation || 'Unknown',
-            timeline: request.timeline || '',
-            notes: request.notes || '',
-            matchedDealerName: request.matchedDealerName || request.assignedToName || '',
-            matchedDealerLocation: request.matchedDealerLocation || '',
-            listingUrl,
-            quotedPrice: typeof request.quotedPrice === 'number' ? request.quotedPrice : null,
-            dashboardUrl,
-          });
-          await sendEmail({ to: recipient.email, ...payload });
-        } catch (error) {
-          logger.error(`Failed to send inspection manager email to ${recipient.email}`, error);
-        }
-      })
-    );
-
-    if (requesterEmail) {
-      try {
-        const payload = templates.inspectionRequestReceived({
-          requesterName: request.requesterName || 'there',
-          equipment: request.equipment || request.listingTitle || 'Equipment inspection',
-          listingId: request.listingId || request.reference || '',
-          inspectionLocation: request.inspectionLocation || 'Unknown',
-          timeline: request.timeline || '',
-          matchedDealerName: request.matchedDealerName || request.assignedToName || '',
-          dashboardUrl: APP_URL,
-        });
-        await sendEmail({ to: requesterEmail, ...payload });
-      } catch (error) {
-        logger.error('Failed to send inspection requester confirmation', error);
-      }
-    }
-  }
-);
-
-exports.onInspectionRequestUpdated = onDocumentUpdated(
-  {
-    document: 'inspectionRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const before = event.data?.before?.data();
-    const after = event.data?.after?.data();
-    if (!before || !after) return;
-
-    const statusChanged = String(before.status || '') !== String(after.status || '');
-    const quotedPriceChanged = Number(before.quotedPrice || 0) !== Number(after.quotedPrice || 0);
-    const inspectionSheetChanged = String(before.inspectionTemplateUrl || '') !== String(after.inspectionTemplateUrl || '');
-    const completedReportChanged = String(before.inspectionReportUrl || '') !== String(after.inspectionReportUrl || '');
-
-    if (!statusChanged && !quotedPriceChanged && !inspectionSheetChanged && !completedReportChanged) return;
-
-    const requesterEmail = String(after.requesterEmail || '').trim();
-    if (!requesterEmail) return;
-
-    try {
-      const payload = templates.inspectionRequestStatusUpdated({
-        requesterName: after.requesterName || 'there',
-        equipment: after.equipment || after.listingTitle || 'Equipment inspection',
-        status: after.status || 'Updated',
-        quotedPrice: typeof after.quotedPrice === 'number' ? after.quotedPrice : null,
-        managerName: after.assignedToName || after.matchedDealerName || 'the Forestry Equipment Sales inspection team',
-        inspectionLocation: after.inspectionLocation || 'Unknown',
-        inspectionSheetUrl: String(after.inspectionTemplateUrl || '').trim(),
-        completedReportUrl: String(after.inspectionReportUrl || '').trim(),
-        dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Inspections')}`,
-        listingId: after.listingId || after.reference || '',
-      });
-      await sendEmail({ to: requesterEmail, ...payload });
-    } catch (error) {
-      logger.error('Failed to send inspection requester update', error);
-    }
-  }
-);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // EMAIL TRIGGER: New user → send welcome + email verification
 // Auth trigger via Firestore user profile creation
@@ -4519,7 +4267,7 @@ exports.monthlyDealerReport = onSchedule(
           missedCalls: summary.missedCalls,
           totalViews: summary.totalViews,
           topMachines: summary.topMachines,
-          dashboardUrl: 'https://timberequip.com/profile',
+          dashboardUrl: 'https://www.forestryequipmentsales.com/profile',
           unsubscribeUrl: buildEmailUnsubscribeUrl({
             uid: summary.sellerUid,
             email: summary.email,
@@ -4547,7 +4295,7 @@ exports.monthlyDealerReport = onSchedule(
         const { subject, html } = templates.dealerMonthlyReportAdminSummary({
           monthLabel: report.periodLabel,
           sellerSummaries: adminSummaries,
-          dashboardUrl: 'https://timberequip.com/admin',
+          dashboardUrl: 'https://www.forestryequipmentsales.com/admin',
         });
         await sendEmail({ to: getAdminRecipients(), subject, html });
       } catch (adminEmailError) {
@@ -5000,6 +4748,147 @@ function serializeBlogPostRecord(docSnapshot) {
     createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
     updatedAt: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
   };
+}
+
+function serializePublicNewsPostFromBlog(docSnapshot) {
+  const record = serializeBlogPostRecord(docSnapshot);
+  return {
+    id: `blog-${record.id}`,
+    title: record.title,
+    summary: normalizeNonEmptyString(record.excerpt) || htmlToText(record.content).slice(0, 220),
+    content: record.content,
+    author: normalizeNonEmptyString(record.authorName, 'Forestry Equipment Sales Editorial'),
+    date: normalizeNonEmptyString(record.updatedAt || record.createdAt, new Date().toISOString()),
+    image: normalizeNonEmptyString(record.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+    category: normalizeNonEmptyString(record.category, 'Industry News'),
+    seoTitle: normalizeNonEmptyString(record.seoTitle) || undefined,
+    seoDescription: normalizeNonEmptyString(record.seoDescription) || undefined,
+    seoKeywords: Array.isArray(record.seoKeywords) ? record.seoKeywords : [],
+    seoSlug: normalizeNonEmptyString(record.seoSlug) || undefined,
+  };
+}
+
+function serializePublicNewsPostFromLegacy(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    title: normalizeNonEmptyString(data.title, 'Untitled'),
+    summary: normalizeNonEmptyString(data.summary) || htmlToText(data.content).slice(0, 220),
+    content: normalizeNonEmptyString(data.content),
+    author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
+    date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    image: normalizeNonEmptyString(data.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+    category: normalizeNonEmptyString(data.category, 'Industry News'),
+    seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
+    seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((entry) => typeof entry === 'string') : [],
+    seoSlug: normalizeNonEmptyString(data.seoSlug) || undefined,
+  };
+}
+
+async function getPublicNewsFeedPayload() {
+  if (publicNewsCache && Date.now() - publicNewsCache.fetchedAt < PUBLIC_NEWS_CACHE_TTL_MS) {
+    return publicNewsCache.posts;
+  }
+
+  const [legacyNewsResult, blogPostsResult] = await Promise.allSettled([
+    getDb().collection('news').get(),
+    getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(36).get(),
+  ]);
+
+  const legacyNews = legacyNewsResult.status === 'fulfilled'
+    ? legacyNewsResult.value.docs.map((docSnapshot) => serializePublicNewsPostFromLegacy(docSnapshot))
+    : [];
+
+  const blogPosts = blogPostsResult.status === 'fulfilled'
+    ? blogPostsResult.value.docs
+        .map((docSnapshot) => serializeBlogPostRecord(docSnapshot))
+        .filter((post) => {
+          const status = normalizeNonEmptyString(post.status).toLowerCase();
+          const reviewStatus = normalizeNonEmptyString(post.reviewStatus || post.status).toLowerCase();
+          return status === 'published' || reviewStatus === 'published';
+        })
+        .map((post) => ({
+          id: `blog-${post.id}`,
+          title: post.title,
+          summary: normalizeNonEmptyString(post.excerpt) || htmlToText(post.content).slice(0, 220),
+          content: post.content,
+          author: normalizeNonEmptyString(post.authorName, 'Forestry Equipment Sales Editorial'),
+          date: normalizeNonEmptyString(post.updatedAt || post.createdAt, new Date().toISOString()),
+          image: normalizeNonEmptyString(post.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+          category: normalizeNonEmptyString(post.category, 'Industry News'),
+          seoTitle: normalizeNonEmptyString(post.seoTitle) || undefined,
+          seoDescription: normalizeNonEmptyString(post.seoDescription) || undefined,
+          seoKeywords: Array.isArray(post.seoKeywords) ? post.seoKeywords : [],
+          seoSlug: normalizeNonEmptyString(post.seoSlug) || undefined,
+        }))
+    : [];
+
+  if (legacyNewsResult.status === 'rejected' && blogPostsResult.status === 'rejected') {
+    const firstError = legacyNewsResult.reason || blogPostsResult.reason;
+    if (Array.isArray(publicNewsCache?.posts)) {
+      logger.warn('Using cached public news feed because live reads failed.', {
+        error: firstError instanceof Error ? firstError.message : String(firstError || ''),
+      });
+      return publicNewsCache.posts;
+    }
+    throw (firstError instanceof Error ? firstError : new Error('Unable to load public news feed.'));
+  }
+
+  const posts = [...blogPosts, ...legacyNews].sort((left, right) => {
+    const leftDate = Date.parse(normalizeNonEmptyString(left.date)) || 0;
+    const rightDate = Date.parse(normalizeNonEmptyString(right.date)) || 0;
+    return rightDate - leftDate;
+  });
+
+  publicNewsCache = {
+    posts,
+    fetchedAt: Date.now(),
+  };
+
+  return posts;
+}
+
+async function getPublicNewsPostPayload(id) {
+  const normalizedId = normalizeNonEmptyString(id);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const cachedPost = Array.isArray(publicNewsCache?.posts)
+    ? publicNewsCache.posts.find((post) => normalizeNonEmptyString(post.id) === normalizedId)
+    : null;
+  if (cachedPost) {
+    return cachedPost;
+  }
+
+  if (normalizedId.startsWith('blog-')) {
+    const blogPostId = normalizedId.slice(5);
+    if (!blogPostId) {
+      return null;
+    }
+
+    const docSnapshot = await getDb().collection('blogPosts').doc(blogPostId).get();
+    if (!docSnapshot.exists) {
+      return null;
+    }
+
+    const record = serializeBlogPostRecord(docSnapshot);
+    const status = normalizeNonEmptyString(record.status).toLowerCase();
+    const reviewStatus = normalizeNonEmptyString(record.reviewStatus || record.status).toLowerCase();
+    if (status !== 'published' && reviewStatus !== 'published') {
+      return null;
+    }
+
+    return serializePublicNewsPostFromBlog(docSnapshot);
+  }
+
+  const docSnapshot = await getDb().collection('news').doc(normalizedId).get();
+  if (!docSnapshot.exists) {
+    return null;
+  }
+
+  return serializePublicNewsPostFromLegacy(docSnapshot);
 }
 
 function buildMarketplaceListingPayload(listingId, rawListing) {
@@ -6586,10 +6475,6 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
   assignString('about', 5000);
   assignString('bio', 1200);
   assignString('location', 240);
-  assignString('inspectionCoverageTerritory', 240);
-  assignString('inspectionEquipmentFocus', 240);
-  assignString('inspectionCertifications', 240);
-  assignString('inspectionCoverageNotes', 2000);
   assignString('photoURL', 2000);
   assignString('coverPhotoUrl', 2000);
   assignString('preferredLanguage', 16);
@@ -6605,14 +6490,6 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
 
   if ('emailNotificationsEnabled' in payload) {
     sanitized.emailNotificationsEnabled = Boolean(payload.emailNotificationsEnabled);
-  }
-
-  if ('inspectionCoverageEnabled' in payload) {
-    sanitized.inspectionCoverageEnabled = Boolean(payload.inspectionCoverageEnabled);
-  }
-
-  if ('inspectionCoverageUpdatedAt' in payload) {
-    sanitized.inspectionCoverageUpdatedAt = normalizeNonEmptyString(payload.inspectionCoverageUpdatedAt) || null;
   }
 
   if ('mfaEnabled' in payload) {
@@ -6687,12 +6564,6 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     about: normalizeNonEmptyString(userData.about) || '',
     bio: normalizeNonEmptyString(userData.bio) || '',
     location: normalizeNonEmptyString(userData.location) || '',
-    inspectionCoverageEnabled: Boolean(userData.inspectionCoverageEnabled),
-    inspectionCoverageTerritory: normalizeNonEmptyString(userData.inspectionCoverageTerritory) || '',
-    inspectionEquipmentFocus: normalizeNonEmptyString(userData.inspectionEquipmentFocus) || '',
-    inspectionCertifications: normalizeNonEmptyString(userData.inspectionCertifications) || '',
-    inspectionCoverageNotes: normalizeNonEmptyString(userData.inspectionCoverageNotes) || '',
-    inspectionCoverageUpdatedAt: normalizeNonEmptyString(userData.inspectionCoverageUpdatedAt) || null,
     storefrontEnabled: Boolean(userData.storefrontEnabled),
     storefrontSlug: normalizeNonEmptyString(userData.storefrontSlug) || '',
     storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
@@ -8960,7 +8831,6 @@ function applyApiResponseCachePolicy(res, req, path) {
     || normalizedPath.startsWith('/dealer/')
     || normalizedPath.startsWith('/billing/')
     || normalizedPath.startsWith('/auth/')
-    || normalizedPath.startsWith('/inspections/')
     || normalizedPath.startsWith('/translate')
   );
 
@@ -9685,7 +9555,7 @@ exports.apiProxy = onRequest(
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
         res.set('Content-Type', 'application/javascript; charset=utf-8');
-        return res.status(200).send(`(function(){var script=document.currentScript;var dealer=script&&script.dataset?script.dataset.dealer:'';var targetId=script&&script.dataset?script.dataset.target:'';var limit=script&&script.dataset&&script.dataset.limit?script.dataset.limit:'12';var featuredOnly=script&&script.dataset&&script.dataset.featuredOnly?script.dataset.featuredOnly:'false';if(!dealer){console.error('TimberEquip dealer embed requires data-dealer.');return;}var target=targetId?document.getElementById(targetId):null;if(!target){target=document.createElement('div');if(script&&script.parentNode){script.parentNode.insertBefore(target,script.nextSibling);}else{document.body.appendChild(target);}}var iframe=document.createElement('iframe');var params=new URLSearchParams();if(limit)params.set('limit',limit);if(featuredOnly)params.set('featuredOnly',featuredOnly);iframe.src='${APP_URL}/api/public/dealers/'+encodeURIComponent(dealer)+'/embed?'+params.toString();iframe.loading='lazy';iframe.style.width='100%';iframe.style.minHeight=(script&&script.dataset&&script.dataset.height?script.dataset.height:'980')+'px';iframe.style.border='0';iframe.style.display='block';iframe.setAttribute('referrerpolicy','strict-origin-when-cross-origin');target.innerHTML='';target.appendChild(iframe);})();`);
+        return res.status(200).send(`(function(){var script=document.currentScript;var dealer=script&&script.dataset?script.dataset.dealer:'';var targetId=script&&script.dataset?script.dataset.target:'';var limit=script&&script.dataset&&script.dataset.limit?script.dataset.limit:'12';var featuredOnly=script&&script.dataset&&script.dataset.featuredOnly?script.dataset.featuredOnly:'false';if(!dealer){console.error('Forestry Equipment Sales dealer embed requires data-dealer.');return;}var target=targetId?document.getElementById(targetId):null;if(!target){target=document.createElement('div');if(script&&script.parentNode){script.parentNode.insertBefore(target,script.nextSibling);}else{document.body.appendChild(target);}}var iframe=document.createElement('iframe');var params=new URLSearchParams();if(limit)params.set('limit',limit);if(featuredOnly)params.set('featuredOnly',featuredOnly);iframe.src='${APP_URL}/api/public/dealers/'+encodeURIComponent(dealer)+'/embed?'+params.toString();iframe.loading='lazy';iframe.style.width='100%';iframe.style.minHeight=(script&&script.dataset&&script.dataset.height?script.dataset.height:'980')+'px';iframe.style.border='0';iframe.style.display='block';iframe.setAttribute('referrerpolicy','strict-origin-when-cross-origin');target.innerHTML='';target.appendChild(iframe);})();`);
       }
 
       if (req.method === 'POST' && (path === '/billing/webhook' || path === '/webhooks/stripe')) {
@@ -9896,31 +9766,6 @@ exports.apiProxy = onRequest(
           sessionId: session.id,
           url: session.url,
         });
-      }
-
-      if (req.method === 'POST' && path === '/inspections/closest-dealer') {
-        const listingId = String(req.body?.listingId || '').trim();
-        const reference = String(req.body?.reference || '').trim();
-        const inspectionLocation = String(req.body?.inspectionLocation || '').trim();
-
-        if (!listingId && !reference && !inspectionLocation) {
-          return res.status(400).json({ error: 'A listing id, listing reference, or inspection location is required.' });
-        }
-
-        const result = await findClosestInspectionDealer({
-          listingId,
-          reference,
-          inspectionLocation,
-        });
-
-        if (!result.recommendedDealer) {
-          return res.status(404).json({
-            error: 'No inspection-capable dealer could be matched for that machine yet.',
-            ...result,
-          });
-        }
-
-        return res.status(200).json(result);
       }
 
       if ((req.method === 'GET' || req.method === 'POST') && path === '/email-preferences/unsubscribe') {
@@ -10942,9 +10787,8 @@ exports.apiProxy = onRequest(
         }
 
         const requestedId = normalizeNonEmptyString(listingInput.id);
-        const listingRef = requestedId
-          ? getDb().collection('listings').doc(requestedId)
-          : getDb().collection('listings').doc();
+        const resolvedListingId = requestedId || await reserveNextSequentialListingId();
+        const listingRef = getDb().collection('listings').doc(resolvedListingId);
 
         if (requestedId) {
           const existingListingSnap = await listingRef.get();
@@ -11697,6 +11541,49 @@ exports.apiProxy = onRequest(
         }
       }
 
+      if (req.method === 'GET' && path === '/public/news') {
+        try {
+          const posts = await getPublicNewsFeedPayload();
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ posts });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Public news API is returning a quota-limited fallback feed.');
+            const cachedPosts = Array.isArray(publicNewsCache?.posts) ? publicNewsCache.posts : [];
+            return res.status(200).json(buildQuotaLimitedPayload('posts', cachedPosts, 'Equipment News is temporarily unavailable because the Firestore daily read quota is exhausted.', {
+              source: cachedPosts.length > 0 ? 'cached_news_fallback' : 'quota_fallback',
+            }));
+          }
+          throw error;
+        }
+      }
+
+      if (req.method === 'GET' && path.startsWith('/public/news/')) {
+        const requestedNewsId = decodeURIComponent(path.slice('/public/news/'.length)).trim();
+        if (!requestedNewsId) {
+          return res.status(400).json({ error: 'News identifier is required.' });
+        }
+
+        try {
+          const post = await getPublicNewsPostPayload(requestedNewsId);
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ post });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Public news detail API is returning a quota-limited fallback.', {
+              requestedNewsId,
+            });
+            const cachedPost = Array.isArray(publicNewsCache?.posts)
+              ? publicNewsCache.posts.find((post) => normalizeNonEmptyString(post.id) === requestedNewsId) || null
+              : null;
+            return res.status(200).json(buildQuotaLimitedPayload('post', cachedPost, 'This Equipment News article is temporarily unavailable because the Firestore daily read quota is exhausted.', {
+              source: cachedPost ? 'cached_news_fallback' : 'quota_fallback',
+            }));
+          }
+          throw error;
+        }
+      }
+
       if (req.method === 'GET' && path === '/account/storefront') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -12314,7 +12201,7 @@ exports.apiProxy = onRequest(
             await sendEmail({
               to: recipients,
               ...payload,
-              replyTo: 'info@timberequip.com',
+              replyTo: 'caleb@forestryequipmentsales.com',
             });
             results.push({ template: String(templateKey || ''), status: 'sent', subject: payload.subject });
           } catch (error) {
@@ -12325,7 +12212,7 @@ exports.apiProxy = onRequest(
 
         return res.status(200).json({
           recipients,
-          replyTo: 'info@timberequip.com',
+          replyTo: 'caleb@forestryequipmentsales.com',
           sentBy: actor.actorEmail,
           results,
         });

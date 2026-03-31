@@ -8,6 +8,7 @@ import {
 import { Listing } from '../types';
 import { useLocale } from './LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
+import { normalizeListingId } from '../utils/listingIdentity';
 
 interface ListingCardProps {
   listing: Listing;
@@ -46,7 +47,7 @@ export function ListingCard({
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
   const amvPercent = hasAmv ? Math.abs((amvDiff / safeMarketValueEstimate) * 100).toFixed(1) : null;
-  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/timberequip-placeholder/640/480';
+  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/forestryequipmentsales-placeholder/640/480';
   const estimatedMonthlyPayment = Math.round(calcMonthlyPayment(safePrice, 6, 60));
   const displayMake = listing.make || listing.manufacturer || 'Unknown Make';
   const displayModel = listing.model || 'Unknown Model';
@@ -54,6 +55,7 @@ export function ListingCard({
   const displayLocation = listing.location || 'Location pending';
   const displayCondition = listing.condition || 'Unspecified';
   const listingPath = buildListingPath(listing);
+  const normalizedListingId = normalizeListingId(listing.id);
 
   return (
     <div className={`bg-bg border group relative flex flex-col h-full hover:-translate-y-1 transition-transform duration-200 ease-out ${listing.featured ? 'border-accent' : 'border-line'}`}>
@@ -86,11 +88,11 @@ export function ListingCard({
         </div>
 
         {/* Favorite & Compare Buttons */}
-        <div className="absolute top-3 right-3 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-3 right-3 flex flex-col space-y-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <button 
             onClick={(e) => {
               e.preventDefault();
-              onToggleFavorite?.(listing.id);
+              onToggleFavorite?.(normalizedListingId);
             }}
             className={`p-2 rounded-sm backdrop-blur-md transition-colors ${
               isFavorite ? 'bg-accent text-white opacity-100' : 'bg-white/20 text-white hover:bg-white/40'
@@ -101,7 +103,7 @@ export function ListingCard({
           <button 
             onClick={(e) => {
               e.preventDefault();
-              onToggleCompare?.(listing.id);
+              onToggleCompare?.(normalizedListingId);
             }}
             className={`p-2 rounded-sm backdrop-blur-md transition-colors ${
               isComparing ? 'bg-secondary text-white opacity-100' : 'bg-white/20 text-white hover:bg-white/40'

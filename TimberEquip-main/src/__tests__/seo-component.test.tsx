@@ -63,14 +63,14 @@ describe('Seo component', () => {
   });
 
   it('injects JSON-LD structured data script', () => {
-    const jsonLd = { '@type': 'WebSite', name: 'TimberEquip' };
+    const jsonLd = { '@type': 'WebSite', name: 'Forestry Equipment Sales' };
     render(<Seo title="Test" description="Desc" jsonLd={jsonLd} />);
     const script = document.head.querySelector('#seo-json-ld') as HTMLScriptElement;
     expect(script).toBeTruthy();
     expect(script.type).toBe('application/ld+json');
     const parsed = JSON.parse(script.text);
     expect(parsed['@type']).toBe('WebSite');
-    expect(parsed.name).toBe('TimberEquip');
+    expect(parsed.name).toBe('Forestry Equipment Sales');
   });
 
   it('cleans up JSON-LD script on unmount', () => {

@@ -18,6 +18,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { AccountBootstrapResponse, UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
+import { getListingIdRemovalCandidates, normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 
 function slugifyStorefrontValue(value: string): string {
   return String(value || '')
@@ -177,12 +178,6 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('about' in payload) sanitized.about = sanitizeOptionalString(payload.about, 5000) || '';
   if ('bio' in payload) sanitized.bio = sanitizeOptionalString(payload.bio, 1000) || '';
   if ('location' in payload) sanitized.location = sanitizeOptionalString(payload.location, 200) || '';
-  if ('inspectionCoverageEnabled' in payload) sanitized.inspectionCoverageEnabled = Boolean(payload.inspectionCoverageEnabled);
-  if ('inspectionCoverageTerritory' in payload) sanitized.inspectionCoverageTerritory = sanitizeOptionalString(payload.inspectionCoverageTerritory, 240) || '';
-  if ('inspectionEquipmentFocus' in payload) sanitized.inspectionEquipmentFocus = sanitizeOptionalString(payload.inspectionEquipmentFocus, 240) || '';
-  if ('inspectionCertifications' in payload) sanitized.inspectionCertifications = sanitizeOptionalString(payload.inspectionCertifications, 240) || '';
-  if ('inspectionCoverageNotes' in payload) sanitized.inspectionCoverageNotes = sanitizeOptionalString(payload.inspectionCoverageNotes, 2000) || '';
-  if ('inspectionCoverageUpdatedAt' in payload) sanitized.inspectionCoverageUpdatedAt = payload.inspectionCoverageUpdatedAt ? String(payload.inspectionCoverageUpdatedAt) : null;
   if ('photoURL' in payload) sanitized.photoURL = sanitizeOptionalUrl(payload.photoURL) ?? null;
   if ('coverPhotoUrl' in payload) sanitized.coverPhotoUrl = sanitizeOptionalUrl(payload.coverPhotoUrl) ?? null;
   if ('storefrontName' in payload) sanitized.storefrontName = sanitizeOptionalString(payload.storefrontName, 180) || '';
@@ -204,8 +199,16 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('mfaPhoneNumber' in payload) sanitized.mfaPhoneNumber = sanitizeOptionalString(payload.mfaPhoneNumber, 80) || null;
   if ('mfaDisplayName' in payload) sanitized.mfaDisplayName = sanitizeOptionalString(payload.mfaDisplayName, 120) || null;
   if ('mfaEnrolledAt' in payload) sanitized.mfaEnrolledAt = payload.mfaEnrolledAt ? String(payload.mfaEnrolledAt) : null;
+  if ('favorites' in payload) sanitized.favorites = normalizeListingIdList(payload.favorites);
 
   return sanitized;
+}
+
+function normalizeUserProfileRecord(profile: UserProfile): UserProfile {
+  return {
+    ...profile,
+    favorites: normalizeListingIdList(profile.favorites),
+  };
 }
 
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -609,7 +612,7 @@ export const userService = {
       const docRef = doc(db, 'users', uid);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        return docSnap.data() as UserProfile;
+        return normalizeUserProfileRecord(docSnap.data() as UserProfile);
       }
       return null;
     } catch (error) {
@@ -672,9 +675,13 @@ export const userService = {
   async toggleFavorite(uid: string, listingId: string, isFavorite: boolean): Promise<void> {
     const path = `users/${uid}`;
     try {
+      const normalizedListingId = normalizeListingId(listingId);
+      if (!normalizedListingId) return;
+
       await this.ensureUserProfileDocument(uid);
+      const removalCandidates = getListingIdRemovalCandidates(normalizedListingId);
       await setDoc(doc(db, 'users', uid), {
-        favorites: isFavorite ? arrayRemove(listingId) : arrayUnion(listingId)
+        favorites: isFavorite ? arrayRemove(...removalCandidates) : arrayUnion(normalizedListingId)
       }, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
@@ -1012,7 +1019,7 @@ export const userService = {
     const docRef = doc(db, 'users', uid);
     return onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
-        callback(docSnap.data() as UserProfile, { exists: true });
+        callback(normalizeUserProfileRecord(docSnap.data() as UserProfile), { exists: true });
       } else {
         callback(null, { exists: false });
       }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { Seo } from '../components/Seo';
 import { ListingModal } from '../components/admin/ListingModal';
@@ -11,10 +11,18 @@ import { billingService } from '../services/billingService';
 import type { ListingPlanId } from '../services/billingService';
 import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
-import { canUserPostListings, hasActiveSellerSubscription, hasAdminPublishingAccess } from '../utils/sellerAccess';
+import {
+  canUserPostListings,
+  clearRememberedSellerReturnTo,
+  getRememberedSellerReturnTo,
+  hasActiveSellerSubscription,
+  hasAdminPublishingAccess,
+  rememberSellerReturnTo,
+} from '../utils/sellerAccess';
 const SUPPORTED_PLANS = new Set<ListingPlanId>(['individual_seller', 'dealer', 'fleet_dealer']);
 
 export function Sell() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useLocale();
@@ -29,11 +37,18 @@ export function Sell() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
-
   const selectedPlanFromQueryRaw = String(searchParams.get('plan') || '').trim() as ListingPlanId;
   const selectedPlanFromQuery = SUPPORTED_PLANS.has(selectedPlanFromQueryRaw)
     ? selectedPlanFromQueryRaw
     : undefined;
+  const stateReturnTarget = typeof (location.state as { returnTo?: unknown } | null)?.returnTo === 'string'
+    ? String((location.state as { returnTo: string }).returnTo || '').trim()
+    : '';
+  const queryReturnTargetRaw = String(searchParams.get('returnTo') || '').trim();
+  const rememberedReturnTarget = getRememberedSellerReturnTo();
+  const returnTarget = (stateReturnTarget || queryReturnTargetRaw || rememberedReturnTarget).startsWith('/')
+    ? (stateReturnTarget || queryReturnTargetRaw || rememberedReturnTarget)
+    : '';
 
   const adminCanPublishWithoutPayment = hasAdminPublishingAccess(user);
   const hasActiveSellerPlan = hasActiveSellerSubscription(user);
@@ -48,6 +63,12 @@ export function Sell() {
         ? 'Seller access has been enabled for this account by an administrator.'
         : ''
     : '';
+
+  useEffect(() => {
+    if (returnTarget) {
+      rememberSellerReturnTo(returnTarget);
+    }
+  }, [returnTarget]);
 
   useEffect(() => {
     const accountCheckout = searchParams.get('accountCheckout');
@@ -256,6 +277,25 @@ export function Sell() {
     }
   };
 
+  const handleCloseListingModal = () => {
+    if (isSubmitting) return;
+
+    setShowModal(false);
+    clearRememberedSellerReturnTo();
+
+    if (returnTarget) {
+      navigate(returnTarget, { replace: true });
+      return;
+    }
+
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
+  };
+
   return (
     <div className="min-h-screen bg-bg px-4 md:px-8 py-12">
       <Seo
@@ -361,11 +401,7 @@ export function Sell() {
       {showModal && (
         <ListingModal
           isOpen={true}
-          onClose={() => {
-            if (isSubmitting) return;
-            setShowModal(false);
-            navigate('/');
-          }}
+          onClose={handleCloseListingModal}
           onSave={handleSave}
           listing={null}
         />

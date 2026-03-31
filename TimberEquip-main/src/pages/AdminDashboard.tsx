@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
 import { userService } from '../services/userService';
-import { adminUserService } from '../services/adminUserService';
+import { adminUserService, type AdminOperationsBootstrapResponse } from '../services/adminUserService';
 import { cmsService, type AdminContentBootstrapResponse } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
 import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, type AdminBillingBootstrapResponse, type AdminDealerPerformanceReportResponse } from '../services/billingService';
@@ -25,6 +25,8 @@ import { VirtualizedListingsTable } from '../components/admin/VirtualizedListing
 import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
+import { TaxonomyManager } from '../components/admin/TaxonomyManager';
+import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
@@ -84,6 +86,7 @@ export function AdminDashboard() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [overview, setOverview] = useState<AdminOperationsBootstrapResponse['overview']>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [billingLogs, setBillingLogs] = useState<BillingAuditLog[]>([]);
@@ -352,11 +355,12 @@ export function AdminDashboard() {
   };
 
   const fetchUsers = async (force = false) => {
-    if (!authUser?.uid || usersLoading || (adminOperationsLoaded && !force)) {
+    const shouldRequestOverview = activeTab === 'overview';
+    if (!authUser?.uid || usersLoading || (adminOperationsLoaded && !force && (!shouldRequestOverview || overview))) {
       return;
     }
 
-    const requestKey = `${authUser.uid}:admin_operations`;
+    const requestKey = `${authUser.uid}:admin_operations:${shouldRequestOverview ? 'overview' : 'standard'}`;
     if (userDirectoryLoadKeyRef.current === requestKey) {
       return;
     }
@@ -365,13 +369,16 @@ export function AdminDashboard() {
     setUsersLoading(true);
     setUsersLoadError('');
     try {
-      const payload = await adminUserService.getAdminOperationsBootstrap();
+      const payload = await adminUserService.getAdminOperationsBootstrap({ includeOverview: shouldRequestOverview });
       setAccounts(payload.users);
       if (Array.isArray(payload.inquiries)) {
         setInquiries(payload.inquiries);
       }
       if (Array.isArray(payload.calls)) {
         setCalls(payload.calls);
+      }
+      if (payload.overview) {
+        setOverview(payload.overview);
       }
       setAdminOperationsLoaded(true);
       const errorMessages = [
@@ -1281,7 +1288,8 @@ export function AdminDashboard() {
     const matchesSearch = searchHaystack.includes(searchQuery.toLowerCase());
     return matchesSearch && matchesListingReviewFilter(listing, listingReviewFilter);
   }), [listings, searchQuery, matchesListingReviewFilter, listingReviewFilter]);
-  const recentOverviewListings = listings.slice(0, 5);
+  const recentOverviewListings = overview?.recentListings?.length ? overview.recentListings : listings.slice(0, 5);
+  const recentOverviewCalls = overview?.recentCalls?.length ? overview.recentCalls : calls.slice(0, 5);
   const pendingReviewCount = listingReviewCounts.pending_approval;
   const rejectedListingCount = listingReviewCounts.rejected;
   const liveListingCount = listings.filter((listing) => (
@@ -1291,6 +1299,12 @@ export function AdminDashboard() {
   )).length;
   const paidNotLiveCount = listingReviewCounts.paid_not_live;
   const anomalyListingCount = listingReviewCounts.anomalies;
+  const stats = [
+    { label: 'Visible Equipment', value: overview?.metrics?.visibleEquipment ?? liveListingCount, icon: Package, color: 'text-accent', note: 'Approved paid inventory now live.' },
+    { label: 'Total Leads', value: overview?.metrics?.totalLeads ?? inquiries.length, icon: MessageSquare, color: 'text-secondary', note: 'Qualified and pending inbound leads.' },
+    { label: 'Call Volume', value: overview?.metrics?.callVolume ?? calls.length, icon: Phone, color: 'text-data', note: 'Tracked marketplace call records.' },
+    { label: 'Active Users', value: overview?.metrics?.activeUsers ?? accounts.filter((account) => account.status === 'Active').length, icon: Users, color: 'text-ink', note: 'Accounts currently marked active.' }
+  ];
 
   const selectedListingAudit = selectedListingAuditId
     ? filteredListings.find((entry) => entry.id === selectedListingAuditId) ||
@@ -1761,13 +1775,6 @@ export function AdminDashboard() {
     downloadCsv('inventory', headers, rows);
   };
 
-  const stats = [
-    { label: 'Visible Equipment', value: listings.length, change: '+12%', icon: Package, color: 'text-accent' },
-    { label: 'Total Leads', value: inquiries.length, change: '+24%', icon: MessageSquare, color: 'text-secondary' },
-    { label: 'Call Volume', value: calls.length, change: '+8%', icon: Phone, color: 'text-data' },
-    { label: 'Active Users', value: accounts.length, change: '+15%', icon: Users, color: 'text-ink' }
-  ];
-
   const renderOverview = () => (
     <div className="space-y-12">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1777,49 +1784,12 @@ export function AdminDashboard() {
               <div className={`p-3 bg-bg border border-line rounded-sm ${stat.color}`}>
                 <stat.icon size={20} />
               </div>
-              <span className="text-[10px] font-black text-data uppercase tracking-widest">{stat.change}</span>
             </div>
             <span className="label-micro block mb-1">{stat.label}</span>
             <span className="text-3xl font-black tracking-tighter text-ink">{stat.value}</span>
+            <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-muted">{stat.note}</p>
           </div>
         ))}
-      </div>
-
-      {/* Tracking Metrics */}
-      <div className="bg-bg border border-line rounded-sm p-8">
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Global Performance Tracking</h3>
-          <div className="flex items-center space-x-2">
-            <span className="w-2 h-2 bg-data rounded-full animate-pulse"></span>
-            <span className="text-[10px] font-black text-data uppercase tracking-widest">Live Data Feed</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-          <div className="flex flex-col">
-            <span className="label-micro mb-2">Conversion Rate</span>
-            <span className="text-2xl font-black tracking-tighter">4.2%</span>
-            <div className="w-full bg-line h-1 mt-4">
-              <div className="bg-accent h-full w-[42%]"></div>
-            </div>
-            <span className="text-[9px] font-bold text-muted uppercase mt-2">Leads to Sales Ratio</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="label-micro mb-2">Qualified Leads</span>
-            <span className="text-2xl font-black tracking-tighter">{inquiries.filter((inquiry) => ['Qualified', 'Won'].includes(inquiry.status)).length}</span>
-            <div className="w-full bg-line h-1 mt-4">
-              <div className="bg-secondary h-full w-[65%]"></div>
-            </div>
-            <span className="text-[9px] font-bold text-muted uppercase mt-2">Pipeline Quality</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="label-micro mb-2">Market Sentiment</span>
-            <span className="text-2xl font-black tracking-tighter">Bullish</span>
-            <div className="w-full bg-line h-1 mt-4">
-              <div className="bg-data h-full w-[85%]"></div>
-            </div>
-            <span className="text-[9px] font-bold text-muted uppercase mt-2">Inventory Turnover Rate</span>
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1879,14 +1849,14 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {recentOverviewListings.length === 0 && (
+                {recentOverviewCalls.length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-6 py-10 text-center text-[10px] font-black uppercase tracking-widest text-muted">
-                      No inventory available yet.
+                      No calls available yet.
                     </td>
                   </tr>
                 )}
-                {calls.slice(0, 5).map(call => (
+                {recentOverviewCalls.map(call => (
                   <tr key={call.id} className="hover:bg-surface/20 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
@@ -3657,11 +3627,13 @@ export function AdminDashboard() {
           </div>
         </div>
       </section>
+
+      {normalizedAdminRole === 'super_admin' ? <TaxonomyManager /> : null}
     </div>
   );
 
   const renderDealerFeeds = () => {
-    const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
+    const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.forestryequipmentsales.com';
     const currentDfCurlSnippet = dfActiveProfile?.ingestUrl
       ? buildDealerFeedApiCurlSnippet({
           ingestUrl: dfActiveProfile.ingestUrl,
@@ -4234,7 +4206,7 @@ export function AdminDashboard() {
                   <div>
                     <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Direct API Credentials</h3>
                     <p className="mt-1 text-xs text-muted">
-                      Use these values for dealer and vendor automations that push inventory directly into TimberEquip.
+                      Use these values for dealer and vendor automations that push inventory directly into Forestry Equipment Sales.
                     </p>
                   </div>
                   {dfCurrentProfileId ? (
@@ -4488,6 +4460,23 @@ export function AdminDashboard() {
     );
   };
 
+  const dashboardHeading = activeTab === 'overview'  ? 'System Overview'
+    : activeTab === 'listings'  ? 'Machine Inventory'
+    : activeTab === 'inquiries' ? 'Lead Monitoring'
+    : activeTab === 'calls'     ? 'Call Logs'
+    : activeTab === 'tracking'  ? 'Performance Tracking'
+    : activeTab === 'accounts'  ? 'Account Directory'
+    : activeTab === 'billing'   ? 'Billing Account'
+    : activeTab === 'content'   ? 'Content Studio'
+    : activeTab === 'dealer_feeds' ? 'Dealer Feed Manager'
+    : activeTab === 'users'     ? 'Operator Directory'
+    : 'Profile Settings';
+  const dashboardSeoTitle = `${dashboardHeading} | Forestry Equipment Sales`;
+  const dashboardSeoDescription = activeTab === 'overview'
+    ? 'Review live Forestry Equipment Sales marketplace operations, inventory, leads, and account activity.'
+    : `Manage ${dashboardHeading.toLowerCase()} in the Forestry Equipment Sales admin workspace.`;
+  const dashboardCanonicalPath = activeTab === 'overview' ? '/admin' : `/admin?tab=${activeTab}`;
+
   const dashboardTabs = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'listings', label: 'Machines', icon: Package },
@@ -4516,6 +4505,12 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-bg flex overflow-x-hidden">
+      <Seo
+        title={dashboardSeoTitle}
+        description={dashboardSeoDescription}
+        canonicalPath={dashboardCanonicalPath}
+        robots="noindex, nofollow"
+      />
       {/* Sidebar */}
       <aside className="w-64 bg-surface border-r border-line hidden lg:flex flex-col sticky top-0 h-screen">
         <div className="p-8 border-b border-line">
@@ -4600,18 +4595,7 @@ export function AdminDashboard() {
           <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
             <div>
               <span className="label-micro text-accent mb-2 block">Account Dashboard</span>
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase tracking-tighter text-ink">
-                {activeTab === 'overview'  ? 'System Overview' :
-                 activeTab === 'listings'  ? 'Machine Inventory' :
-                 activeTab === 'inquiries' ? 'Lead Monitoring' :
-                 activeTab === 'calls'     ? 'Call Logs' :
-                 activeTab === 'tracking'  ? 'Performance Tracking' :
-                 activeTab === 'accounts'  ? 'Account Directory' : 
-                 activeTab === 'billing'   ? 'Billing Account' :
-                 activeTab === 'content'   ? 'Content Studio' :
-                 activeTab === 'dealer_feeds' ? 'Dealer Feed Manager' :
-                 activeTab === 'users'     ? 'Operator Directory' : 'Profile Settings'}
-              </h2>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase tracking-tighter text-ink">{dashboardHeading}</h2>
             </div>
           </header>
 

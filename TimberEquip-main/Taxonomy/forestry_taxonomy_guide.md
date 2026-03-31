@@ -22,8 +22,8 @@ The important behavior is:
 
 - Categories: 8
 - Category → subcategory branches: 54
-- Manufacturer branches: 431
-- Models after exact duplicate removal inside a branch: 3945
+- Manufacturer branches: 430
+- Models after exact duplicate removal inside a branch: 3944
 
 ## Critical form contract
 
@@ -40,10 +40,6 @@ Do **not** treat subcategories as globally unique. These labels repeat across di
 
 {
   "Feller Bunchers": [
-    "Land Clearing Equipment",
-    "Logging Equipment"
-  ],
-  "Graders": [
     "Land Clearing Equipment",
     "Logging Equipment"
   ],

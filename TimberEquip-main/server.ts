@@ -110,7 +110,9 @@ type DealerFeedItem = {
 };
 
 let marketplaceStatsCache: { value: MarketplaceStatsPayload; fetchedAt: number } | null = null;
+let publicNewsCache: { value: Record<string, unknown>[]; fetchedAt: number } | null = null;
 const MARKETPLACE_STATS_TTL_MS = 10 * 60 * 1000;
+const PUBLIC_NEWS_TTL_MS = 5 * 60 * 1000;
 const CSRF_COOKIE_NAME = '_csrf';
 const CSRF_HEADER_NAMES = ['csrf-token', 'x-csrf-token'];
 
@@ -257,6 +259,130 @@ function timestampValueToIso(value: unknown): string | null {
   return parsed ? parsed.toISOString() : null;
 }
 
+function stripHtml(value: unknown): string {
+  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function isPublishedPublicBlogPost(post: Record<string, unknown>): boolean {
+  const status = normalizeNonEmptyString(post.status).toLowerCase();
+  const reviewStatus = normalizeNonEmptyString(post.reviewStatus).toLowerCase();
+  return status === 'published' || reviewStatus === 'published';
+}
+
+function serializePublicLegacyNewsPost(id: string, data: Record<string, unknown>) {
+  const summary = normalizeNonEmptyString(data.summary) || stripHtml(data.content).slice(0, 220);
+  return {
+    id,
+    title: normalizeNonEmptyString(data.title, 'Untitled'),
+    summary,
+    content: normalizeNonEmptyString(data.content),
+    author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
+    date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    image: normalizeNonEmptyString(data.image) || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    category: normalizeNonEmptyString(data.category, 'Industry News'),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    seoSlug: normalizeNonEmptyString(data.seoSlug),
+  };
+}
+
+function serializePublicCmsNewsPost(id: string, data: Record<string, unknown>) {
+  const summary = normalizeNonEmptyString(data.excerpt) || stripHtml(data.content).slice(0, 220);
+  return {
+    id: `blog-${id}`,
+    title: normalizeNonEmptyString(data.title, 'Untitled'),
+    summary,
+    content: normalizeNonEmptyString(data.content),
+    author: normalizeNonEmptyString(data.authorName, 'Forestry Equipment Sales Editorial'),
+    date: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    image: normalizeNonEmptyString(data.image) || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    category: normalizeNonEmptyString(data.category, 'Industry News'),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    seoSlug: normalizeNonEmptyString(data.seoSlug),
+  };
+}
+
+async function getPublicNewsFeedPayload(): Promise<Record<string, unknown>[]> {
+  if (publicNewsCache && Date.now() - publicNewsCache.fetchedAt < PUBLIC_NEWS_TTL_MS) {
+    return publicNewsCache.value;
+  }
+
+  try {
+    const [legacyNewsResult, cmsPostsResult] = await Promise.allSettled([
+      db.collection('news').get(),
+      db.collection('blogPosts').orderBy('updatedAt', 'desc').limit(36).get(),
+    ]);
+
+    const legacyNews = legacyNewsResult.status === 'fulfilled'
+      ? legacyNewsResult.value.docs.map((docSnapshot) => serializePublicLegacyNewsPost(docSnapshot.id, docSnapshot.data() || {}))
+      : [];
+
+    const cmsPosts = cmsPostsResult.status === 'fulfilled'
+      ? cmsPostsResult.value.docs
+          .map((docSnapshot) => ({ id: docSnapshot.id, ...(docSnapshot.data() || {}) }))
+          .filter((post) => isPublishedPublicBlogPost(post))
+          .map((post) => serializePublicCmsNewsPost(String(post.id || ''), post))
+      : [];
+
+    if (legacyNewsResult.status === 'rejected' && cmsPostsResult.status === 'rejected') {
+      const firstError = legacyNewsResult.reason || cmsPostsResult.reason;
+      if (publicNewsCache) {
+        console.warn('Using cached public news feed because live reads failed:', firstError);
+        return publicNewsCache.value;
+      }
+      throw (firstError instanceof Error ? firstError : new Error('Unable to load public news feed.'));
+    }
+
+    const merged = [...cmsPosts, ...legacyNews].sort((left, right) => {
+      const leftDate = Date.parse(String(left.date || '')) || 0;
+      const rightDate = Date.parse(String(right.date || '')) || 0;
+      return rightDate - leftDate;
+    });
+
+    publicNewsCache = {
+      value: merged,
+      fetchedAt: Date.now(),
+    };
+
+    return merged;
+  } catch (error) {
+    if (publicNewsCache) {
+      console.warn('Falling back to cached public news feed after live read failure:', error);
+      return publicNewsCache.value;
+    }
+
+    throw error;
+  }
+}
+
+async function getPublicNewsPostPayload(id: string): Promise<Record<string, unknown> | null> {
+  const normalizedId = normalizeNonEmptyString(id);
+  if (!normalizedId) return null;
+
+  const cachedPost = publicNewsCache?.value.find((post) => normalizeNonEmptyString(post.id) === normalizedId);
+  if (cachedPost) {
+    return cachedPost;
+  }
+
+  if (normalizedId.startsWith('blog-')) {
+    const cmsDocId = normalizedId.slice(5);
+    if (!cmsDocId) return null;
+
+    const snapshot = await db.collection('blogPosts').doc(cmsDocId).get();
+    if (!snapshot.exists) return null;
+    const data = snapshot.data() || {};
+    if (!isPublishedPublicBlogPost(data)) return null;
+    return serializePublicCmsNewsPost(snapshot.id, data);
+  }
+
+  const legacySnapshot = await db.collection('news').doc(normalizedId).get();
+  if (!legacySnapshot.exists) return null;
+  return serializePublicLegacyNewsPost(legacySnapshot.id, legacySnapshot.data() || {});
+}
+
 function serializeInquiryDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot): Record<string, unknown> {
   const data = docSnapshot.data() || {};
   return {
@@ -360,6 +486,23 @@ function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
     verified: true,
   };
+}
+
+function hasActiveDealerDirectorySubscription(data: Record<string, unknown> = {}): boolean {
+  const role = normalizeNonEmptyString(data.role).toLowerCase();
+  if (!['dealer', 'pro_dealer'].includes(role)) {
+    return false;
+  }
+
+  if (!Boolean(data.storefrontEnabled)) {
+    return false;
+  }
+
+  const activeSubscriptionPlanId = normalizeNonEmptyString(data.activeSubscriptionPlanId).toLowerCase();
+  const subscriptionStatus = normalizeNonEmptyString(data.subscriptionStatus).toLowerCase();
+
+  return ['dealer', 'fleet_dealer'].includes(activeSubscriptionPlanId)
+    && ['active', 'trialing'].includes(subscriptionStatus);
 }
 
 function buildMarketplaceListingPayload(listingId: string, rawListing: Record<string, unknown>): Record<string, unknown> {
@@ -835,7 +978,7 @@ function getRequestBaseUrl(req: express.Request): string {
     return `${proto}://${host}`;
   }
 
-  return process.env.PUBLIC_APP_URL || 'https://timberequip.com';
+  return process.env.PUBLIC_APP_URL || 'https://www.forestryequipmentsales.com';
 }
 
 async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<string> {
@@ -1088,6 +1231,19 @@ async function startServer() {
     frameguard: false, // Allow iframe rendering for AI Studio preview
   }));
 
+  // 1b. Domain Migration — 301 redirect from legacy domain to canonical domain
+  const CANONICAL_HOST = String(process.env.CANONICAL_HOST || '').trim();
+  if (CANONICAL_HOST) {
+    app.use((req, res, next) => {
+      const host = (req.hostname || req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+      if (host && host !== CANONICAL_HOST && host !== 'localhost' && host !== '127.0.0.1') {
+        const target = `https://${CANONICAL_HOST}${req.originalUrl}`;
+        return res.redirect(301, target);
+      }
+      next();
+    });
+  }
+
   // 2. Rate Limiting (DDoS protection)
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1123,8 +1279,8 @@ async function startServer() {
 
   // 3. CORS
   const ALLOWED_ORIGINS = [
-    'https://timberequip.com',
-    'https://www.timberequip.com',
+    'https://www.forestryequipmentsales.com',
+    'https://www.forestryequipmentsales.com',
     'http://localhost:3000',
     'http://localhost:5173',
   ];
@@ -1452,7 +1608,6 @@ async function startServer() {
         '/states/:stateSlug/logging-equipment-for-sale',
         '/states/:stateSlug/forestry-equipment-for-sale',
         '/states/:stateSlug/:categorySaleSlug',
-        '/dealers',
         '/dealers/:id',
         '/dealers/:id/inventory',
         '/dealers/:id/:categorySlug',
@@ -1891,6 +2046,62 @@ async function startServer() {
     }
   });
 
+  app.get('/api/public/dealers', async (_req, res) => {
+    try {
+      const usersSnapshot = await db.collection('users').where('storefrontEnabled', '==', true).get();
+      type PublicDealerDirectoryEntry = ReturnType<typeof serializeSellerPayloadFromUser> & { verified: boolean };
+      const dealers = usersSnapshot.docs
+        .map((snapshot) => {
+          const data = snapshot.data() || {};
+          if (!hasActiveDealerDirectorySubscription(data)) {
+            return null;
+          }
+
+          return {
+            ...serializeSellerPayloadFromUser(snapshot.id, data),
+            verified: Boolean(data.storefrontEnabled),
+          };
+        })
+        .filter((dealer): dealer is PublicDealerDirectoryEntry => Boolean(dealer))
+        .sort((left, right) => {
+          const leftName = normalizeNonEmptyString(left.storefrontName || left.name).toLowerCase();
+          const rightName = normalizeNonEmptyString(right.storefrontName || right.name).toLowerCase();
+          return leftName.localeCompare(rightName) || String(left.id || '').localeCompare(String(right.id || ''));
+        });
+
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.json({ dealers });
+    } catch (error: any) {
+      console.error('Failed to load public dealer directory:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to load dealers.' });
+    }
+  });
+
+  app.get('/api/public/news', async (_req, res) => {
+    try {
+      const posts = await getPublicNewsFeedPayload();
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.json({
+        posts,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('Failed to load public news feed:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to load equipment news.' });
+    }
+  });
+
+  app.get('/api/public/news/:id', async (req, res) => {
+    try {
+      const post = await getPublicNewsPostPayload(req.params.id);
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.json({ post });
+    } catch (error: any) {
+      console.error('Failed to load public news article:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to load the equipment news article.' });
+    }
+  });
+
   app.post('/api/recaptcha-assess', express.json(), async (req, res) => {
     const { token, action } = req.body || {};
     if (!token || !action) return res.status(400).json({ error: 'token and action required' });
@@ -1970,6 +2181,15 @@ async function startServer() {
 
   // Secure File Upload Endpoint
   app.post('/api/upload', upload.single('file'), async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      await auth.verifyIdToken(idToken);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded.' });
     }
@@ -2011,7 +2231,7 @@ async function startServer() {
       const actorDoc = await db.collection('users').doc(actorUid).get();
       const actorRole = normalizeRole(actorDoc.data()?.role);
       const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || ['super_admin', 'admin', 'developer'].includes(actorRole);
-      const actorIsDealer = ['dealer', 'dealer_manager'].includes(actorRole);
+      const actorIsDealer = ['dealer', 'dealer_manager', 'pro_dealer'].includes(actorRole);
 
       if (!actorCanAdminister && !actorIsDealer) {
         return res.status(403).json({ error: 'Forbidden' });
@@ -2095,7 +2315,7 @@ async function startServer() {
       const actorDoc = await db.collection('users').doc(actorUid).get();
       const actorRole = normalizeRole(actorDoc.data()?.role);
       const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || ['super_admin', 'admin', 'developer'].includes(actorRole);
-      const actorIsDealer = ['dealer', 'dealer_manager'].includes(actorRole);
+      const actorIsDealer = ['dealer', 'dealer_manager', 'pro_dealer'].includes(actorRole);
 
       if (!actorCanAdminister && !actorIsDealer) {
         return res.status(403).json({ error: 'Forbidden' });
@@ -2432,7 +2652,7 @@ async function startServer() {
     const SPA_ROUTES = new Set([
       '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',
       '/login', '/register', '/sell', '/dealer-os', '/financing', '/profile',
-      '/about', '/contact', '/ad-programs', '/subscription-success', '/inspections',
+      '/about', '/about-us', '/faq', '/our-team', '/about/our-team', '/contact', '/ad-programs', '/subscription-success', '/logistics',
       '/auctions', '/privacy', '/terms', '/cookies', '/dmca', '/bookmarks', '/404',
       '/forestry-equipment-for-sale', '/logging-equipment-for-sale',
     ]);

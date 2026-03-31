@@ -267,6 +267,16 @@ describe('decodeListingPublicKey', () => {
   it('still extracts legacy ids from double-dash slugs', () => {
     expect(extractListingPublicKeyFromSlug('2021-tigercat-1075b-bemidji-mn--firebase-doc-id-123')).toBe('firebase-doc-id-123');
   });
+
+  it('extracts sequential numeric ID from slug', () => {
+    expect(extractListingPublicKeyFromSlug('2020-tigercat-855e-duluth-mn-12001')).toBe('12001');
+  });
+
+  it('does not extract short numeric parts as IDs', () => {
+    // Model numbers like "525" should not be confused with listing IDs
+    const result = extractListingPublicKeyFromSlug('caterpillar-525');
+    expect(result).toBe('caterpillar-525');
+  });
 });
 
 // ---------- buildListingPath ----------
@@ -326,6 +336,52 @@ describe('buildListingPath', () => {
     });
 
     expect(path).toBe('/equipment/2024-x1--firebase-doc-id-123');
+  });
+
+  it('uses single dash for sequential numeric IDs', () => {
+    const path = buildListingPath({
+      id: '12001',
+      title: '2020 Tigercat 855E',
+      year: 2020,
+      model: '855E',
+      category: 'Feller Bunchers',
+      subcategory: '',
+      location: 'Duluth, Minnesota, USA',
+      make: 'Tigercat',
+    });
+    expect(path).toBe('/equipment/2020-tigercat-855e-duluth-mn-12001');
+  });
+
+  it('omits location-pending placeholder from slug', () => {
+    const path = buildListingPath({
+      id: '12002',
+      title: '2021 Tigercat 855E',
+      year: 2021,
+      model: '855E',
+      category: 'Feller Bunchers',
+      subcategory: '',
+      location: 'Location Pending',
+      make: 'Tigercat',
+    });
+    expect(path).toBe('/equipment/2021-tigercat-855e-12002');
+    expect(path).not.toContain('location');
+    expect(path).not.toContain('pending');
+  });
+
+  it('round-trips sequential numeric ID through extract and decode', () => {
+    const listingId = '12001';
+    const path = buildListingPath({
+      id: listingId,
+      title: '2020 Tigercat 855E',
+      year: 2020,
+      model: '855E',
+      category: 'Feller Bunchers',
+      subcategory: '',
+      location: 'Duluth, MN',
+      make: 'Tigercat',
+    });
+    const extracted = extractListingPublicKeyFromSlug(path.split('/').pop()!);
+    expect(extracted).toBe(listingId);
   });
 });
 

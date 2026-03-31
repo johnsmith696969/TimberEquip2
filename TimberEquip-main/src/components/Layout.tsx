@@ -5,7 +5,7 @@ import {
   User, LogOut,
   Bookmark,
   ChevronDown,
-  Facebook, Twitter, Instagram, Linkedin,
+  Facebook, Linkedin, Mail, Youtube,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
@@ -14,7 +14,7 @@ import { useAuth } from './AuthContext';
 import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { userService } from '../services/userService';
-import { canAccessDealerOs, getListEquipmentPath } from '../utils/sellerAccess';
+import { appendReturnToParam, canAccessDealerOs, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
@@ -44,15 +44,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, currency, setCurrency, t } = useLocale();
   const { user, logout, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const headerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
   const headerLogoAlt = 'Forestry Equipment Sales';
   const [headerLogoSrc, setHeaderLogoSrc] = useState(headerLogo);
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
+  const currentReturnPath = `${location.pathname}${location.search}`;
+  const listEquipmentHref = appendReturnToParam(listEquipmentPath, currentReturnPath);
+  const listEquipmentState = currentReturnPath.startsWith('/') ? { returnTo: currentReturnPath } : undefined;
+  const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
-  const navigate = useNavigate();
-  const location = useLocation();
 
   const hasAdminAccess = !!(
     user && (
@@ -62,6 +65,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const accountRoute = hasAdminAccess ? '/admin' : hasDealerOsAccess ? '/dealer-os' : '/profile';
+  const footerSocialLinks = [
+    { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales' },
+    { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales' },
+    { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com' },
+    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline' },
+  ];
 
   useEffect(() => {
     const pageTitles: Record<string, string> = {
@@ -71,9 +80,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
       '/categories': `Forestry Equipment Sales | ${t('layout.categories', 'Categories')}`,
       '/auctions': `Forestry Equipment Sales | ${t('layout.auctions', 'Auctions')}`,
       '/financing': `Forestry Equipment Sales | ${t('layout.financing', 'Financing')}`,
+      '/logistics': 'Forestry Equipment Sales | Logistics',
+      '/dealers': 'Forestry Equipment Sales | Dealer Network',
       '/blog': `Forestry Equipment Sales | ${t('layout.equipmentNews', 'Equipment News')}`,
+      '/ad-programs': 'Ad Programs | Forestry Equipment Sales',
+      '/profile': 'Profile | Forestry Equipment Sales',
+      '/admin': 'Admin Dashboard | Forestry Equipment Sales',
+      '/bookmarks': 'Saved Equipment | Forestry Equipment Sales',
       '/contact': 'Forestry Equipment Sales | Contact Forestry Equipment Sales',
-      '/about': 'Forestry Equipment Sales | About Forestry Equipment Sales'
+      '/about': 'About Us | Forestry Equipment Sales',
+      '/about-us': 'About Us | Forestry Equipment Sales',
+      '/our-team': 'Our Team | Forestry Equipment Sales',
+      '/about/our-team': 'Our Team | Forestry Equipment Sales',
+      '/faq': 'FAQ | Forestry Equipment Sales',
+      '/privacy': 'Privacy Policy | Forestry Equipment Sales',
+      '/terms': 'Terms Of Use | Forestry Equipment Sales',
+      '/cookies': 'Cookie Policy | Forestry Equipment Sales',
+      '/dmca': 'DMCA Policy | Forestry Equipment Sales',
     };
 
     if (pageTitles[location.pathname]) {
@@ -274,7 +297,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {theme === 'light' ? <Moon size={14} className="sm:w-3 sm:h-3" /> : <Sun size={14} className="sm:w-3 sm:h-3" />}
             <span className="hidden sm:inline">{theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}</span>
           </button>
-          <Link to={listEquipmentPath} className="text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
+          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
           {hasDealerOsAccess ? <Link to="/dealer-os" className="text-ink font-bold hover:underline">DealerOS</Link> : null}
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-4">
@@ -376,7 +399,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
-              <Link to={listEquipmentPath} onClick={() => setIsMenuOpen(false)} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
+              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>
             
              <div className="mt-8 pb-12 px-6 flex flex-col space-y-6">
@@ -436,7 +459,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               <div className="flex items-center justify-between border-t border-line pt-6">
                 <span className="label-micro">{t('layout.theme', 'Theme')}</span>
-                <button onClick={() => { toggleTheme(); setIsMenuOpen(false); }} className="p-2 bg-surface rounded-full">
+                <button onClick={toggleTheme} className="p-2 bg-surface rounded-full">
                   {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                 </button>
               </div>
@@ -456,7 +479,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Footer */}
       <footer className="bg-surface border-t border-line pt-24 pb-12 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-16">
+          <div className="grid grid-cols-1 gap-16 md:grid-cols-2 lg:grid-cols-6">
             <div className="lg:col-span-2 flex flex-col space-y-8">
               <Link to="/" className="flex items-center">
                 <img
@@ -473,18 +496,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-sm text-muted leading-relaxed max-w-md">
                 {t('layout.footerBlurb', 'The premier industrial marketplace for professional logging equipment. Connecting global forestry operations with verified assets, institutional financing, and precision logistics.')}
               </p>
-              <div className="flex space-x-4">
-                {[
-                  { icon: Facebook, label: 'FB', url: 'https://facebook.com/timberequip' },
-                  { icon: Twitter, label: 'TW', url: 'https://twitter.com/timberequip' },
-                  { icon: Instagram, label: 'IG', url: 'https://instagram.com/timberequip' },
-                  { icon: Linkedin, label: 'LI', url: 'https://linkedin.com/company/timberequip' }
-                ].map(({ icon: Icon, label, url }) => (
+              <div className="flex flex-wrap gap-4">
+                {footerSocialLinks.map(({ icon: Icon, label, url }) => (
                   <a 
                     key={label} 
                     href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    aria-label={label}
+                    title={label}
                     className="w-10 h-10 border border-line flex items-center justify-center hover:bg-ink hover:text-bg transition-all group"
                   >
                     <Icon size={18} className="group-hover:scale-110 transition-transform" />
@@ -499,7 +517,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/search" className="hover:text-accent transition-colors">{t('layout.browseInventory', 'Browse Inventory')}</Link></li>
                 <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
                 <li><Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.liveAuctions', 'Live Auctions')}</Link></li>
-                <li><Link to={listEquipmentPath} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
+                <li><Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>
               </ul>
             </div>
@@ -510,8 +528,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/ad-programs" className="hover:text-accent transition-colors text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link></li>
                 <li><Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealer Network')}</Link></li>
                 <li><Link to="/logistics" className="hover:text-accent transition-colors">{t('layout.globalLogistics', 'Global Logistics')}</Link></li>
-                <li><Link to="/inspections" className="hover:text-accent transition-colors">{t('layout.inspections', 'Inspections')}</Link></li>
                 <li><Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] mb-8 text-ink">About</h4>
+              <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
+                <li><Link to="/about" className="hover:text-accent transition-colors">About Us</Link></li>
+                <li><Link to="/our-team" className="hover:text-accent transition-colors">Our Team</Link></li>
+                <li><Link to="/faq" className="hover:text-accent transition-colors">FAQ</Link></li>
+                <li><Link to="/contact" className="hover:text-accent transition-colors">Contact Us</Link></li>
               </ul>
             </div>
             
@@ -520,7 +547,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="flex flex-col space-y-6">
                 <div className="bg-bg border border-line p-5 rounded-sm">
                   <span className="label-micro block mb-2">{t('layout.customerSupport', 'Customer Support')}</span>
-                  <span className="text-sm font-black tracking-tight">+1 (800) TIMBER-EQUIP</span>
+                  <a
+                    href="tel:+12187200933"
+                    className="text-sm font-black tracking-tight hover:text-accent transition-colors"
+                  >
+                    (218) 720-0933
+                  </a>
                 </div>
                 <div className="bg-bg border border-line p-5 rounded-sm">
                   <span className="label-micro block mb-2">{t('layout.systemStatus', 'System Status')}</span>
@@ -537,7 +569,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center space-x-4">
               <span>{t('layout.siteCopyright', '© 2026 FORESTRY EQUIPMENT SALES | LOGGING EQUIPMENT MARKETPLACE.')}</span>
               <span className="hidden md:inline text-line">|</span>
-              <span className="text-ink">EST. 1998</span>
+              <span className="text-ink">EST. 2002</span>
             </div>
             <div className="flex flex-wrap gap-x-8 gap-y-2 mt-6 md:mt-0">
               <Link to="/privacy" className="hover:text-ink transition-colors">{t('layout.privacyPolicy', 'Privacy Policy')}</Link>

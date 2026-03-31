@@ -27,18 +27,20 @@ const ManufacturerModelCategoryLandingPage = lazy(() => import('./pages/SeoLandi
 const StateMarketLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateMarketLandingPage })));
 const StateCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateCategoryLandingPage })));
 const ManufacturerCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerCategoryLandingPage })));
-const DealerDirectoryPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.DealerDirectoryPage })));
+const Dealers = lazy(() => import('./pages/Dealers').then((module) => ({ default: module.Dealers })));
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
 const Register = lazy(() => import('./pages/Register').then((module) => ({ default: module.Register })));
 const Sell = lazy(() => import('./pages/Sell').then((module) => ({ default: module.Sell })));
 const DealerOS = lazy(() => import('./pages/DealerOS').then((module) => ({ default: module.DealerOS })));
 const Financing = lazy(() => import('./pages/Financing').then((module) => ({ default: module.Financing })));
+const Logistics = lazy(() => import('./pages/Logistics').then((module) => ({ default: module.Logistics })));
 const Profile = lazy(() => import('./pages/Profile').then((module) => ({ default: module.Profile })));
 const About = lazy(() => import('./pages/About').then((module) => ({ default: module.About })));
+const Faq = lazy(() => import('./pages/Faq').then((module) => ({ default: module.Faq })));
+const OurTeam = lazy(() => import('./pages/OurTeam').then((module) => ({ default: module.OurTeam })));
 const Contact = lazy(() => import('./pages/Contact').then((module) => ({ default: module.Contact })));
 const AdPrograms = lazy(() => import('./pages/AdPrograms').then((module) => ({ default: module.AdPrograms })));
 const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess').then((module) => ({ default: module.SubscriptionSuccess })));
-const Inspections = lazy(() => import('./pages/Inspections').then((module) => ({ default: module.Inspections })));
 const Auctions = lazy(() => import('./pages/Auctions').then((module) => ({ default: module.Auctions })));
 const Privacy = lazy(() => import('./pages/Privacy').then((module) => ({ default: module.Privacy })));
 const Terms = lazy(() => import('./pages/Terms').then((module) => ({ default: module.Terms })));
@@ -100,7 +102,7 @@ function App() {
                     <Route path="/states/:stateSlug/logging-equipment-for-sale" element={<RedirectToCanonicalStateMarketHub />} />
                     <Route path="/states/:stateSlug/forestry-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="forestry" />} />
                     <Route path="/states/:stateSlug/:categorySaleSlug" element={<StateCategoryLandingPage />} />
-                    <Route path="/dealers" element={<DealerDirectoryPage />} />
+                    <Route path="/dealers" element={<Dealers />} />
                     <Route path="/dealers/:id/inventory" element={<SellerProfile />} />
                     <Route path="/dealers/:id/:categorySlug" element={<SellerProfile />} />
                     <Route path="/dealers/:id" element={<SellerProfile />} />
@@ -109,12 +111,16 @@ function App() {
                     <Route path="/sell" element={<ProtectedRoute><Sell /></ProtectedRoute>} />
                     <Route path="/dealer-os" element={<ProtectedRoute requireDealerOs><DealerOS /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
+                    <Route path="/logistics" element={<Logistics />} />
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/about" element={<About />} />
+                    <Route path="/about-us" element={<About />} />
+                    <Route path="/faq" element={<Faq />} />
+                    <Route path="/our-team" element={<OurTeam />} />
+                    <Route path="/about/our-team" element={<OurTeam />} />
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/ad-programs" element={<AdPrograms />} />
                     <Route path="/subscription-success" element={<SubscriptionSuccess />} />
-                    <Route path="/inspections" element={<Inspections />} />
                     <Route path="/auctions" element={<Auctions />} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/terms" element={<Terms />} />

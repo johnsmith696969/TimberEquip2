@@ -9,7 +9,7 @@ import {
   ExternalLink, MapPin, Phone,
   Mail, Building2, Wrench, MessageSquare,
   Shield, Download, ClipboardList, AlertTriangle,
-  Activity, Users, FileText, Database, Star, Upload
+  Activity, Users, FileText, Database, Star
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
@@ -19,7 +19,7 @@ import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
 import { useLocale } from '../components/LocaleContext';
-import { CallLog, Currency, FinancingRequest, Inquiry, InspectionRequest, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
+import { CallLog, Currency, FinancingRequest, Inquiry, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
 import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile, type RecaptchaVerifier } from 'firebase/auth';
@@ -29,7 +29,6 @@ import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import { Seo } from '../components/Seo';
-import { buildInspectionSheetFileName, buildInspectionSheetText } from '../utils/inspectionSheets';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
@@ -41,7 +40,6 @@ import {
   unenrollSmsMfaFactor,
 } from '../services/mfaService';
 
-const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
 const CONTENT_STUDIO_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer', 'content_manager', 'editor']);
 const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
@@ -85,18 +83,12 @@ export function Profile() {
   );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
   const hasContentStudioProfileScope = Boolean(normalizedRole && CONTENT_STUDIO_PROFILE_ROLES.has(normalizedRole));
-  const canManageInspectionRequests = Boolean(
-    normalizedRole &&
-    INSPECTION_MANAGER_ROLES.has(normalizedRole) &&
-    (hasAdminProfileScope || hasDealerWorkspaceAccess)
-  );
   const canViewSavedEquipment = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
   const canViewSearchAlerts = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
   const canViewMyListings = hasSellerWorkspaceAccess;
   const canViewSellerInquiries = hasSellerWorkspaceAccess;
   const canViewSellerCalls = canViewMyListings;
   const canViewBuyerFinancing = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
-  const canViewInspectionRequests = hasUser;
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
   const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
   const hasPaidSellerSubscription = entitlement.sellerAccessMode === 'subscription';
@@ -134,7 +126,7 @@ export function Profile() {
         ? 'hidden until billing is restored'
         : 'not applicable';
   const profileTabs = useMemo(() => {
-    const tabs = ['Overview'];
+    const tabs = ['Profile'];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
     if (canViewSearchAlerts) tabs.push('Search Alerts');
     if (canViewMyListings) tabs.push('My Listings');
@@ -142,12 +134,10 @@ export function Profile() {
     if (canViewSellerCalls) tabs.push('Calls');
     if (canViewBuyerFinancing) tabs.push('Financing');
     if (hasStorefrontAccess) tabs.push(storefrontTabLabel);
-    if (canViewInspectionRequests) tabs.push('Inspections');
     tabs.push('Privacy & Data', 'Account Settings');
     return tabs;
   }, [
     canViewBuyerFinancing,
-    canViewInspectionRequests,
     canViewMyListings,
     canViewSavedEquipment,
     canViewSearchAlerts,
@@ -157,7 +147,7 @@ export function Profile() {
     storefrontTabLabel,
   ]);
   const profileTabItems = useMemo(() => {
-    const items = [{ label: 'Overview', icon: LayoutDashboard }];
+    const items = [{ label: 'Profile', icon: LayoutDashboard }];
     if (canViewSavedEquipment) items.push({ label: 'Saved Equipment', icon: Bookmark });
     if (canViewSearchAlerts) items.push({ label: 'Search Alerts', icon: Bell });
     if (canViewMyListings) items.push({ label: 'My Listings', icon: Package });
@@ -167,9 +157,6 @@ export function Profile() {
     if (hasStorefrontAccess) {
       items.push({ label: storefrontTabLabel, icon: Building2 });
     }
-    if (canViewInspectionRequests) {
-      items.push({ label: 'Inspections', icon: ClipboardList });
-    }
     items.push(
       { label: 'Privacy & Data', icon: Shield },
       { label: 'Account Settings', icon: Settings }
@@ -177,7 +164,6 @@ export function Profile() {
     return items;
   }, [
     canViewBuyerFinancing,
-    canViewInspectionRequests,
     canViewMyListings,
     canViewSavedEquipment,
     canViewSearchAlerts,
@@ -217,7 +203,9 @@ export function Profile() {
   const resolveRequestedProfileTab = useCallback((requestedTab: string | null) => {
     const normalizedRequestedTab = requestedTab?.trim().toLowerCase() || '';
     const tabAlias =
-      normalizedRequestedTab === 'settings'
+      normalizedRequestedTab === 'overview'
+        ? 'profile'
+        : normalizedRequestedTab === 'settings'
         ? 'account settings'
         : normalizedRequestedTab === 'privacy'
           ? 'privacy & data'
@@ -230,10 +218,15 @@ export function Profile() {
     return profileTabs.find((tab) => tab.toLowerCase() === tabAlias) || null;
   }, [profileTabs]);
   const resolvedRequestedProfileTab = useMemo(
-    () => resolveRequestedProfileTab(searchParams.get('tab')) || 'Overview',
+    () => resolveRequestedProfileTab(searchParams.get('tab')) || 'Profile',
     [resolveRequestedProfileTab, searchParams]
   );
   const activeTab = resolvedRequestedProfileTab;
+  const profileSeoTitle = `${activeTab} | Forestry Equipment Sales`;
+  const profileSeoDescription = activeTab === 'Profile'
+    ? 'Manage your Forestry Equipment Sales account, listings, saved equipment, and subscription settings.'
+    : `Manage ${activeTab.toLowerCase()} from your Forestry Equipment Sales account workspace.`;
+  const profileCanonicalPath = activeTab === 'Profile' ? '/profile' : `/profile?tab=${encodeURIComponent(activeTab)}`;
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -571,7 +564,7 @@ export function Profile() {
       const verificationId = await startSmsMfaEnrollment(authUser, normalizedPhoneNumber, verifier);
       setMfaVerificationId(verificationId);
       setMfaVerificationCode('');
-      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber}. Enter the code below to finish enrollment.`);
+      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for ForestryEquipmentSales.com. Enter the code below to finish enrollment.`);
     } catch (error) {
       resetProfileMfaRecaptcha();
       setMfaError(getMfaErrorMessage(error, 'Unable to start SMS multi-factor enrollment right now.'));
@@ -948,14 +941,6 @@ export function Profile() {
   const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
-  const [inspectionRequests, setInspectionRequests] = useState<InspectionRequest[]>([]);
-  const [inspectionQuoteDrafts, setInspectionQuoteDrafts] = useState<Record<string, string>>({});
-  const [inspectionActionId, setInspectionActionId] = useState<string | null>(null);
-  const [inspectionDocumentActionId, setInspectionDocumentActionId] = useState<string | null>(null);
-  const [inspectionError, setInspectionError] = useState('');
-  const [inspectionNotice, setInspectionNotice] = useState('');
-  const [inspectionRequestsLoading, setInspectionRequestsLoading] = useState(false);
-  const inspectionReportInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const listingTitleLookup = useMemo(
     () => new Map(myListings.map((listing) => [listing.id, listing.title])),
     [myListings]
@@ -967,7 +952,7 @@ export function Profile() {
     }
 
     replaceProfileSearchParams((nextParams) => {
-      if (nextTab === 'Overview') {
+      if (nextTab === 'Profile') {
         nextParams.delete('tab');
       } else {
         nextParams.set('tab', nextTab);
@@ -986,8 +971,6 @@ export function Profile() {
     setSavedAssets([]);
     setInquiries([]);
     setCalls([]);
-    setInspectionRequests([]);
-    setInspectionQuoteDrafts({});
     setStorefrontPreview(null);
     setLoadedProfileSections({});
     setProfileDataError('');
@@ -1005,8 +988,6 @@ export function Profile() {
     setSavedAssets([]);
     setInquiries([]);
     setCalls([]);
-    setInspectionRequests([]);
-    setInspectionQuoteDrafts({});
     setStorefrontPreview(null);
     setLoadedProfileSections({});
     setProfileDataError('');
@@ -1032,7 +1013,7 @@ export function Profile() {
   const getProfileSectionsForTab = useCallback((tab: string) => {
     const sections = new Set<string>();
 
-    if (tab === 'Overview') {
+    if (tab === 'Profile') {
       if (canViewSavedEquipment) sections.add('savedAssets');
       if (canViewSearchAlerts) sections.add('savedSearches');
       if (canViewMyListings) sections.add('myListings');
@@ -1118,7 +1099,7 @@ export function Profile() {
   const isCurrentProfileTabReady = currentProfileSections.every((section) => loadedProfileSections[section]);
   const shouldShowProfileLoadingShell =
     profileDataLoading &&
-    activeTab === 'Overview' &&
+    activeTab === 'Profile' &&
     currentProfileSections.length > 0 &&
     !isCurrentProfileTabReady &&
     Object.keys(loadedProfileSections).length === 0;
@@ -1178,34 +1159,6 @@ export function Profile() {
     };
   }, [currentProfileSections, loadProfileSection, loadedProfileSections, user?.uid]);
 
-  useEffect(() => {
-    const fetchInspectionRequests = async () => {
-      if (!user?.uid || !canViewInspectionRequests || activeTab !== 'Inspections') {
-        return;
-      }
-
-      setInspectionRequestsLoading(true);
-      setInspectionError('');
-
-      try {
-        const nextInspectionRequests = await equipmentService.getInspectionRequests({ userUid: user.uid, role: user.role });
-        setInspectionRequests(nextInspectionRequests);
-        setInspectionQuoteDrafts(
-          nextInspectionRequests.reduce<Record<string, string>>((drafts, request) => {
-            drafts[request.id] = typeof request.quotedPrice === 'number' ? String(request.quotedPrice) : '';
-            return drafts;
-          }, {})
-        );
-      } catch (error) {
-        setInspectionError(error instanceof Error ? error.message : 'Unable to load inspection requests right now.');
-      } finally {
-        setInspectionRequestsLoading(false);
-      }
-    };
-
-    void fetchInspectionRequests();
-  }, [activeTab, canViewInspectionRequests, user?.uid, user?.role]);
-
   const activeManagedListingsCount = useMemo(
     () => myListings.filter((listing) => !['sold', 'archived', 'expired'].includes(String(listing.status || 'active').toLowerCase())).length,
     [myListings]
@@ -1223,6 +1176,12 @@ export function Profile() {
   const remainingFeaturedSlots = Number.isFinite(featuredListingCap)
     ? Math.max(featuredListingCap - featuredListingCount, 0)
     : null;
+  const isOwnerOperatorAccount = normalizedRole === 'individual_seller';
+  const featuredSlotsHelperText = remainingFeaturedSlots === null
+    ? 'Unlimited featured control'
+    : isOwnerOperatorAccount
+      ? `${remainingFeaturedSlots} featured upgrade slot${remainingFeaturedSlots === 1 ? '' : 's'} remaining`
+      : `${remainingFeaturedSlots} slots remaining`;
 
   const formatDateLabel = (value?: string) => {
     if (!value) return 'Date unavailable';
@@ -1309,180 +1268,6 @@ export function Profile() {
       ['2020 CAT 535D Skidder', 'Skidders', 'Caterpillar', '535D', '2020', '210000', '5100', 'Bangor, ME', 'Used - Good', 'CAT535-003', 'CAT 535D dual-arch grapple skidder. Undercarriage at 60%.'],
     ];
     downloadCsv('sample-machine-import-template', headers, sampleRows);
-  };
-
-  const getInspectionStatusClasses = (status: InspectionRequest['status']) => {
-    switch (status) {
-      case 'Accepted':
-      case 'Completed':
-        return 'bg-data/10 text-data';
-      case 'Declined':
-        return 'bg-accent/10 text-accent';
-      case 'Quoted':
-        return 'bg-amber-500/10 text-amber-700';
-      default:
-        return 'bg-ink text-white';
-    }
-  };
-
-  const handleInspectionQuoteDraftChange = (requestId: string, value: string) => {
-    setInspectionQuoteDrafts((prev) => ({ ...prev, [requestId]: value }));
-  };
-
-  const handleInspectionRequestUpdate = async (
-    request: InspectionRequest,
-    status: InspectionRequest['status'],
-    includeQuote: boolean
-  ) => {
-    if (!user?.uid) return;
-
-    setInspectionActionId(request.id);
-    setInspectionError('');
-    setInspectionNotice('');
-
-    let quotedPrice: number | null | undefined;
-    if (includeQuote) {
-      const rawQuote = (inspectionQuoteDrafts[request.id] ?? '').trim();
-      if (!rawQuote) {
-        quotedPrice = null;
-      } else {
-        const parsedQuote = Number(rawQuote);
-        if (!Number.isFinite(parsedQuote) || parsedQuote < 0) {
-          setInspectionError('Inspection quote must be a valid non-negative amount.');
-          setInspectionActionId(null);
-          return;
-        }
-        quotedPrice = parsedQuote;
-      }
-    }
-
-    try {
-      await equipmentService.updateInspectionRequest(request.id, {
-        status,
-        quotedPrice,
-        assignedToUid: user.uid,
-        assignedToName: user.displayName || user.company || user.email || 'Inspection Manager',
-      });
-
-      const updatedAt = new Date().toISOString();
-      setInspectionRequests((prev) =>
-        prev.map((item) =>
-          item.id === request.id
-            ? {
-                ...item,
-                status,
-                quotedPrice: quotedPrice === undefined ? item.quotedPrice : quotedPrice,
-                assignedToUid: user.uid,
-                assignedToName: user.displayName || user.company || user.email || 'Inspection Manager',
-                updatedAt,
-                reviewedAt: updatedAt,
-                respondedAt: ['Quoted', 'Accepted', 'Declined', 'Completed'].includes(status) ? updatedAt : item.respondedAt,
-              }
-            : item
-        )
-      );
-      setInspectionNotice(`Inspection request ${status.toLowerCase()} successfully.`);
-    } catch (error) {
-      setInspectionError(error instanceof Error ? error.message : 'Unable to update inspection request right now.');
-    } finally {
-      setInspectionActionId(null);
-    }
-  };
-
-  const patchInspectionRequestLocal = useCallback((requestId: string, patch: Partial<InspectionRequest>) => {
-    setInspectionRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, ...patch } : item)));
-  }, []);
-
-  const handleGenerateInspectionTemplate = async (request: InspectionRequest) => {
-    if (!user?.uid) return;
-
-    setInspectionDocumentActionId(request.id);
-    setInspectionError('');
-    setInspectionNotice('');
-
-    try {
-      const linkedListing = request.listingId ? await equipmentService.getListing(request.listingId) : undefined;
-      const content = buildInspectionSheetText(request, linkedListing);
-      const fileName = buildInspectionSheetFileName(request, linkedListing);
-      const file = new File([content], fileName, { type: 'text/plain' });
-      const uploaded = await storageService.uploadInspectionDocument(file, request.id, {
-        listingId: request.listingId,
-        requesterUid: request.requesterUid || '',
-        assignedToUid: request.assignedToUid || user.uid,
-        kind: 'template',
-      });
-      const generatedAt = new Date().toISOString();
-      const generatedByName = user.displayName || user.company || user.email || 'Inspection Manager';
-
-      await equipmentService.updateInspectionRequest(request.id, {
-        inspectionTemplateUrl: uploaded.downloadUrl,
-        inspectionTemplateFileName: uploaded.fileName,
-        inspectionTemplateGeneratedAt: generatedAt,
-        inspectionTemplateGeneratedByUid: user.uid,
-        inspectionTemplateGeneratedByName: generatedByName,
-      });
-
-      patchInspectionRequestLocal(request.id, {
-        inspectionTemplateUrl: uploaded.downloadUrl,
-        inspectionTemplateFileName: uploaded.fileName,
-        inspectionTemplateGeneratedAt: generatedAt,
-        inspectionTemplateGeneratedByUid: user.uid,
-        inspectionTemplateGeneratedByName: generatedByName,
-        updatedAt: generatedAt,
-      });
-      setInspectionNotice('Inspection sheet generated and attached to the request.');
-    } catch (error) {
-      setInspectionError(error instanceof Error ? error.message : 'Unable to generate the inspection sheet right now.');
-    } finally {
-      setInspectionDocumentActionId(null);
-    }
-  };
-
-  const handleUploadInspectionReport = async (request: InspectionRequest, file?: File | null) => {
-    if (!user?.uid || !file) return;
-
-    setInspectionDocumentActionId(request.id);
-    setInspectionError('');
-    setInspectionNotice('');
-
-    try {
-      const uploaded = await storageService.uploadInspectionDocument(file, request.id, {
-        listingId: request.listingId,
-        requesterUid: request.requesterUid || '',
-        assignedToUid: request.assignedToUid || user.uid,
-        kind: 'report',
-      });
-      const uploadedAt = new Date().toISOString();
-      const uploadedByName = user.displayName || user.company || user.email || 'Inspection Manager';
-
-      await equipmentService.updateInspectionRequest(request.id, {
-        status: 'Completed',
-        inspectionReportUrl: uploaded.downloadUrl,
-        inspectionReportFileName: uploaded.fileName,
-        inspectionReportContentType: uploaded.contentType,
-        inspectionReportUploadedAt: uploadedAt,
-        inspectionReportUploadedByUid: user.uid,
-        inspectionReportUploadedByName: uploadedByName,
-      });
-
-      patchInspectionRequestLocal(request.id, {
-        status: 'Completed',
-        inspectionReportUrl: uploaded.downloadUrl,
-        inspectionReportFileName: uploaded.fileName,
-        inspectionReportContentType: uploaded.contentType,
-        inspectionReportUploadedAt: uploadedAt,
-        inspectionReportUploadedByUid: user.uid,
-        inspectionReportUploadedByName: uploadedByName,
-        updatedAt: uploadedAt,
-        reviewedAt: uploadedAt,
-        respondedAt: uploadedAt,
-      });
-      setInspectionNotice('Completed inspection report uploaded successfully.');
-    } catch (error) {
-      setInspectionError(error instanceof Error ? error.message : 'Unable to upload the completed inspection report right now.');
-    } finally {
-      setInspectionDocumentActionId(null);
-    }
   };
 
   const handleToggleFeaturedListing = async (listing: Listing) => {
@@ -1791,8 +1576,13 @@ export function Profile() {
             {Number.isFinite(featuredListingCap) ? `${featuredListingCount}/${featuredListingCap}` : `${featuredListingCount}/Unlimited`}
           </p>
           <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-            {remainingFeaturedSlots === null ? 'Unlimited featured control' : `${remainingFeaturedSlots} slots remaining`}
+            {featuredSlotsHelperText}
           </p>
+          {isOwnerOperatorAccount && (
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-accent">
+              Owner-Operators can upgrade one active listing to featured.
+            </p>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4">
@@ -1852,7 +1642,7 @@ export function Profile() {
                   >
                     {listingActionId === getLifecycleActionKey(listing.id, listing.featured ? 'unfeature' : 'feature')
                       ? 'Working...'
-                      : listing.featured ? 'Unfeature' : 'Feature'}
+                      : listing.featured ? (isOwnerOperatorAccount ? 'Remove Featured' : 'Unfeature') : (isOwnerOperatorAccount ? 'Upgrade To Featured' : 'Feature')}
                   </button>
                 ) : null}
                 {getListingLifecycleActions(listing).map(({ action, label, tone }) => {
@@ -2229,258 +2019,6 @@ export function Profile() {
       )}
     </div>
   );
-
-  const renderInspections = () => {
-    const openInspectionCount = inspectionRequests.filter((request) => ['New', 'Quoted', 'Accepted'].includes(request.status)).length;
-    const completedInspectionCount = inspectionRequests.filter((request) => request.status === 'Completed').length;
-
-    return (
-      <div className="space-y-8">
-        <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-black uppercase tracking-widest">Inspection Requests</h3>
-          <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-            {canManageInspectionRequests
-              ? 'Review routed inspection requests, set pricing, and respond as the assigned dealer or admin.'
-              : 'Track the inspection requests you submitted through Forestry Equipment Sales.'}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { label: 'Total Requests', value: inspectionRequests.length.toString(), icon: ClipboardList },
-            { label: 'Open Requests', value: openInspectionCount.toString(), icon: Clock },
-            { label: 'Completed', value: completedInspectionCount.toString(), icon: CheckCircle2 },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-surface border border-line p-8 flex justify-between items-center shadow-sm">
-              <div className="flex flex-col">
-                <span className="label-micro text-muted mb-1">{stat.label}</span>
-                <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
-              </div>
-              <stat.icon className="text-accent" size={32} />
-            </div>
-          ))}
-        </div>
-
-        {inspectionError && <p className="text-[10px] font-black uppercase tracking-widest text-accent">{inspectionError}</p>}
-        {inspectionNotice && <p className="text-[10px] font-black uppercase tracking-widest text-data">{inspectionNotice}</p>}
-
-        {inspectionRequestsLoading ? (
-          <div className="space-y-4 animate-pulse">
-            <div className="h-24 bg-surface border border-line" />
-            <div className="h-40 bg-surface border border-line" />
-            <div className="h-40 bg-surface border border-line" />
-          </div>
-        ) : inspectionRequests.length === 0 ? (
-          <div className="bg-surface border border-line p-8 space-y-4">
-            <p className="text-xs font-black uppercase tracking-widest">No inspection requests yet.</p>
-            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-              {canManageInspectionRequests
-                ? 'New inspection intake from the public inspections page will appear here automatically.'
-                : 'Submit a request from the inspections page and it will appear here for status tracking.'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {inspectionRequests.map((request) => {
-              const quoteDraft = inspectionQuoteDrafts[request.id] ?? '';
-              const isUpdatingRequest = inspectionActionId === request.id;
-              const isDocumentActionPending = inspectionDocumentActionId === request.id;
-
-              return (
-                <div key={request.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-2 min-w-0">
-                      <p className="text-xs font-black uppercase tracking-widest">{request.listingTitle || request.equipment || 'Inspection Request'}</p>
-                      <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
-                        <span>{request.reference || request.listingId || request.id}</span>
-                        <span>{formatDateLabel(request.createdAt)}</span>
-                        {request.assignedToName ? <span>Assigned: {request.assignedToName}</span> : null}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInspectionStatusClasses(request.status)}`}>
-                        {request.status}
-                      </span>
-                      {typeof request.quotedPrice === 'number' ? (
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                          Quote: {formatPrice(request.quotedPrice, 'USD', 0)}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-[10px] font-bold uppercase tracking-widest">
-                    <div className="bg-bg border border-line p-4 space-y-2">
-                      <p className="text-muted">Requester</p>
-                      <p className="text-xs text-ink break-words">{request.requesterName || 'Unknown requester'}</p>
-                      <p className="text-muted normal-case break-words">{request.requesterEmail || 'No email provided'}</p>
-                      <p className="text-muted normal-case">{request.requesterPhone || 'No phone provided'}</p>
-                    </div>
-                    <div className="bg-bg border border-line p-4 space-y-2">
-                      <p className="text-muted">Inspection Location</p>
-                      <p className="text-xs text-ink break-words">{request.inspectionLocation || 'Not provided'}</p>
-                      <p className="text-muted">Timeline: {request.timeline || 'Flexible'}</p>
-                    </div>
-                    <div className="bg-bg border border-line p-4 space-y-2">
-                      <p className="text-muted">Matched Dealer</p>
-                      <p className="text-xs text-ink break-words">{request.matchedDealerName || request.assignedToName || 'Unassigned'}</p>
-                      <p className="text-muted break-words">{request.matchedDealerLocation || 'No location captured'}</p>
-                      <p className="text-muted">Distance: {typeof request.matchedDealerDistanceMiles === 'number' ? `${request.matchedDealerDistanceMiles.toFixed(1)} mi` : 'Unknown'}</p>
-                    </div>
-                    <div className="bg-bg border border-line p-4 space-y-2">
-                      <p className="text-muted">Machine</p>
-                      <p className="text-xs text-ink break-words">{request.equipment || request.listingTitle || 'Not provided'}</p>
-                      {request.listingUrl ? (
-                        <a href={request.listingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-accent hover:underline">
-                          View Linked Listing
-                          <ExternalLink size={12} />
-                        </a>
-                      ) : (
-                        <p className="text-muted">No linked listing URL</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-bg border border-line p-4 space-y-2">
-                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Inspection Notes</p>
-                    <p className="text-[11px] leading-relaxed text-ink break-words">
-                      {request.notes || 'No additional inspection notes were included.'}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 text-[10px] font-bold uppercase tracking-widest">
-                    <div className="bg-bg border border-line p-4 space-y-3">
-                      <p className="text-muted">Inspection Sheet</p>
-                      {request.inspectionTemplateUrl ? (
-                        <>
-                          <a
-                            href={request.inspectionTemplateUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 text-accent hover:underline"
-                          >
-                            <Download size={12} />
-                            {request.inspectionTemplateFileName || 'Download inspection sheet'}
-                          </a>
-                          <p className="text-muted normal-case">
-                            Sent {request.inspectionTemplateGeneratedAt ? formatDateLabel(request.inspectionTemplateGeneratedAt) : 'recently'} by {request.inspectionTemplateGeneratedByName || 'inspection desk'}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-muted normal-case">No inspection sheet has been sent yet.</p>
-                      )}
-                    </div>
-                    <div className="bg-bg border border-line p-4 space-y-3">
-                      <p className="text-muted">Completed Inspection Report</p>
-                      {request.inspectionReportUrl ? (
-                        <>
-                          <a
-                            href={request.inspectionReportUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 text-accent hover:underline"
-                          >
-                            <Download size={12} />
-                            {request.inspectionReportFileName || 'Download completed inspection report'}
-                          </a>
-                          <p className="text-muted normal-case">
-                            Uploaded {request.inspectionReportUploadedAt ? formatDateLabel(request.inspectionReportUploadedAt) : 'recently'} by {request.inspectionReportUploadedByName || 'inspection desk'}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-muted normal-case">No completed report has been uploaded yet.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {canManageInspectionRequests ? (
-                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,220px)_1fr] gap-4 items-end">
-                      <div className="space-y-2">
-                        <label className="label-micro">Inspection Quote</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          className="input-industrial w-full"
-                          value={quoteDraft}
-                          onChange={(event) => handleInspectionQuoteDraftChange(request.id, event.target.value)}
-                          placeholder="Enter USD amount"
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() => void handleInspectionRequestUpdate(request, 'Quoted', true)}
-                          disabled={isUpdatingRequest}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          Save Quote
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleInspectionRequestUpdate(request, 'Accepted', true)}
-                          disabled={isUpdatingRequest}
-                          className="btn-industrial btn-accent py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleGenerateInspectionTemplate(request)}
-                          disabled={isDocumentActionPending}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          {isDocumentActionPending ? 'Working...' : 'Send Inspection Sheet'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => inspectionReportInputRefs.current[request.id]?.click()}
-                          disabled={isDocumentActionPending}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          <Upload size={12} className="mr-1 inline" />
-                          Upload Completed Report
-                        </button>
-                        <input
-                          ref={(node) => {
-                            inspectionReportInputRefs.current[request.id] = node;
-                          }}
-                          type="file"
-                          accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.webp"
-                          className="hidden"
-                          onChange={(event) => {
-                            const nextFile = event.target.files?.[0] || null;
-                            void handleUploadInspectionReport(request, nextFile);
-                            event.currentTarget.value = '';
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void handleInspectionRequestUpdate(request, 'Declined', false)}
-                          disabled={isUpdatingRequest}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          Decline
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleInspectionRequestUpdate(request, 'Completed', false)}
-                          disabled={isUpdatingRequest}
-                          className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
-                        >
-                          Mark Completed
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const renderStorefront = () => {
     const publicPath = `/seller/${storefrontPreview?.storefrontSlug || storefrontForm.storefrontSlug || user?.uid || ''}`;
@@ -3042,7 +2580,12 @@ export function Profile() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title="My Profile | Forestry Equipment Sales" description="Manage your Forestry Equipment Sales account, listings, and subscription." robots="noindex, nofollow" />
+      <Seo
+        title={profileSeoTitle}
+        description={profileSeoDescription}
+        canonicalPath={profileCanonicalPath}
+        robots="noindex, nofollow"
+      />
       {/* Header */}
       <div className="bg-surface border-b border-line py-8 md:py-16 px-4 md:px-8 relative overflow-hidden">
         {coverPhotoPreview && (
@@ -3195,13 +2738,12 @@ export function Profile() {
                 </div>
               ) : (
                 <>
-              {activeTab === 'Overview' && renderOverview()}
+              {activeTab === 'Profile' && renderOverview()}
               {activeTab === 'My Listings' && renderMyListings()}
               {activeTab === 'Search Alerts' && renderAlerts()}
               {activeTab === 'Inquiries' && renderInquiries()}
               {activeTab === 'Calls' && renderCalls()}
               {activeTab === 'Financing' && renderFinancing()}
-              {activeTab === 'Inspections' && canViewInspectionRequests && renderInspections()}
               {activeTab === storefrontTabLabel && hasStorefrontAccess && renderStorefront()}
               {activeTab === 'Account Settings' && renderSettings()}
               {activeTab === 'Privacy & Data' && (

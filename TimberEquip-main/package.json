@@ -1,10 +1,10 @@
 {
-  "name": "timberequip",
+  "name": "forestry-equipment-sales",
   "private": true,
   "version": "1.0.0",
   "description": "Forestry Equipment Sales — Enterprise logging equipment marketplace",
   "author": "Forestry Equipment Sales",
-  "homepage": "https://www.timberequip.com",
+  "homepage": "https://www.forestryequipmentsales.com",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -31,6 +31,7 @@
     "ops:staging:setup": "node scripts/setup-staging-project.mjs",
     "ops:firestore:backup": "node scripts/firestore-backup.mjs export",
     "ops:firestore:backup:apply-retention": "node scripts/firestore-backup.mjs apply-retention",
+    "sendgrid:templates:sync": "node scripts/sync-sendgrid-templates.mjs",
     "prepare:seo-mode": "node scripts/prepare-seo-mode.mjs",
     "deploy:firebase": "node scripts/firebase-deploy.mjs",
     "deploy:preview": "node scripts/firebase-deploy.mjs --env preview",

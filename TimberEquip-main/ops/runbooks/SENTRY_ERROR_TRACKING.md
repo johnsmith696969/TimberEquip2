@@ -2,7 +2,7 @@
 
 ## Current State
 
-TimberEquip now includes optional Sentry scaffolding in:
+Forestry Equipment Sales now includes optional Sentry scaffolding in:
 
 - `src/services/sentry.ts`
 - `sentry.server.ts`

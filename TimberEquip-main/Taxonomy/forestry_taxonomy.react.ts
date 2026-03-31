@@ -320,7 +320,8 @@ export const TAXONOMY: TaxonomyMap =
       "XPAK": [
         "XP-W9800"
       ]
-    }
+    },
+    "Kilns": {}
   },
   "Land Clearing Equipment": {
     "Backhoes": {
@@ -3017,11 +3018,6 @@ export const TAXONOMY: TaxonomyMap =
         "790 MODEL 22"
       ]
     },
-    "Graders": {
-      "JOHN DEERE": [
-        "770D"
-      ]
-    },
     "Log Loaders": {
       "BARKO": [
         "120",
@@ -4956,21 +4952,17 @@ export const SOURCE_ALIAS_MAP = {
 } as const;
 
 export const REUSED_SUBCATEGORY_LABELS = {
-  "Feller Bunchers": [
-    "Land Clearing Equipment",
-    "Logging Equipment"
-  ],
-  "Graders": [
-    "Land Clearing Equipment",
-    "Logging Equipment"
+  "Bucket Trucks": [
+    "Tree Service Equipment",
+    "Trucks"
   ],
   "Chippers": [
     "Logging Equipment",
     "Tree Service Equipment"
   ],
-  "Bucket Trucks": [
-    "Tree Service Equipment",
-    "Trucks"
+  "Feller Bunchers": [
+    "Land Clearing Equipment",
+    "Logging Equipment"
   ],
   "Lifts": [
     "Tree Service Equipment",

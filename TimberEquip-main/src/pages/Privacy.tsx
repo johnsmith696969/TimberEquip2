@@ -301,7 +301,7 @@ export function Privacy() {
               <p>
                 To exercise these rights, visit your <Link to="/profile" className="text-accent underline">Profile &gt; Privacy &amp; Data</Link> tab
                 where you can export your data or request account deletion. You may also contact our Data Protection Officer
-                at privacy@timberequip.com. We will respond to all verified requests within 30 days as required by GDPR Article 12.
+                at privacy@forestryequipmentsales.com. We will respond to all verified requests within 30 days as required by GDPR Article 12.
                 If the request is complex, we may extend this by an additional 60 days with notice.
               </p>
               <p>
@@ -434,7 +434,7 @@ export function Privacy() {
               <p>
                 If we become aware that we have collected personal data from a child
                 under the applicable age, we will delete that data immediately and terminate the associated account.
-                If you believe a child has provided us with personal information, please contact us at privacy@timberequip.com.
+                If you believe a child has provided us with personal information, please contact us at privacy@forestryequipmentsales.com.
               </p>
             </section>
 
@@ -516,7 +516,7 @@ export function Privacy() {
 
               <p>
                 To exercise these rights, visit your <Link to="/profile" className="text-accent underline">Profile &gt; Privacy &amp; Data</Link> tab
-                or contact us at privacy@timberequip.com. You may also designate an authorized agent to submit requests on your behalf.
+                or contact us at privacy@forestryequipmentsales.com. You may also designate an authorized agent to submit requests on your behalf.
                 We will verify your identity before processing any request.
               </p>
             </section>
@@ -575,7 +575,7 @@ export function Privacy() {
                 </a>.
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
-                <span>privacy@timberequip.com</span>
+                <span>privacy@forestryequipmentsales.com</span>
                 <span>+1 (800) 846-2373</span>
                 <span className="text-white/40 text-sm font-medium mt-2">Forestry Equipment Sales, LLC — Duluth, Minnesota, United States</span>
               </div>

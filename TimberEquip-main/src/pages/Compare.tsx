@@ -10,6 +10,7 @@ import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
 import { useLocale } from '../components/LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
+import { Seo } from '../components/Seo';
 
 export function Compare() {
   const { formatNumber, formatPrice } = useLocale();
@@ -50,6 +51,11 @@ export function Compare() {
 
   return (
     <div className="min-h-screen bg-bg pb-24">
+      <Seo
+        title="Compare Equipment | Forestry Equipment Sales"
+        description="Compare forestry equipment listings side by side. Review specs, pricing, hours, and condition to find the right machine."
+        canonicalPath="/compare"
+      />
       {/* Header */}
       <div className="bg-surface border-b border-line py-8 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto flex justify-between items-end">

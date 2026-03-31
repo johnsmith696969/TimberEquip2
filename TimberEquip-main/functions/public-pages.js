@@ -8,7 +8,7 @@ const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c'
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const PUBLIC_PAGES_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
-const DEFAULT_BASE_URL = 'https://www.timberequip.com';
+const DEFAULT_BASE_URL = 'https://www.forestryequipmentsales.com';
 const MARKET_ROUTE_LABELS = Object.freeze({
   logging: 'logging-equipment-for-sale',
   forestry: 'forestry-equipment-for-sale',

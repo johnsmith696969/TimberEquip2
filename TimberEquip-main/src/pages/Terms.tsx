@@ -110,7 +110,6 @@ export function Terms() {
                       <li>Inquiring about available assets and contacting sellers.</li>
                       <li>Applying for institutional financing through approved partners.</li>
                       <li>Operating an approved seller subscription or dealer storefront.</li>
-                      <li>Requesting equipment inspections through the platform.</li>
                       <li>Saving searches and receiving matching listing alerts.</li>
                     </ul>
                   </div>
@@ -156,7 +155,7 @@ export function Terms() {
               <p>
                 Forestry Equipment Sales reserves the right to reject, unpublish, suspend, or permanently remove any listing
                 that fails our verification process, violates marketplace policy, or receives a valid complaint. We may also
-                require sellers to provide additional documentation (proof of ownership, title, inspection reports) before
+                require sellers to provide additional documentation (proof of ownership, title, service records) before
                 publishing or reinstating a listing.
               </p>
             </section>
@@ -230,7 +229,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">7. Dealer Services &amp; Seller Operations</h2>
               <p>
-                DealerOS, dealer storefronts, managed seats, advertising programs, lead routing, inspection routing, and related
+                DealerOS, dealer storefronts, managed seats, advertising programs, lead routing, and related
                 workflow tools are platform services provided to approved accounts. Access to these services depends on active
                 entitlement, compliance with platform rules, and availability of supporting systems.
               </p>
@@ -265,7 +264,7 @@ export function Terms() {
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">8. Data, Leads &amp; Platform Records</h2>
               <p>
                 By using the platform, you authorize Forestry Equipment Sales to store operational records related to account setup,
-                consent, billing status, leads, inspection requests, listing lifecycle actions, fraud prevention, and support activity.
+                consent, billing status, leads, listing lifecycle actions, fraud prevention, and support activity.
                 These records may be used to maintain the platform, investigate abuse, support audits, verify account entitlement,
                 and comply with legal obligations.
               </p>
@@ -329,7 +328,7 @@ export function Terms() {
               </ul>
               <p>
                 We are not obligated to monitor all content and are not liable for any user-generated content posted on the Platform.
-                If you encounter content that you believe violates these Terms, please report it to legal@timberequip.com.
+                If you encounter content that you believe violates these Terms, please report it to legal@forestryequipmentsales.com.
               </p>
             </section>
 
@@ -452,11 +451,11 @@ export function Terms() {
               <p>
                 Any disputes between buyers and sellers must be resolved through the parties directly unless otherwise required by law.
                 Forestry Equipment Sales provides the platform for communication and billing infrastructure, but does not guarantee
-                the outcome of any transaction, inspection, financing outcome, transport result, or equipment condition.
+                the outcome of any transaction, financing outcome, transport result, or equipment condition.
               </p>
               <p>
                 <strong>Informal Resolution:</strong> Before initiating formal proceedings, you agree to first contact us at
-                legal@timberequip.com and attempt to resolve any dispute informally for at least 30 days.
+                legal@forestryequipmentsales.com and attempt to resolve any dispute informally for at least 30 days.
               </p>
             </section>
 
@@ -571,7 +570,7 @@ export function Terms() {
                 a copy of these Terms in an alternative format, contact our Legal Department:
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight text-ink">
-                <span>legal@timberequip.com</span>
+                <span>legal@forestryequipmentsales.com</span>
                 <span>+1 (800) 846-2373</span>
                 <span className="text-muted text-sm font-medium mt-2">Forestry Equipment Sales, LLC — Duluth, Minnesota, United States</span>
               </div>

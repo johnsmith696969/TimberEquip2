@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useLocation } from 'react-router-dom';
 import {
   Grid,
   List,
@@ -27,6 +27,8 @@ import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { startPerformanceTrace } from '../services/performance';
 import { buildListingPath } from '../utils/listingPath';
+import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
 
@@ -281,22 +283,25 @@ export function Search() {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [allListings, setAllListings] = useState<Listing[]>(() => getInitialCachedListings());
   const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy>({});
   const [loading, setLoading] = useState(() => getInitialCachedListings().length === 0);
   const [inventoryNotice, setInventoryNotice] = useState('');
   const [inventoryError, setInventoryError] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [pendingFavoriteId, setPendingFavoriteId] = useState<string | null>(null);
   const [pendingSaveSearch, setPendingSaveSearch] = useState(false);
 
   const handleToggleFavorite = (id: string) => {
+    const normalizedId = normalizeListingId(id);
+    if (!normalizedId) return;
+
     if (!isAuthenticated) {
-      setPendingFavoriteId(id);
+      setPendingFavoriteIntent(normalizedId, `${location.pathname}${location.search}${location.hash}`);
       setShowLoginModal(true);
       return;
     }
-    toggleFavorite(id);
+    void toggleFavorite(normalizedId);
   };
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showFilters, setShowFilters] = useState(true);
@@ -316,7 +321,7 @@ export function Search() {
   const [savingSearch, setSavingSearch] = useState(false);
   const [alertPreferences, setAlertPreferences] = useState<AlertPreferences>(DEFAULT_ALERT_PREFERENCES);
   const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
-  const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
+  const favoriteIds = normalizeListingIdList(user?.favorites);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -721,7 +726,7 @@ export function Search() {
     itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
       '@type': 'ListItem',
       position: index + 1,
-      url: `https://timberequip.com${buildListingPath(listing)}`,
+      url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
       item: {
         '@type': 'Product',
         name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
@@ -1327,10 +1332,10 @@ export function Search() {
                   <div key={listing.id}>
                     <ListingCard
                       listing={listing}
-                      isFavorite={favoriteIds.includes(listing.id)}
+                      isFavorite={favoriteIds.includes(normalizeListingId(listing.id))}
                       onToggleFavorite={handleToggleFavorite}
                       onInquire={(selected) => setSelectedListingForInquiry(selected)}
-                      isComparing={compareList.includes(listing.id)}
+                      isComparing={compareList.includes(normalizeListingId(listing.id))}
                       onToggleCompare={toggleCompare}
                     />
                   </div>
@@ -1432,12 +1437,9 @@ export function Search() {
 
       <LoginPromptModal
         isOpen={showLoginModal}
-        onClose={() => { setShowLoginModal(false); setPendingFavoriteId(null); setPendingSaveSearch(false); }}
+        onClose={() => setShowLoginModal(false)}
+        onDismiss={() => { clearPendingFavoriteIntent(); setPendingSaveSearch(false); }}
         onSuccess={() => {
-          if (pendingFavoriteId) {
-            toggleFavorite(pendingFavoriteId);
-            setPendingFavoriteId(null);
-          }
           if (pendingSaveSearch) {
             setPendingSaveSearch(false);
             void saveSearchWithAlerts();

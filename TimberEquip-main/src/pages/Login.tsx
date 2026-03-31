@@ -30,10 +30,15 @@ import {
   type SmsMfaFactorSummary,
 } from '../services/mfaService';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+import { appendReturnToParam } from '../utils/sellerAccess';
+import { Seo } from '../components/Seo';
+import { NOINDEX_ROBOTS } from '../utils/listingPath';
+import { useTheme } from '../components/ThemeContext';
 
 const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
 
 export function Login() {
+  const { theme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -62,6 +67,10 @@ export function Login() {
   const redirectTarget = typeof (location.state as { from?: unknown } | null)?.from === 'string'
     ? ((location.state as { from: string }).from || '')
     : queryRedirectTarget;
+  const stateReturnToRaw = typeof (location.state as { returnTo?: unknown } | null)?.returnTo === 'string'
+    ? String((location.state as { returnTo: string }).returnTo || '').trim()
+    : '';
+  const stateReturnTo = stateReturnToRaw.startsWith('/') ? stateReturnToRaw : '';
   const hasFirebaseSession = Boolean(auth.currentUser);
   const hasResolvedSession = Boolean(isAuthenticated);
 
@@ -95,20 +104,31 @@ export function Login() {
   const postSignInTarget = isPrivilegedAdminEmail(signedInEmail)
     ? '/admin'
     : redirectTarget || '/profile';
+  const postSignInHref = postSignInTarget.startsWith('/sell')
+    ? appendReturnToParam(postSignInTarget, stateReturnTo)
+    : postSignInTarget;
+  const registerParams = new URLSearchParams();
+  if (redirectTarget) {
+    registerParams.set('redirect', redirectTarget);
+  }
+  if (stateReturnTo) {
+    registerParams.set('returnTo', stateReturnTo);
+  }
+  const registerHref = registerParams.toString() ? `/register?${registerParams.toString()}` : '/register';
 
   useEffect(() => {
     if ((!hasResolvedSession && !hasFirebaseSession) || mfaResolver) {
       return;
     }
 
-    navigate(postSignInTarget, { replace: true });
+    navigate(postSignInHref, { replace: true });
 
     const fallbackRedirect = window.setTimeout(() => {
-      window.location.replace(postSignInTarget);
+      window.location.replace(postSignInHref);
     }, 750);
 
     return () => window.clearTimeout(fallbackRedirect);
-  }, [hasFirebaseSession, hasResolvedSession, mfaResolver, navigate, postSignInTarget]);
+  }, [hasFirebaseSession, hasResolvedSession, mfaResolver, navigate, postSignInHref]);
 
   const resetMfaChallenge = (notice = '') => {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
@@ -181,7 +201,7 @@ export function Login() {
       if (recaptchaContainer) recaptchaContainer.innerHTML = '';
       setMfaFactor(factor);
       setMfaVerificationId(verificationId);
-      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'}. Enter it below to finish signing in.`);
+      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for ForestryEquipmentSales.com. Enter it below to finish signing in.`);
     } catch (mfaError) {
       resetRecaptchaVerifier(mfaRecaptchaRef.current);
       mfaRecaptchaRef.current = null;
@@ -213,7 +233,7 @@ export function Login() {
     try {
       await completeSmsMfaSignIn(mfaResolver, mfaVerificationId, normalizedCode);
       resetMfaChallenge();
-      navigate(postSignInTarget, { replace: true });
+      navigate(postSignInHref, { replace: true });
     } catch (mfaError) {
       setError(getMfaErrorMessage(mfaError, 'Unable to complete SMS multi-factor sign-in right now.'));
     } finally {
@@ -347,11 +367,16 @@ export function Login() {
   const disablePrimaryAuth = loading || googleLoading || !!mfaResolver;
 
   if ((hasResolvedSession || hasFirebaseSession) && !mfaResolver) {
-    return <Navigate replace to={postSignInTarget} />;
+    return <Navigate replace to={postSignInHref} />;
   }
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
+      <Seo
+        title="Sign In | Forestry Equipment Sales"
+        description="Sign in to your Forestry Equipment Sales account to manage listings, view saved equipment, and access dealer tools."
+        robots={NOINDEX_ROBOTS}
+      />
       <div className="absolute top-0 right-0 w-1/2 h-full bg-accent/5 skew-x-12 translate-x-1/2" />
       <div className="absolute bottom-0 left-0 w-1/3 h-full bg-accent/5 -skew-x-12 -translate-x-1/2" />
 
@@ -360,9 +385,9 @@ export function Login() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl bg-bg border border-line shadow-2xl relative z-10 overflow-hidden"
       >
-        <div className="bg-[#0a0a0a] text-white p-12">
+        <div className={`p-12 ${theme === 'dark' ? 'bg-[#0a0a0a] text-white' : 'bg-surface text-ink border-b border-line'}`}>
           <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2 block">Member Login</span>
-          <h1 className="text-4xl font-black tracking-tighter uppercase leading-none text-white">
+          <h1 className={`text-4xl font-black tracking-tighter uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
             Forestry Equipment <br /> <span className="text-accent">Sales</span>
           </h1>
         </div>
@@ -561,7 +586,7 @@ export function Login() {
           <div className="mt-8 pt-8 border-t border-line flex flex-col space-y-6">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to Forestry Equipment Sales?</span>
-              <Link to="/register" className="text-[10px] font-black text-accent uppercase hover:underline">
+              <Link to={registerHref} className="text-[10px] font-black text-accent uppercase hover:underline">
                 Create Account
               </Link>
             </div>

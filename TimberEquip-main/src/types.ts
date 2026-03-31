@@ -342,48 +342,6 @@ export interface FinancingRequest {
   updatedAt?: string;
 }
 
-export type InspectionRequestStatus = 'New' | 'Quoted' | 'Accepted' | 'Declined' | 'Completed';
-
-export interface InspectionRequest {
-  id: string;
-  listingId?: string;
-  listingTitle?: string;
-  listingUrl?: string;
-  reference?: string;
-  requesterUid?: string | null;
-  requesterName: string;
-  requesterEmail: string;
-  requesterPhone: string;
-  requesterCompany?: string;
-  equipment: string;
-  inspectionLocation: string;
-  timeline?: string;
-  notes?: string;
-  matchedDealerUid?: string | null;
-  matchedDealerName?: string;
-  matchedDealerLocation?: string;
-  matchedDealerDistanceMiles?: number | null;
-  assignedToUid?: string | null;
-  assignedToName?: string | null;
-  quotedPrice?: number | null;
-  inspectionTemplateUrl?: string;
-  inspectionTemplateFileName?: string;
-  inspectionTemplateGeneratedAt?: string | null;
-  inspectionTemplateGeneratedByUid?: string | null;
-  inspectionTemplateGeneratedByName?: string | null;
-  inspectionReportUrl?: string;
-  inspectionReportFileName?: string;
-  inspectionReportContentType?: string;
-  inspectionReportUploadedAt?: string | null;
-  inspectionReportUploadedByUid?: string | null;
-  inspectionReportUploadedByName?: string | null;
-  status: InspectionRequestStatus;
-  createdAt: string;
-  updatedAt?: string;
-  reviewedAt?: string | null;
-  respondedAt?: string | null;
-}
-
 export interface CallLog {
   id: string;
   listingId: string;
@@ -539,12 +497,6 @@ export interface UserProfile {
   about?: string;
   bio?: string;
   location?: string;
-  inspectionCoverageEnabled?: boolean;
-  inspectionCoverageTerritory?: string;
-  inspectionEquipmentFocus?: string;
-  inspectionCertifications?: string;
-  inspectionCoverageNotes?: string;
-  inspectionCoverageUpdatedAt?: string | null;
   storefrontEnabled?: boolean;
   storefrontSlug?: string;
   storefrontName?: string;

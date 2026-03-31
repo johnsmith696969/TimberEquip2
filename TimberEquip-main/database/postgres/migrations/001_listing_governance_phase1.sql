@@ -1,4 +1,4 @@
--- TimberEquip Phase 1 listing governance schema
+-- Forestry Equipment Sales Phase 1 listing governance schema
 -- Establishes the first canonical PostgreSQL tables for listing lifecycle
 -- governance, transition auditing, anomaly detection, and visibility history.
 --

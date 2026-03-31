@@ -112,6 +112,7 @@ export function Financing() {
         title="Equipment Financing | Apply for Credit | Forestry Equipment Sales"
         description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales."
         canonicalPath="/financing"
+        imagePath="/page-photos/ponsse-buffalo-loading.jpg"
       />
       {/* Header */}
       <div className={`py-24 px-4 md:px-8 relative overflow-hidden transition-colors ${heroClasses.shell}`}>
@@ -136,8 +137,7 @@ export function Financing() {
             <span className="text-accent">Financing</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed transition-colors ${heroClasses.body}`}>
-            Customized credit facilities for forestry operations. 
-            Fast approvals, flexible terms, and competitive rates tailored to your business cycle.
+            Apply for equipment financing. Submit your details and get a credit decision, typically within one business day.
           </p>
         </div>
       </div>

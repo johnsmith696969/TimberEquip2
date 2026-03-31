@@ -6,7 +6,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile as updateFirebaseProfile,
-  sendPasswordResetEmail,
   GoogleAuthProvider,
   signOut,
   type User as FirebaseUser,
@@ -17,6 +16,8 @@ import { userService } from '../services/userService';
 import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
 import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../utils/accountEntitlement';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+import { clearPendingFavoriteIntent, getPendingFavoriteIntent } from '../utils/pendingFavorite';
+import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { setSentryUserContext } from '../services/sentry';
 
 type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
@@ -289,7 +290,7 @@ async function buildFallbackProfile(
     managedAccountCap,
     currentSubscriptionId: mergedCurrent.currentSubscriptionId || null,
     currentPeriodEnd: mergedCurrent.currentPeriodEnd || null,
-    favorites: Array.isArray(mergedCurrent.favorites) ? mergedCurrent.favorites : [],
+    favorites: normalizeListingIdList(mergedCurrent.favorites),
     emailVerified: firebaseUser.emailVerified,
     preferredLanguage: mergedCurrent.preferredLanguage,
     preferredCurrency: mergedCurrent.preferredCurrency,
@@ -347,6 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const billingRefreshAttemptsRef = useRef<Set<string>>(new Set());
   const currentUserRef = useRef<UserProfile | null>(null);
+  const pendingFavoriteProcessingRef = useRef<string | null>(null);
 
   useEffect(() => {
     setSentryUserContext(user);
@@ -354,7 +356,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const normalizeProfile = (profile: UserProfile): UserProfile => withResolvedAccountEntitlement({
     ...profile,
-    favorites: Array.isArray(profile.favorites) ? profile.favorites : [],
+    favorites: normalizeListingIdList(profile.favorites),
   });
 
   const applyPatchedCurrentUserProfile = (updates: Partial<UserProfile>) => {
@@ -385,6 +387,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     currentUserRef.current = user;
   }, [user]);
+
+  useEffect(() => {
+    const pendingFavoriteIntent = getPendingFavoriteIntent();
+    if (!user?.uid || !pendingFavoriteIntent?.listingId) {
+      pendingFavoriteProcessingRef.current = null;
+      return;
+    }
+
+    const pendingFavoriteId = normalizeListingId(pendingFavoriteIntent.listingId);
+    if (!pendingFavoriteId) {
+      clearPendingFavoriteIntent();
+      pendingFavoriteProcessingRef.current = null;
+      return;
+    }
+
+    if (pendingFavoriteProcessingRef.current === pendingFavoriteId) {
+      return;
+    }
+
+    const favorites = normalizeListingIdList(user.favorites);
+    if (favorites.includes(pendingFavoriteId)) {
+      clearPendingFavoriteIntent();
+      pendingFavoriteProcessingRef.current = null;
+      return;
+    }
+
+    pendingFavoriteProcessingRef.current = pendingFavoriteId;
+    const nextFavorites = Array.from(new Set([...favorites, pendingFavoriteId]));
+
+    applyPatchedCurrentUserProfile({ favorites: nextFavorites });
+
+    void userService.toggleFavorite(user.uid, pendingFavoriteId, false)
+      .then(() => {
+        clearPendingFavoriteIntent();
+      })
+      .catch((error) => {
+        console.error('Unable to complete pending favorite intent after authentication:', error);
+        clearPendingFavoriteIntent();
+        applyPatchedCurrentUserProfile({ favorites });
+      })
+      .finally(() => {
+        pendingFavoriteProcessingRef.current = null;
+      });
+  }, [user?.uid, user?.favorites]);
 
   useEffect(() => {
     let authStateVersion = 0;
@@ -748,20 +794,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const resetError = new Error(payload?.error || 'Failed to send reset email. Please try again.');
     (resetError as Error & { code?: string }).code = payload?.code || '';
     throw resetError;
-
-    // Use the canonical domain so Firebase's authorized-domain check passes
-    const continueUrl = 'https://timberequip.com/login';
-    try {
-      await sendPasswordResetEmail(auth, email, { url: continueUrl });
-    } catch (error: any) {
-      const code = error?.code ?? '';
-      if (code === 'auth/unauthorized-continue-uri' || code === 'auth/invalid-continue-uri') {
-        // timberequip.com not yet in Firebase Auth authorized domains — fall back to default handler
-        await sendPasswordResetEmail(auth, email);
-        return;
-      }
-      throw error;
-    }
   };
 
   const logout = async () => {
@@ -773,9 +805,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const toggleFavorite = async (listingId: string) => {
     const uid = user?.uid || auth.currentUser?.uid;
     if (!uid) return;
-    const favorites = Array.isArray(user?.favorites) ? user.favorites : [];
-    const isFavorite = favorites.includes(listingId);
-    await userService.toggleFavorite(uid, listingId, isFavorite);
+
+    const normalizedListingId = normalizeListingId(listingId);
+    if (!normalizedListingId) return;
+
+    const favorites = normalizeListingIdList(user?.favorites);
+    const isFavorite = favorites.includes(normalizedListingId);
+    const nextFavorites = isFavorite
+      ? favorites.filter((favoriteId) => favoriteId !== normalizedListingId)
+      : Array.from(new Set([...favorites, normalizedListingId]));
+
+    if (user?.uid === uid) {
+      applyPatchedCurrentUserProfile({ favorites: nextFavorites });
+    }
+
+    try {
+      await userService.toggleFavorite(uid, normalizedListingId, isFavorite);
+    } catch (error) {
+      if (user?.uid === uid) {
+        applyPatchedCurrentUserProfile({ favorites });
+      }
+      throw error;
+    }
   };
 
   return (

@@ -4,15 +4,12 @@ import {
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
-  Phone, Calculator, AlertCircle, Landmark, ClipboardCheck
+  Phone, Calculator, AlertCircle, Landmark
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
 import {
-  AMV_MATCH_HOURS_PERCENT,
-  AMV_MATCH_PRICE_PERCENT,
-  AMV_MATCH_YEAR_RANGE,
   AMV_MIN_COMPARABLES,
   getAmvMatchRulesSummary,
 } from '../utils/amvMatching';
@@ -25,6 +22,8 @@ import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService
 import { Seo } from '../components/Seo';
 import WatermarkOverlay from '../components/WatermarkOverlay';
 import { buildListingPath, decodeListingPublicKey, extractListingPublicKeyFromSlug, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
+import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import {
   buildCategoryPath,
   buildDealerPath,
@@ -148,7 +147,7 @@ export function ListingDetail() {
 
   const getListingUrl = (targetListing?: Listing | null) => {
     if (typeof window !== 'undefined') return window.location.href;
-    return targetListing ? `https://timberequip.com${buildListingPath(targetListing)}` : '';
+    return targetListing ? `https://www.forestryequipmentsales.com${buildListingPath(targetListing)}` : '';
   };
 
   const formatSpecValue = (value: unknown): string => {
@@ -258,12 +257,12 @@ export function ListingDetail() {
     return undefined;
   };
 
-  const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
+  const favoriteIds = normalizeListingIdList(user?.favorites);
   const slugPublicKey = extractListingPublicKeyFromSlug(slug || '');
   const slugDerivedListingId = slug?.includes('--')
     ? slugPublicKey
     : decodeListingPublicKey(publicKey || slugPublicKey || '');
-  const resolvedListingId = String(listing?.id || slugDerivedListingId || id || '').trim();
+  const resolvedListingId = normalizeListingId(listing?.id || slugDerivedListingId || id || '');
   const isFavorite = resolvedListingId ? favoriteIds.includes(resolvedListingId) : false;
 
   useEffect(() => {
@@ -472,6 +471,8 @@ export function ListingDetail() {
   const googleMapsHref = hasMachineMapLink
     ? buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
     : '';
+  const showMarketMatchRecommendations = loadingMarketMatches || marketMatchRecommendations.length > 0;
+  const marketMatchExplainer = 'We recommend machines that match the same manufacturer and model, with +/- 10% of price and hour range.';
 
   useEffect(() => {
     setIsMapFrameLoading(hasMachineMap);
@@ -510,6 +511,9 @@ export function ListingDetail() {
 
   const handleToggleFavorite = async () => {
     if (!isAuthenticated) {
+      if (resolvedListingId) {
+        setPendingFavoriteIntent(resolvedListingId, `${location.pathname}${location.search}${location.hash}`);
+      }
       setShowLoginModal(true);
       return;
     }
@@ -822,7 +826,7 @@ export function ListingDetail() {
   const detailSeoDescription = [
     `Used ${detailSeoHeadline} ${routeCategory ? `${routeCategory.toLowerCase()} ` : ''}for sale${safeCityState ? ` in ${safeCityState}` : ''}`.replace(/\s+/g, ' ').trim(),
     safeHours > 0 ? `with ${formatNumber(safeHours)} hours.` : 'View photos, specs, and pricing details.',
-    'Request pricing, financing, inspection, and logistics support from Forestry Equipment Sales.',
+    'Request pricing, financing, and logistics support from Forestry Equipment Sales.',
   ].join(' ');
   const isLiveApprovedListing =
     String(listing.approvalStatus || '').toLowerCase() === 'approved' &&
@@ -839,6 +843,57 @@ export function ListingDetail() {
     seller?.name,
   );
   const detailRobots = !isLiveApprovedListing || isQaOrTestListing ? NOINDEX_ROBOTS : undefined;
+  const pricingCard = (
+    <div className="bg-[#1C1917] text-white p-8 rounded-sm shadow-2xl">
+      <div className="flex flex-col mb-8">
+        <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Listed Price</span>
+        <div className="flex items-baseline space-x-3">
+          <span className="text-4xl font-black tracking-tighter">{formatPrice(safePrice, listing.currency || 'USD', 0)}</span>
+          <span className="text-white/40 text-xs font-bold uppercase">{t('listingDetail.exclVat', 'Excl. VAT')}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col space-y-4 mb-8">
+        <button
+          onClick={() => setShowInquiryModal(true)}
+          className="btn-industrial btn-accent w-full py-5 text-base"
+        >
+          {t('listingDetail.sendInquiry', 'Send Inquiry')}
+        </button>
+        <button
+          onClick={handleCallSeller}
+          className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
+        >
+          <Phone size={18} className="mr-3" />
+          {t('listingDetail.callSeller', 'Call Seller')}
+        </button>
+      </div>
+
+      <div className="flex items-center justify-center space-x-6 pt-6 border-t border-white/10">
+        <button
+          onClick={() => setShowPaymentCalcModal(true)}
+          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+        >
+          <Calculator size={14} className="mr-2" />
+          {t('listingDetail.calcPayment', 'Calc Payment')}
+        </button>
+        <button
+          onClick={() => setShowFinancingModal(true)}
+          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+        >
+          <Landmark size={14} className="mr-2" />
+          {t('listingDetail.financing', 'Financing')}
+        </button>
+        <button
+          onClick={() => setShowShippingModal(true)}
+          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+        >
+          <Truck size={14} className="mr-2" />
+          {t('listingDetail.logistics', 'Logistics')}
+        </button>
+      </div>
+    </div>
+  );
   const normalizedCurrentPath = location.pathname.replace(/\/+$/, '') || '/';
   const normalizedCanonicalPath = listingPath.replace(/\/+$/, '') || '/';
   const routeLinks = [
@@ -854,14 +909,14 @@ export function ListingDetail() {
       '@type': 'ListItem',
       position: 1,
       name: 'Home',
-      item: 'https://timberequip.com/',
+      item: 'https://www.forestryequipmentsales.com/',
     },
     routeCategory
       ? {
           '@type': 'ListItem',
           position: 2,
           name: `${routeCategory} For Sale`,
-          item: `https://timberequip.com${buildCategoryPath(routeCategory)}`,
+          item: `https://www.forestryequipmentsales.com${buildCategoryPath(routeCategory)}`,
         }
       : null,
     routeManufacturer
@@ -869,7 +924,7 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 3 : 2,
           name: routeManufacturer,
-          item: `https://timberequip.com${buildManufacturerPath(routeManufacturer)}`,
+          item: `https://www.forestryequipmentsales.com${buildManufacturerPath(routeManufacturer)}`,
         }
       : null,
     routeManufacturer && routeModel
@@ -877,14 +932,14 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 4 : 3,
           name: `${routeManufacturer} ${routeModel}`,
-          item: `https://timberequip.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
+          item: `https://www.forestryequipmentsales.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
         }
       : null,
     {
       '@type': 'ListItem',
       position: routeManufacturer && routeModel ? (routeCategory ? 5 : 4) : routeManufacturer ? (routeCategory ? 4 : 3) : routeCategory ? 3 : 2,
       name: detailSeoHeadline,
-      item: `https://timberequip.com${listingPath}`,
+      item: `https://www.forestryequipmentsales.com${listingPath}`,
     },
   ].filter(Boolean);
   const detailJsonLd = {
@@ -903,7 +958,7 @@ export function ListingDetail() {
         sku: listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
-        url: `https://timberequip.com${listingPath}`,
+        url: `https://www.forestryequipmentsales.com${listingPath}`,
         brand: {
           '@type': 'Brand',
           name: routeManufacturer,
@@ -925,7 +980,7 @@ export function ListingDetail() {
           })),
         offers: {
           '@type': 'Offer',
-          url: `https://timberequip.com${listingPath}`,
+          url: `https://www.forestryequipmentsales.com${listingPath}`,
           priceCurrency: listing.currency || 'USD',
           availability: String(listing.status || 'active').toLowerCase() === 'sold'
             ? 'https://schema.org/SoldOut'
@@ -935,7 +990,7 @@ export function ListingDetail() {
           seller: {
             '@type': 'Organization',
             name: seller?.storefrontName || safeSellerName,
-            url: dealerPath ? `https://timberequip.com${dealerPath}` : undefined,
+            url: dealerPath ? `https://www.forestryequipmentsales.com${dealerPath}` : undefined,
           },
         },
       },
@@ -1125,6 +1180,10 @@ export function ListingDetail() {
               )}
             </div>
 
+            <div className="lg:hidden">
+              {pricingCard}
+            </div>
+
             {listingVideos.length > 0 && (
               <div className="flex flex-col space-y-6">
                 <div className="flex items-center justify-between border-b border-line pb-4">
@@ -1291,13 +1350,56 @@ export function ListingDetail() {
               </div>
             </div>
 
+            {/* Map Preview */}
+            <div className="bg-surface border border-line overflow-hidden">
+              <div className="flex items-center justify-between border-b border-line px-6 py-4 gap-4">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Map Preview</span>
+                  <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
+                  <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{seller?.storefrontName || seller?.name || 'Seller'} • {safeCityState}</p>
+                </div>
+                {googleMapsHref ? (
+                  <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
+                    Open Full Map
+                  </a>
+                ) : null}
+              </div>
+              {hasMachineMap ? (
+                <div className="relative h-64 bg-bg">
+                  {isMapFrameLoading ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-bg text-[10px] font-bold uppercase tracking-widest text-muted z-10">
+                      Loading map...
+                    </div>
+                  ) : null}
+                  <iframe
+                    title={`Map for ${machineMapQuery || safeCityState}`}
+                    src={buildMapEmbedUrl(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)}
+                    className="h-64 w-full border-0"
+                    loading="lazy"
+                    onLoad={() => setIsMapFrameLoading(false)}
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              ) : (
+                <div className="h-64 flex flex-col items-center justify-center bg-bg px-6 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-3">Map preview unavailable for this location.</p>
+                  {googleMapsHref ? (
+                    <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="btn-industrial px-4 py-2 text-[10px]">
+                      Open in Google Maps
+                    </a>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
             {/* Market Match Recommendations */}
+            {showMarketMatchRecommendations ? (
             <div className="flex flex-col space-y-6">
               <div className="flex flex-col gap-3 border-b border-line pb-4 md:flex-row md:items-end md:justify-between">
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-tighter">Market Match Recommendations</h3>
                   <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-muted">
-                    Live listings matching {getAmvMatchRulesSummary().toLowerCase()}
+                    {marketMatchExplainer}
                   </p>
                 </div>
                 {!loadingMarketMatches && marketMatchRecommendations.length > 0 ? (
@@ -1390,74 +1492,16 @@ export function ListingDetail() {
                     );
                   })}
                 </div>
-              ) : (
-                <div className="border border-dashed border-line bg-surface p-6 text-sm font-medium leading-relaxed text-muted">
-                  No live listings currently meet the market-match thresholds for this machine. We only recommend listings that match
-                  {' '}same manufacturer and model, stay within {AMV_MATCH_YEAR_RANGE} years, and stay within {AMV_MATCH_PRICE_PERCENT}% of price and {AMV_MATCH_HOURS_PERCENT}% of hours.
-                </div>
-              )}
+              ) : null}
             </div>
+            ) : null}
           </div>
 
           {/* Sidebar (Right) */}
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-8">
-              {/* Pricing Card */}
-              <div className="bg-[#1C1917] text-white p-8 rounded-sm shadow-2xl">
-                <div className="flex flex-col mb-8">
-                  <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Listed Price</span>
-                  <div className="flex items-baseline space-x-3">
-                    <span className="text-4xl font-black tracking-tighter">{formatPrice(safePrice, listing.currency || 'USD', 0)}</span>
-                    <span className="text-white/40 text-xs font-bold uppercase">{t('listingDetail.exclVat', 'Excl. VAT')}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col space-y-4 mb-8">
-                  <button
-                    onClick={() => setShowInquiryModal(true)}
-                    className="btn-industrial btn-accent w-full py-5 text-base"
-                  >
-                    {t('listingDetail.sendInquiry', 'Send Inquiry')}
-                  </button>
-                  <Link
-                    to={`/inspections?listingId=${encodeURIComponent(listing.id)}`}
-                    className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917] flex items-center justify-center"
-                  >
-                    <ClipboardCheck size={18} className="mr-3" />
-                    Request Inspection
-                  </Link>
-                  <button
-                    onClick={handleCallSeller}
-                    className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
-                  >
-                    <Phone size={18} className="mr-3" />
-                    {t('listingDetail.callSeller', 'Call Seller')}
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-center space-x-6 pt-6 border-t border-white/10">
-                  <button
-                    onClick={() => setShowPaymentCalcModal(true)}
-                    className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
-                  >
-                    <Calculator size={14} className="mr-2" />
-                    {t('listingDetail.calcPayment', 'Calc Payment')}
-                  </button>
-                  <button
-                    onClick={() => setShowFinancingModal(true)}
-                    className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
-                  >
-                    <Landmark size={14} className="mr-2" />
-                    {t('listingDetail.financing', 'Financing')}
-                  </button>
-                  <button
-                    onClick={() => setShowShippingModal(true)}
-                    className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
-                  >
-                    <Truck size={14} className="mr-2" />
-                    {t('listingDetail.logistics', 'Logistics')}
-                  </button>
-                </div>
+              <div className="hidden lg:block">
+                {pricingCard}
               </div>
 
               {/* Seller Card */}
@@ -1528,46 +1572,6 @@ export function ListingDetail() {
                 </div>
               </div>
 
-              <div className="bg-surface border border-line overflow-hidden">
-                <div className="flex items-center justify-between border-b border-line px-6 py-4 gap-4">
-                  <div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-accent block mb-1">Map Preview</span>
-                      <h4 className="text-sm font-black uppercase tracking-tight">Machine Location</h4>
-                      <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">{seller?.storefrontName || seller?.name || 'Seller'} • {safeCityState}</p>
-                    </div>
-                    {googleMapsHref ? (
-                      <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline">
-                        Open Full Map
-                      </a>
-                    ) : null}
-                  </div>
-                  {hasMachineMap ? (
-                  <div className="relative h-64 bg-bg">
-                    {isMapFrameLoading ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-bg text-[10px] font-bold uppercase tracking-widest text-muted z-10">
-                        Loading map...
-                      </div>
-                    ) : null}
-                    <iframe
-                      title={`Map for ${machineMapQuery || safeCityState}`}
-                      src={buildMapEmbedUrl(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)}
-                      className="h-64 w-full border-0"
-                      loading="lazy"
-                      onLoad={() => setIsMapFrameLoading(false)}
-                      referrerPolicy="no-referrer-when-downgrade"
-                    />
-                  </div>
-                  ) : (
-                    <div className="h-64 flex flex-col items-center justify-center bg-bg px-6 text-center">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted mb-3">Map preview unavailable for this location.</p>
-                      {googleMapsHref ? (
-                        <a href={googleMapsHref} target="_blank" rel="noopener noreferrer" className="btn-industrial px-4 py-2 text-[10px]">
-                          Open in Google Maps
-                        </a>
-                      ) : null}
-                    </div>
-                  )}
-              </div>
             </div>
           </aside>
         </div>
@@ -2028,7 +2032,7 @@ export function ListingDetail() {
       <LoginPromptModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
-        onSuccess={() => { if (resolvedListingId) toggleFavorite(resolvedListingId); }}
+        onDismiss={() => clearPendingFavoriteIntent()}
         message="Sign in to bookmark this equipment and save it for later."
       />
 

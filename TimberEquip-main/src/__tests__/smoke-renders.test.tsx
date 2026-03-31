@@ -183,11 +183,6 @@ describe('Page module smoke tests', () => {
     expect(typeof mod.Bookmarks).toBe('function');
   });
 
-  it('Inspections exports a component', async () => {
-    const mod = await import('../pages/Inspections');
-    expect(typeof mod.Inspections).toBe('function');
-  });
-
   it('Auctions exports a component', async () => {
     const mod = await import('../pages/Auctions');
     expect(typeof mod.Auctions).toBe('function');

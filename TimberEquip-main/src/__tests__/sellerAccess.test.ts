@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   hasAdminPublishingAccess,
   hasManagedSellerAccess,
@@ -9,6 +9,11 @@ import {
   getFeaturedListingCap,
   getManagedListingCap,
   getListEquipmentPath,
+  buildNavigationTargetWithReturn,
+  appendReturnToParam,
+  rememberSellerReturnTo,
+  getRememberedSellerReturnTo,
+  clearRememberedSellerReturnTo,
 } from '../utils/sellerAccess';
 import type { UserProfile } from '../types';
 
@@ -21,6 +26,10 @@ function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
     ...overrides,
   } as UserProfile;
 }
+
+beforeEach(() => {
+  window.sessionStorage.clear();
+});
 
 describe('hasAdminPublishingAccess', () => {
   it('returns true for super_admin', () => {
@@ -156,7 +165,7 @@ describe('canAccessDealerOs', () => {
     expect(canAccessDealerOs(makeUser({ role: 'admin' }))).toBe(true);
   });
 
-  it('returns true for active dealer role even when entitlement is stale', () => {
+  it('returns false for dealer with active status but no subscription', () => {
     expect(canAccessDealerOs(makeUser({
       role: 'dealer',
       accountStatus: 'active',
@@ -173,6 +182,14 @@ describe('canAccessDealerOs', () => {
         billingLabel: 'n/a',
         overrideSource: null,
       },
+    }))).toBe(false);
+  });
+
+  it('returns true for dealer with admin_override access', () => {
+    expect(canAccessDealerOs(makeUser({
+      role: 'dealer',
+      accountStatus: 'active',
+      accountAccessSource: 'admin_override',
     }))).toBe(true);
   });
 
@@ -210,8 +227,8 @@ describe('getFeaturedListingCap', () => {
     expect(getFeaturedListingCap(makeUser({ role: 'pro_dealer' }))).toBe(6);
   });
 
-  it('returns 0 for individual_seller', () => {
-    expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(0);
+  it('returns 1 for individual_seller', () => {
+    expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(1);
   });
 
   it('returns 0 for buyer', () => {
@@ -248,5 +265,55 @@ describe('getListEquipmentPath', () => {
 
   it('returns /sell for user with posting access', () => {
     expect(getListEquipmentPath(makeUser({ role: 'super_admin' }), true)).toBe('/sell');
+  });
+});
+
+describe('buildNavigationTargetWithReturn', () => {
+  it('preserves pathname, appends returnTo search, and includes return state', () => {
+    expect(buildNavigationTargetWithReturn('/ad-programs?intent=list-equipment', '/search?q=skidder')).toEqual({
+      pathname: '/ad-programs',
+      search: '?intent=list-equipment&returnTo=%2Fsearch%3Fq%3Dskidder',
+      state: { returnTo: '/search?q=skidder' },
+    });
+  });
+
+  it('omits return state when not provided', () => {
+    expect(buildNavigationTargetWithReturn('/sell')).toEqual({
+      pathname: '/sell',
+      search: '',
+      state: undefined,
+    });
+  });
+});
+
+describe('appendReturnToParam', () => {
+  it('adds the returnTo query param to a plain path', () => {
+    expect(appendReturnToParam('/sell', '/blog')).toBe('/sell?returnTo=%2Fblog');
+  });
+
+  it('preserves existing query params when appending returnTo', () => {
+    expect(appendReturnToParam('/sell?plan=dealer', '/search?q=loader')).toBe('/sell?plan=dealer&returnTo=%2Fsearch%3Fq%3Dloader');
+  });
+
+  it('leaves the path unchanged when returnTo is invalid', () => {
+    expect(appendReturnToParam('/sell', 'https://example.com')).toBe('/sell');
+  });
+});
+
+describe('remembered seller return targets', () => {
+  it('stores and reads a rooted return path', () => {
+    rememberSellerReturnTo('/blog');
+    expect(getRememberedSellerReturnTo()).toBe('/blog');
+  });
+
+  it('clears the remembered return path', () => {
+    rememberSellerReturnTo('/search?q=skidder');
+    clearRememberedSellerReturnTo();
+    expect(getRememberedSellerReturnTo()).toBe('');
+  });
+
+  it('ignores invalid return paths', () => {
+    rememberSellerReturnTo('https://example.com');
+    expect(getRememberedSellerReturnTo()).toBe('');
   });
 });

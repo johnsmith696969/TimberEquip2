@@ -48,7 +48,7 @@ function resolveApiBaseUrl(baseUrl, override = '') {
   }
 
   if (
-    normalizedBaseUrl.includes('timberequip.com')
+    normalizedBaseUrl.includes('forestryequipmentsales.com')
     || normalizedBaseUrl.includes('mobile-app-equipment-sales.web.app')
     || normalizedBaseUrl.includes('mobile-app-equipment-sales.firebaseapp.com')
   ) {
@@ -197,7 +197,7 @@ async function run() {
   const apiBaseUrl = resolveApiBaseUrl(baseUrl, args['api-base-url'] || process.env.DEALER_FEED_TEST_API_BASE_URL || '');
   const allowedOrigin = new URL(baseUrl).origin;
   const apiKey = String(args['api-key'] || process.env.FIREBASE_WEB_API_KEY || '').trim();
-  const password = String(args.password || process.env.DEALER_FEED_TEST_PASSWORD || 'TimberEquip!QA2026').trim();
+  const password = String(args.password || process.env.DEALER_FEED_TEST_PASSWORD || 'Forestry Equipment Sales!QA2026').trim();
 
   assert(apiKey, 'Missing Firebase web API key. Pass --api-key or FIREBASE_WEB_API_KEY.');
 

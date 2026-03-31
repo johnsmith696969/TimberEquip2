@@ -88,4 +88,26 @@ describe('ListingCard component', () => {
     expect(onToggleCompare).toHaveBeenCalledWith('listing-1');
     expect(onInquire).toHaveBeenCalledWith(expect.objectContaining({ id: 'listing-1' }));
   });
+
+  it('normalizes numeric-style listing ids before favorite and compare callbacks fire', () => {
+    const onToggleFavorite = vi.fn();
+    const onToggleCompare = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <ListingCard
+          listing={buildListing({ id: 12001 as unknown as Listing['id'] })}
+          onToggleFavorite={onToggleFavorite}
+          onToggleCompare={onToggleCompare}
+        />
+      </MemoryRouter>
+    );
+
+    const [favoriteButton, compareButton] = screen.getAllByRole('button').slice(0, 2);
+    fireEvent.click(favoriteButton);
+    fireEvent.click(compareButton);
+
+    expect(onToggleFavorite).toHaveBeenCalledWith('12001');
+    expect(onToggleCompare).toHaveBeenCalledWith('12001');
+  });
 });

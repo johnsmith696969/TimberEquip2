@@ -239,6 +239,15 @@ describe('ListingDetail gallery interactions', () => {
   });
 
   it('renders technical specifications before market match recommendations', async () => {
+    getMarketMatchRecommendationsMock.mockResolvedValue([
+      makeListing({
+        id: 'listing-2',
+        title: '2020 TIGERCAT 1075B',
+        price: 335000,
+        hours: 3000,
+      }),
+    ]);
+
     render(
       <MemoryRouter initialEntries={['/equipment/test-machine--listing-1']}>
         <Routes>

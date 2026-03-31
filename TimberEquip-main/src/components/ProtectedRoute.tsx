@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+import { canAccessDealerOs } from '../utils/sellerAccess';
 import { auth } from '../firebase';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
@@ -16,6 +17,10 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs = false, requireVerified = false }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
+  const state = location.state as { returnTo?: unknown } | null;
+  const returnTo = typeof state?.returnTo === 'string' && state.returnTo.startsWith('/')
+    ? state.returnTo
+    : '';
   const hasFirebaseSession = Boolean(auth.currentUser);
   const hasResolvedProfile = Boolean(user);
   const hasSession = Boolean(isAuthenticated || hasFirebaseSession);
@@ -27,15 +32,19 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
     )
   );
 
-  const hasDealerOsAccess = !!(
-    user && (
-      user.entitlement?.dealerOsAccess ||
-      ['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(String(user.role || '').trim().toLowerCase())
-    )
-  );
+  const hasDealerOsAccess = canAccessDealerOs(user);
 
   if (!hasSession) {
-    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          from: `${location.pathname}${location.search}`,
+          ...(returnTo ? { returnTo } : {}),
+        }}
+      />
+    );
   }
 
   if (!hasResolvedProfile) {

@@ -17,41 +17,6 @@ describe('email templates', () => {
     expect(html).not.toContain('Not provided');
   });
 
-  it('keeps placeholder-style quoted prices in inspection admin output', () => {
-    const { html } = templates.inspectionRequestAdmin({
-      requesterName: '{{requesterName}}',
-      requesterEmail: '{{requesterEmail}}',
-      requesterPhone: '{{requesterPhone}}',
-      requesterCompany: '{{requesterCompany}}',
-      equipment: '{{equipment}}',
-      inspectionLocation: '{{inspectionLocation}}',
-      timeline: '{{timeline}}',
-      notes: '{{notes}}',
-      matchedDealerName: '{{matchedDealerName}}',
-      matchedDealerLocation: '{{matchedDealerLocation}}',
-      listingUrl: '{{listingUrl}}',
-      quotedPrice: '{{quotedPrice}}',
-      dashboardUrl: '{{dashboardUrl}}',
-    });
-
-    expect(html).toContain('{{quotedPrice}}');
-    expect(html).not.toContain('Not quoted yet');
-  });
-
-  it('keeps placeholder-style quoted prices in inspection status updates', () => {
-    const { html } = templates.inspectionRequestStatusUpdated({
-      requesterName: '{{requesterName}}',
-      equipment: '{{equipment}}',
-      status: '{{status}}',
-      quotedPrice: '{{quotedPrice}}',
-      managerName: '{{managerName}}',
-      inspectionLocation: '{{inspectionLocation}}',
-    });
-
-    expect(html).toContain('{{quotedPrice}}');
-    expect(html).not.toContain('Not provided');
-  });
-
   it('preserves unsubscribe links in optional email templates', () => {
     const { html } = templates.newMatchingListing({
       displayName: '{{displayName}}',

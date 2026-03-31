@@ -1,8 +1,8 @@
 const SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
 const SCRIPT_SRC = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(SITE_KEY)}`;
 const PRODUCTION_RECAPTCHA_HOSTS = new Set([
-  'timberequip.com',
-  'www.timberequip.com',
+  'forestryequipmentsales.com',
+  'www.forestryequipmentsales.com',
   'mobile-app-equipment-sales.web.app',
   'mobile-app-equipment-sales.firebaseapp.com',
 ]);

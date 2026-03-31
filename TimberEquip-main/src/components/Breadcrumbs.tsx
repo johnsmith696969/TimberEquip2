@@ -35,7 +35,7 @@ export function Breadcrumbs({ items = [] }: Props) {
       '@type': 'ListItem',
       'position': idx + 1,
       'name': item.label,
-      'item': `https://timberequip.com${item.path}`
+      'item': `https://www.forestryequipmentsales.com${item.path}`
     }))
   };
 

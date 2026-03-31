@@ -26,7 +26,7 @@ const programRows = [
   {
     icon: Repeat2,
     title: 'Retargeting',
-    copy: 'Interested buyers can continue seeing active inventory after visiting TimberEquip machine pages.',
+    copy: 'Interested buyers can continue seeing active inventory after visiting Forestry Equipment Sales machine pages.',
   },
   {
     icon: BadgeDollarSign,
@@ -36,7 +36,7 @@ const programRows = [
 ];
 
 const bullets = [
-  'Bring traffic back to TimberEquip listings',
+  'Bring traffic back to Forestry Equipment Sales listings',
   'Keep dealer inventory tied to one system of record',
   'Support lead tracking by machine and source',
   'Create a cleaner path toward Meta-connected ad programs',
@@ -60,11 +60,11 @@ export function MetaAdProgramBreakdown() {
             </div>
 
             <h2 className={`text-3xl font-black uppercase tracking-tight md:text-4xl ${headingClass}`}>
-              How TimberEquip powers Meta visibility
+              How Forestry Equipment Sales powers Meta visibility
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-muted md:text-base">
-              TimberEquip is designed to give dealers a controlled path into Meta/Facebook promotion without turning Meta into the source of truth. Machines
-              stay managed inside TimberEquip, and ad traffic comes back to your listing
+              Forestry Equipment Sales is designed to give dealers a controlled path into Meta/Facebook promotion without turning Meta into the source of truth. Machines
+              stay managed inside Forestry Equipment Sales, and ad traffic comes back to your listing
               pages where lead tracking belongs.
             </p>
           </div>
@@ -125,10 +125,10 @@ export function MetaAdProgramBreakdown() {
 
             <div className="mt-4 space-y-3">
               {[
-                'Dealer uploads machine to TimberEquip',
+                'Dealer uploads machine to Forestry Equipment Sales',
                 'Machine is approved and published',
                 'Inventory is prepared for Meta catalog structure',
-                'Traffic campaigns point buys back to dealer storefronts on TimberEquip.com',
+                'Traffic campaigns point buys back to dealer storefronts on forestryequipmentsales.com',
                 'Lead is captured and routed to the right seller',
               ].map((step, index) => (
                 <div

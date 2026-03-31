@@ -4,6 +4,8 @@ const ADMIN_PUBLISHER_ROLES = new Set(['admin', 'super_admin', 'developer']);
 const SELLER_OVERRIDE_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer']);
 const DEALER_OS_ROLES = new Set(['dealer', 'pro_dealer']);
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
+const SELLER_RETURN_TO_STORAGE_KEY = 'fes:sell-return-to';
+const SELLER_RETURN_TO_MAX_AGE_MS = 30 * 60 * 1000;
 const ROLE_BASED_LISTING_CAPS: Record<string, number> = {
   dealer: 50,
   pro_dealer: 150,
@@ -23,6 +25,11 @@ function normalizeSubscriptionPlanId(planId?: string | null): string {
 
 function normalizeSubscriptionStatus(status?: string | null): string {
   return String(status || '').trim().toLowerCase();
+}
+
+function normalizeReturnToPath(returnTo?: string | null): string {
+  const normalizedReturnTo = String(returnTo || '').trim();
+  return normalizedReturnTo.startsWith('/') ? normalizedReturnTo : '';
 }
 
 export function hasAdminPublishingAccess(user: UserProfile | null | undefined): boolean {
@@ -93,9 +100,6 @@ export function canAccessDealerOs(user: UserProfile | null | undefined): boolean
 
   if (hasAdminPublishingAccess(user)) return true;
   if (!DEALER_OS_ROLES.has(normalizedRole)) return false;
-  if (String(user.accountStatus || '').trim().toLowerCase() === 'active') {
-    return true;
-  }
 
   return hasActiveSellerSubscription(user) || hasManagedSellerAccess(user);
 }
@@ -107,6 +111,7 @@ export function getDealerInventoryOwnerUid(user: UserProfile | null | undefined)
 
 export function getFeaturedListingCap(user: UserProfile | null | undefined): number {
   const role = normalizeRole(user?.role);
+  if (role === 'individual_seller') return 1;
   if (role === 'dealer') return 3;
   if (role === 'pro_dealer') return 6;
   return 0;
@@ -133,4 +138,89 @@ export function getListEquipmentPath(user: UserProfile | null | undefined, isAut
   }
 
   return '/sell';
+}
+
+export function buildNavigationTargetWithReturn(path: string, returnTo?: string | null) {
+  const normalizedPath = String(path || '').trim() || '/';
+  const questionMarkIndex = normalizedPath.indexOf('?');
+  const pathname = questionMarkIndex >= 0 ? normalizedPath.slice(0, questionMarkIndex) : normalizedPath;
+  const existingSearch = questionMarkIndex >= 0 ? normalizedPath.slice(questionMarkIndex + 1) : '';
+  const normalizedReturnTo = normalizeReturnToPath(returnTo);
+  const normalizedSearchParams = new URLSearchParams(existingSearch);
+
+  if (normalizedReturnTo) {
+    normalizedSearchParams.set('returnTo', normalizedReturnTo);
+  }
+
+  const search = normalizedSearchParams.toString();
+
+  return {
+    pathname,
+    search: search ? `?${search}` : '',
+    state: normalizedReturnTo ? { returnTo: normalizedReturnTo } : undefined,
+  };
+}
+
+export function appendReturnToParam(path: string, returnTo?: string | null): string {
+  const normalizedPath = String(path || '').trim() || '/';
+  const normalizedReturnTo = normalizeReturnToPath(returnTo);
+
+  if (!normalizedPath.startsWith('/') || !normalizedReturnTo) {
+    return normalizedPath;
+  }
+
+  const questionMarkIndex = normalizedPath.indexOf('?');
+  const pathname = questionMarkIndex >= 0 ? normalizedPath.slice(0, questionMarkIndex) : normalizedPath;
+  const search = questionMarkIndex >= 0 ? normalizedPath.slice(questionMarkIndex + 1) : '';
+  const params = new URLSearchParams(search);
+  params.set('returnTo', normalizedReturnTo);
+  const nextSearch = params.toString();
+
+  return nextSearch ? `${pathname}?${nextSearch}` : pathname;
+}
+
+export function rememberSellerReturnTo(returnTo?: string | null): void {
+  if (typeof window === 'undefined') return;
+
+  const normalizedReturnTo = normalizeReturnToPath(returnTo);
+  if (!normalizedReturnTo) {
+    window.sessionStorage.removeItem(SELLER_RETURN_TO_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(
+    SELLER_RETURN_TO_STORAGE_KEY,
+    JSON.stringify({
+      path: normalizedReturnTo,
+      savedAt: Date.now(),
+    })
+  );
+}
+
+export function getRememberedSellerReturnTo(): string {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    const rawValue = window.sessionStorage.getItem(SELLER_RETURN_TO_STORAGE_KEY);
+    if (!rawValue) return '';
+
+    const parsedValue = JSON.parse(rawValue) as { path?: string; savedAt?: number } | null;
+    const normalizedReturnTo = normalizeReturnToPath(parsedValue?.path);
+    const savedAt = Number(parsedValue?.savedAt || 0);
+
+    if (!normalizedReturnTo || !Number.isFinite(savedAt) || (Date.now() - savedAt) > SELLER_RETURN_TO_MAX_AGE_MS) {
+      window.sessionStorage.removeItem(SELLER_RETURN_TO_STORAGE_KEY);
+      return '';
+    }
+
+    return normalizedReturnTo;
+  } catch {
+    window.sessionStorage.removeItem(SELLER_RETURN_TO_STORAGE_KEY);
+    return '';
+  }
+}
+
+export function clearRememberedSellerReturnTo(): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(SELLER_RETURN_TO_STORAGE_KEY);
 }

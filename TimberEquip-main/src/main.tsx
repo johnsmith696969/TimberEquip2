@@ -7,7 +7,7 @@ import { initializeBrowserSentry } from './services/sentry';
 import './index.css';
 import './styles/input-fixes.css';
 
-const ASSET_RECOVERY_KEY = 'timberequip.asset-recovery-attempted';
+const ASSET_RECOVERY_KEY = 'forestryequipmentsales.asset-recovery-attempted';
 const ASSET_RECOVERY_PARAM = '__asset_recovery';
 
 function getErrorMessage(input: unknown): string {

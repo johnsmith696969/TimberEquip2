@@ -7,6 +7,7 @@ import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
+import { normalizeListingId } from '../utils/listingIdentity';
 
 export function Bookmarks() {
   const { user, isAuthenticated, toggleFavorite } = useAuth();
@@ -34,10 +35,13 @@ export function Bookmarks() {
   }, [user?.favorites]);
 
   const handleRemove = async (listingId: string) => {
-    setRemoving(listingId);
+    const normalizedListingId = normalizeListingId(listingId);
+    if (!normalizedListingId) return;
+
+    setRemoving(normalizedListingId);
     try {
-      await toggleFavorite(listingId);
-      setListings((prev) => prev.filter((l) => l.id !== listingId));
+      await toggleFavorite(normalizedListingId);
+      setListings((prev) => prev.filter((listing) => normalizeListingId(listing.id) !== normalizedListingId));
     } finally {
       setRemoving(null);
     }
@@ -46,8 +50,8 @@ export function Bookmarks() {
   return (
     <>
       <Seo
-        title="Saved Equipment | TimberEquip"
-        description="Your bookmarked forestry equipment listings on TimberEquip."
+        title="Saved Equipment | Forestry Equipment Sales"
+        description="Your bookmarked forestry equipment listings on Forestry Equipment Sales."
         canonicalPath="/bookmarks"
       />
 
@@ -148,12 +152,12 @@ export function Bookmarks() {
                   >
                     {/* Remove button */}
                     <button
-                      onClick={() => handleRemove(listing.id)}
-                      disabled={removing === listing.id}
+                      onClick={() => handleRemove(normalizeListingId(listing.id))}
+                      disabled={removing === normalizeListingId(listing.id)}
                       aria-label="Remove bookmark"
                       className="absolute top-2 left-2 z-10 p-2 bg-red-500/90 text-white rounded-sm hover:bg-red-600 transition-colors disabled:opacity-50"
                     >
-                      {removing === listing.id ? (
+                      {removing === normalizeListingId(listing.id) ? (
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <Trash2 size={14} />

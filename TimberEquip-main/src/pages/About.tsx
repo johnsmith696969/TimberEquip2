@@ -1,152 +1,147 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Globe, ShieldCheck, Clock, 
-  ArrowRight, CheckCircle2, AlertCircle,
-  TrendingUp, Activity, LayoutDashboard,
-  ChevronRight, Users, Building,
-  Zap, Award
-} from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowRight, Award, Building, Users, Zap } from 'lucide-react';
+import { Seo } from '../components/Seo';
+
+const missionPoints = [
+  'Help contractors and dealers sell faster.',
+  'Help buyers find exactly what they need.',
+  'Keep the process straightforward, responsive, and built around real industry needs.',
+];
+
+const audiences = [
+  {
+    title: 'Loggers & Contractors',
+    description: 'Whether you are moving one machine or a full fleet, we make it easier to reach serious buyers.',
+    icon: Users,
+  },
+  {
+    title: 'Equipment Dealers',
+    description: 'Dealer tools, featured placement, and scalable inventory support help established sellers move iron consistently.',
+    icon: Building,
+  },
+  {
+    title: 'Buyers',
+    description: 'From owner-operators to larger operations, buyers get better search tools, financing access, and clearer equipment discovery.',
+    icon: Award,
+  },
+];
 
 export function About() {
   return (
     <div className="min-h-screen bg-bg">
-      {/* Editorial Header */}
-      <section className="bg-ink text-white py-32 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="w-10 h-10 bg-accent flex items-center justify-center rounded-sm">
-              <Globe className="text-white" size={20} />
+      <Seo
+        title="About Us | Forestry Equipment Sales"
+        description="Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster."
+        canonicalPath="/about"
+      />
+
+      <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">
+        <div className="absolute right-0 top-0 h-full w-1/3 translate-x-1/2 skew-x-12 bg-accent/10" />
+        <div className="relative z-10 mx-auto max-w-[1600px]">
+          <div className="mb-6 flex items-center space-x-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-ink">
+              <Building className="text-accent" size={20} />
             </div>
-            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Institutional Profile</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">About Forestry Equipment Sales</span>
           </div>
-          <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter mb-12 leading-none">
-            The <span className="text-accent">TimberEquip</span> <br />
-            Standard
+          <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
+            Built For The
+            <br />
+            <span className="text-muted">Forestry Equipment Trade</span>
           </h1>
-          <p className="text-white/60 text-xl font-medium max-w-3xl leading-relaxed">
-            We are the global marketplace for heavy forestry assets. 
-            Our system combines institutional-grade market intelligence with secure, efficient liquidation systems.
+          <p className="max-w-3xl text-base font-medium leading-relaxed text-muted md:text-lg">
+            Our platform was built from the ground up by people who have been in the woods, walked the job sites,
+            and marketed machines for over two decades. Forestry Equipment Sales is a modern marketplace designed
+            specifically for buying and selling forestry equipment.
           </p>
         </div>
       </section>
 
-      {/* Mission Section */}
-      <section className="py-32 px-4 md:px-8 bg-bg">
-        <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
-          <div className="flex flex-col">
-            <span className="label-micro text-accent mb-6 block">Our Mission</span>
-            <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter mb-10 leading-tight">
-              Modernizing The <br />
-              <span className="text-muted">Forestry Marketplace</span>
+      <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
+        <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-10 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="border border-line bg-surface p-8 md:p-12">
+            <span className="label-micro mb-4 block text-accent">Why We Exist</span>
+            <h2 className="mb-6 text-3xl font-black uppercase tracking-tighter md:text-5xl">
+              A Better Marketplace
+              <br />
+              <span className="text-muted">For Real Equipment Sellers</span>
             </h2>
-            <div className="space-y-8 text-muted font-medium leading-relaxed">
+            <div className="space-y-5 text-sm font-medium leading-relaxed text-muted md:text-base">
               <p>
-                For decades, the forestry equipment market has operated on fragmented data and inefficient transaction procedures. 
-                TimberEquip was established to provide a unified, transparent platform for global asset exchange.
+                The big listing sites have become overpriced and dated. We saw a gap: private sellers and dealers
+                needed a platform that works as hard as they do without corporate-level fees or bloated workflows.
               </p>
               <p>
-                We leverage real-time AMV indexing and verified dealer networks to ensure that every transaction 
-                meets the highest standards of technical verification and financial security.
+                Whether you are an owner-operator, a contractor, or a multi-location dealer, Forestry Equipment Sales
+                is built to help you connect with serious buyers and move equipment with less friction.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-8 mt-16">
-              {[
-                { label: 'Global Reach', value: '142+', sub: 'Countries' },
-                { label: 'Equipment Volume', value: '$8.4B', sub: 'Market Cap' }
-              ].map((stat, i) => (
-                <div key={i} className="flex flex-col border-l-2 border-accent pl-6">
-                  <span className="text-3xl font-black tracking-tighter uppercase">{stat.value}</span>
-                  <span className="label-micro text-muted">{stat.sub}</span>
-                </div>
+          </div>
+
+          <div className="border border-line bg-ink p-8 text-white md:p-12">
+            <div className="mb-6 flex items-center space-x-3">
+              <Zap className="text-accent" size={22} />
+              <h3 className="text-sm font-black uppercase tracking-[0.2em]">Our Mission</h3>
+            </div>
+            <ul className="space-y-4">
+              {missionPoints.map((point) => (
+                <li key={point} className="flex items-start space-x-3 text-sm font-medium leading-relaxed text-white/80">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent" />
+                  <span>{point}</span>
+                </li>
               ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-line bg-surface px-4 py-20 md:px-8 md:py-24">
+        <div className="mx-auto max-w-[1600px]">
+          <div className="mb-12">
+            <span className="label-micro mb-4 block text-accent">Who We Serve</span>
+            <h2 className="text-3xl font-black uppercase tracking-tighter md:text-5xl">
+              Built For Contractors,
+              <span className="text-muted"> Dealers, And Buyers</span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+            {audiences.map(({ title, description, icon: Icon }) => (
+              <div key={title} className="border border-line bg-bg p-8 transition-colors hover:border-accent">
+                <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-sm bg-surface text-accent">
+                  <Icon size={24} />
+                </div>
+                <h3 className="mb-4 text-xl font-black uppercase tracking-tight">{title}</h3>
+                <p className="text-sm font-medium leading-relaxed text-muted">{description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
+        <div className="mx-auto max-w-[1600px] border border-line bg-surface p-8 md:p-12">
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <span className="label-micro mb-4 block text-accent">Get In Touch</span>
+              <h2 className="mb-4 text-3xl font-black uppercase tracking-tighter md:text-5xl">
+                Questions, Feedback,
+                <span className="text-muted"> Or Partnership Ideas?</span>
+              </h2>
+              <p className="max-w-2xl text-sm font-medium leading-relaxed text-muted md:text-base">
+                We answer the phone, respond to emails, and stay hands-on with the marketplace. If you want help
+                buying, selling, financing, or planning your next move, our team is ready to help.
+              </p>
             </div>
-          </div>
-          <div className="aspect-[4/5] bg-surface border border-line overflow-hidden relative group">
-            <img 
-              src="https://picsum.photos/seed/forestry-team/1200/1500" 
-              alt="Forestry Operations" 
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-ink/20 group-hover:bg-ink/10 transition-colors"></div>
-          </div>
-        </div>
-      </section>
-
-      {/* Core Values */}
-      <section className="py-32 px-4 md:px-8 bg-surface">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="flex flex-col items-center text-center mb-24">
-            <span className="label-micro text-accent mb-4">Core Policies</span>
-            <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">Our Core <span className="text-muted">Values</span></h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-            {[
-              { title: 'Transparency', desc: 'Real-time AMV indexing and full asset history for every listing.', icon: Zap },
-              { title: 'Security', desc: 'Institutional-grade encryption and secure escrow systems.', icon: ShieldCheck },
-              { title: 'Efficiency', desc: 'Streamlined liquidation and financing systems for rapid deployment.', icon: Activity }
-            ].map((value, i) => (
-              <div key={i} className="bg-bg border border-line p-12 flex flex-col items-center text-center hover:border-accent transition-colors">
-                <div className="w-20 h-20 bg-surface flex items-center justify-center rounded-sm mb-8 border border-line">
-                  <value.icon className="text-accent" size={32} />
-                </div>
-                <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">{value.title}</h3>
-                <p className="text-xs text-muted font-medium leading-relaxed uppercase tracking-widest">{value.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Team Section */}
-      <section className="py-32 px-4 md:px-8 bg-bg">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="flex flex-col mb-24">
-            <span className="label-micro text-accent mb-4">Leadership Team</span>
-            <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">The <span className="text-muted">Operators</span></h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              { name: 'Erik Sorenson', role: 'Chief Executive Operator', img: 'https://picsum.photos/seed/erik/400/500' },
-              { name: 'Sarah Miller', role: 'Head of Market Intelligence', img: 'https://picsum.photos/seed/sarah/400/500' },
-              { name: 'Marcus Chen', role: 'Chief Technical Officer', img: 'https://picsum.photos/seed/marcus/400/500' },
-              { name: 'Elena Rodriguez', role: 'Director of Global Sales', img: 'https://picsum.photos/seed/elena/400/500' }
-            ].map((member, i) => (
-              <div key={i} className="group flex flex-col">
-                <div className="aspect-[3/4] bg-surface border border-line overflow-hidden mb-6 relative">
-                  <img 
-                    src={member.img} 
-                    alt={member.name} 
-                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-accent/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                </div>
-                <h4 className="text-xl font-black uppercase tracking-tighter mb-1">{member.name}</h4>
-                <span className="label-micro text-muted">{member.role}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-32 bg-accent px-4 md:px-8">
-        <div className="max-w-[1600px] mx-auto flex flex-col items-center text-center">
-          <h2 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter mb-12 leading-none">
-            Join The <br />
-            <span className="text-ink">Global Standard</span>
-          </h2>
-          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
-            <Link to="/register" className="btn-industrial bg-ink text-white py-5 px-12 text-lg">
-              Create Account
-            </Link>
-            <Link to="/contact" className="btn-industrial bg-white text-ink py-5 px-12 text-lg">
-              Contact Us
-            </Link>
+            <div className="flex flex-col gap-4 sm:flex-row lg:flex-col xl:flex-row">
+              <Link to="/contact" className="btn-industrial btn-accent px-8 py-4">
+                Contact Us
+              </Link>
+              <Link to="/search" className="btn-industrial px-8 py-4">
+                Browse Inventory
+                <ArrowRight className="ml-2 inline" size={16} />
+              </Link>
+            </div>
           </div>
         </div>
       </section>

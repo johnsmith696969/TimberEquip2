@@ -1,5 +1,5 @@
 import { auth } from '../firebase';
-import { Account, CallLog, Inquiry, UserRole } from '../types';
+import { Account, CallLog, Inquiry, Listing, UserRole } from '../types';
 
 const ADMIN_USER_CACHE_KEY = 'te-admin-users-cache-v1';
 const ADMIN_BOOTSTRAP_CACHE_KEY = 'te-admin-operations-cache-v1';
@@ -57,9 +57,37 @@ export interface AdminOperationsBootstrapResponse {
   users: Account[];
   inquiries: Inquiry[];
   calls: CallLog[];
+  overview?: AdminOverviewBootstrapPayload | null;
   partial: boolean;
   degradedSections: string[];
   errors: Partial<Record<'users' | 'inquiries' | 'calls', string>>;
+  firestoreQuotaLimited: boolean;
+  fetchedAt: string;
+}
+
+export interface AdminOverviewBootstrapPayload {
+  metrics: {
+    visibleEquipment: number;
+    totalLeads: number;
+    callVolume: number;
+    activeUsers: number;
+    conversionRate: number;
+    avgResponseTimeMinutes: number | null;
+    marketSentiment: string;
+    inventoryTurnoverRate: number;
+  };
+  listingSummary: {
+    totalListings: number;
+    liveListings: number;
+    pendingReview: number;
+    rejectedListings: number;
+    soldListings: number;
+  };
+  recentListings: Listing[];
+  recentCalls: CallLog[];
+  partial: boolean;
+  degradedSections: string[];
+  errors: Record<string, string>;
   firestoreQuotaLimited: boolean;
   fetchedAt: string;
 }
@@ -109,8 +137,8 @@ function getApiRequestUrls(input: RequestInfo | URL): string[] {
 
   const urls = [rawInput];
   const hostname = window.location.hostname.trim().toLowerCase();
-  if (hostname === 'www.timberequip.com') {
-    urls.push(`https://timberequip.com${rawInput}`);
+  if (hostname === 'www.forestryequipmentsales.com') {
+    urls.push(`https://www.forestryequipmentsales.com${rawInput}`);
   }
 
   return Array.from(new Set(urls));
@@ -180,9 +208,14 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
 }
 
 export const adminUserService = {
-  async getAdminOperationsBootstrap(): Promise<AdminOperationsBootstrapResponse> {
+  async getAdminOperationsBootstrap(options?: { includeOverview?: boolean }): Promise<AdminOperationsBootstrapResponse> {
     try {
-      const payload = await getAuthorizedJson<AdminOperationsBootstrapResponse>('/api/admin/bootstrap', {
+      const params = new URLSearchParams();
+      if (options?.includeOverview) {
+        params.set('includeOverview', '1');
+      }
+
+      const payload = await getAuthorizedJson<AdminOperationsBootstrapResponse>(`/api/admin/bootstrap${params.toString() ? `?${params.toString()}` : ''}`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -193,6 +226,37 @@ export const adminUserService = {
         users: Array.isArray(payload?.users) ? payload.users : [],
         inquiries: Array.isArray(payload?.inquiries) ? payload.inquiries : [],
         calls: Array.isArray(payload?.calls) ? payload.calls : [],
+        overview: payload?.overview && typeof payload.overview === 'object'
+          ? {
+              metrics: {
+                visibleEquipment: Number(payload.overview.metrics?.visibleEquipment || 0),
+                totalLeads: Number(payload.overview.metrics?.totalLeads || 0),
+                callVolume: Number(payload.overview.metrics?.callVolume || 0),
+                activeUsers: Number(payload.overview.metrics?.activeUsers || 0),
+                conversionRate: Number(payload.overview.metrics?.conversionRate || 0),
+                avgResponseTimeMinutes:
+                  payload.overview.metrics?.avgResponseTimeMinutes === null || payload.overview.metrics?.avgResponseTimeMinutes === undefined
+                    ? null
+                    : Number(payload.overview.metrics.avgResponseTimeMinutes),
+                marketSentiment: String(payload.overview.metrics?.marketSentiment || 'Stable'),
+                inventoryTurnoverRate: Number(payload.overview.metrics?.inventoryTurnoverRate || 0),
+              },
+              listingSummary: {
+                totalListings: Number(payload.overview.listingSummary?.totalListings || 0),
+                liveListings: Number(payload.overview.listingSummary?.liveListings || 0),
+                pendingReview: Number(payload.overview.listingSummary?.pendingReview || 0),
+                rejectedListings: Number(payload.overview.listingSummary?.rejectedListings || 0),
+                soldListings: Number(payload.overview.listingSummary?.soldListings || 0),
+              },
+              recentListings: Array.isArray(payload.overview.recentListings) ? payload.overview.recentListings : [],
+              recentCalls: Array.isArray(payload.overview.recentCalls) ? payload.overview.recentCalls : [],
+              partial: Boolean(payload.overview.partial),
+              degradedSections: Array.isArray(payload.overview.degradedSections) ? payload.overview.degradedSections : [],
+              errors: typeof payload.overview.errors === 'object' && payload.overview.errors ? payload.overview.errors : {},
+              firestoreQuotaLimited: Boolean(payload.overview.firestoreQuotaLimited),
+              fetchedAt: String(payload.overview.fetchedAt || new Date().toISOString()),
+            }
+          : null,
         partial: Boolean(payload?.partial),
         degradedSections: Array.isArray(payload?.degradedSections) ? payload.degradedSections : [],
         errors: typeof payload?.errors === 'object' && payload?.errors ? payload.errors : {},

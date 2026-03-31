@@ -7,7 +7,8 @@
   },
   "storage": {
     "rules": "storage.rules"
-  },  "hosting": {
+  },
+  "hosting": {
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -70,7 +71,7 @@
     ],
     "headers": [
       {
-        "source": "/index.html",
+        "source": "/",
         "headers": [
           {
             "key": "Cache-Control",
@@ -79,11 +80,11 @@
         ]
       },
       {
-        "source": "**",
+        "source": "/index.html",
         "headers": [
           {
-            "key": "X-Robots-Tag",
-            "value": "noindex, nofollow, noarchive, nosnippet, noimageindex"
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       }

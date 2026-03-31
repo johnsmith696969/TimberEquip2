@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Test Email System - Sends test emails through all 25 templates
+ * Test Email System - Sends test emails through all templates
  * Requires Firebase CLI authentication
  */
 
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// All 25 email templates
+// Email templates
 const TEMPLATES = [
   'adminInquiryAlert',
   'contactRequestAdmin',
@@ -21,9 +21,6 @@ const TEMPLATES = [
   'financingRequestAdmin',
   'financingRequestConfirmation',
   'inquiryConfirmation',
-  'inspectionRequestAdmin',
-  'inspectionRequestReceived',
-  'inspectionRequestStatusUpdated',
   'invoicePaidReceipt',
   'leadNotification',
   'listingApproved',

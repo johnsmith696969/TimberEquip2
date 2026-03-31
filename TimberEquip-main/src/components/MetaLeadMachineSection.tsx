@@ -1,12 +1,12 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Facebook,
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
-import { getListEquipmentPath } from '../utils/sellerAccess';
+import { appendReturnToParam, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 
 const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
@@ -14,6 +14,7 @@ const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSE
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 
 export function MetaLeadMachineSection() {
+  const location = useLocation();
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const brandLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
@@ -21,6 +22,10 @@ export function MetaLeadMachineSection() {
   const [brandLogoSrc, setBrandLogoSrc] = React.useState(brandLogo);
   const headingClass = theme === 'light' ? 'text-ink' : 'text-white';
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
+  const currentReturnPath = `${location.pathname}${location.search}`;
+  const listEquipmentHref = appendReturnToParam(listEquipmentPath, currentReturnPath);
+  const listEquipmentState = currentReturnPath.startsWith('/') ? { returnTo: currentReturnPath } : undefined;
+  const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
 
   React.useEffect(() => {
     setBrandLogoSrc(brandLogo);
@@ -64,7 +69,7 @@ export function MetaLeadMachineSection() {
               <Link to="/ad-programs" className="btn-industrial btn-accent">
                 Explore Ad Programs
               </Link>
-              <Link to={listEquipmentPath} className="btn-industrial">
+              <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="btn-industrial">
                 List Equipment
               </Link>
             </div>

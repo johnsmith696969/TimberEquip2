@@ -36,12 +36,12 @@ export function createDefaultSellerProgramEnrollmentForm(
 ): SellerProgramEnrollmentFormData {
   return {
     planId: seed.planId || '',
-    legalFullName: String(seed.displayName || '').trim(),
+    legalFullName: '',
     legalTitle: '',
-    companyName: String(seed.company || '').trim(),
-    billingEmail: String(seed.email || '').trim(),
-    phoneNumber: String(seed.phoneNumber || '').trim(),
-    website: String(seed.website || '').trim(),
+    companyName: '',
+    billingEmail: '',
+    phoneNumber: '',
+    website: '',
     country: '',
     taxIdOrVat: '',
     notes: '',

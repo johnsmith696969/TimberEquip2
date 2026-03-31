@@ -1,23 +1,33 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { clearPendingFavoriteIntent, getPendingFavoriteIntent } from '../utils/pendingFavorite';
 
 interface LoginPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onDismiss?: () => void;
   onSuccess?: () => void;
   message?: string;
 }
 
-export function LoginPromptModal({ isOpen, onClose, onSuccess, message }: LoginPromptModalProps) {
+export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, message }: LoginPromptModalProps) {
   const { login, loginWithGoogle } = useAuth();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const pendingFavoriteIntent = getPendingFavoriteIntent();
+  const currentPath = `${location.pathname}${location.search}${location.hash}` || '/';
+  const authRedirectTarget = (pendingFavoriteIntent?.returnTo || currentPath).startsWith('/')
+    ? (pendingFavoriteIntent?.returnTo || currentPath)
+    : '/';
+  const loginHref = `/login?redirect=${encodeURIComponent(authRedirectTarget)}`;
+  const registerHref = `/register?redirect=${encodeURIComponent(authRedirectTarget)}`;
 
   const handleSuccess = () => {
     onSuccess?.();
@@ -75,6 +85,16 @@ export function LoginPromptModal({ isOpen, onClose, onSuccess, message }: LoginP
   const handleClose = () => {
     if (loading) return;
     if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
+    setEmail('');
+    setPassword('');
+    setError('');
+    clearPendingFavoriteIntent();
+    onDismiss?.();
+    onClose();
+  };
+
+  const handleNavigateToAuth = () => {
+    if (loading) return;
     setEmail('');
     setPassword('');
     setError('');
@@ -188,11 +208,11 @@ export function LoginPromptModal({ isOpen, onClose, onSuccess, message }: LoginP
 
             <p className="text-center text-xs text-muted mt-5">
               Don't have an account?{' '}
-              <Link to="/register" onClick={handleClose} className="text-accent hover:underline font-semibold">
+              <Link to={registerHref} onClick={handleNavigateToAuth} className="text-accent hover:underline font-semibold">
                 Create Account
               </Link>
               {' · '}
-              <Link to="/login" onClick={handleClose} className="text-accent hover:underline font-semibold">
+              <Link to={loginHref} onClick={handleNavigateToAuth} className="text-accent hover:underline font-semibold">
                 More options
               </Link>
             </p>

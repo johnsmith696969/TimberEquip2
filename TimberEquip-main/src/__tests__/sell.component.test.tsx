@@ -72,6 +72,8 @@ vi.mock('../utils/sellerAccess', () => ({
   canUserPostListings: canUserPostListingsMock,
   hasActiveSellerSubscription: hasActiveSellerSubscriptionMock,
   hasAdminPublishingAccess: hasAdminPublishingAccessMock,
+  getRememberedSellerReturnTo: () => '',
+  clearRememberedSellerReturnTo: () => {},
 }));
 
 vi.mock('react-router-dom', async () => {

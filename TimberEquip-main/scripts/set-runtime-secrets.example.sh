@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# TimberEquip runtime secrets bootstrap template.
+# Forestry Equipment Sales runtime secrets bootstrap template.
 #
 # Usage:
 # 1. Copy this file to a local private file that is NOT committed.
@@ -18,8 +18,8 @@ STRIPE_WEBHOOK_SECRET_VALUE="REPLACE_WITH_STRIPE_WEBHOOK_SECRET"
 
 # SendGrid / email
 SENDGRID_API_KEY_VALUE="REPLACE_WITH_SENDGRID_API_KEY"
-EMAIL_FROM_VALUE="TimberEquip <support@timberequip.com>"
-ADMIN_EMAILS_VALUE="support@timberequip.com,calebhappy@gmail.com"
+EMAIL_FROM_VALUE="Forestry Equipment Sales <caleb@forestryequipmentsales.com>"
+ADMIN_EMAILS_VALUE="calebhappy@gmail.com,caleb@forestryequipmentsales.com"
 
 set_secret() {
   local name="$1"
