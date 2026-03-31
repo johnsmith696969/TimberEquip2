@@ -5,6 +5,7 @@ import {
   buildListingSeoSlug,
   encodeListingPublicKey,
   decodeListingPublicKey,
+  extractListingPublicKeyFromSlug,
   buildListingPath,
   NOINDEX_ROBOTS,
 } from '../utils/listingPath';
@@ -93,17 +94,12 @@ describe('buildListingSeoSlug', () => {
     make: 'Caterpillar',
   };
 
-  it('builds slug from year, manufacturer, model, subcategory, city, state', () => {
+  it('builds slug from year, manufacturer, model, city, and state abbreviation', () => {
     const slug = buildListingSeoSlug(baseListing);
-    expect(slug).toContain('2020');
-    expect(slug).toContain('caterpillar');
-    expect(slug).toContain('525d');
-    expect(slug).toContain('grapple-skidders');
-    expect(slug).toContain('duluth');
-    expect(slug).toContain('minnesota');
+    expect(slug).toBe('2020-caterpillar-525d-duluth-mn');
   });
 
-  it('uses machineType fallback "equipment" when category/subcategory are missing', () => {
+  it('falls back to title when category/subcategory are missing', () => {
     const slug = buildListingSeoSlug({
       id: 'x',
       title: 'Great Equipment',
@@ -113,11 +109,10 @@ describe('buildListingSeoSlug', () => {
       subcategory: '',
       location: '',
     });
-    // sanitizePublicSeoLabel defaults machineType to 'equipment', so slug is just 'equipment'
-    expect(slug).toBe('equipment');
+    expect(slug).toBe('great-equipment');
   });
 
-  it('returns "equipment" when everything is empty (machineType fallback)', () => {
+  it('returns "equipment-listing" when everything is empty', () => {
     const slug = buildListingSeoSlug({
       id: '',
       title: '',
@@ -127,7 +122,7 @@ describe('buildListingSeoSlug', () => {
       subcategory: '',
       location: '',
     });
-    expect(slug).toBe('equipment');
+    expect(slug).toBe('equipment-listing');
   });
 
   it('deduplicates slug parts', () => {
@@ -169,8 +164,9 @@ describe('buildListingSeoSlug', () => {
       id: 'x',
       title: '',
       year: 0,
-      model: '',
-      category: 'Trailers & Trucks',
+      model: 'Trailers & Trucks',
+      make: 'Timber & Tractor',
+      category: 'Equipment',
       subcategory: '',
       location: '',
     });
@@ -263,11 +259,19 @@ describe('decodeListingPublicKey', () => {
   it('accepts raw firestore listing ids for new route format', () => {
     expect(decodeListingPublicKey('firebase-doc-id-123')).toBe('firebase-doc-id-123');
   });
+
+  it('extracts the raw listing id from a canonical single-segment equipment slug', () => {
+    expect(extractListingPublicKeyFromSlug('2021-tigercat-1075b-bemidji-mn-guHPbqFIQLtXVdLqq2MZ')).toBe('guHPbqFIQLtXVdLqq2MZ');
+  });
+
+  it('still extracts legacy ids from double-dash slugs', () => {
+    expect(extractListingPublicKeyFromSlug('2021-tigercat-1075b-bemidji-mn--firebase-doc-id-123')).toBe('firebase-doc-id-123');
+  });
 });
 
 // ---------- buildListingPath ----------
 describe('buildListingPath', () => {
-  it('builds path with slug and raw listing id', () => {
+  it('builds path with one canonical slug ending in the raw listing id', () => {
     const path = buildListingPath({
       id: 'listing123',
       title: '2020 Cat 525D',
@@ -278,9 +282,7 @@ describe('buildListingPath', () => {
       location: 'Duluth, MN',
       make: 'Caterpillar',
     });
-    expect(path).toMatch(/^\/equipment\/.+\/.+$/);
-    expect(path).toContain('/equipment/');
-    expect(path.endsWith('/listing123')).toBe(true);
+    expect(path).toBe('/equipment/2020-caterpillar-525d-duluth-mn-listing123');
   });
 
   it('omits public key when listing ID is empty', () => {
@@ -308,8 +310,22 @@ describe('buildListingPath', () => {
       subcategory: '',
       location: '',
     });
-    const publicKey = path.split('/').pop()!;
+    const publicKey = extractListingPublicKeyFromSlug(path.split('/').pop()!);
     expect(decodeListingPublicKey(publicKey)).toBe(listingId);
+  });
+
+  it('uses legacy double-dash separator when the listing id contains hyphens', () => {
+    const path = buildListingPath({
+      id: 'firebase-doc-id-123',
+      title: 'Test Item',
+      year: 2024,
+      model: 'X1',
+      category: 'Machines',
+      subcategory: '',
+      location: '',
+    });
+
+    expect(path).toBe('/equipment/2024-x1--firebase-doc-id-123');
   });
 });
 

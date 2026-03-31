@@ -24,7 +24,7 @@ import { useLocale } from '../components/LocaleContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 import WatermarkOverlay from '../components/WatermarkOverlay';
-import { buildListingPath, decodeListingPublicKey, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
+import { buildListingPath, decodeListingPublicKey, extractListingPublicKeyFromSlug, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import {
   buildCategoryPath,
   buildDealerPath,
@@ -43,8 +43,52 @@ const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w
 const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
 const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
 
+function getVideoEmbedDescriptor(rawUrl: string): { kind: 'embed' | 'video' | 'link'; src: string } {
+  const normalizedUrl = String(rawUrl || '').trim();
+  if (!normalizedUrl) {
+    return { kind: 'link', src: '' };
+  }
+
+  try {
+    const parsedUrl = new URL(normalizedUrl);
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const pathname = parsedUrl.pathname;
+    const pathnameLower = pathname.toLowerCase();
+
+    const directVideoExtensions = ['.mp4', '.webm', '.mov', '.m4v', '.ogg', '.ogv'];
+    if (directVideoExtensions.some((extension) => pathnameLower.endsWith(extension))) {
+      return { kind: 'video', src: normalizedUrl };
+    }
+
+    if (hostname.includes('youtu.be')) {
+      const videoId = pathname.replace(/^\/+/, '').split('/')[0];
+      if (videoId) {
+        return { kind: 'embed', src: `https://www.youtube.com/embed/${videoId}?rel=0` };
+      }
+    }
+
+    if (hostname.includes('youtube.com')) {
+      const videoId = parsedUrl.searchParams.get('v') || pathname.split('/').filter(Boolean).pop();
+      if (videoId) {
+        return { kind: 'embed', src: `https://www.youtube.com/embed/${videoId}?rel=0` };
+      }
+    }
+
+    if (hostname.includes('vimeo.com')) {
+      const videoId = pathname.split('/').filter(Boolean).find((segment) => /^\d+$/.test(segment));
+      if (videoId) {
+        return { kind: 'embed', src: `https://player.vimeo.com/video/${videoId}` };
+      }
+    }
+
+    return { kind: 'link', src: normalizedUrl };
+  } catch {
+    return { kind: 'link', src: normalizedUrl };
+  }
+}
+
 export function ListingDetail() {
-  const { id, publicKey } = useParams<{ id?: string; publicKey?: string; slug?: string }>();
+  const { id, publicKey, slug } = useParams<{ id?: string; publicKey?: string; slug?: string }>();
   const location = useLocation();
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
@@ -215,14 +259,18 @@ export function ListingDetail() {
   };
 
   const favoriteIds = Array.isArray(user?.favorites) ? user.favorites : [];
-  const resolvedListingId = String(listing?.id || decodeListingPublicKey(publicKey || '') || id || '').trim();
+  const slugPublicKey = extractListingPublicKeyFromSlug(slug || '');
+  const slugDerivedListingId = slug?.includes('--')
+    ? slugPublicKey
+    : decodeListingPublicKey(publicKey || slugPublicKey || '');
+  const resolvedListingId = String(listing?.id || slugDerivedListingId || id || '').trim();
   const isFavorite = resolvedListingId ? favoriteIds.includes(resolvedListingId) : false;
 
   useEffect(() => {
     let isActive = true;
 
     const fetchData = async () => {
-      const requestedListingId = String(decodeListingPublicKey(publicKey || '') || id || '').trim();
+      const requestedListingId = String(slugDerivedListingId || id || '').trim();
       if (!requestedListingId) {
         if (isActive) {
           setLoading(false);
@@ -343,7 +391,7 @@ export function ListingDetail() {
     return () => {
       isActive = false;
     };
-  }, [id, publicKey]);
+  }, [id, publicKey, slugPublicKey]);
 
   useEffect(() => {
     if (!listing) return;
@@ -356,6 +404,21 @@ export function ListingDetail() {
       reference: prev.reference || listing.id || getListingUrl(listing),
     }));
   }, [listing, user?.email]);
+
+  useEffect(() => {
+    if (!listing?.id || typeof window === 'undefined') return;
+
+    const viewKey = `te-listing-view:${listing.id}:${new Date().toISOString().slice(0, 10)}`;
+    if (window.sessionStorage.getItem(viewKey) === '1') {
+      return;
+    }
+
+    void equipmentService.recordListingView(listing.id).then((recorded) => {
+      if (recorded) {
+        window.sessionStorage.setItem(viewKey, '1');
+      }
+    });
+  }, [listing?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -737,6 +800,9 @@ export function ListingDetail() {
   });
   const activeImageTitle = galleryImageTitles[activeImage] || '';
   const hasGallery = detailImages.length > 0;
+  const listingVideos = Array.isArray(listing.videoUrls)
+    ? listing.videoUrls.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : [];
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
   const safeListingId = String(listing.id || 'pending').trim() || 'pending';
@@ -1058,6 +1124,64 @@ export function ListingDetail() {
                 </p>
               )}
             </div>
+
+            {listingVideos.length > 0 && (
+              <div className="flex flex-col space-y-6">
+                <div className="flex items-center justify-between border-b border-line pb-4">
+                  <h3 className="text-xl font-black uppercase tracking-tighter">Walkaround Videos</h3>
+                  <span className="label-micro">{listingVideos.length} video{listingVideos.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  {listingVideos.map((videoUrl, index) => {
+                    const descriptor = getVideoEmbedDescriptor(videoUrl);
+                    const label = `${listing.title} walkaround video ${index + 1}`;
+
+                    return (
+                      <div key={`${videoUrl}-${index}`} className="overflow-hidden border border-line bg-surface">
+                        <div className="aspect-video bg-bg">
+                          {descriptor.kind === 'embed' ? (
+                            <iframe
+                              src={descriptor.src}
+                              title={label}
+                              className="h-full w-full"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              allowFullScreen
+                              loading="lazy"
+                              referrerPolicy="strict-origin-when-cross-origin"
+                            />
+                          ) : descriptor.kind === 'video' ? (
+                            <video
+                              controls
+                              preload="metadata"
+                              className="h-full w-full bg-black"
+                            >
+                              <source src={descriptor.src} />
+                              Your browser does not support embedded video playback.
+                            </video>
+                          ) : (
+                            <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+                              <Landmark size={24} className="text-accent" />
+                              <p className="text-sm font-bold uppercase tracking-widest text-ink">External Walkaround Video</p>
+                              <a
+                                href={descriptor.src}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn-industrial btn-accent px-4 py-3 text-[10px]"
+                              >
+                                Open Video
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                        <div className="border-t border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted">
+                          Walkaround Video {index + 1}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Core Specs Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-1 bg-line border border-line">

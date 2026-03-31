@@ -19,6 +19,73 @@ type ListingPathRecord = Pick<Listing, 'id' | 'title' | 'year' | 'model' | 'cate
   brand?: string;
 };
 
+const REGION_ABBREVIATIONS: Record<string, string> = {
+  alabama: 'AL',
+  alaska: 'AK',
+  arizona: 'AZ',
+  arkansas: 'AR',
+  california: 'CA',
+  colorado: 'CO',
+  connecticut: 'CT',
+  delaware: 'DE',
+  'district of columbia': 'DC',
+  florida: 'FL',
+  georgia: 'GA',
+  hawaii: 'HI',
+  idaho: 'ID',
+  illinois: 'IL',
+  indiana: 'IN',
+  iowa: 'IA',
+  kansas: 'KS',
+  kentucky: 'KY',
+  louisiana: 'LA',
+  maine: 'ME',
+  maryland: 'MD',
+  massachusetts: 'MA',
+  michigan: 'MI',
+  minnesota: 'MN',
+  mississippi: 'MS',
+  missouri: 'MO',
+  montana: 'MT',
+  nebraska: 'NE',
+  nevada: 'NV',
+  'new hampshire': 'NH',
+  'new jersey': 'NJ',
+  'new mexico': 'NM',
+  'new york': 'NY',
+  'north carolina': 'NC',
+  'north dakota': 'ND',
+  ohio: 'OH',
+  oklahoma: 'OK',
+  oregon: 'OR',
+  pennsylvania: 'PA',
+  'rhode island': 'RI',
+  'south carolina': 'SC',
+  'south dakota': 'SD',
+  tennessee: 'TN',
+  texas: 'TX',
+  utah: 'UT',
+  vermont: 'VT',
+  virginia: 'VA',
+  washington: 'WA',
+  'west virginia': 'WV',
+  wisconsin: 'WI',
+  wyoming: 'WY',
+  alberta: 'AB',
+  'british columbia': 'BC',
+  manitoba: 'MB',
+  'new brunswick': 'NB',
+  'newfoundland and labrador': 'NL',
+  'northwest territories': 'NT',
+  'nova scotia': 'NS',
+  nunavut: 'NU',
+  ontario: 'ON',
+  'prince edward island': 'PE',
+  quebec: 'QC',
+  saskatchewan: 'SK',
+  yukon: 'YT',
+};
+
 function splitPublicTokens(value: string): string[] {
   return String(value || '')
     .toLowerCase()
@@ -73,6 +140,17 @@ function getLocationSeoParts(value: string): { city: string; state: string } {
   return { city: parts[0] || '', state: '' };
 }
 
+function abbreviateRegionForSeo(value: string): string {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+
+  if (/^[a-z]{2}$/i.test(normalizedValue)) {
+    return normalizedValue.toUpperCase();
+  }
+
+  return REGION_ABBREVIATIONS[normalizedValue.toLowerCase()] || normalizedValue;
+}
+
 function dedupeSlugParts(parts: string[]): string[] {
   const seen = new Set<string>();
   return parts.filter((part) => {
@@ -85,17 +163,16 @@ function dedupeSlugParts(parts: string[]): string[] {
 export function buildListingSeoSlug(listing: ListingPathRecord): string {
   const manufacturer = sanitizePublicSeoLabel(listing?.make || listing?.manufacturer || listing?.brand || '', '');
   const model = sanitizePublicSeoLabel(listing?.model || '', '');
-  const machineType = sanitizePublicSeoLabel(listing?.subcategory || listing?.category || '', 'equipment');
   const { city, state } = getLocationSeoParts(listing?.location || '');
+  const regionAbbreviation = abbreviateRegionForSeo(state);
   const fallbackTitle = sanitizePublicSeoLabel(listing?.title || '', 'equipment listing');
 
   const rawParts = [
     listing?.year ? String(listing.year) : '',
     manufacturer,
     model,
-    machineType,
     sanitizePublicSeoLabel(city, ''),
-    sanitizePublicSeoLabel(state, ''),
+    sanitizePublicSeoLabel(regionAbbreviation, ''),
   ]
     .map((part) => normalizeSeoSlug(part))
     .filter(Boolean);
@@ -105,7 +182,7 @@ export function buildListingSeoSlug(listing: ListingPathRecord): string {
     return uniqueParts.join('-');
   }
 
-  return normalizeSeoSlug(fallbackTitle, 'equipment-listing');
+  return normalizeSeoSlug(fallbackTitle, 'equipment');
 }
 
 export function encodeListingPublicKey(listingId: string): string {
@@ -121,8 +198,25 @@ export function encodeListingPublicKey(listingId: string): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
+export function extractListingPublicKeyFromSlug(slugOrKey: string): string {
+  const normalizedValue = String(slugOrKey || '').trim();
+  if (!normalizedValue) return '';
+
+  const delimiterIndex = normalizedValue.lastIndexOf('--');
+  if (delimiterIndex === -1) {
+    const trailingRawIdMatch = normalizedValue.match(/-([A-Za-z0-9]{8,})$/);
+    if (trailingRawIdMatch) {
+      return trailingRawIdMatch[1].trim();
+    }
+
+    return normalizedValue;
+  }
+
+  return normalizedValue.slice(delimiterIndex + 2).trim();
+}
+
 export function decodeListingPublicKey(publicKey: string): string {
-  const normalizedKey = String(publicKey || '').trim();
+  const normalizedKey = extractListingPublicKeyFromSlug(publicKey);
   if (!normalizedKey) return '';
 
   const decodeBase64Key = (value: string): string => {
@@ -166,5 +260,9 @@ export function buildListingPath(listing: ListingPathRecord): string {
     return `/equipment/${safeSlug}`;
   }
 
-  return `/equipment/${safeSlug}/${publicKey}`;
+  if (/^[A-Za-z0-9]{8,}$/.test(publicKey)) {
+    return `/equipment/${safeSlug}-${publicKey}`;
+  }
+
+  return `/equipment/${safeSlug}--${publicKey}`;
 }

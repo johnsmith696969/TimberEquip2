@@ -1,18 +1,33 @@
 import { expect, test, type Page } from '@playwright/test';
+import { buildListingPath } from '../src/utils/listingPath';
 
 async function dismissCookieBannerIfPresent(page: Page) {
   const acceptAllButton = page.getByRole('button', { name: /accept all/i });
-  if (await acceptAllButton.isVisible().catch(() => false)) {
-    await acceptAllButton.click();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (await acceptAllButton.isVisible().catch(() => false)) {
+      await acceptAllButton.click();
+      await page.waitForTimeout(200);
+      return;
+    }
+    await page.waitForTimeout(250);
   }
 }
 
 async function getFirstPublicListing(page: Page) {
-  const response = await page.request.get('/api/public/listings?inStockOnly=false&limit=1&sortBy=newest');
+  const response = await page.request.get('/api/public/listings?inStockOnly=false&limit=25&sortBy=newest');
   expect(response.ok()).toBeTruthy();
 
   const payload = await response.json();
-  const listing = Array.isArray(payload?.listings) ? payload.listings[0] : null;
+  const listings = Array.isArray(payload?.listings) ? payload.listings : [];
+  const listing =
+    listings.find((entry: any) => {
+      const approvalStatus = String(entry?.approvalStatus || '').trim().toLowerCase();
+      const status = String(entry?.status || '').trim().toLowerCase();
+      return status === 'active' && approvalStatus === 'approved';
+    }) ||
+    listings.find((entry: any) => String(entry?.status || '').trim().toLowerCase() === 'active') ||
+    listings[0] ||
+    null;
   expect(listing).toBeTruthy();
   return listing;
 }
@@ -22,7 +37,7 @@ async function getFirstPublicListingPath(page: Page) {
 
   if (listing.publicPath) return String(listing.publicPath);
   if (listing.path) return String(listing.path);
-  return `/listing/${listing.id}`;
+  return buildListingPath(listing);
 }
 
 test.describe('public critical journeys', () => {

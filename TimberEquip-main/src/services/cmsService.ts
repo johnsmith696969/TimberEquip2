@@ -59,6 +59,50 @@ function writeCmsCache<T>(scope: string, data: T): void {
   }
 }
 
+function getApiRequestUrls(input: RequestInfo | URL): string[] {
+  const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
+  if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
+    return [rawInput];
+  }
+
+  const urls = [rawInput];
+  const hostname = window.location.hostname.trim().toLowerCase();
+  if (hostname === 'www.timberequip.com') {
+    urls.push(`https://timberequip.com${rawInput}`);
+  }
+
+  return Array.from(new Set(urls));
+}
+
+async function fetchApiWithFallback(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const urls = getApiRequestUrls(input);
+  let lastError: unknown = null;
+  let lastResponse: Response | null = null;
+
+  for (let index = 0; index < urls.length; index += 1) {
+    const url = urls[index];
+
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || index === urls.length - 1 || response.status !== 404) {
+        return response;
+      }
+      lastResponse = response;
+    } catch (error) {
+      lastError = error;
+      if (index === urls.length - 1) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('CMS API request failed');
+}
+
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
@@ -66,7 +110,7 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
   }
 
   const idToken = await currentUser.getIdToken();
-  const response = await fetch(input, {
+  const response = await fetchApiWithFallback(input, {
     ...init,
     headers: {
       Authorization: `Bearer ${idToken}`,

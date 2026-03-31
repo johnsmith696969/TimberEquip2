@@ -43,6 +43,7 @@ import {
 
 const INSPECTION_MANAGER_ROLES = new Set(['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer']);
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
+const CONTENT_STUDIO_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer', 'content_manager', 'editor']);
 const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
 const CURRENCY_OPTIONS: Currency[] = ['USD', 'CAD', 'EUR', 'GBP', 'NOK', 'SEK', 'CHF', 'PLN', 'CZK', 'RON', 'DKK', 'HUF'];
 const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
@@ -83,6 +84,7 @@ export function Profile() {
     userService.supportsEnterpriseStorefront(normalizedRole)
   );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
+  const hasContentStudioProfileScope = Boolean(normalizedRole && CONTENT_STUDIO_PROFILE_ROLES.has(normalizedRole));
   const canManageInspectionRequests = Boolean(
     normalizedRole &&
     INSPECTION_MANAGER_ROLES.has(normalizedRole) &&
@@ -185,8 +187,15 @@ export function Profile() {
     storefrontTabLabel,
   ]);
   const adminProfileLinks = useMemo(() => {
-    if (!hasAdminProfileScope) {
+    if (!hasContentStudioProfileScope) {
       return [];
+    }
+
+    if (!hasAdminProfileScope) {
+      return [
+        { label: 'Content Studio', icon: FileText, href: '/admin?tab=content' },
+        { label: 'Editor Settings', icon: Settings, href: '/admin?tab=settings' },
+      ];
     }
 
     const items = [
@@ -194,7 +203,7 @@ export function Profile() {
       { label: 'Performance', icon: Activity, href: '/admin?tab=tracking' },
       { label: 'Accounts', icon: Building2, href: '/admin?tab=accounts' },
       { label: 'Billing', icon: CreditCard, href: '/admin?tab=billing' },
-      { label: 'Content', icon: FileText, href: '/admin?tab=content' },
+      { label: 'Content Studio', icon: FileText, href: '/admin?tab=content' },
       { label: 'Dealer Feeds', icon: Database, href: '/admin?tab=dealer_feeds' },
       { label: 'Admin Settings', icon: Settings, href: '/admin?tab=settings' },
     ];
@@ -204,7 +213,7 @@ export function Profile() {
     }
 
     return items;
-  }, [hasAdminProfileScope, normalizedRole]);
+  }, [hasAdminProfileScope, hasContentStudioProfileScope, normalizedRole]);
   const resolveRequestedProfileTab = useCallback((requestedTab: string | null) => {
     const normalizedRequestedTab = requestedTab?.trim().toLowerCase() || '';
     const tabAlias =

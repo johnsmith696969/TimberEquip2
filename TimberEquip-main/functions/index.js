@@ -658,7 +658,13 @@ function parseListingIdFromReference(reference) {
   const listingUrlMatch = value.match(/\/listing\/([^/?#]+)/i);
   if (listingUrlMatch?.[1]) return listingUrlMatch[1].trim();
 
-  const equipmentUrlMatch = value.match(/\/equipment\/[^/?#]+\/([^/?#]+)/i);
+  const legacyEquipmentUrlMatch = value.match(/\/equipment\/[^/?#]+\/([^/?#]+)/i);
+  if (legacyEquipmentUrlMatch?.[1]) {
+    const decodedListingId = decodeListingPublicKey(legacyEquipmentUrlMatch[1].trim());
+    if (decodedListingId) return decodedListingId;
+  }
+
+  const equipmentUrlMatch = value.match(/\/equipment\/([^/?#]+)/i);
   if (equipmentUrlMatch?.[1]) {
     const decodedListingId = decodeListingPublicKey(equipmentUrlMatch[1].trim());
     if (decodedListingId) return decodedListingId;
@@ -669,6 +675,26 @@ function parseListingIdFromReference(reference) {
   }
 
   return '';
+}
+
+function buildCanonicalListingUrl(listingId, listing = {}) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  if (!normalizedListingId) {
+    return `${APP_URL}/equipment`;
+  }
+
+  return `${APP_URL}${buildListingPublicPath({
+    id: normalizedListingId,
+    title: listing?.title,
+    year: listing?.year,
+    model: listing?.model,
+    category: listing?.category,
+    subcategory: listing?.subcategory,
+    location: listing?.location,
+    make: listing?.make || listing?.manufacturer || listing?.brand,
+    manufacturer: listing?.manufacturer || listing?.make || listing?.brand,
+    brand: listing?.brand || listing?.manufacturer || listing?.make,
+  })}`;
 }
 
 async function geocodeLocation(address) {
@@ -2669,7 +2695,7 @@ function buildPublicDealerListingPayload(listingId, rawListing, dealer) {
     featured: Boolean(listing.featured),
     images,
     image: images[0] || '',
-    listingUrl: `${APP_URL}/listing/${listingId}`,
+    listingUrl: buildCanonicalListingUrl(listingId, listing),
     dealerUrl: `${APP_URL}/dealers/${encodeURIComponent(dealer.publicId)}`,
     stockNumber: normalizeNonEmptyString(listing.stockNumber),
     externalId: normalizeNonEmptyString(listing?.externalSource?.externalId),
@@ -2977,7 +3003,7 @@ async function getOptionalEmailUserContext(userUid, cache = new Map()) {
 }
 
 async function notifyMatchingSavedSearches(listingId, listing) {
-  const listingUrl = `${APP_URL}/listing/${listingId}`;
+  const listingUrl = buildCanonicalListingUrl(listingId, listing);
   const listingPrice = formatListingMoney(listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
@@ -3033,7 +3059,7 @@ async function notifyMatchingSavedSearches(listingId, listing) {
 }
 
 async function notifySavedSearchPriceDrop(listingId, before, after) {
-  const listingUrl = `${APP_URL}/listing/${listingId}`;
+  const listingUrl = buildCanonicalListingUrl(listingId, after);
   const previousPrice = formatListingMoney(after, before.price);
   const currentPrice = formatListingMoney(after, after.price);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
@@ -3071,7 +3097,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
 }
 
 async function notifySavedSearchSoldStatus(listingId, listing) {
-  const listingUrl = `${APP_URL}/listing/${listingId}`;
+  const listingUrl = buildCanonicalListingUrl(listingId, listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
 
@@ -3376,7 +3402,7 @@ exports.onInquiryCreated = onDocumentCreated(
     const listingTitle = listing.title || 'Equipment Listing';
     const sellerName = seller.displayName || 'Seller';
     const sellerEmail = seller.email;
-    const listingUrl = `${APP_URL}/listing/${listingId}`;
+    const listingUrl = buildCanonicalListingUrl(listingId, listing);
 
     const errors = [];
 
@@ -3627,7 +3653,7 @@ exports.onListingStatusChanged = onDocumentUpdated(
     if (!sellerEmail) return;
 
     const listingTitle = after.title || 'Your Listing';
-    const listingUrl = `${APP_URL}/listing/${event.params.listingId}`;
+    const listingUrl = buildCanonicalListingUrl(event.params.listingId, after);
 
     try {
       let emailPayload;
@@ -3672,7 +3698,7 @@ exports.onListingCreated = onDocumentCreated(
     const sellerEmail = String(seller?.email || '').trim();
     const sellerName = String(seller?.displayName || 'Seller').trim();
     const listingTitle = String(listing.title || 'Your Listing').trim();
-    const listingUrl = `${APP_URL}/listing/${event.params.listingId}`;
+    const listingUrl = buildCanonicalListingUrl(event.params.listingId, listing);
     const dashboardUrl = `${APP_URL}/profile?tab=${encodeURIComponent('My Listings')}`;
 
     if (listing.approvalStatus === 'approved') {
@@ -4229,6 +4255,229 @@ exports.dealerFeedNightlySync = onSchedule(
   }
 );
 
+function createDealerPerformanceAccumulator(name = '', email = '', role = '') {
+  return {
+    name,
+    email,
+    role,
+    listings: 0,
+    leadForms: 0,
+    calls: 0,
+    connectedCalls: 0,
+    qualifiedCalls: 0,
+    missedCalls: 0,
+    totalViews: 0,
+    topMachinesMap: {},
+  };
+}
+
+function updateDealerPerformanceMachineMetric(summary, listingId, fallbackTitle, updates = {}) {
+  const normalizedListingId = normalizeNonEmptyString(listingId, 'unknown-listing');
+  const existing = summary.topMachinesMap[normalizedListingId] || {
+    listingId: normalizedListingId,
+    title: normalizeNonEmptyString(fallbackTitle, normalizedListingId),
+    inquiryCount: 0,
+    callCount: 0,
+    viewCount: 0,
+  };
+
+  existing.title = normalizeNonEmptyString(fallbackTitle, existing.title || normalizedListingId);
+  existing.inquiryCount += Number(updates.inquiryCount || 0);
+  existing.callCount += Number(updates.callCount || 0);
+  existing.viewCount += Number(updates.viewCount || 0);
+  summary.topMachinesMap[normalizedListingId] = existing;
+}
+
+function finalizeDealerPerformanceSummary(summary) {
+  const topMachines = Object.values(summary.topMachinesMap || {})
+    .sort((left, right) => {
+      const rightScore = right.inquiryCount * 100 + right.callCount * 50 + right.viewCount;
+      const leftScore = left.inquiryCount * 100 + left.callCount * 50 + left.viewCount;
+      return rightScore - leftScore;
+    })
+    .slice(0, 5)
+    .map((machine) => ({
+      listingId: machine.listingId,
+      title: machine.title,
+      inquiryCount: machine.inquiryCount,
+      callCount: machine.callCount,
+      viewCount: machine.viewCount,
+      count: machine.inquiryCount + machine.callCount,
+    }));
+
+  return {
+    name: summary.name,
+    email: summary.email,
+    role: summary.role,
+    listings: summary.listings,
+    leadForms: summary.leadForms,
+    calls: summary.calls,
+    connectedCalls: summary.connectedCalls,
+    qualifiedCalls: summary.qualifiedCalls,
+    missedCalls: summary.missedCalls,
+    totalViews: summary.totalViews,
+    topMachines,
+  };
+}
+
+async function buildDealerPerformanceReport({
+  startDate,
+  endDate,
+  periodLabel,
+} = {}) {
+  const resolvedEndDate = endDate instanceof Date ? endDate : new Date();
+  const resolvedStartDate = startDate instanceof Date
+    ? startDate
+    : new Date(resolvedEndDate.getTime() - (30 * 24 * 60 * 60 * 1000));
+  const normalizedPeriodLabel = normalizeNonEmptyString(
+    periodLabel,
+    `Last 30 Days ending ${resolvedEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+  );
+
+  const sellerRoles = ['individual_seller', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'];
+  const [usersSnap, callsSnap, inquiriesSnap, listingViewsSnap, activeListingsSnap] = await Promise.all([
+    getDb().collection('users').where('role', 'in', sellerRoles).get(),
+    getDb()
+      .collection('calls')
+      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(resolvedStartDate))
+      .where('createdAt', '<', admin.firestore.Timestamp.fromDate(resolvedEndDate))
+      .get(),
+    getDb()
+      .collection('inquiries')
+      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(resolvedStartDate))
+      .where('createdAt', '<', admin.firestore.Timestamp.fromDate(resolvedEndDate))
+      .get(),
+    getDb()
+      .collection('listingViewEvents')
+      .where('viewedAt', '>=', admin.firestore.Timestamp.fromDate(resolvedStartDate))
+      .where('viewedAt', '<', admin.firestore.Timestamp.fromDate(resolvedEndDate))
+      .get(),
+    getDb()
+      .collection('listings')
+      .where('status', '==', 'active')
+      .where('approvalStatus', '==', 'approved')
+      .get(),
+  ]);
+
+  const summaryBySeller = {};
+  const ensureSellerSummary = (sellerUid, profile = {}) => {
+    const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
+    if (!normalizedSellerUid) return null;
+    if (!summaryBySeller[normalizedSellerUid]) {
+      summaryBySeller[normalizedSellerUid] = createDealerPerformanceAccumulator(
+        normalizeNonEmptyString(profile.name || profile.displayName, 'Seller'),
+        normalizeNonEmptyString(profile.email),
+        normalizeUserRole(profile.role),
+      );
+    }
+    return summaryBySeller[normalizedSellerUid];
+  };
+
+  usersSnap.docs.forEach((userDoc) => {
+    const data = userDoc.data() || {};
+    ensureSellerSummary(userDoc.id, {
+      name: data.displayName || data.name,
+      email: data.email,
+      role: data.role,
+    });
+  });
+
+  activeListingsSnap.docs.forEach((docSnapshot) => {
+    const data = docSnapshot.data() || {};
+    const sellerUid = normalizeNonEmptyString(data.sellerUid || data.sellerId);
+    const summary = ensureSellerSummary(sellerUid);
+    if (!summary) return;
+    summary.listings += 1;
+    updateDealerPerformanceMachineMetric(summary, docSnapshot.id, normalizeNonEmptyString(data.title, docSnapshot.id));
+  });
+
+  inquiriesSnap.docs.forEach((docSnapshot) => {
+    const data = docSnapshot.data() || {};
+    const sellerUid = normalizeNonEmptyString(data.sellerUid || data.sellerId);
+    const summary = ensureSellerSummary(sellerUid);
+    if (!summary) return;
+
+    if (normalizeNonEmptyString(data.type, 'Inquiry').toLowerCase() !== 'call') {
+      summary.leadForms += 1;
+    }
+
+    updateDealerPerformanceMachineMetric(
+      summary,
+      normalizeNonEmptyString(data.listingId, docSnapshot.id),
+      normalizeNonEmptyString(data.listingTitle, normalizeNonEmptyString(data.listingId, docSnapshot.id)),
+      { inquiryCount: 1 },
+    );
+  });
+
+  callsSnap.docs.forEach((docSnapshot) => {
+    const data = docSnapshot.data() || {};
+    const sellerUid = normalizeNonEmptyString(data.sellerUid || data.sellerId);
+    const summary = ensureSellerSummary(sellerUid);
+    if (!summary) return;
+
+    const duration = toFiniteNumberOrUndefined(data.duration) || 0;
+    const status = normalizeNonEmptyString(data.status).toLowerCase();
+
+    summary.calls += 1;
+    if (duration > 0 && status === 'completed') summary.connectedCalls += 1;
+    if (duration >= 60) summary.qualifiedCalls += 1;
+    if (['missed', 'voicemail', 'no_answer', 'no-answer'].includes(status)) summary.missedCalls += 1;
+
+    updateDealerPerformanceMachineMetric(
+      summary,
+      normalizeNonEmptyString(data.listingId, docSnapshot.id),
+      normalizeNonEmptyString(data.listingTitle, normalizeNonEmptyString(data.listingId, docSnapshot.id)),
+      { callCount: 1 },
+    );
+  });
+
+  listingViewsSnap.docs.forEach((docSnapshot) => {
+    const data = docSnapshot.data() || {};
+    const sellerUid = normalizeNonEmptyString(data.sellerUid || data.sellerId);
+    const summary = ensureSellerSummary(sellerUid);
+    if (!summary) return;
+
+    summary.totalViews += 1;
+    updateDealerPerformanceMachineMetric(
+      summary,
+      normalizeNonEmptyString(data.listingId, docSnapshot.id),
+      normalizeNonEmptyString(data.listingTitle, normalizeNonEmptyString(data.listingId, docSnapshot.id)),
+      { viewCount: 1 },
+    );
+  });
+
+  const sellerSummaries = Object.entries(summaryBySeller)
+    .map(([sellerUid, summary]) => ({
+      sellerUid,
+      ...finalizeDealerPerformanceSummary(summary),
+    }))
+    .sort((left, right) => (right.leadForms + right.calls + right.totalViews) - (left.leadForms + left.calls + left.totalViews));
+
+  return {
+    periodLabel: normalizedPeriodLabel,
+    periodStartIso: resolvedStartDate.toISOString(),
+    periodEndIso: resolvedEndDate.toISOString(),
+    sellerSummaries,
+    totals: sellerSummaries.reduce((totals, summary) => ({
+      listings: totals.listings + summary.listings,
+      leadForms: totals.leadForms + summary.leadForms,
+      calls: totals.calls + summary.calls,
+      connectedCalls: totals.connectedCalls + summary.connectedCalls,
+      qualifiedCalls: totals.qualifiedCalls + summary.qualifiedCalls,
+      missedCalls: totals.missedCalls + summary.missedCalls,
+      totalViews: totals.totalViews + summary.totalViews,
+    }), {
+      listings: 0,
+      leadForms: 0,
+      calls: 0,
+      connectedCalls: 0,
+      qualifiedCalls: 0,
+      missedCalls: 0,
+      totalViews: 0,
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Monthly Dealer Report — 1st of each month at 9 AM Eastern
 // ---------------------------------------------------------------------------
@@ -4240,151 +4489,55 @@ exports.monthlyDealerReport = onSchedule(
     secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
   },
   async () => {
-    const now = new Date();
-    const reportMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const monthStart = reportMonth;
-    const monthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthLabel = reportMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
-    // Find all paid sellers (individual_seller, dealer, pro_dealer)
-    const usersSnap = await getDb()
-      .collection('users')
-      .where('role', 'in', ['individual_seller', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'])
-      .get();
-
-    if (usersSnap.empty) {
+    const report = await buildDealerPerformanceReport();
+    if (!report.sellerSummaries.length) {
       logger.info('monthlyDealerReport: no sellers found');
       return;
     }
 
-    // Fetch all calls and inquiries for the month in bulk
-    const [callsSnap, inquiriesSnap] = await Promise.all([
-      getDb()
-        .collection('calls')
-        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(monthStart))
-        .where('createdAt', '<', admin.firestore.Timestamp.fromDate(monthEnd))
-        .get(),
-      getDb()
-        .collection('inquiries')
-        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(monthStart))
-        .where('createdAt', '<', admin.firestore.Timestamp.fromDate(monthEnd))
-        .get(),
-    ]);
-
-    // Group calls by seller
-    const callsBySeller = {};
-    for (const doc of callsSnap.docs) {
-      const d = doc.data() || {};
-      const sellerKey = normalizeNonEmptyString(d.sellerUid || d.sellerId);
-      if (!sellerKey) continue;
-      if (!callsBySeller[sellerKey]) callsBySeller[sellerKey] = [];
-      callsBySeller[sellerKey].push(d);
-    }
-
-    // Group inquiries by seller
-    const inquiriesBySeller = {};
-    for (const doc of inquiriesSnap.docs) {
-      const d = doc.data() || {};
-      const sellerKey = normalizeNonEmptyString(d.sellerUid || d.sellerId);
-      if (!sellerKey) continue;
-      if (!inquiriesBySeller[sellerKey]) inquiriesBySeller[sellerKey] = [];
-      inquiriesBySeller[sellerKey].push(d);
-    }
-
     const adminSummaries = [];
 
-    for (const userDoc of usersSnap.docs) {
-      const userData = userDoc.data() || {};
-      const sellerUid = userDoc.id;
-      const sellerEmail = normalizeNonEmptyString(userData.email);
-      const sellerName = normalizeNonEmptyString(userData.displayName || userData.name, 'Seller');
+    for (const summary of report.sellerSummaries) {
+      if (!summary.email) continue;
 
-      if (!sellerEmail) continue;
-
-      // Count active listings for this seller
-      const listingsSnap = await getDb()
-        .collection('listings')
-        .where('sellerUid', '==', sellerUid)
-        .where('status', '==', 'active')
-        .where('approvalStatus', '==', 'approved')
-        .get();
-      const totalListings = listingsSnap.size;
-
-      const sellerCalls = callsBySeller[sellerUid] || [];
-      const sellerInquiries = inquiriesBySeller[sellerUid] || [];
-
-      const leadForms = sellerInquiries.filter((i) => (i.type || 'Inquiry') !== 'Call').length;
-      const callButtonClicks = sellerCalls.length;
-      const connectedCalls = sellerCalls.filter((c) => {
-        const dur = typeof c.duration === 'number' ? c.duration : 0;
-        return dur > 0 && String(c.status || '').toLowerCase() === 'completed';
-      }).length;
-      const qualifiedCalls = sellerCalls.filter((c) => {
-        const dur = typeof c.duration === 'number' ? c.duration : 0;
-        return dur >= 60;
-      }).length;
-      const missedCalls = sellerCalls.filter((c) => {
-        return String(c.status || '').toLowerCase() === 'missed';
-      }).length;
-
-      // Top 5 machines by inquiry volume
-      const machineInquiryCounts = {};
-      for (const inq of sellerInquiries) {
-        const listingId = normalizeNonEmptyString(inq.listingId);
-        if (!listingId) continue;
-        if (!machineInquiryCounts[listingId]) {
-          machineInquiryCounts[listingId] = { title: normalizeNonEmptyString(inq.listingTitle) || listingId, count: 0 };
-        }
-        machineInquiryCounts[listingId].count += 1;
-      }
-      // Also count calls as inquiry touches
-      for (const call of sellerCalls) {
-        const listingId = normalizeNonEmptyString(call.listingId);
-        if (!listingId) continue;
-        if (!machineInquiryCounts[listingId]) {
-          machineInquiryCounts[listingId] = { title: normalizeNonEmptyString(call.listingTitle) || listingId, count: 0 };
-        }
-        machineInquiryCounts[listingId].count += 1;
-      }
-
-      const topMachines = Object.values(machineInquiryCounts)
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
+      const userSnapshot = await getDb().collection('users').doc(summary.sellerUid).get().catch(() => null);
+      const userData = userSnapshot?.data?.() || {};
       if (userData.emailNotificationsEnabled === false) {
-        logger.info(`monthlyDealerReport: skipped seller report for ${sellerUid} because optional emails are disabled`);
+        logger.info(`monthlyDealerReport: skipped seller report for ${summary.sellerUid} because optional emails are disabled`);
         continue;
       }
 
       try {
         const { subject, html } = templates.dealerMonthlyReport({
-          sellerName,
-          monthLabel,
-          totalListings,
-          leadForms,
-          callButtonClicks,
-          connectedCalls,
-          qualifiedCalls,
-          missedCalls,
-          topMachines,
+          sellerName: summary.name,
+          monthLabel: report.periodLabel,
+          totalListings: summary.listings,
+          leadForms: summary.leadForms,
+          callButtonClicks: summary.calls,
+          connectedCalls: summary.connectedCalls,
+          qualifiedCalls: summary.qualifiedCalls,
+          missedCalls: summary.missedCalls,
+          totalViews: summary.totalViews,
+          topMachines: summary.topMachines,
           dashboardUrl: 'https://timberequip.com/profile',
           unsubscribeUrl: buildEmailUnsubscribeUrl({
-            uid: sellerUid,
-            email: sellerEmail,
+            uid: summary.sellerUid,
+            email: summary.email,
             scope: 'optional',
           }),
         });
-        await sendEmail({ to: sellerEmail, subject, html });
+        await sendEmail({ to: summary.email, subject, html });
       } catch (emailError) {
-        logger.error(`monthlyDealerReport: failed to send report to ${sellerUid}`, emailError);
+        logger.error(`monthlyDealerReport: failed to send report to ${summary.sellerUid}`, emailError);
       }
 
       adminSummaries.push({
-        name: sellerName,
-        listings: totalListings,
-        leads: leadForms,
-        calls: callButtonClicks,
-        qualifiedCalls,
+        name: summary.name,
+        listings: summary.listings,
+        leads: summary.leadForms,
+        calls: summary.calls,
+        qualifiedCalls: summary.qualifiedCalls,
+        totalViews: summary.totalViews,
       });
     }
 
@@ -4392,7 +4545,7 @@ exports.monthlyDealerReport = onSchedule(
     if (adminSummaries.length > 0) {
       try {
         const { subject, html } = templates.dealerMonthlyReportAdminSummary({
-          monthLabel,
+          monthLabel: report.periodLabel,
           sellerSummaries: adminSummaries,
           dashboardUrl: 'https://timberequip.com/admin',
         });
@@ -4402,7 +4555,7 @@ exports.monthlyDealerReport = onSchedule(
       }
     }
 
-    logger.info(`monthlyDealerReport: sent ${adminSummaries.length} seller reports for ${monthLabel}`);
+    logger.info(`monthlyDealerReport: sent ${adminSummaries.length} seller reports for ${report.periodLabel}`);
   }
 );
 
@@ -4734,7 +4887,6 @@ function serializeInquiryDoc(docSnapshot) {
           }))
       : [],
     firstResponseAt: timestampValueToIso(data.firstResponseAt) || normalizeNonEmptyString(data.firstResponseAt) || undefined,
-    responseTimeMinutes: toFiniteNumberOrUndefined(data.responseTimeMinutes) ?? null,
     spamScore: toFiniteNumberOrUndefined(data.spamScore),
     spamFlags: Array.isArray(data.spamFlags) ? data.spamFlags.filter((flag) => typeof flag === 'string') : [],
     updatedAt: timestampValueToIso(data.updatedAt) || null,
@@ -4771,6 +4923,85 @@ function serializeCallDoc(docSnapshot) {
   };
 }
 
+function serializeContentBlockRecord(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    type: normalizeNonEmptyString(data.type, 'text'),
+    content: normalizeNonEmptyString(data.content),
+    caption: normalizeNonEmptyString(data.caption) || undefined,
+    title: normalizeNonEmptyString(data.title) || undefined,
+    label: normalizeNonEmptyString(data.label) || undefined,
+    order: toFiniteNumberOrUndefined(data.order) || 0,
+  };
+}
+
+function serializeMediaLibraryRecord(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    url: normalizeNonEmptyString(data.url),
+    filename: normalizeNonEmptyString(data.filename || data.fileName),
+    mimeType: normalizeNonEmptyString(data.mimeType || data.fileType),
+    sizeBytes: toFiniteNumberOrUndefined(data.sizeBytes || data.fileSize),
+    altText: normalizeNonEmptyString(data.altText) || undefined,
+    tags: Array.isArray(data.tags) ? data.tags.filter((entry) => typeof entry === 'string') : [],
+    uploadedBy: normalizeNonEmptyString(data.uploadedBy),
+    uploadedByName: normalizeNonEmptyString(data.uploadedByName) || undefined,
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
+function serializeBlogPostRecord(docSnapshot) {
+  const data = docSnapshot.data() || {};
+  return {
+    id: docSnapshot.id,
+    title: normalizeNonEmptyString(data.title, 'Untitled Post'),
+    excerpt: normalizeNonEmptyString(data.excerpt) || undefined,
+    content: normalizeNonEmptyString(data.content),
+    authorUid: normalizeNonEmptyString(data.authorUid),
+    authorName: normalizeNonEmptyString(data.authorName, 'Forestry Equipment Sales'),
+    category: normalizeNonEmptyString(data.category, 'News'),
+    tags: Array.isArray(data.tags) ? data.tags.filter((entry) => typeof entry === 'string') : [],
+    image: normalizeNonEmptyString(data.image) || undefined,
+    status: normalizeNonEmptyString(data.status, 'draft'),
+    reviewStatus: normalizeNonEmptyString(data.reviewStatus, normalizeNonEmptyString(data.status, 'draft')),
+    scheduledAt: timestampValueToIso(data.scheduledAt) || normalizeNonEmptyString(data.scheduledAt) || null,
+    seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
+    seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((entry) => typeof entry === 'string') : [],
+    seoSlug: normalizeNonEmptyString(data.seoSlug) || undefined,
+    blocks: Array.isArray(data.blocks)
+      ? data.blocks
+          .filter((entry) => entry && typeof entry === 'object')
+          .map((entry, index) => ({
+            id: normalizeNonEmptyString(entry.id) || `${docSnapshot.id}-block-${index + 1}`,
+            type: normalizeNonEmptyString(entry.type, 'text'),
+            content: normalizeNonEmptyString(entry.content),
+            caption: normalizeNonEmptyString(entry.caption) || undefined,
+            title: normalizeNonEmptyString(entry.title) || undefined,
+            label: normalizeNonEmptyString(entry.label) || undefined,
+            order: toFiniteNumberOrUndefined(entry.order) || index,
+          }))
+      : [],
+    revisions: Array.isArray(data.revisions)
+      ? data.revisions
+          .filter((entry) => entry && typeof entry === 'object')
+          .map((entry, index) => ({
+            id: normalizeNonEmptyString(entry.id) || `${docSnapshot.id}-revision-${index + 1}`,
+            title: normalizeNonEmptyString(entry.title),
+            content: normalizeNonEmptyString(entry.content),
+            authorUid: normalizeNonEmptyString(entry.authorUid),
+            authorName: normalizeNonEmptyString(entry.authorName),
+            savedAt: normalizeNonEmptyString(entry.savedAt, new Date().toISOString()),
+            note: normalizeNonEmptyString(entry.note) || undefined,
+          }))
+      : [],
+    createdAt: timestampValueToIso(data.createdAt) || new Date().toISOString(),
+    updatedAt: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
+  };
+}
+
 function buildMarketplaceListingPayload(listingId, rawListing) {
   const listing = rawListing || {};
   const rawImages = Array.isArray(listing.images)
@@ -4799,12 +5030,17 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     condition: normalizeNonEmptyString(listing.condition, 'Used'),
     description: normalizeNonEmptyString(listing.description),
     images,
+    imageTitles: sanitizeListingCreateImageTitles(listing.imageTitles, images.length),
+    imageVariants: sanitizeListingCreateImageVariants(listing.imageVariants),
     location: normalizeNonEmptyString(listing.location),
     stockNumber: normalizeNonEmptyString(listing.stockNumber),
     serialNumber: normalizeNonEmptyString(listing.serialNumber),
     latitude: toFiniteNumberOrUndefined(listing.latitude),
     longitude: toFiniteNumberOrUndefined(listing.longitude),
     features: Array.isArray(listing.features) ? listing.features.filter((entry) => typeof entry === 'string') : [],
+    videoUrls: Array.isArray(listing.videoUrls)
+      ? listing.videoUrls.map((entry) => normalizeNonEmptyString(entry)).filter(Boolean).slice(0, 6)
+      : [],
     status: normalizeNonEmptyString(listing.status, 'active'),
     approvalStatus: normalizeNonEmptyString(listing.approvalStatus, 'pending'),
     approvedBy: normalizeNonEmptyString(listing.approvedBy),
@@ -5153,6 +5389,10 @@ function filterMarketplaceListings(listings, filters = {}, options = {}) {
   if (!includeUnapproved) {
     filtered = filtered.filter((listing) => {
       const status = normalizeMarketplaceText(listing.status || 'active');
+      const approvalStatus = normalizeMarketplaceText(listing.approvalStatus || 'pending');
+      const paymentStatus = normalizeMarketplaceText(listing.paymentStatus || 'pending');
+      if (approvalStatus !== 'approved') return false;
+      if (paymentStatus !== 'paid') return false;
       if (status === 'archived' || status === 'expired' || status === 'pending') return false;
       if (status === 'sold') return true;
       const expiresAtMs = toMarketplaceMillis(listing.expiresAt);
@@ -5308,8 +5548,17 @@ async function loadActivePublicListings() {
   }
 
   try {
-    const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.listings).get();
-    const listings = snapshot.docs.map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}));
+    const snapshot = await getDb().collection('listings').where('approvalStatus', '==', 'approved').get();
+    const listings = snapshot.docs
+      .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
+      .filter((listing) => {
+        const paymentStatus = normalizeMarketplaceText(listing.paymentStatus || 'pending');
+        const status = normalizeMarketplaceText(listing.status || 'active');
+        if (paymentStatus !== 'paid') return false;
+        if (status === 'archived' || status === 'expired' || status === 'pending' || status === 'sold') return false;
+        const expiresAtMs = toMarketplaceMillis(listing.expiresAt);
+        return expiresAtMs === undefined || expiresAtMs > now;
+      });
     publicActiveListingsCache = { value: listings, fetchedAt: now };
     return listings;
   } catch (error) {
@@ -5318,7 +5567,7 @@ async function loadActivePublicListings() {
     }
 
     logger.warn('Serving emergency public listings snapshot because Firestore public read quota is exhausted.', {
-      collection: PUBLIC_SEO_COLLECTIONS.listings,
+      collection: 'listings',
     });
     const listings = getFallbackMarketplaceListings();
     publicActiveListingsCache = { value: listings, fetchedAt: now };
@@ -8596,6 +8845,10 @@ function canAdministrateAccount(role) {
   return ['super_admin', 'admin', 'developer'].includes(role);
 }
 
+function canAccessContentStudio(role) {
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(normalizeUserRole(role));
+}
+
 function getActorRoleFromDecodedToken(decodedToken) {
   return normalizeUserRole(String(decodedToken?.role || decodedToken?.claims?.role || ''));
 }
@@ -8949,6 +9202,47 @@ async function getAdminActorContext(req) {
   };
 }
 
+async function getContentActorContext(req) {
+  const decodedToken = await getDecodedUserFromBearer(req);
+  if (!decodedToken) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  const actorUid = decodedToken.uid;
+  const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+  const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+
+  if (canAccessContentStudio(tokenRole)) {
+    return buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, tokenRole);
+  }
+
+  let actorDoc;
+  try {
+    actorDoc = await getDb().collection('users').doc(actorUid).get();
+  } catch (error) {
+    if (isFirestoreQuotaExceeded(error)) {
+      return {
+        error: 'Content Studio access is temporarily unavailable because the Firestore daily read quota is exhausted.',
+        status: 503,
+      };
+    }
+    throw error;
+  }
+
+  const actorRole = normalizeUserRole(String(actorDoc.data()?.role || ''));
+  if (!canAccessContentStudio(actorRole)) {
+    return { error: 'Forbidden', status: 403 };
+  }
+
+  return {
+    decodedToken,
+    actorUid,
+    actorEmail,
+    actorDoc,
+    actorRole,
+  };
+}
+
 async function getDealerFeedActorContext(req) {
   const decodedToken = await getDecodedUserFromBearer(req);
   if (!decodedToken) {
@@ -9220,7 +9514,13 @@ function generateTemporaryPassword() {
 
 function buildTemplateTestPayload(templateKey) {
   const normalizedTemplateKey = String(templateKey || '').trim();
-  const listingUrl = `${APP_URL}/listing/test-listing-001`;
+  const listingUrl = buildCanonicalListingUrl('test-listing-001', {
+    title: '2024 Tigercat 1165 Harvester',
+    year: 2024,
+    make: 'Tigercat',
+    model: '1165',
+    location: 'Grand Rapids, Minnesota',
+  });
   const renewUrl = `${APP_URL}/profile#subscription`;
 
   switch (normalizedTemplateKey) {
@@ -10504,6 +10804,75 @@ exports.apiProxy = onRequest(
         return res.status(200).json({ listings });
       }
 
+      const publicListingViewMatch = path.match(/^\/public\/listings\/([^/]+)\/view$/i);
+      if (req.method === 'POST' && publicListingViewMatch) {
+        const listingId = decodeURIComponent(publicListingViewMatch[1] || '').trim();
+        if (!listingId) {
+          return res.status(400).json({ error: 'A listing ID is required.' });
+        }
+
+        const listingRef = getDb().collection('listings').doc(listingId);
+        const sessionKey = normalizeNonEmptyString(req.body?.sessionKey);
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const dedupeSeed = [listingId, sessionKey || getRequestIp(req), todayKey].join('|');
+        const dedupeHash = createHash('sha256').update(dedupeSeed).digest('hex').slice(0, 32);
+        const eventRef = getDb().collection('listingViewEvents').doc(`${listingId}-${todayKey}-${dedupeHash}`);
+
+        try {
+          const result = await getDb().runTransaction(async (transaction) => {
+            const [listingSnapshot, existingEventSnapshot] = await Promise.all([
+              transaction.get(listingRef),
+              transaction.get(eventRef),
+            ]);
+
+            if (!listingSnapshot.exists) {
+              return { missing: true, recorded: false };
+            }
+
+            if (existingEventSnapshot.exists) {
+              return { missing: false, recorded: false };
+            }
+
+            const listingData = listingSnapshot.data() || {};
+            transaction.set(eventRef, {
+              listingId,
+              sellerUid: normalizeNonEmptyString(listingData.sellerUid || listingData.sellerId),
+              sellerId: normalizeNonEmptyString(listingData.sellerId || listingData.sellerUid),
+              listingTitle: normalizeNonEmptyString(listingData.title, listingId),
+              viewedAt: admin.firestore.FieldValue.serverTimestamp(),
+              viewedDateKey: todayKey,
+              sessionKeyHash: dedupeHash,
+              referrer: normalizeNonEmptyString(req.headers.referer || req.headers.referrer).slice(0, 300),
+              userAgent: normalizeNonEmptyString(req.headers['user-agent']).slice(0, 300),
+            });
+            transaction.update(listingRef, {
+              views: admin.firestore.FieldValue.increment(1),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            return { missing: false, recorded: true };
+          });
+
+          if (result.missing) {
+            return res.status(404).json({ error: 'Listing not found.' });
+          }
+
+          return res.status(200).json({
+            recorded: result.recorded,
+            listingId,
+          });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(200).json({
+              recorded: false,
+              listingId,
+              warning: 'Listing views are temporarily unavailable because the Firestore daily read quota is exhausted.',
+            });
+          }
+          throw error;
+        }
+      }
+
       if (req.method === 'GET' && path === '/public/category-metrics') {
         const metrics = await getPublicCategoryMetricsPayload();
         res.set('Cache-Control', 'public, max-age=60');
@@ -11589,6 +11958,93 @@ exports.apiProxy = onRequest(
         return res.status(200).json(await buildAdminOperationsBootstrapPayload({ includeOverview }));
       }
 
+      if (req.method === 'GET' && path === '/admin/content/bootstrap') {
+        const actor = await getContentActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const sectionErrorMessages = {
+          posts: 'Blog posts are temporarily unavailable because the Firestore daily read quota is exhausted.',
+          media: 'Media assets are temporarily unavailable because the Firestore daily read quota is exhausted.',
+          contentBlocks: 'Content blocks are temporarily unavailable because the Firestore daily read quota is exhausted.',
+        };
+
+        let firestoreQuotaLimited = false;
+        const degradedSections = [];
+        const errors = {};
+
+        const loadQuotaSafeContentSection = async (section, loader, fallbackValue = []) => {
+          try {
+            return await loader();
+          } catch (error) {
+            if (isFirestoreQuotaExceeded(error)) {
+              firestoreQuotaLimited = true;
+              degradedSections.push(section);
+              errors[section] = sectionErrorMessages[section] || 'This content section is temporarily unavailable because the Firestore daily read quota is exhausted.';
+              return fallbackValue;
+            }
+            throw error;
+          }
+        };
+
+        const [posts, media, contentBlocks] = await Promise.all([
+          loadQuotaSafeContentSection('posts', async () => {
+            const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
+            return snapshot.docs.map((docSnapshot) => serializeBlogPostRecord(docSnapshot));
+          }),
+          loadQuotaSafeContentSection('media', async () => {
+            const snapshot = await getDb().collection('mediaLibrary').orderBy('createdAt', 'desc').limit(200).get();
+            return snapshot.docs.map((docSnapshot) => serializeMediaLibraryRecord(docSnapshot));
+          }),
+          loadQuotaSafeContentSection('contentBlocks', async () => {
+            const snapshot = await getDb().collection('contentBlocks').orderBy('order', 'asc').limit(200).get();
+            return snapshot.docs.map((docSnapshot) => serializeContentBlockRecord(docSnapshot));
+          }),
+        ]);
+
+        return res.status(200).json({
+          posts,
+          media,
+          contentBlocks,
+          partial: degradedSections.length > 0,
+          degradedSections: Array.from(new Set(degradedSections)),
+          errors,
+          firestoreQuotaLimited,
+          fetchedAt: new Date().toISOString(),
+        });
+      }
+
+      if (req.method === 'GET' && path === '/admin/content/blog-posts') {
+        const actor = await getContentActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
+        return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeBlogPostRecord(docSnapshot)));
+      }
+
+      if (req.method === 'GET' && path === '/admin/content/media') {
+        const actor = await getContentActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const snapshot = await getDb().collection('mediaLibrary').orderBy('createdAt', 'desc').limit(200).get();
+        return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeMediaLibraryRecord(docSnapshot)));
+      }
+
+      if (req.method === 'GET' && path === '/admin/content/blocks') {
+        const actor = await getContentActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const snapshot = await getDb().collection('contentBlocks').orderBy('order', 'asc').limit(200).get();
+        return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeContentBlockRecord(docSnapshot)));
+      }
+
       if (req.method === 'GET' && path === '/admin/listings') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
@@ -11805,6 +12261,24 @@ exports.apiProxy = onRequest(
         const snapshot = await getDb().collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
         const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         return res.status(200).json(logs);
+      }
+
+      if (req.method === 'GET' && path === '/admin/reports/dealer-performance') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const requestedDays = Math.max(1, Math.min(Number(req.query?.days || 30) || 30, 365));
+        const endDate = new Date();
+        const startDate = new Date(endDate.getTime() - (requestedDays * 24 * 60 * 60 * 1000));
+        const report = await buildDealerPerformanceReport({
+          startDate,
+          endDate,
+          periodLabel: `Last ${requestedDays} Days ending ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+        });
+
+        return res.status(200).json(report);
       }
 
       if (req.method === 'POST' && path === '/admin/email/test-send') {

@@ -10,6 +10,72 @@ const DISALLOWED_PUBLIC_TOKENS = new Set([
 ]);
 
 const NOINDEX_ROBOTS = 'noindex, nofollow, noarchive, nosnippet, noimageindex';
+const REGION_ABBREVIATIONS = {
+  alabama: 'AL',
+  alaska: 'AK',
+  arizona: 'AZ',
+  arkansas: 'AR',
+  california: 'CA',
+  colorado: 'CO',
+  connecticut: 'CT',
+  delaware: 'DE',
+  'district of columbia': 'DC',
+  florida: 'FL',
+  georgia: 'GA',
+  hawaii: 'HI',
+  idaho: 'ID',
+  illinois: 'IL',
+  indiana: 'IN',
+  iowa: 'IA',
+  kansas: 'KS',
+  kentucky: 'KY',
+  louisiana: 'LA',
+  maine: 'ME',
+  maryland: 'MD',
+  massachusetts: 'MA',
+  michigan: 'MI',
+  minnesota: 'MN',
+  mississippi: 'MS',
+  missouri: 'MO',
+  montana: 'MT',
+  nebraska: 'NE',
+  nevada: 'NV',
+  'new hampshire': 'NH',
+  'new jersey': 'NJ',
+  'new mexico': 'NM',
+  'new york': 'NY',
+  'north carolina': 'NC',
+  'north dakota': 'ND',
+  ohio: 'OH',
+  oklahoma: 'OK',
+  oregon: 'OR',
+  pennsylvania: 'PA',
+  'rhode island': 'RI',
+  'south carolina': 'SC',
+  'south dakota': 'SD',
+  tennessee: 'TN',
+  texas: 'TX',
+  utah: 'UT',
+  vermont: 'VT',
+  virginia: 'VA',
+  washington: 'WA',
+  'west virginia': 'WV',
+  wisconsin: 'WI',
+  wyoming: 'WY',
+  alberta: 'AB',
+  'british columbia': 'BC',
+  manitoba: 'MB',
+  'new brunswick': 'NB',
+  'newfoundland and labrador': 'NL',
+  'northwest territories': 'NT',
+  'nova scotia': 'NS',
+  nunavut: 'NU',
+  ontario: 'ON',
+  'prince edward island': 'PE',
+  quebec: 'QC',
+  saskatchewan: 'SK',
+  yukon: 'YT',
+};
 
 function normalizeText(value, fallback = '') {
   const normalized = String(value || '').trim();
@@ -64,6 +130,17 @@ function getLocationSeoParts(value) {
   return { city: parts[0] || '', state: '' };
 }
 
+function abbreviateRegionForSeo(value) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+
+  if (/^[a-z]{2}$/i.test(normalizedValue)) {
+    return normalizedValue.toUpperCase();
+  }
+
+  return REGION_ABBREVIATIONS[normalizedValue.toLowerCase()] || normalizedValue;
+}
+
 function dedupeSlugParts(parts) {
   const seen = new Set();
   return parts.filter((part) => {
@@ -76,17 +153,16 @@ function dedupeSlugParts(parts) {
 function buildListingSeoSlug(listing) {
   const manufacturer = sanitizePublicSeoLabel(listing?.make || listing?.manufacturer || listing?.brand || '', '');
   const model = sanitizePublicSeoLabel(listing?.model || '', '');
-  const machineType = sanitizePublicSeoLabel(listing?.subcategory || listing?.category || '', 'equipment');
   const { city, state } = getLocationSeoParts(listing?.location);
+  const regionAbbreviation = abbreviateRegionForSeo(state);
   const fallbackTitle = sanitizePublicSeoLabel(listing?.title || '', 'equipment listing');
 
   const rawParts = [
     listing?.year ? String(listing.year) : '',
     manufacturer,
     model,
-    machineType,
     sanitizePublicSeoLabel(city, ''),
-    sanitizePublicSeoLabel(state, ''),
+    sanitizePublicSeoLabel(regionAbbreviation, ''),
   ]
     .map((part) => normalizeSeoSlug(part))
     .filter(Boolean);
@@ -96,7 +172,7 @@ function buildListingSeoSlug(listing) {
     return uniqueParts.join('-');
   }
 
-  return normalizeSeoSlug(fallbackTitle, 'equipment-listing');
+  return normalizeSeoSlug(fallbackTitle, 'equipment');
 }
 
 function encodeListingPublicKey(listingId) {
@@ -110,8 +186,25 @@ function encodeListingPublicKey(listingId) {
     .replace(/=+$/g, '');
 }
 
+function extractListingPublicKeyFromSlug(slugOrKey) {
+  const normalizedValue = normalizeText(slugOrKey);
+  if (!normalizedValue) return '';
+
+  const delimiterIndex = normalizedValue.lastIndexOf('--');
+  if (delimiterIndex === -1) {
+    const trailingRawIdMatch = normalizedValue.match(/-([A-Za-z0-9]{8,})$/);
+    if (trailingRawIdMatch) {
+      return trailingRawIdMatch[1].trim();
+    }
+
+    return normalizedValue;
+  }
+
+  return normalizedValue.slice(delimiterIndex + 2).trim();
+}
+
 function decodeListingPublicKey(publicKey) {
-  const normalizedKey = normalizeText(publicKey);
+  const normalizedKey = extractListingPublicKeyFromSlug(publicKey);
   if (!normalizedKey) return '';
 
   try {
@@ -126,14 +219,18 @@ function decodeListingPublicKey(publicKey) {
 }
 
 function buildListingPublicPath(listing) {
-  const publicKey = encodeListingPublicKey(listing?.id);
+  const publicKey = normalizeText(listing?.id);
   const slug = buildListingSeoSlug(listing);
 
   if (!publicKey) {
     return `/equipment/${slug}`;
   }
 
-  return `/equipment/${slug}/${publicKey}`;
+  if (/^[A-Za-z0-9]{8,}$/.test(publicKey)) {
+    return `/equipment/${slug}-${publicKey}`;
+  }
+
+  return `/equipment/${slug}--${publicKey}`;
 }
 
 function isPublicQaOrTestRecord(...values) {
@@ -148,6 +245,7 @@ module.exports = {
   buildListingSeoSlug,
   decodeListingPublicKey,
   encodeListingPublicKey,
+  extractListingPublicKeyFromSlug,
   isPublicQaOrTestRecord,
   normalizeSeoSlug,
   sanitizePublicSeoLabel,

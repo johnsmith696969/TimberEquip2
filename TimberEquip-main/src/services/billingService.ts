@@ -161,6 +161,48 @@ export interface RefreshedAccountAccessSummary {
   entitlement?: AccountEntitlement | null;
 }
 
+export interface DealerPerformanceMachineSummary {
+  listingId: string;
+  title: string;
+  inquiryCount: number;
+  callCount: number;
+  viewCount: number;
+  count: number;
+}
+
+export interface DealerPerformanceSellerSummary {
+  sellerUid: string;
+  name: string;
+  email: string;
+  role: string;
+  listings: number;
+  leadForms: number;
+  calls: number;
+  connectedCalls: number;
+  qualifiedCalls: number;
+  missedCalls: number;
+  totalViews: number;
+  topMachines: DealerPerformanceMachineSummary[];
+}
+
+export interface DealerPerformanceReportTotals {
+  listings: number;
+  leadForms: number;
+  calls: number;
+  connectedCalls: number;
+  qualifiedCalls: number;
+  missedCalls: number;
+  totalViews: number;
+}
+
+export interface AdminDealerPerformanceReportResponse {
+  periodLabel: string;
+  periodStartIso: string;
+  periodEndIso: string;
+  sellerSummaries: DealerPerformanceSellerSummary[];
+  totals: DealerPerformanceReportTotals;
+}
+
 const PRIVATE_BILLING_CACHE_PREFIX = 'te-billing-cache-v1';
 const ACCOUNT_ACCESS_CACHE_SCOPE = 'account-access-summary';
 
@@ -521,11 +563,15 @@ export const billingService = {
     if (!user) throw new Error('Unauthorized');
     const token = await user.getIdToken();
 
-    const response = await fetch('/api/admin/billing/bootstrap', {
-      headers: {
-        Authorization: `Bearer ${token}`,
+    const response = await fetchBillingApi(
+      '/api/admin/billing/bootstrap',
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       },
-    });
+      { allowFallbackOn404: true }
+    );
 
     const payload = await response.json().catch(() => ({} as Partial<AdminBillingBootstrapResponse>));
     if (!response.ok) {
@@ -647,6 +693,44 @@ export const billingService = {
       writeBillingCache('admin-audit-logs', logs);
     }
     return logs;
+  },
+
+  async getAdminDealerPerformanceReport(days = 30): Promise<AdminDealerPerformanceReportResponse> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Unauthorized');
+    const token = await user.getIdToken();
+    const normalizedDays = Math.max(1, Math.min(Number(days) || 30, 365));
+
+    const response = await fetchBillingApi(
+      `/api/admin/reports/dealer-performance?days=${normalizedDays}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      { allowFallbackOn404: true }
+    );
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(String(payload?.error || 'Failed to fetch dealer performance report'));
+    }
+
+    return {
+      periodLabel: String(payload?.periodLabel || `Last ${normalizedDays} Days`),
+      periodStartIso: String(payload?.periodStartIso || ''),
+      periodEndIso: String(payload?.periodEndIso || ''),
+      sellerSummaries: Array.isArray(payload?.sellerSummaries) ? payload.sellerSummaries : [],
+      totals: {
+        listings: Number(payload?.totals?.listings || 0),
+        leadForms: Number(payload?.totals?.leadForms || 0),
+        calls: Number(payload?.totals?.calls || 0),
+        connectedCalls: Number(payload?.totals?.connectedCalls || 0),
+        qualifiedCalls: Number(payload?.totals?.qualifiedCalls || 0),
+        missedCalls: Number(payload?.totals?.missedCalls || 0),
+        totalViews: Number(payload?.totals?.totalViews || 0),
+      },
+    };
   },
 
   async deleteUserAccount(): Promise<void> {

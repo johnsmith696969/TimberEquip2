@@ -45,6 +45,7 @@ vi.mock('../services/equipmentService', () => ({
     getSellerListingUsage: getSellerListingUsageMock,
     getMarketValue: getMarketValueMock,
     getMarketMatchRecommendations: getMarketMatchRecommendationsMock,
+    recordListingView: vi.fn().mockResolvedValue(true),
   },
 }));
 
@@ -78,8 +79,9 @@ vi.mock('../components/WatermarkOverlay', () => ({
 }));
 
 vi.mock('../utils/listingPath', () => ({
-  buildListingPath: () => '/equipment/test-machine/listing-1',
+  buildListingPath: () => '/equipment/test-machine--listing-1',
   decodeListingPublicKey: (value: string) => value,
+  extractListingPublicKeyFromSlug: (value: string) => value.split('--').pop() || value,
   isPublicQaOrTestRecord: () => false,
   NOINDEX_ROBOTS: 'noindex, nofollow',
 }));
@@ -212,9 +214,9 @@ describe('ListingDetail gallery interactions', () => {
 
   it('supports fullscreen gallery navigation for listing images', async () => {
     render(
-      <MemoryRouter initialEntries={['/equipment/test-machine/listing-1']}>
+      <MemoryRouter initialEntries={['/equipment/test-machine--listing-1']}>
         <Routes>
-          <Route path="/equipment/:slug/:publicKey" element={<ListingDetail />} />
+          <Route path="/equipment/:slug" element={<ListingDetail />} />
         </Routes>
       </MemoryRouter>
     );
@@ -238,9 +240,9 @@ describe('ListingDetail gallery interactions', () => {
 
   it('renders technical specifications before market match recommendations', async () => {
     render(
-      <MemoryRouter initialEntries={['/equipment/test-machine/listing-1']}>
+      <MemoryRouter initialEntries={['/equipment/test-machine--listing-1']}>
         <Routes>
-          <Route path="/equipment/:slug/:publicKey" element={<ListingDetail />} />
+          <Route path="/equipment/:slug" element={<ListingDetail />} />
         </Routes>
       </MemoryRouter>
     );

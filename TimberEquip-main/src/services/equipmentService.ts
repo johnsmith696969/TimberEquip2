@@ -658,6 +658,50 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function getApiRequestUrls(input: RequestInfo | URL): string[] {
+  const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
+  if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
+    return [rawInput];
+  }
+
+  const urls = [rawInput];
+  const hostname = window.location.hostname.trim().toLowerCase();
+  if (hostname === 'www.timberequip.com') {
+    urls.push(`https://timberequip.com${rawInput}`);
+  }
+
+  return Array.from(new Set(urls));
+}
+
+async function fetchApiWithFallback(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const urls = getApiRequestUrls(input);
+  let lastError: unknown = null;
+  let lastResponse: Response | null = null;
+
+  for (let index = 0; index < urls.length; index += 1) {
+    const url = urls[index];
+
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || index === urls.length - 1 || response.status !== 404) {
+        return response;
+      }
+      lastResponse = response;
+    } catch (error) {
+      lastError = error;
+      if (index === urls.length - 1) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Equipment API request failed');
+}
+
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   if (typeof auth.authStateReady === 'function') {
     await auth.authStateReady();
@@ -669,7 +713,7 @@ async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit
   }
 
   const idToken = await currentUser.getIdToken();
-  const response = await fetch(input, {
+  const response = await fetchApiWithFallback(input, {
     ...init,
     headers: {
       Authorization: `Bearer ${idToken}`,
@@ -725,7 +769,7 @@ async function waitForAuthenticatedUser(timeoutMs = 4000): Promise<FirebaseAuthU
 }
 
 async function getPublicJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
+  const response = await fetchApiWithFallback(input, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -1449,6 +1493,25 @@ export const equipmentService = {
     return undefined;
   },
 
+  async recordListingView(listingId: string): Promise<boolean> {
+    const normalizedListingId = String(listingId || '').trim();
+    if (!normalizedListingId) return false;
+
+    try {
+      const payload = await getPublicJson<{ recorded?: boolean; warning?: string }>(
+        `/api/public/listings/${encodeURIComponent(normalizedListingId)}/view`,
+        { method: 'POST' }
+      );
+      if (payload?.warning) {
+        console.warn(payload.warning);
+      }
+      return Boolean(payload?.recorded);
+    } catch (error) {
+      console.warn('Unable to record listing view:', error);
+      return false;
+    }
+  },
+
   async addListing(
     listing: Omit<Listing, 'id' | 'createdAt' | 'updatedAt' | 'approvalStatus' | 'approvedBy'> & { id?: string }
   ): Promise<string> {
@@ -2082,10 +2145,8 @@ export const equipmentService = {
       const existingFirstResponseAt = existing?.firstResponseAt;
       const respondedStatuses: Inquiry['status'][] = ['Contacted', 'Qualified', 'Won', 'Lost', 'Closed'];
       if (!existingFirstResponseAt && respondedStatuses.includes(status)) {
-        const createdAtMs = toMillis(existing?.createdAt);
         const nowMs = Date.now();
         nextUpdate.firstResponseAt = new Date(nowMs).toISOString();
-        nextUpdate.responseTimeMinutes = createdAtMs ? Math.max(0, Math.round((nowMs - createdAtMs) / 60000)) : null;
       }
 
       await updateDoc(docRef, nextUpdate);
@@ -2402,7 +2463,6 @@ export const equipmentService = {
         assignedToName: null,
         internalNotes: [],
         firstResponseAt: null,
-        responseTimeMinutes: null,
         spamScore: spamSignal.spamScore,
         spamFlags: spamSignal.spamFlags,
         updatedAt: serverTimestamp(),

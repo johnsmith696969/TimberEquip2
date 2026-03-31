@@ -16,7 +16,7 @@ import { userService } from '../services/userService';
 import { adminUserService } from '../services/adminUserService';
 import { cmsService, type AdminContentBootstrapResponse } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
-import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, type AdminBillingBootstrapResponse } from '../services/billingService';
+import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, type AdminBillingBootstrapResponse, type AdminDealerPerformanceReportResponse } from '../services/billingService';
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { BulkImportToolkit } from '../components/BulkImportToolkit';
@@ -57,6 +57,9 @@ const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
   'dealer_feeds',
 ]);
 
+const CONTENT_ONLY_DASHBOARD_ROLES = new Set(['content_manager', 'editor']);
+const FULL_ADMIN_DASHBOARD_ROLES = new Set(['super_admin', 'admin', 'developer']);
+
 function resolveDashboardTab(tab: string | null | undefined): DashboardTab {
   if (tab && DASHBOARD_TAB_IDS.has(tab as DashboardTab)) {
     return tab as DashboardTab;
@@ -72,6 +75,9 @@ export function AdminDashboard() {
   const requestedTab = searchParams.get('tab');
   const profileName = authUser?.displayName || 'Admin';
   const roleLabel = getUserRoleDisplayLabel(authUser?.role);
+  const normalizedAdminRole = userService.normalizeRole(authUser?.role);
+  const isContentOnlyDashboardRole = CONTENT_ONLY_DASHBOARD_ROLES.has(normalizedAdminRole);
+  const hasFullAdminDashboardScope = FULL_ADMIN_DASHBOARD_ROLES.has(normalizedAdminRole);
   const assignableRoleOptions = getAssignableUserRoleOptions(authUser?.role);
   const canAssignSuperAdmin = assignableRoleOptions.some((option) => option.value === 'super_admin');
   const [listings, setListings] = useState<Listing[]>([]);
@@ -86,6 +92,8 @@ export function AdminDashboard() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingLoaded, setBillingLoaded] = useState(false);
   const [billingLoadError, setBillingLoadError] = useState('');
+  const [exportingBillingCsv, setExportingBillingCsv] = useState(false);
+  const [exportingDealerPerformanceCsv, setExportingDealerPerformanceCsv] = useState(false);
   const [accountAuditLogs, setAccountAuditLogs] = useState<AccountAuditLog[]>([]);
   const [sellerAgreementAcceptances, setSellerAgreementAcceptances] = useState<SellerProgramAgreementAcceptance[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
@@ -93,7 +101,15 @@ export function AdminDashboard() {
   const [contentLoadError, setContentLoadError] = useState('');
   const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
   const resolvedRequestedTab = useMemo<DashboardTab>(() => resolveDashboardTab(requestedTab), [requestedTab]);
-  const activeTab = resolvedRequestedTab;
+  const activeTab = useMemo<DashboardTab>(() => {
+    if (!isContentOnlyDashboardRole) {
+      return resolvedRequestedTab;
+    }
+
+    return resolvedRequestedTab === 'settings' || resolvedRequestedTab === 'content'
+      ? resolvedRequestedTab
+      : 'content';
+  }, [isContentOnlyDashboardRole, resolvedRequestedTab]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -924,26 +940,36 @@ export function AdminDashboard() {
   };
 
   const handleAddInquiryNote = async (id: string, text: string) => {
+    const trimmedText = text.trim();
+    if (!trimmedText) return;
+
+    const optimisticNote = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: trimmedText,
+      authorUid: authUser?.uid,
+      authorName: authUser?.displayName || 'Admin',
+      createdAt: new Date().toISOString(),
+    };
+
+    setInquiries((prev) => prev.map((entry) => (
+      entry.id === id
+        ? { ...entry, internalNotes: [...(entry.internalNotes || []), optimisticNote] }
+        : entry
+    )));
+
     try {
-      const optimisticNote = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        text,
-        authorUid: authUser?.uid,
-        authorName: authUser?.displayName || 'Admin',
-        createdAt: new Date().toISOString(),
-      };
       await equipmentService.addInquiryInternalNote(id, {
-        text,
+        text: trimmedText,
         authorUid: authUser?.uid,
         authorName: authUser?.displayName || 'Admin'
       });
-      setInquiries((prev) => prev.map((entry) => (
-        entry.id === id
-          ? { ...entry, internalNotes: [...(entry.internalNotes || []), optimisticNote] }
-          : entry
-      )));
       void fetchData();
     } catch (error) {
+      setInquiries((prev) => prev.map((entry) => (
+        entry.id === id
+          ? { ...entry, internalNotes: (entry.internalNotes || []).filter((note) => note.id !== optimisticNote.id) }
+          : entry
+      )));
       console.error('Error adding inquiry note:', error);
     }
   };
@@ -1498,6 +1524,217 @@ export function AdminDashboard() {
     ];
 
     downloadCsv('performance', headers, rows);
+  };
+
+  const exportBillingCSV = () => {
+    setExportingBillingCsv(true);
+    try {
+      const headers = [
+        'section',
+        'primary_id',
+        'secondary_id',
+        'status',
+        'amount',
+        'currency',
+        'user_uid',
+        'plan_id',
+        'details',
+        'timestamp',
+      ];
+
+      const invoiceRows = invoices.map((invoice) => [
+        'invoice',
+        invoice.id,
+        invoice.stripeInvoiceId || '',
+        invoice.status,
+        String(invoice.amount ?? ''),
+        invoice.currency || '',
+        invoice.userUid || '',
+        '',
+        Array.isArray(invoice.items) ? invoice.items.join(' | ') : '',
+        formatTimestamp(invoice.paidAt || invoice.createdAt),
+      ]);
+
+      const subscriptionRows = subscriptions.map((subscription) => [
+        'subscription',
+        subscription.id,
+        subscription.stripeSubscriptionId || '',
+        subscription.status,
+        '',
+        '',
+        subscription.userUid || '',
+        subscription.planId || '',
+        subscription.cancelAtPeriodEnd ? 'cancel_at_period_end' : '',
+        formatTimestamp(subscription.currentPeriodEnd),
+      ]);
+
+      const billingAuditRows = billingLogs.map((log) => [
+        'billing_audit',
+        log.id,
+        log.invoiceId || '',
+        log.action || '',
+        '',
+        '',
+        log.userUid || '',
+        '',
+        log.details || '',
+        formatTimestamp(log.timestamp),
+      ]);
+
+      const accountAuditRows = accountAuditLogs.map((log) => [
+        'account_audit',
+        log.id,
+        log.actorUid || '',
+        log.eventType || '',
+        '',
+        '',
+        log.targetUid || '',
+        '',
+        [log.source, log.reason].filter(Boolean).join(' | '),
+        formatTimestamp(log.createdAt),
+      ]);
+
+      const acceptanceRows = sellerAgreementAcceptances.map((acceptance) => [
+        'seller_acceptance',
+        acceptance.id,
+        acceptance.checkoutSessionId || acceptance.stripeSubscriptionId || '',
+        acceptance.status || acceptance.checkoutState || '',
+        '',
+        '',
+        acceptance.userUid || '',
+        acceptance.planId || '',
+        acceptance.statementLabel || '',
+        formatTimestamp(acceptance.updatedAt || acceptance.createdAt),
+      ]);
+
+      downloadCsv('billing-report', headers, [
+        ...invoiceRows,
+        ...subscriptionRows,
+        ...billingAuditRows,
+        ...accountAuditRows,
+        ...acceptanceRows,
+      ]);
+      setUserFeedback({
+        tone: 'success',
+        message: 'Billing report exported.',
+      });
+    } finally {
+      setExportingBillingCsv(false);
+    }
+  };
+
+  const exportDealerPerformance30DayCSV = async () => {
+    setExportingDealerPerformanceCsv(true);
+    try {
+      const report: AdminDealerPerformanceReportResponse = await billingService.getAdminDealerPerformanceReport(30);
+      const headers = [
+        'section',
+        'period_label',
+        'period_start',
+        'period_end',
+        'seller_uid',
+        'seller_name',
+        'seller_email',
+        'role',
+        'listing_id',
+        'listing_title',
+        'listings',
+        'lead_forms',
+        'calls',
+        'connected_calls',
+        'qualified_calls',
+        'missed_calls',
+        'views',
+        'inquiry_count',
+        'call_count',
+        'view_count',
+      ];
+
+      const summaryRows = report.sellerSummaries.map((summary) => [
+        'seller_summary',
+        report.periodLabel,
+        report.periodStartIso,
+        report.periodEndIso,
+        summary.sellerUid,
+        summary.name || '',
+        summary.email || '',
+        summary.role || '',
+        '',
+        '',
+        String(summary.listings || 0),
+        String(summary.leadForms || 0),
+        String(summary.calls || 0),
+        String(summary.connectedCalls || 0),
+        String(summary.qualifiedCalls || 0),
+        String(summary.missedCalls || 0),
+        String(summary.totalViews || 0),
+        '',
+        '',
+        '',
+      ]);
+
+      const machineRows = report.sellerSummaries.flatMap((summary) =>
+        (summary.topMachines || []).map((machine) => [
+          'top_machine',
+          report.periodLabel,
+          report.periodStartIso,
+          report.periodEndIso,
+          summary.sellerUid,
+          summary.name || '',
+          summary.email || '',
+          summary.role || '',
+          machine.listingId || '',
+          machine.title || '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          String(machine.inquiryCount || 0),
+          String(machine.callCount || 0),
+          String(machine.viewCount || 0),
+        ])
+      );
+
+      const totalsRow = [[
+        'totals',
+        report.periodLabel,
+        report.periodStartIso,
+        report.periodEndIso,
+        '',
+        'Marketplace Totals',
+        '',
+        '',
+        '',
+        '',
+        String(report.totals.listings || 0),
+        String(report.totals.leadForms || 0),
+        String(report.totals.calls || 0),
+        String(report.totals.connectedCalls || 0),
+        String(report.totals.qualifiedCalls || 0),
+        String(report.totals.missedCalls || 0),
+        String(report.totals.totalViews || 0),
+        '',
+        '',
+        '',
+      ]];
+
+      downloadCsv('dealer-performance-30-day', headers, [...summaryRows, ...machineRows, ...totalsRow]);
+      setUserFeedback({
+        tone: 'success',
+        message: '30-day dealer performance report exported.',
+      });
+    } catch (error) {
+      console.error('Error exporting 30-day dealer performance report:', error);
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to export the 30-day dealer performance report.',
+      });
+    } finally {
+      setExportingDealerPerformanceCsv(false);
+    }
   };
 
   const exportListingsCSV = () => {
@@ -2697,9 +2934,24 @@ export function AdminDashboard() {
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-black uppercase tracking-tighter">Billing & Revenue Dashboard</h2>
           <div className="flex space-x-4">
-            <button className="btn-industrial bg-surface py-2 px-4 text-[10px] flex items-center">
-              <Download size={14} className="mr-2" /> Export Report
+            <button
+              type="button"
+              onClick={exportBillingCSV}
+              disabled={exportingBillingCsv}
+              className="btn-industrial bg-surface py-2 px-4 text-[10px] flex items-center disabled:opacity-60"
+            >
+              <Download size={14} className="mr-2" /> {exportingBillingCsv ? 'Exporting...' : 'Export Billing CSV'}
             </button>
+            {hasFullAdminDashboardScope ? (
+              <button
+                type="button"
+                onClick={() => void exportDealerPerformance30DayCSV()}
+                disabled={exportingDealerPerformanceCsv}
+                className="btn-industrial py-2 px-4 text-[10px] flex items-center disabled:opacity-60"
+              >
+                <Download size={14} className="mr-2" /> {exportingDealerPerformanceCsv ? 'Building 30-Day Report...' : 'Export 30-Day Lead Report'}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -4250,10 +4502,17 @@ export function AdminDashboard() {
     { id: 'settings', label: 'Settings', icon: Settings },
   ] as const;
 
-  const visibleTabs = dashboardTabs.filter(
-    item => !('adminOnly' in item && item.adminOnly) ||
-      authUser?.role === 'super_admin' || authUser?.role === 'admin'
-  );
+  const visibleTabs = dashboardTabs.filter((item) => {
+    if (isContentOnlyDashboardRole) {
+      return item.id === 'content' || item.id === 'settings';
+    }
+
+    if ('adminOnly' in item && item.adminOnly) {
+      return normalizedAdminRole === 'super_admin' || normalizedAdminRole === 'admin';
+    }
+
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-bg flex overflow-x-hidden">

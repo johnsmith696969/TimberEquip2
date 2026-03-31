@@ -310,7 +310,6 @@ export interface Inquiry {
     createdAt: string;
   }>;
   firstResponseAt?: string;
-  responseTimeMinutes?: number | null;
   spamScore?: number;
   spamFlags?: string[];
   contactConsentAccepted?: boolean;

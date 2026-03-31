@@ -254,6 +254,26 @@ const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey):
   return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : ''].filter(Boolean).join(' | ') || 'Location and radius';
 };
 
+function FilterSectionPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={false}
+      animate={open ? 'open' : 'collapsed'}
+      variants={{
+        open: { height: 'auto', opacity: 1 },
+        collapsed: { height: 0, opacity: 0 },
+      }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      className="overflow-hidden"
+      aria-hidden={!open}
+    >
+      <div className="border-t border-line bg-surface/40 p-4 space-y-4">
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
 const PAGE_SIZE = 18;
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
@@ -405,7 +425,7 @@ export function Search() {
 
   useEffect(() => {
     const params = serializeFiltersToParams(filters);
-    setSearchParams(params, { replace: true });
+    setSearchParams(params, { replace: true, preventScrollReset: true });
   }, [filters, setSearchParams]);
 
   const taxonomyCategories = useMemo(() => Object.keys(taxonomy).sort((a, b) => a.localeCompare(b)), [taxonomy]);
@@ -768,6 +788,7 @@ export function Search() {
               <div className="space-y-4">
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
+                    type="button"
                     onClick={() => toggleSection('equipment')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -779,8 +800,7 @@ export function Search() {
                     </div>
                     {openSections.equipment ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  {openSections.equipment && (
-                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
+                  <FilterSectionPanel open={openSections.equipment}>
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Category</span>
                         <select
@@ -845,12 +865,12 @@ export function Search() {
                           ))}
                         </datalist>
                       </div>
-                    </div>
-                  )}
+                  </FilterSectionPanel>
                 </div>
 
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
+                    type="button"
                     onClick={() => toggleSection('pricing')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -862,8 +882,7 @@ export function Search() {
                     </div>
                     {openSections.pricing ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  {openSections.pricing && (
-                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
+                  <FilterSectionPanel open={openSections.pricing}>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
                           <span className="label-micro">Min Price</span>
@@ -932,12 +951,12 @@ export function Search() {
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
+                  </FilterSectionPanel>
                 </div>
 
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
+                    type="button"
                     onClick={() => toggleSection('specs')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -949,8 +968,7 @@ export function Search() {
                     </div>
                     {openSections.specs ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  {openSections.specs && (
-                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
+                  <FilterSectionPanel open={openSections.specs}>
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Condition</span>
                         <select
@@ -1022,12 +1040,12 @@ export function Search() {
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
+                  </FilterSectionPanel>
                 </div>
 
                 <div className="border border-line bg-bg rounded-sm overflow-hidden">
                   <button
+                    type="button"
                     onClick={() => toggleSection('location')}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
@@ -1039,8 +1057,7 @@ export function Search() {
                     </div>
                     {openSections.location ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  {openSections.location && (
-                    <div className="border-t border-line p-4 space-y-4 bg-surface/40">
+                  <FilterSectionPanel open={openSections.location}>
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2 flex flex-col space-y-2">
                           <span className="label-micro">Location / Center</span>
@@ -1101,15 +1118,14 @@ export function Search() {
                           </select>
                         </div>
                       </div>
-                    </div>
-                  )}
+                  </FilterSectionPanel>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button onClick={clearDraftFilters} className="btn-industrial bg-bg py-3 text-[10px]">
+                  <button type="button" onClick={clearDraftFilters} className="btn-industrial bg-bg py-3 text-[10px]">
                     {t('search.clear', 'Clear')}
                   </button>
-                  <button onClick={applyDraftFilters} className="btn-industrial btn-accent py-3 text-[10px]">
+                  <button type="button" onClick={applyDraftFilters} className="btn-industrial btn-accent py-3 text-[10px]">
                     {t('search.applyFilters', 'Apply Filters')}
                   </button>
                 </div>

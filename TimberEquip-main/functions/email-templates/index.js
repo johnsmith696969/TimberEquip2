@@ -668,15 +668,17 @@ const templates = {
     return { subject, html };
   },
 
-  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, topMachines, dashboardUrl, unsubscribeUrl }) {
+  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, totalViews, topMachines, dashboardUrl, unsubscribeUrl }) {
     const subject = `Your ${monthLabel} Forestry Equipment Sales Performance Report`;
     const topMachinesHtml = Array.isArray(topMachines) && topMachines.length > 0
       ? `<table style="width:100%; border-collapse:collapse; margin:16px 0;">
           <tr style="background:#f8fafc;">
             <th style="text-align:left; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Machine</th>
             <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Inquiries</th>
+            <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
+            <th style="text-align:right; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
           </tr>
-          ${topMachines.map((m) => `<tr><td style="padding:8px 12px; font-size:13px; color:#111827; border-bottom:1px solid #f3f4f6;">${m.title || 'Untitled'}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#2f6f2d; border-bottom:1px solid #f3f4f6;">${m.count}</td></tr>`).join('')}
+          ${topMachines.map((m) => `<tr><td style="padding:8px 12px; font-size:13px; color:#111827; border-bottom:1px solid #f3f4f6;">${m.title || 'Untitled'}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#2f6f2d; border-bottom:1px solid #f3f4f6;">${m.inquiryCount ?? m.count ?? 0}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#111827; border-bottom:1px solid #f3f4f6;">${m.callCount ?? 0}</td><td style="text-align:right; padding:8px 12px; font-size:13px; font-weight:700; color:#111827; border-bottom:1px solid #f3f4f6;">${m.viewCount ?? 0}</td></tr>`).join('')}
         </table>`
       : '<p style="color:#6b7280; font-size:13px;">No inquiries recorded this period.</p>';
 
@@ -693,13 +695,14 @@ const templates = {
         <div class="info-row"><span class="info-label">Connected Calls</span><span class="info-value">${connectedCalls}</span></div>
         <div class="info-row"><span class="info-label">Qualified Calls (60s+)</span><span class="info-value">${qualifiedCalls}</span></div>
         <div class="info-row"><span class="info-label">Missed Calls</span><span class="info-value">${missedCalls}</span></div>
+        <div class="info-row"><span class="info-label">Listing Views</span><span class="info-value">${totalViews || 0}</span></div>
       </div>
 
       <h2>Top Machines by Inquiry Volume</h2>
       ${topMachinesHtml}
 
       <hr class="divider" />
-      <p>Impressions and click data will be available in a future update. For questions about your report, contact the Forestry Equipment Sales team.</p>
+      <p>These rolling 30-day totals combine listing views, inquiry submissions, and tracked calls. For questions about your report, contact the Forestry Equipment Sales team.</p>
       <a href="${dashboardUrl || 'https://timberequip.com/profile'}" class="cta">Open Seller Dashboard</a>
       ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from monthly performance emails')}
     `);
@@ -714,6 +717,7 @@ const templates = {
           <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.leads}</td>
           <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.calls}</td>
           <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.qualifiedCalls}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${s.totalViews ?? 0}</td>
         </tr>`).join('')
       : '';
 
@@ -730,6 +734,7 @@ const templates = {
           <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Leads</th>
           <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
           <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Qualified</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
         </tr>
         ${tableRows}
       </table>
