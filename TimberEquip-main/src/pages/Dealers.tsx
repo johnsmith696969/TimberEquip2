@@ -4,6 +4,7 @@ import { ArrowRight, Building2, Globe, Mail, MapPin } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seller } from '../types';
 import { buildDealerPath } from '../utils/seoRoutes';
@@ -28,6 +29,7 @@ function getWebsiteLabel(website?: string): string {
 }
 
 export function Dealers() {
+  const { theme } = useTheme();
   const [dealers, setDealers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -161,9 +163,16 @@ export function Dealers() {
               { label: 'Dealers', value: stats.dealerCount },
               { label: 'Pro Dealers', value: stats.proDealerCount },
             ].map((stat) => (
-              <div key={stat.label} className="border border-line bg-white/88 backdrop-blur-sm dark:bg-black/35 p-5">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted dark:text-white/50">{stat.label}</div>
-                <div className="mt-3 text-3xl font-black tracking-tight text-ink dark:text-white">{stat.value}</div>
+              <div
+                key={stat.label}
+                className={`border border-line p-5 backdrop-blur-sm ${theme === 'dark' ? 'bg-black/35' : 'bg-white/88'}`}
+              >
+                <div className={`text-[10px] font-black uppercase tracking-[0.2em] ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>
+                  {stat.label}
+                </div>
+                <div className={`mt-3 text-3xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
+                  {stat.value}
+                </div>
               </div>
             ))}
           </div>
