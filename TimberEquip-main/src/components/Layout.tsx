@@ -334,6 +334,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/ad-programs" className="hover:text-accent transition-colors text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link>
           <Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.auctions', 'Auctions')}</Link>
           <Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financing', 'Financing')}</Link>
+          <Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealers')}</Link>
           <Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link>
         </nav>
         <div className="flex items-center space-x-4">
@@ -398,6 +399,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link>
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
+              <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
               <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>

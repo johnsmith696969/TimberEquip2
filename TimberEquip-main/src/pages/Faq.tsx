@@ -116,7 +116,7 @@ const faqCategories: FaqCategory[] = [
     items: [
       {
         question: 'How do I create an account?',
-        answer: 'Click Sign Up and register with your email or Google account. You can then choose a seller plan if you want to list equipment, or browse as a free member.',
+        answer: 'Click Sign Up and register with your email or Google account. You can then choose a seller plan if you want to list equipment, or browse as a member.',
       },
       {
         question: 'How do I contact support?',
@@ -195,7 +195,7 @@ export function Faq() {
               </div>
             </div>
 
-            <div className="border border-line bg-ink p-8 text-white md:p-10">
+            <div className="border border-line bg-[#1C1917] p-8 text-white md:p-10">
               <span className="label-micro mb-4 block text-accent">Popular Pages</span>
               <div className="space-y-4">
                 <Link to="/financing" className="flex items-center justify-between border-b border-white/10 pb-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:text-accent">

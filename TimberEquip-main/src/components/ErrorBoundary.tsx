@@ -57,7 +57,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               </button>
               <a 
                 href="/"
-                className="btn-industrial bg-ink text-white py-4 px-8 flex items-center justify-center"
+                className="btn-industrial bg-[#1C1917] text-white py-4 px-8 flex items-center justify-center"
               >
                 <Home size={18} className="mr-2" />
                 Return Home

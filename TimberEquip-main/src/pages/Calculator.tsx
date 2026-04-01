@@ -149,7 +149,7 @@ export function Calculator() {
           {/* Results Sidebar */}
           <div className="lg:col-span-5">
             <div className="sticky top-24 space-y-8">
-              <div className="bg-ink text-white p-12 rounded-sm shadow-2xl relative overflow-hidden">
+              <div className="bg-[#1C1917] text-white p-12 rounded-sm shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
                 
                 <div className="relative z-10">

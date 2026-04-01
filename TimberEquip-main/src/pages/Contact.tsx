@@ -77,9 +77,7 @@ export function Contact() {
         <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="flex items-center space-x-3 mb-6">
-            <div className="w-10 h-10 bg-ink flex items-center justify-center rounded-sm">
-              <MessageSquare className="text-accent" size={20} />
-            </div>
+            <MessageSquare size={20} className="text-accent" />
             <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Contact Center</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
@@ -238,7 +236,7 @@ export function Contact() {
               </div>
             </div>
 
-            <div className="bg-ink p-8 text-white rounded-sm">
+            <div className="bg-[#1C1917] p-8 text-white rounded-sm">
               <div className="flex items-center space-x-3 mb-6">
                 <HelpCircle className="text-accent" size={24} />
                 <h4 className="text-sm font-black uppercase tracking-tighter">Frequently Asked Questions</h4>

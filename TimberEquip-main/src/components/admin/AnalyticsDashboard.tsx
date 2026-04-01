@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  TrendingUp, TrendingDown, Package, MessageSquare, Users,
-  DollarSign, BarChart2, Activity, Clock, CheckCircle2, AlertCircle
+  TrendingUp, Package, MessageSquare, Users,
+  DollarSign, BarChart2, Activity, Clock, CheckCircle2
 } from 'lucide-react';
 import { Listing, Inquiry, Account } from '../../types';
 import { Invoice, Subscription } from '../../services/billingService';
@@ -36,9 +36,10 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
   const newListings30d    = listings.filter(l => daysAgo(l.createdAt, 30)).length;
   const newListings7d     = listings.filter(l => daysAgo(l.createdAt, 7)).length;
   const totalViews        = listings.reduce((s, l) => s + (l.views || 0), 0);
-  const totalValue        = listings.reduce((s, l) => s + (l.price || 0), 0);
-  const avgPrice          = totalListings > 0 ? Math.round(totalValue / totalListings) : 0;
-  const maxPrice          = listings.reduce((max, l) => Math.max(max, l.price || 0), 0);
+  const activeOnly        = listings.filter(l => l.status === 'active' || !l.status);
+  const totalValue        = activeOnly.reduce((s, l) => s + (l.price || 0), 0);
+  const avgPrice          = activeOnly.length > 0 ? Math.round(totalValue / activeOnly.length) : 0;
+  const maxPrice          = activeOnly.reduce((max, l) => Math.max(max, l.price || 0), 0);
   const featuredCount     = listings.filter(l => l.featured).length;
 
   // Category breakdown (top 6)
@@ -73,9 +74,12 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
   // ── Account metrics ─────────────────────────────────────────────
   const totalAccounts   = accounts.length;
   const activeAccounts  = accounts.filter(a => a.status === 'Active').length;
+  const proDealerAccounts = accounts.filter(a => a.role === 'pro_dealer').length;
   const dealerAccounts  = accounts.filter(a => ['dealer', 'dealer_manager', 'dealer_staff'].includes(a.role)).length;
   const sellerAccounts  = accounts.filter(a => a.role === 'individual_seller').length;
-  const adminAccounts   = accounts.filter(a => ['super_admin', 'admin', 'developer'].includes(a.role)).length;
+  const buyerAccounts   = accounts.filter(a => a.role === 'buyer').length;
+  const memberAccounts  = accounts.filter(a => a.role === 'member').length;
+  const adminAccounts   = accounts.filter(a => ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(a.role)).length;
 
   // Top sellers by listing count
   const topSellers = accounts
@@ -276,11 +280,13 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           </h3>
           <div className="space-y-3">
             {[
-              { label: 'Dealers',     count: dealerAccounts,  color: 'bg-accent' },
-              { label: 'Owner-Operators', count: sellerAccounts, color: 'bg-data' },
-              { label: 'Admin Team',  count: adminAccounts,   color: 'bg-secondary' },
-              { label: 'Other',       count: totalAccounts - dealerAccounts - sellerAccounts - adminAccounts, color: 'bg-line' },
-            ].map(s => (
+              { label: 'Pro Dealers',     count: proDealerAccounts, color: 'bg-emerald-500' },
+              { label: 'Dealers',         count: dealerAccounts,    color: 'bg-accent' },
+              { label: 'Owner-Operators', count: sellerAccounts,    color: 'bg-data' },
+              { label: 'Buyers',          count: buyerAccounts,     color: 'bg-blue-500' },
+              { label: 'Members',         count: memberAccounts,    color: 'bg-cyan-500' },
+              { label: 'Admin / Staff',   count: adminAccounts,     color: 'bg-secondary' },
+            ].filter(s => s.count > 0).map(s => (
               <div key={s.label} className="space-y-1">
                 <div className="flex justify-between text-[9px] font-black uppercase tracking-widest">
                   <span className="text-muted">{s.label}</span>
@@ -332,46 +338,6 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
         </div>
       </div>
 
-      {/* ── Health indicators ──────────────────────────────────── */}
-      <div className="bg-ink text-white p-8 rounded-sm">
-        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-white/60">Platform Health</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {[
-            {
-              label: 'Listing Approval Rate',
-              value: `${pct(listings.filter(l => l.approvalStatus === 'approved').length, totalListings || 1)}%`,
-              icon: CheckCircle2,
-              good: pct(listings.filter(l => l.approvalStatus === 'approved').length, totalListings || 1) > 80,
-            },
-            {
-              label: 'Lead Conversion',
-              value: `${conversionRate}%`,
-              icon: TrendingUp,
-              good: conversionRate > 10,
-            },
-            {
-              label: 'Failed Payments',
-              value: failedInvoices.toString(),
-              icon: AlertCircle,
-              good: failedInvoices === 0,
-            },
-            {
-              label: 'Active Subscriptions',
-              value: activeSubs.toString(),
-              icon: Activity,
-              good: activeSubs > 0,
-            },
-          ].map(({ label, value, icon: Icon, good }) => (
-            <div key={label} className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Icon size={14} className={good ? 'text-data' : 'text-accent'} />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-white/50">{label}</span>
-              </div>
-              <div className={`text-2xl font-black tracking-tighter ${good ? 'text-data' : 'text-accent'}`}>{value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
 
     </div>
   );

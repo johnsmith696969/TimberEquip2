@@ -1475,7 +1475,8 @@ export const equipmentService = {
       const snapshot = await getDocs(query(collection(db, path), where('sellerUid', '==', normalizedSellerUid)));
       return snapshot.docs.filter((docSnapshot) => {
         const data = docSnapshot.data() as Partial<Listing>;
-        return normalize(String(data.status || 'active')) !== 'sold';
+        const status = normalize(String(data.status || 'active'));
+        return status === 'active';
       }).length;
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);

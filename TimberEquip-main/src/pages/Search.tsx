@@ -515,6 +515,7 @@ export function Search() {
       if (filters.q) {
         const q = normalize(filters.q);
         const matchesKeyword =
+          normalize(listing.id).includes(q) ||
           normalize(listing.title).includes(q) ||
           normalize(listing.make || listing.manufacturer || listing.brand).includes(q) ||
           normalize(listing.model).includes(q) ||
@@ -791,24 +792,6 @@ export function Search() {
           </div>
         </div>
       )}
-
-      {/* Quick Search Bar */}
-      <div className="bg-bg border-b border-line py-3 px-4 md:px-8 overflow-hidden">
-        <div className="max-w-[1600px] mx-auto overflow-x-auto [-webkit-overflow-scrolling:touch] scrollbar-hide">
-          <div className="flex items-center gap-2 w-max">
-            <span className="text-[9px] font-black uppercase tracking-widest text-muted whitespace-nowrap mr-1">Quick Search:</span>
-            {taxonomyCategories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => { const updated = { ...filters, category: filters.category === cat ? '' : cat, subcategory: '' }; setFilters(updated); setDraftFilters(updated); }}
-                className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-wider whitespace-nowrap border rounded-sm transition-colors ${filters.category === cat ? 'bg-ink text-bg border-ink' : 'bg-surface border-line text-muted hover:border-accent hover:text-ink'}`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
 
       <div className="bg-surface border-b border-line py-8 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto">
@@ -1197,7 +1180,7 @@ export function Search() {
               </div>
             </div>
 
-            <div className="bg-[#0a0a0a] p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
+            <div className="bg-[#1C1917] p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Bell size={48} className="text-accent" />
               </div>
@@ -1453,7 +1436,7 @@ export function Search() {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-ink text-white z-50 py-6 px-4 md:px-8 border-t border-accent/30 shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 bg-[#1C1917] text-white z-50 py-6 px-4 md:px-8 border-t border-accent/30 shadow-2xl"
           >
             <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
               <div className="flex items-center space-x-8">

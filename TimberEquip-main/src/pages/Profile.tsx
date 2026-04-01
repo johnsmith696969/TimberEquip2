@@ -95,7 +95,7 @@ export function Profile() {
   const subscriptionPlanLabel = hasPaidSellerSubscription
     ? getSellerPlanMarketingLabel(user?.activeSubscriptionPlanId)
     : normalizedRole === 'member'
-      ? 'Free Member'
+      ? 'Member'
       : normalizedRole === 'buyer'
         ? 'Buyer'
         : 'No active seller plan';
@@ -941,6 +941,10 @@ export function Profile() {
   const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [inquirySearchQuery, setInquirySearchQuery] = useState('');
+  const [inquiryDisplayCount, setInquiryDisplayCount] = useState(10);
+  const [callSearchQuery, setCallSearchQuery] = useState('');
+  const [callDisplayCount, setCallDisplayCount] = useState(10);
   const listingTitleLookup = useMemo(
     () => new Map(myListings.map((listing) => [listing.id, listing.title])),
     [myListings]
@@ -1769,7 +1773,7 @@ export function Profile() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${request.status === 'Won' ? 'bg-data/10 text-data' : request.status === 'Lost' || request.status === 'Closed' ? 'bg-accent/10 text-accent' : 'bg-ink text-white'}`}>
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${request.status === 'Won' ? 'bg-data/10 text-data' : request.status === 'Lost' || request.status === 'Closed' ? 'bg-accent/10 text-accent' : 'bg-[#1C1917] text-white'}`}>
                     {request.status}
                   </span>
                   <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
@@ -1813,7 +1817,7 @@ export function Profile() {
       case 'Contacted':
         return 'bg-amber-500/10 text-amber-700';
       default:
-        return 'bg-ink text-white';
+        return 'bg-[#1C1917] text-white';
     }
   };
 
@@ -1857,59 +1861,98 @@ export function Profile() {
             Buyer inquiry submissions from your live listings will appear here automatically.
           </p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {inquiries.map((inquiry) => (
-            <div key={inquiry.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2 min-w-0">
-                  <p className="text-xs font-black uppercase tracking-widest">{inquiry.buyerName || 'Unknown buyer'}</p>
-                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
-                    <span>{inquiry.type || 'Inquiry'}</span>
-                    <span>{formatDateLabel(inquiry.createdAt)}</span>
-                    <span>{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General listing inquiry'}</span>
+      ) : (() => {
+        const q = inquirySearchQuery.toLowerCase();
+        const filtered = q
+          ? inquiries.filter((inq) =>
+              (inq.buyerName || '').toLowerCase().includes(q) ||
+              (inq.buyerEmail || '').toLowerCase().includes(q) ||
+              (inq.message || '').toLowerCase().includes(q) ||
+              (inq.status || '').toLowerCase().includes(q) ||
+              (listingTitleLookup.get(inq.listingId || '') || '').toLowerCase().includes(q)
+            )
+          : inquiries;
+        const visible = filtered.slice(0, inquiryDisplayCount);
+        const hasMore = filtered.length > inquiryDisplayCount;
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search inquiries..."
+                value={inquirySearchQuery}
+                onChange={(e) => { setInquirySearchQuery(e.target.value); setInquiryDisplayCount(10); }}
+                className="w-full bg-surface border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2.5 placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+              <Search size={14} className="text-muted shrink-0" />
+            </div>
+            <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
+              {visible.map((inquiry) => (
+                <div key={inquiry.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2 min-w-0">
+                      <p className="text-xs font-black uppercase tracking-widest">{inquiry.buyerName || 'Unknown buyer'}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+                        <span>{inquiry.type || 'Inquiry'}</span>
+                        <span>{formatDateLabel(inquiry.createdAt)}</span>
+                        <span>{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General listing inquiry'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInquiryStatusClasses(inquiry.status)}`}>
+                        {inquiry.status}
+                      </span>
+                      {inquiry.assignedToName ? (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                          Assigned: {inquiry.assignedToName}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-bold uppercase tracking-widest">
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Contact</p>
+                      <p className="text-xs text-ink break-words">{inquiry.buyerEmail || 'No email provided'}</p>
+                      <p className="text-muted normal-case">{inquiry.buyerPhone || 'No phone provided'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Listing</p>
+                      <p className="text-xs text-ink break-words">{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General inquiry'}</p>
+                      <p className="text-muted">Seller UID: {inquiry.sellerUid || inquiry.sellerId || 'Unknown'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Lead Quality</p>
+                      <p className="text-xs text-ink">Spam Score: {inquiry.spamScore ?? 0}</p>
+                      <p className="text-muted break-words">{inquiry.spamFlags?.length ? inquiry.spamFlags.join(', ') : 'No flags'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-bg border border-line p-4 space-y-2">
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Buyer Message</p>
+                    <p className="text-[11px] leading-relaxed text-ink break-words">
+                      {inquiry.message || 'No additional message was provided.'}
+                    </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInquiryStatusClasses(inquiry.status)}`}>
-                    {inquiry.status}
-                  </span>
-                  {inquiry.assignedToName ? (
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                      Assigned: {inquiry.assignedToName}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-bold uppercase tracking-widest">
-                <div className="bg-bg border border-line p-4 space-y-2">
-                  <p className="text-muted">Contact</p>
-                  <p className="text-xs text-ink break-words">{inquiry.buyerEmail || 'No email provided'}</p>
-                  <p className="text-muted normal-case">{inquiry.buyerPhone || 'No phone provided'}</p>
-                </div>
-                <div className="bg-bg border border-line p-4 space-y-2">
-                  <p className="text-muted">Listing</p>
-                  <p className="text-xs text-ink break-words">{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General inquiry'}</p>
-                  <p className="text-muted">Seller UID: {inquiry.sellerUid || inquiry.sellerId || 'Unknown'}</p>
-                </div>
-                <div className="bg-bg border border-line p-4 space-y-2">
-                  <p className="text-muted">Lead Quality</p>
-                  <p className="text-xs text-ink">Spam Score: {inquiry.spamScore ?? 0}</p>
-                  <p className="text-muted break-words">{inquiry.spamFlags?.length ? inquiry.spamFlags.join(', ') : 'No flags'}</p>
-                </div>
-              </div>
-
-              <div className="bg-bg border border-line p-4 space-y-2">
-                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Buyer Message</p>
-                <p className="text-[11px] leading-relaxed text-ink break-words">
-                  {inquiry.message || 'No additional message was provided.'}
-                </p>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted pt-2">
+              <span>Showing {visible.length} of {filtered.length} inquiries</span>
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setInquiryDisplayCount((prev) => prev + 10)}
+                  className="btn-industrial py-2 px-4 text-[10px]"
+                >
+                  View More
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
@@ -1953,70 +1996,109 @@ export function Profile() {
             Calls will appear here when buyers press the call button on your listings.
           </p>
         </div>
-      ) : (
-        <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-[10px] font-bold uppercase tracking-widest text-left">
-              <thead className="bg-surface text-muted">
-                <tr>
-                  <th className="px-6 py-4">Caller</th>
-                  <th className="px-6 py-4">Caller Phone</th>
-                  <th className="px-6 py-4">Ad</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Audio</th>
-                  <th className="px-6 py-4">Source</th>
-                  <th className="px-6 py-4">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calls.map((call) => (
-                  <tr key={call.id} className="border-t border-line hover:bg-surface/60 transition-colors">
-                    <td className="px-6 py-4 text-ink">
-                      <div className="flex flex-col gap-1 normal-case">
-                        <span className="text-xs font-black tracking-tight uppercase">{call.callerName || 'Unknown Caller'}</span>
-                        <span className="text-[10px] font-bold text-muted">{call.callerEmail || (call.isAuthenticated ? 'Signed-in user' : 'Guest caller')}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-ink normal-case">{call.callerPhone || 'Not provided'}</td>
-                    <td className="px-6 py-4 text-ink">
-                      <div className="flex flex-col gap-1 normal-case">
-                        <span className="text-xs font-black tracking-tight uppercase">{call.listingTitle || 'Untitled Listing'}</span>
-                        <span className="text-[10px] font-bold text-muted">ID: {call.listingId || 'Unknown'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex px-2 py-1 rounded-sm bg-data/10 text-data text-[9px] font-black uppercase tracking-widest">
-                        {call.status || 'Initiated'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 normal-case">
-                      {call.recordingUrl ? (
-                        <div className="flex flex-col gap-2">
-                          <audio controls preload="none" className="max-w-[220px]">
-                            <source src={`/api/account/calls/${encodeURIComponent(call.id)}/recording`} type="audio/mpeg" />
-                          </audio>
-                          <a
-                            href={`/api/account/calls/${encodeURIComponent(call.id)}/recording`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[10px] font-bold text-accent hover:text-ink transition-colors"
-                          >
-                            Open audio
-                          </a>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-bold text-muted">No audio</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-muted">{call.source || 'unknown'}</td>
-                    <td className="px-6 py-4 text-muted normal-case">{formatDateLabel(call.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      ) : (() => {
+        const q = callSearchQuery.toLowerCase();
+        const filtered = q
+          ? calls.filter((call) =>
+              (call.callerName || '').toLowerCase().includes(q) ||
+              (call.callerEmail || '').toLowerCase().includes(q) ||
+              (call.callerPhone || '').toLowerCase().includes(q) ||
+              (call.listingTitle || '').toLowerCase().includes(q) ||
+              (call.status || '').toLowerCase().includes(q)
+            )
+          : calls;
+        const visible = filtered.slice(0, callDisplayCount);
+        const hasMore = filtered.length > callDisplayCount;
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search calls..."
+                value={callSearchQuery}
+                onChange={(e) => { setCallSearchQuery(e.target.value); setCallDisplayCount(10); }}
+                className="w-full bg-surface border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2.5 placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+              <Search size={14} className="text-muted shrink-0" />
+            </div>
+            <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
+              <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
+                <table className="w-full min-w-[1120px] text-[10px] font-bold uppercase tracking-widest text-left">
+                  <thead className="bg-surface text-muted sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-4">Caller</th>
+                      <th className="px-6 py-4">Caller Phone</th>
+                      <th className="px-6 py-4">Ad</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Audio</th>
+                      <th className="px-6 py-4">Source</th>
+                      <th className="px-6 py-4">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((call) => (
+                      <tr key={call.id} className="border-t border-line hover:bg-surface/60 transition-colors">
+                        <td className="px-6 py-4 text-ink">
+                          <div className="flex flex-col gap-1 normal-case">
+                            <span className="text-xs font-black tracking-tight uppercase">{call.callerName || 'Unknown Caller'}</span>
+                            <span className="text-[10px] font-bold text-muted">{call.callerEmail || (call.isAuthenticated ? 'Signed-in user' : 'Guest caller')}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-ink normal-case">{call.callerPhone || 'Not provided'}</td>
+                        <td className="px-6 py-4 text-ink">
+                          <div className="flex flex-col gap-1 normal-case">
+                            <span className="text-xs font-black tracking-tight uppercase">{call.listingTitle || 'Untitled Listing'}</span>
+                            <span className="text-[10px] font-bold text-muted">ID: {call.listingId || 'Unknown'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex px-2 py-1 rounded-sm bg-data/10 text-data text-[9px] font-black uppercase tracking-widest">
+                            {call.status || 'Initiated'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 normal-case">
+                          {call.recordingUrl ? (
+                            <div className="flex flex-col gap-2">
+                              <audio controls preload="none" className="max-w-[220px]">
+                                <source src={`/api/account/calls/${encodeURIComponent(call.id)}/recording`} type="audio/mpeg" />
+                              </audio>
+                              <a
+                                href={`/api/account/calls/${encodeURIComponent(call.id)}/recording`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] font-bold text-accent hover:text-ink transition-colors"
+                              >
+                                Open audio
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-muted">No audio</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-muted">{call.source || 'unknown'}</td>
+                        <td className="px-6 py-4 text-muted normal-case">{formatDateLabel(call.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted pt-2">
+              <span>Showing {visible.length} of {filtered.length} calls</span>
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setCallDisplayCount((prev) => prev + 10)}
+                  className="btn-industrial py-2 px-4 text-[10px]"
+                >
+                  View More
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 
@@ -2683,7 +2765,7 @@ export function Profile() {
               onClick={() => selectProfileTab(item.label)}
               className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
                 activeTab === item.label
-                  ? 'bg-ink text-white border-ink'
+                  ? 'bg-ink text-bg border-ink'
                   : 'bg-surface border-line text-muted hover:border-accent/50 hover:text-ink'
               }`}
             >
@@ -2719,7 +2801,7 @@ export function Profile() {
               <button 
                 key={item.label}
                 onClick={() => selectProfileTab(item.label)}
-                className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-white shadow-lg' : 'hover:bg-surface text-muted'}`}
+                className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-bg shadow-lg' : 'hover:bg-surface text-muted'}`}
               >
                 <item.icon size={18} />
                 <span>{item.label}</span>
@@ -2772,7 +2854,7 @@ export function Profile() {
                       </p>
                       <button 
                         onClick={handleExportData}
-                        className="btn-industrial bg-bg py-4 px-8 text-[10px] font-black uppercase tracking-widest hover:bg-ink hover:text-white transition-all"
+                        className="btn-industrial bg-bg py-4 px-8 text-[10px] font-black uppercase tracking-widest hover:bg-ink hover:text-bg transition-all"
                       >
                         Export My Data
                       </button>
@@ -2801,7 +2883,7 @@ export function Profile() {
                     </div>
                   </div>
 
-                  <div className="bg-ink text-white p-12 rounded-sm space-y-8">
+                  <div className="bg-[#1C1917] text-white p-12 rounded-sm space-y-8">
                     <div className="flex items-center space-x-4">
                       <ClipboardList className="text-accent" size={32} />
                       <h3 className="text-xl font-black uppercase tracking-tighter">Account Status</h3>

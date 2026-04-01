@@ -25,7 +25,6 @@ export function Financing() {
     businessStructure: '',
     legalEntityName: '',
     yearsInOperation: '',
-    annualRevenue: '',
     assetValue: '',
     requestedAmount: '',
     termLength: '60 Months',
@@ -45,9 +44,9 @@ export function Financing() {
   }, [user?.displayName, user?.email, user?.phoneNumber]);
 
   const heroClasses = useMemo(() => ({
-    image: 'opacity-20',
-    gradient: 'bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60',
-    accentBand: 'bg-accent/10',
+    image: 'opacity-50',
+    gradient: 'bg-gradient-to-r from-bg/90 via-bg/70 to-bg/40 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10',
+    accentBand: 'bg-accent/15',
   }), []);
 
   const handleNext = () => setStep(prev => prev + 1);
@@ -81,7 +80,7 @@ export function Financing() {
         applicantPhone: formData.contactPhone,
         company: formData.legalEntityName,
         requestedAmount: formData.requestedAmount ? Number(formData.requestedAmount) : undefined,
-        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Annual revenue: ${formData.annualRevenue}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`,
+        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`,
         contactConsentAccepted: true,
         contactConsentVersion: FINANCING_CONTACT_CONSENT_VERSION,
         contactConsentScope: 'financing_request_specific',
@@ -107,7 +106,7 @@ export function Financing() {
       />
       {/* Header */}
       <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[#111827]">
           <img
             src="/page-photos/ponsse-buffalo-loading.jpg"
             alt="Ponsse Buffalo loading timber"
@@ -117,7 +116,10 @@ export function Financing() {
         </div>
         <div className={`absolute top-0 right-0 w-1/3 h-full ${heroClasses.accentBand} skew-x-12 translate-x-1/2`}></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
-          <span className="label-micro text-accent mb-4 block">Financing Center</span>
+          <div className="flex items-center gap-3 mb-4">
+            <Building size={20} className="text-accent" />
+            <span className="label-micro text-accent">Financing Center</span>
+          </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
             Institutional <br />
             <span className="text-muted">Financing</span>
@@ -176,10 +178,6 @@ export function Financing() {
                         <div className="flex flex-col space-y-3">
                           <label className="label-micro">Years in Operation</label>
                           <input type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
-                        </div>
-                        <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Annual Revenue (USD)</label>
-                          <input type="number" value={formData.annualRevenue} onChange={(e) => setFormData({ ...formData, annualRevenue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
@@ -349,7 +347,7 @@ export function Financing() {
                   { title: 'Fast Approvals', desc: 'Initial credit decisions typically rendered within 24 hours.', icon: Clock },
                   { title: 'Flexible Terms', desc: 'Customized repayment schedules up to 84 months.', icon: Activity },
                   { title: 'Competitive Rates', desc: 'Starting from 6.25% APR for qualified entities.', icon: TrendingUp },
-                  { title: 'Secure Handling', desc: 'All financial data is encrypted via AES-256 encryption.', icon: ShieldCheck }
+                  { title: 'Secure Handling', desc: 'All data submitted in this form is encrypted via HTTPS/TLS in transit and at rest by Google Cloud.', icon: ShieldCheck }
                 ].map((item, i) => (
                   <div key={i} className="flex space-x-4">
                     <div className="p-2 bg-bg border border-line rounded-sm h-fit">

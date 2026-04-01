@@ -346,7 +346,7 @@ export function Sell() {
             <div className="mt-4 bg-accent/10 border border-accent/30 rounded-sm p-5">
               <p className="text-[11px] font-black uppercase tracking-widest text-accent mb-2">Seller Activation Required</p>
               <p className="text-sm text-ink/80 mb-4">
-                Redirecting you to seller plan signup. Free member accounts can sign in and save inventory, but posting requires an active seller plan.
+                Redirecting you to seller plan signup. Member accounts can sign in and save inventory, but posting requires an active seller plan.
               </p>
               <button onClick={() => navigate(`/ad-programs?intent=list-equipment${selectedPlanFromQuery ? `&plan=${encodeURIComponent(selectedPlanFromQuery)}` : ''}`)} className="btn-industrial btn-accent py-3 px-6">
                 {selectedPlanFromQuery ? 'Activate Selected Plan' : 'Choose Seller Plan'}

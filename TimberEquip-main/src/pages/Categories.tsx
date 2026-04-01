@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
+import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
@@ -38,10 +39,15 @@ export function Categories() {
   );
 
   const { formatNumber } = useLocale();
+  const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy | null>(null);
+
   useEffect(() => {
-    const fetchMetrics = async () => {
+    const fetchData = async () => {
       try {
-        const marketplaceData = await equipmentService.getHomeMarketplaceData();
+        const [marketplaceData, mergedTaxonomy] = await Promise.all([
+          equipmentService.getHomeMarketplaceData(),
+          taxonomyService.getTaxonomy(),
+        ]);
         const metricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
           acc[metric.category] = {
             activeCount: metric.activeCount,
@@ -52,12 +58,13 @@ export function Categories() {
           return acc;
         }, {});
         setCategoryMetrics(metricMap);
+        setTaxonomy(mergedTaxonomy);
       } catch (error) {
-        console.error('Error loading category metrics:', error);
+        console.error('Error loading category data:', error);
       }
     };
 
-    fetchMetrics();
+    fetchData();
   }, []);
 
   const categoryCards = useMemo(
@@ -69,14 +76,15 @@ export function Categories() {
           previousWeekCount: metric.previousWeekCount,
           weeklyChangePercent: metric.weeklyChangePercent,
           averagePrice: metric.averagePrice,
-        }))
+        })),
+        taxonomy || undefined
       ).map((category) => ({
         ...category,
         icon: CATEGORY_VISUALS[category.name]?.icon || Activity,
         color: CATEGORY_VISUALS[category.name]?.color || 'bg-slate-500/10 text-slate-500',
         count: category.activeCount,
       })),
-    [categoryMetrics]
+    [categoryMetrics, taxonomy]
   );
 
   const sortedByInventory = useMemo(
@@ -137,15 +145,15 @@ export function Categories() {
       <Breadcrumbs />
       {/* Header */}
       <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[#111827]">
           <img
             src="/page-photos/bagged-firewood.jpg"
             alt="Bagged firewood stacks"
-            className="w-full h-full object-cover opacity-20"
+            className="w-full h-full object-cover opacity-50"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/90 via-bg/70 to-bg/40 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
         </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/15 skew-x-12 translate-x-1/2"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">

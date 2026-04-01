@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Globe, Mail, MapPin, Search, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Building2, Globe, Mail, MapPin, Search } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { Seo } from '../components/Seo';
 import { equipmentService } from '../services/equipmentService';
@@ -93,6 +93,40 @@ export function Dealers() {
         title="Dealer Network | Active Dealer Storefronts | Forestry Equipment Sales"
         description="Browse active Forestry Equipment Sales dealer and pro dealer storefronts. Search the directory and open dealer inventory storefronts directly."
         canonicalPath="/dealers"
+        imagePath="/page-photos/Forestry-Equipment-Sales-Dealers.png"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'CollectionPage',
+              name: 'Dealer Network',
+              description: 'Browse active dealer and pro dealer storefronts on Forestry Equipment Sales.',
+              url: 'https://www.forestryequipmentsales.com/dealers',
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Dealer Network', item: 'https://www.forestryequipmentsales.com/dealers' },
+              ],
+            },
+            {
+              '@type': 'ItemList',
+              name: 'Active dealer storefronts',
+              numberOfItems: sortedDealers.length,
+              itemListElement: sortedDealers.slice(0, 50).map((dealer, index) => ({
+                '@type': 'ListItem',
+                position: index + 1,
+                url: `https://www.forestryequipmentsales.com${buildDealerPath(dealer)}`,
+                item: {
+                  '@type': 'Organization',
+                  name: getDealerDisplayName(dealer),
+                  address: dealer.location || undefined,
+                },
+              })),
+            },
+          ],
+        }}
       />
 
       <Breadcrumbs
@@ -101,38 +135,44 @@ export function Dealers() {
         ]}
       />
 
-      <section className="border-b border-line bg-surface px-4 py-20 md:px-8">
-        <div className="mx-auto max-w-[1600px]">
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.8fr)] lg:items-end">
-            <div>
-              <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-accent/20 bg-accent/8 px-4 py-2">
-                <ShieldCheck size={16} className="text-accent" />
-                <span className="text-[10px] font-black uppercase tracking-[0.24em] text-accent">Dealer Network</span>
-              </div>
-              <h1 className="max-w-4xl text-4xl font-black uppercase tracking-tight text-ink md:text-6xl">
-                Active Dealer And Pro Dealer Storefronts
-              </h1>
-              <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-muted md:text-base">
-                Search every active dealer storefront on Forestry Equipment Sales. Results are ordered alphabetically and open
-                directly to the seller&apos;s live storefront.
-              </p>
-            </div>
+      <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[#111827]">
+          <img
+            src="/page-photos/Forestry-Equipment-Sales-Dealers.png"
+            alt="Forestry Equipment Sales dealer network"
+            className="w-full h-full object-cover opacity-50"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/90 via-bg/70 to-bg/40 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
+        </div>
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/15 skew-x-12 translate-x-1/2"></div>
+        <div className="max-w-[1600px] mx-auto relative z-10">
+          <div className="flex items-center gap-3 mb-4">
+            <Building2 size={20} className="text-accent" />
+            <span className="label-micro text-accent">Dealer Network</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+            Active Dealer <br />
+            <span className="text-muted">Storefronts</span>
+          </h1>
+          <p className="text-muted font-medium max-w-2xl leading-relaxed">
+            Search every active dealer storefront on Forestry Equipment Sales. Results are ordered alphabetically and open
+            directly to the seller&apos;s live storefront.
+          </p>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {[
-                { label: 'Active Storefronts', value: stats.total },
-                { label: 'Dealers', value: stats.dealerCount },
-                { label: 'Pro Dealers', value: stats.proDealerCount },
-              ].map((stat) => (
-                <div key={stat.label} className="border border-line bg-bg p-5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{stat.label}</div>
-                  <div className="mt-3 text-3xl font-black tracking-tight text-ink">{stat.value}</div>
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-3 gap-4 mt-12 max-w-lg">
+            {[
+              { label: 'Active Storefronts', value: stats.total },
+              { label: 'Dealers', value: stats.dealerCount },
+              { label: 'Pro Dealers', value: stats.proDealerCount },
+            ].map((stat) => (
+              <div key={stat.label} className="border border-line bg-bg/60 backdrop-blur-sm p-5">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{stat.label}</div>
+                <div className="mt-3 text-3xl font-black tracking-tight">{stat.value}</div>
+              </div>
+            ))}
           </div>
         </div>
-      </section>
+      </div>
 
       <section className="px-4 py-14 md:px-8 md:py-20">
         <div className="mx-auto max-w-[1600px]">
@@ -144,16 +184,16 @@ export function Dealers() {
               </p>
             </div>
 
-            <label className="flex w-full items-center gap-3 border border-line bg-surface px-4 py-4 text-sm font-medium text-muted shadow-sm lg:max-w-xl">
-              <Search size={18} className="text-accent" />
+            <div className="flex items-center gap-2 w-full lg:max-w-xl">
               <input
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search dealers, pro dealers, locations, or websites"
-                className="w-full border-none bg-transparent text-sm font-medium text-ink outline-none placeholder:text-muted/60"
+                className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
               />
-            </label>
+              <Search size={14} className="text-muted shrink-0" />
+            </div>
           </div>
 
           {loading ? (

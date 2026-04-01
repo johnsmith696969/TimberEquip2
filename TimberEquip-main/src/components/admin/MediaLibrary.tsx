@@ -112,15 +112,15 @@ export function MediaLibrary({ items, onRefresh }: Props) {
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3">
-        <div className="flex items-center bg-bg border border-line px-4 py-2 rounded-sm flex-1 min-w-[200px]">
-          <Search size={14} className="text-muted mr-3" />
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by filename…"
-            className="bg-transparent border-none text-[10px] font-bold focus:ring-0 w-full text-ink uppercase"
+            placeholder="Search by filename..."
+            className="input-industrial w-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest"
           />
+          <Search size={14} className="text-muted shrink-0" />
         </div>
         <select
           value={tagFilter}

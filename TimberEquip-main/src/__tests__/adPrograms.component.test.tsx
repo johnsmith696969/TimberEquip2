@@ -95,13 +95,13 @@ vi.mock('../utils/sellerPlans', () => ({
     if (planId === 'individual_seller') return 'Owner-Operator Ad Program';
     if (planId === 'dealer') return 'Dealer';
     if (planId === 'fleet_dealer') return 'Pro Dealer';
-    return 'Free Member';
+    return 'Member';
   },
   getSellerPlanPurchaseLabel: (planId?: string | null) => {
     if (planId === 'individual_seller') return 'Owner-Operator Ad Program';
     if (planId === 'dealer') return 'Dealer';
     if (planId === 'fleet_dealer') return 'Pro Dealer';
-    return 'Free Member';
+    return 'Member';
   },
 }));
 

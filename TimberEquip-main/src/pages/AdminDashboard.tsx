@@ -86,6 +86,8 @@ export function AdminDashboard() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [adminCallSearchQuery, setAdminCallSearchQuery] = useState('');
+  const [adminCallDisplayCount, setAdminCallDisplayCount] = useState(20);
   const [overview, setOverview] = useState<AdminOperationsBootstrapResponse['overview']>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -99,6 +101,10 @@ export function AdminDashboard() {
   const [exportingBillingCsv, setExportingBillingCsv] = useState(false);
   const [exportingDealerPerformanceCsv, setExportingDealerPerformanceCsv] = useState(false);
   const [accountAuditLogs, setAccountAuditLogs] = useState<AccountAuditLog[]>([]);
+  const [accountAuditDisplayCount, setAccountAuditDisplayCount] = useState(10);
+  const [accountAuditSearchQuery, setAccountAuditSearchQuery] = useState('');
+  const [blogPostDisplayCount, setBlogPostDisplayCount] = useState(10);
+  const [blogPostSearchQuery, setBlogPostSearchQuery] = useState('');
   const [sellerAgreementAcceptances, setSellerAgreementAcceptances] = useState<SellerProgramAgreementAcceptance[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentLoaded, setContentLoaded] = useState(false);
@@ -1296,6 +1302,9 @@ export function AdminDashboard() {
       listing.manufacturer || listing.make || '',
       listing.model,
       listing.id,
+      listing.stockNumber || '',
+      listing.serialNumber || '',
+      listing.sellerName || '',
       listing.sellerUid || listing.sellerId || '',
       listing.location || '',
     ]
@@ -1955,7 +1964,8 @@ export function AdminDashboard() {
                 { role: 'Editor',           inv: false, cont: true,  users: false, bill: false, set: false, dev: false },
                 { role: 'Pro Dealer',       inv: true,  cont: false, users: true,  bill: false, set: false, dev: false },
                 { role: 'Dealer',           inv: true,  cont: false, users: false, bill: false, set: false, dev: false },
-                { role: 'Free Member',      inv: false, cont: false, users: false, bill: false, set: false, dev: false },
+                { role: 'Owner-Operator',   inv: true,  cont: false, users: false, bill: false, set: false, dev: false },
+                { role: 'Member',           inv: false, cont: false, users: false, bill: false, set: false, dev: false },
               ].map(row => (
                 <tr key={row.role} className="hover:bg-surface/20">
                   <td className="px-3 py-2 text-ink">{row.role}</td>
@@ -1977,15 +1987,15 @@ export function AdminDashboard() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface p-6 border border-line rounded-sm">
         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Account Management</h3>
         <div className="flex items-center space-x-4">
-          <div className="relative w-full sm:w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <div className="flex items-center gap-2 w-full sm:w-64">
             <input
               type="text"
               value={userSearchQuery}
               onChange={(e) => setUserSearchQuery(e.target.value)}
               placeholder="Search accounts..."
-              className="input-industrial w-full pl-10 text-[10px] font-bold uppercase"
+              className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
             />
+            <Search size={14} className="text-muted shrink-0" />
           </div>
         </div>
       </div>
@@ -2077,12 +2087,37 @@ export function AdminDashboard() {
     </div>
   );
 
-  const renderCalls = () => (
+  const renderCalls = () => {
+    const cq = adminCallSearchQuery.toLowerCase();
+    const filteredCalls = cq
+      ? calls.filter((call) =>
+          (call.callerName || '').toLowerCase().includes(cq) ||
+          (call.callerEmail || '').toLowerCase().includes(cq) ||
+          (call.callerPhone || '').toLowerCase().includes(cq) ||
+          (call.listingTitle || '').toLowerCase().includes(cq) ||
+          (call.sellerName || '').toLowerCase().includes(cq) ||
+          (call.status || '').toLowerCase().includes(cq)
+        )
+      : calls;
+    const visibleCalls = filteredCalls.slice(0, adminCallDisplayCount);
+    const hasMoreCalls = filteredCalls.length > adminCallDisplayCount;
+
+    return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-surface p-6 border border-line rounded-sm">
+      <div className="flex flex-wrap justify-between items-center gap-4 bg-surface p-6 border border-line rounded-sm">
         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Call Monitoring</h3>
-        <div className="flex items-center space-x-4">
-          <span className="text-[10px] font-black text-data uppercase">Total: {calls.length}</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search calls..."
+              value={adminCallSearchQuery}
+              onChange={(e) => { setAdminCallSearchQuery(e.target.value); setAdminCallDisplayCount(20); }}
+              className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2 placeholder:text-muted focus:outline-none focus:border-accent w-48"
+            />
+            <Search size={14} className="text-muted shrink-0" />
+          </div>
+          <span className="text-[10px] font-black text-data uppercase">Total: {filteredCalls.length}</span>
           <button
             type="button"
             onClick={exportCallsCSV}
@@ -2093,9 +2128,9 @@ export function AdminDashboard() {
         </div>
       </div>
       <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-left">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-bg">
               <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
                 <th className="px-6 py-4">Caller</th>
                 <th className="px-6 py-4">Ad</th>
@@ -2108,7 +2143,7 @@ export function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {calls.map(call => (
+              {visibleCalls.map(call => (
                 <tr key={call.id} className="hover:bg-surface/20 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
@@ -2167,9 +2202,24 @@ export function AdminDashboard() {
             </tbody>
           </table>
         </div>
+        {hasMoreCalls && (
+          <div className="p-4 border-t border-line flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+              Showing {visibleCalls.length} of {filteredCalls.length} calls
+            </span>
+            <button
+              type="button"
+              onClick={() => setAdminCallDisplayCount((prev) => prev + 20)}
+              className="btn-industrial py-1.5 px-4 text-[10px]"
+            >
+              View More
+            </button>
+          </div>
+        )}
       </div>
     </div>
-  );
+    );
+  };
 
   const renderListings = () => (
     <div className="space-y-6">
@@ -2189,40 +2239,17 @@ export function AdminDashboard() {
         </div>
       )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface p-6 border border-line rounded-sm">
-        <div className="relative w-full sm:w-96">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+        <div className="flex items-center gap-2 w-full sm:w-96">
           <input
             type="text"
-            placeholder="Search by name, ID, seller, or location..."
+            placeholder="Search by name, id, or seller..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="input-industrial w-full pl-10 text-xs font-bold uppercase"
+            className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
           />
+          <Search size={14} className="text-muted shrink-0" />
         </div>
         <div className="flex items-center space-x-4">
-          <button
-            type="button"
-            onClick={() => setShowDemoListings((current) => !current)}
-            className="btn-industrial py-2 px-4"
-          >
-            {showDemoListings ? 'Hide Demo Inventory' : 'Show Demo Inventory'}
-          </button>
-          <button
-            onClick={async () => {
-              try {
-                await equipmentService.seedDemoInventory();
-                setShowDemoListings(true);
-                await loadListingsPage(null, 1, true);
-                alert('Demo inventory seeded and revealed for lifecycle QA.');
-              } catch (error) {
-                console.error('Failed to seed demo inventory:', error);
-                alert(error instanceof Error ? error.message : 'Unable to seed demo inventory.');
-              }
-            }}
-            className="btn-industrial py-2 px-4"
-          >
-            Seed Demo Inventory
-          </button>
           <button onClick={exportListingsCSV} className="btn-industrial py-2 px-4 flex items-center">
             <Download size={14} className="mr-2" />
             Export CSV
@@ -2241,17 +2268,9 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {demoInventoryRecommended ? (
-        <div className="flex items-center gap-2 border border-secondary/30 bg-secondary/5 rounded-sm px-4 py-3 text-xs font-medium text-secondary">
-          <AlertCircle size={14} className="shrink-0" />
-          <span>Demo inventory coverage is low. Use Seed Demo Inventory when you want to backfill taxonomy coverage, but it no longer blocks the dashboard from loading.</span>
-        </div>
-      ) : null}
-
       <div className="flex flex-col gap-2 rounded-sm border border-line bg-bg px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted sm:flex-row sm:items-center sm:justify-between">
         <span>
           Showing {filteredListings.length} loaded listings on page {listingPage}
-          {!showDemoListings ? ' (demo ads hidden by default)' : ''}
         </span>
         <span>
           {listingsLoading ? 'Loading next inventory slice...' : listingHasMore ? 'More listings available' : 'End of loaded inventory'}
@@ -2713,15 +2732,15 @@ export function AdminDashboard() {
       </div>
 
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={14} />
+        <div className="flex items-center gap-2 flex-1 max-w-md">
           <input
             type="text"
             value={userSearchQuery}
             onChange={(e) => setUserSearchQuery(e.target.value)}
-            placeholder="Search all users..."
-            className="input-industrial w-full pl-11 py-2.5 text-xs placeholder:text-muted/70"
+            placeholder="Search users..."
+            className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
           />
+          <Search size={14} className="text-muted shrink-0" />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -2922,7 +2941,18 @@ export function AdminDashboard() {
     const pendingCount = invoices.filter(i => i.status === 'pending').length;
     const failedCount = invoices.filter(i => i.status === 'failed').length;
     const activeSubs = subscriptions.filter(s => s.status === 'active').length;
-    const recentAccountAuditLogs = accountAuditLogs.slice(0, 10);
+    const accountAuditQ = accountAuditSearchQuery.toLowerCase();
+    const filteredAccountAuditLogs = accountAuditQ
+      ? accountAuditLogs.filter((log) =>
+          (log.eventType || '').toLowerCase().includes(accountAuditQ) ||
+          (log.reason || '').toLowerCase().includes(accountAuditQ) ||
+          (log.actorUid || '').toLowerCase().includes(accountAuditQ) ||
+          (log.targetUid || '').toLowerCase().includes(accountAuditQ) ||
+          (log.source || '').toLowerCase().includes(accountAuditQ)
+        )
+      : accountAuditLogs;
+    const visibleAccountAuditLogs = filteredAccountAuditLogs.slice(0, accountAuditDisplayCount);
+    const hasMoreAccountAudit = filteredAccountAuditLogs.length > accountAuditDisplayCount;
     const recentSellerAgreementAcceptances = sellerAgreementAcceptances.slice(0, 10);
     const filteredBillingLogs = billingAuditQuery
       ? billingLogs.filter((log) => {
@@ -2981,14 +3011,11 @@ export function AdminDashboard() {
           <div className="bg-surface border border-line overflow-hidden">
             <div className="p-6 border-b border-line flex justify-between items-center bg-bg/50">
               <h3 className="text-xs font-black uppercase tracking-widest">Recent Invoices</h3>
-              <div className="flex space-x-2">
-                <button className="p-2 hover:bg-bg rounded-sm"><Filter size={16} /></button>
-                <button className="p-2 hover:bg-bg rounded-sm"><Search size={16} /></button>
-              </div>
+              <span className="text-[10px] font-black text-muted uppercase">{invoices.length} total</span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="max-h-[400px] overflow-y-auto overflow-x-auto">
               <table className="w-full text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-surface">
                   <tr className="bg-bg/30 border-b border-line">
                     <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Invoice ID</th>
                     <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Amount</th>
@@ -3024,10 +3051,11 @@ export function AdminDashboard() {
           <div className="bg-surface border border-line overflow-hidden">
             <div className="p-6 border-b border-line flex justify-between items-center bg-bg/50">
               <h3 className="text-xs font-black uppercase tracking-widest">Active Subscriptions</h3>
+              <span className="text-[10px] font-black text-muted uppercase">{subscriptions.length} total</span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="max-h-[400px] overflow-y-auto overflow-x-auto">
               <table className="w-full text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-surface">
                   <tr className="bg-bg/30 border-b border-line">
                     <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">User UID</th>
                     <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Plan</th>
@@ -3058,22 +3086,22 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        <div className="bg-ink text-white p-8 rounded-sm">
+        <div className="bg-[#1C1917] text-white p-8 rounded-sm">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
               <Shield className="text-accent" size={24} />
               <h3 className="text-lg font-black uppercase tracking-tighter">Billing Audit Trail</h3>
             </div>
             <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
                   placeholder="Search audit logs..."
                   value={billingAuditQuery}
                   onChange={(e) => setBillingAuditQuery(e.target.value)}
-                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold pl-8 pr-3 py-1.5 rounded-sm placeholder:text-white/30 focus:outline-none focus:border-accent w-48"
+                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm placeholder:text-white/30 focus:outline-none focus:border-accent w-52"
                 />
+                <Search size={14} className="text-white/40 shrink-0" />
               </div>
               <button
                 type="button"
@@ -3132,16 +3160,30 @@ export function AdminDashboard() {
                   Role changes, entitlement syncs, subscription-linked changes, and operator-side account actions.
                 </p>
               </div>
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
-                {recentAccountAuditLogs.length} loaded
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search audit..."
+                    value={accountAuditSearchQuery}
+                    onChange={(e) => { setAccountAuditSearchQuery(e.target.value); setAccountAuditDisplayCount(10); }}
+                    className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 placeholder:text-muted focus:outline-none focus:border-accent w-44"
+                  />
+                  <Search size={14} className="text-muted shrink-0" />
+                </div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                  {filteredAccountAuditLogs.length} of {accountAuditLogs.length}
+                </div>
               </div>
             </div>
-            <div className="divide-y divide-line">
-              {recentAccountAuditLogs.length === 0 ? (
+            <div className="max-h-[500px] overflow-y-auto divide-y divide-line">
+              {visibleAccountAuditLogs.length === 0 ? (
                 <div className="px-6 py-10 text-center">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">No account audit events loaded</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                    {accountAuditSearchQuery ? 'No audit events match your search' : 'No account audit events loaded'}
+                  </p>
                 </div>
-              ) : recentAccountAuditLogs.map((log) => (
+              ) : visibleAccountAuditLogs.map((log) => (
                 <div key={log.id} className="px-6 py-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
@@ -3178,6 +3220,20 @@ export function AdminDashboard() {
                 </div>
               ))}
             </div>
+            {hasMoreAccountAudit && (
+              <div className="p-4 border-t border-line flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                  Showing {visibleAccountAuditLogs.length} of {filteredAccountAuditLogs.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAccountAuditDisplayCount((prev) => prev + 10)}
+                  className="btn-industrial py-1.5 px-4 text-[10px]"
+                >
+                  View More
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Seller Legal Acceptances are stored in Firebase but hidden from the admin dashboard UI */}
@@ -3322,7 +3378,20 @@ export function AdminDashboard() {
       </div>
 
       {/* ── Blog Posts ─────────────────────────────────────────────── */}
-      {contentSubTab === 'posts' && (
+      {contentSubTab === 'posts' && (() => {
+        const bq = blogPostSearchQuery.toLowerCase();
+        const filteredPosts = bq
+          ? blogPosts.filter((post) =>
+              (post.title || '').toLowerCase().includes(bq) ||
+              (post.category || '').toLowerCase().includes(bq) ||
+              (post.authorName || '').toLowerCase().includes(bq) ||
+              (post.excerpt || '').toLowerCase().includes(bq)
+            )
+          : blogPosts;
+        const visiblePosts = filteredPosts.slice(0, blogPostDisplayCount);
+        const hasMorePosts = filteredPosts.length > blogPostDisplayCount;
+
+        return (
         <div className="space-y-4">
           <div className="flex flex-wrap justify-between items-center gap-4 bg-surface p-6 border border-line rounded-sm">
             <div className="flex items-center gap-6">
@@ -3337,18 +3406,30 @@ export function AdminDashboard() {
                 {blogPosts.filter(p => p.reviewStatus === 'scheduled').length} Scheduled
               </span>
             </div>
-            <button
-              onClick={() => { setEditingPost(null); setShowCmsEditor(true); }}
-              className="btn-industrial btn-accent py-2 px-6 flex items-center"
-            >
-              <Plus size={14} className="mr-2" /> New Post
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Search posts..."
+                  value={blogPostSearchQuery}
+                  onChange={(e) => { setBlogPostSearchQuery(e.target.value); setBlogPostDisplayCount(10); }}
+                  className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2 placeholder:text-muted focus:outline-none focus:border-accent w-48"
+                />
+                <Search size={14} className="text-muted shrink-0" />
+              </div>
+              <button
+                onClick={() => { setEditingPost(null); setShowCmsEditor(true); }}
+                className="btn-industrial btn-accent py-2 px-6 flex items-center"
+              >
+                <Plus size={14} className="mr-2" /> New Post
+              </button>
+            </div>
           </div>
 
           <div className="bg-bg border border-line rounded-sm overflow-hidden">
-            <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+            <div className="max-h-[600px] overflow-y-auto overflow-x-auto [-webkit-overflow-scrolling:touch]">
             <table className="w-full min-w-[860px] text-left">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-bg">
                 <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
                   <th className="px-6 py-4">Title</th>
                   <th className="px-6 py-4">Category</th>
@@ -3359,7 +3440,7 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {blogPosts.map(post => (
+                {visiblePosts.map(post => (
                   <tr key={post.id} className="hover:bg-surface/20 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
@@ -3416,19 +3497,34 @@ export function AdminDashboard() {
                     </td>
                   </tr>
                 ))}
-                {blogPosts.length === 0 && (
+                {filteredPosts.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-[10px] font-black text-muted uppercase tracking-widest">
-                      No posts yet — click New Post to get started.
+                      {blogPostSearchQuery ? 'No posts match your search' : 'No posts yet — click New Post to get started.'}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
             </div>
+            {hasMorePosts && (
+              <div className="p-4 border-t border-line flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                  Showing {visiblePosts.length} of {filteredPosts.length} posts
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBlogPostDisplayCount((prev) => prev + 10)}
+                  className="btn-industrial py-1.5 px-4 text-[10px]"
+                >
+                  View More
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── Media Library ───────────────────────────────────────────── */}
       {contentSubTab === 'media' && (
@@ -4565,7 +4661,7 @@ export function AdminDashboard() {
     { id: 'inquiries', label: 'Leads', icon: MessageSquare },
     { id: 'calls', label: 'Calls', icon: Phone },
     { id: 'tracking', label: 'Performance', icon: Activity },
-    { id: 'accounts', label: 'Accounts', icon: Building2 },
+    { id: 'accounts', label: 'Accounts', icon: Users },
     { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
@@ -4597,8 +4693,8 @@ export function AdminDashboard() {
       <aside className="w-64 bg-surface border-r border-line hidden lg:flex flex-col sticky top-0 h-screen">
         <div className="p-8 border-b border-line">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-ink flex items-center justify-center rounded-sm">
-              <LayoutDashboard className="text-accent" size={18} />
+            <div className="w-8 h-8 bg-accent/10 border border-accent/20 flex items-center justify-center rounded-sm">
+              <User className="text-accent" size={18} />
             </div>
             <span className="text-lg font-black tracking-tighter text-ink uppercase">Account</span>
           </div>

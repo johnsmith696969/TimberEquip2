@@ -8,10 +8,7 @@ import {
   Star,
   Clock,
   Package,
-  TrendingUp,
-  Activity,
   MessageSquare,
-  CheckCircle2,
   Edit3,
   Save,
   X as CloseIcon,
@@ -23,6 +20,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { useAuth } from '../components/AuthContext';
+import { LoginPromptModal } from '../components/LoginPromptModal';
 import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
@@ -30,6 +28,8 @@ import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlu
 import { useTheme } from '../components/ThemeContext';
 import { evaluateRouteQuality } from '../utils/seoRouteQuality';
 import { buildListingPath } from '../utils/listingPath';
+import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { setPendingFavoriteIntent } from '../utils/pendingFavorite';
 
 const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
@@ -73,7 +73,7 @@ function normalizeWebsiteHref(value?: string): string {
 export function SellerProfile() {
   const { id, categorySlug } = useParams<{ id: string; categorySlug?: string }>();
   const location = useLocation();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAuthenticated, toggleFavorite } = useAuth();
   const { theme } = useTheme();
   const [seller, setSeller] = useState<Seller | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -81,6 +81,8 @@ export function SellerProfile() {
   const [isEditing, setIsEditing] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [compareList, setCompareList] = useState<string[]>([]);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const [editData, setEditData] = useState({
     storefrontName: '',
@@ -106,6 +108,22 @@ export function SellerProfile() {
   const canEditStorefront = Boolean(currentUser && ((isOwner && canManageOwnStorefront) || canManageAnyStorefront));
   const isDealerRoute = location.pathname.startsWith('/dealers/');
   const isInventoryRoute = location.pathname.endsWith('/inventory');
+  const favoriteIds = normalizeListingIdList(currentUser?.favorites);
+
+  const handleToggleFavorite = (listingId: string) => {
+    const nid = normalizeListingId(listingId);
+    if (!nid) return;
+    if (!isAuthenticated) {
+      setPendingFavoriteIntent(nid, `${location.pathname}${location.search}${location.hash}`);
+      setShowLoginModal(true);
+      return;
+    }
+    void toggleFavorite(nid);
+  };
+
+  const toggleCompare = (listingId: string) => {
+    setCompareList((prev) => prev.includes(listingId) ? prev.filter((x) => x !== listingId) : [...prev, listingId]);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -389,8 +407,6 @@ export function SellerProfile() {
   const sellerWebsiteHref = normalizeWebsiteHref(seller.website);
   const sellerPhoneHref = seller.phone ? `tel:${toDialablePhone(seller.phone)}` : '';
   const sellerEmailHref = seller.email ? `mailto:${seller.email}` : '';
-  const activeCategoryCount = storefrontCategoryLinks.length;
-  const averageListingsPerCategory = activeCategoryCount > 0 ? Math.round(filteredListings.length / activeCategoryCount) : filteredListings.length;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -406,7 +422,7 @@ export function SellerProfile() {
       <section className={`px-4 md:px-8 relative overflow-hidden border-b border-line ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
         <div className="absolute inset-0">
           <img src={coverImage} alt={`${headline} cover`} className={`w-full h-full object-cover ${theme === 'dark' ? 'opacity-30' : 'opacity-20 saturate-[0.85] brightness-110'}`} referrerPolicy="no-referrer" />
-          <div className={`absolute inset-0 ${theme === 'dark' ? 'bg-gradient-to-r from-black/90 via-black/70 to-black/45' : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76'}`} />
+          <div className={`absolute inset-0 ${theme === 'dark' ? 'bg-gradient-to-r from-black/90 via-black/70 to-black/45' : 'bg-gradient-to-r from-white/70 via-white/55 to-white/35'}`} />
         </div>
 
         <div className="max-w-[1600px] mx-auto relative z-10 py-20 md:py-24">
@@ -693,63 +709,39 @@ export function SellerProfile() {
         ) : null}
 
         <div className="industrial-grid">
-          {filteredListings.map((listing) => (
-            <div key={listing.id}>
-              <ListingCard listing={listing} />
-            </div>
-          ))}
+          {filteredListings.map((listing) => {
+            const nid = normalizeListingId(listing.id);
+            return (
+              <div key={listing.id}>
+                <ListingCard
+                  listing={listing}
+                  isFavorite={!!nid && favoriteIds.includes(nid)}
+                  isComparing={!!nid && compareList.includes(nid)}
+                  onToggleFavorite={handleToggleFavorite}
+                  onToggleCompare={toggleCompare}
+                />
+              </div>
+            );
+          })}
         </div>
-      </section>
 
-      <section className="py-24 bg-surface px-4 md:px-8">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-1 bg-line border border-line">
-            <div className="bg-bg p-12 flex flex-col">
-              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-sm w-fit mb-8">
-                <TrendingUp size={24} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Inventory Coverage</h4>
-              <p className="text-xs text-muted leading-relaxed mb-8">
-                This storefront currently publishes live inventory across active machine families and gives buyers a direct path into filtered dealer search.
-              </p>
-              <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">{activeCategoryCount}</span>
-                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Active Categories</span>
-              </div>
-            </div>
-
-            <div className="bg-bg p-12 flex flex-col">
-              <div className="p-3 bg-orange-500/10 text-orange-500 rounded-sm w-fit mb-8">
-                <Activity size={24} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Buyer Contact Paths</h4>
-              <p className="text-xs text-muted leading-relaxed mb-8">
-                Buyers can use your direct storefront email, phone, website, and inventory inquiry flow from one public dealer page.
-              </p>
-              <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">{[sellerEmailHref, sellerPhoneHref, sellerWebsiteHref].filter(Boolean).length}</span>
-                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Live Channels</span>
-              </div>
-            </div>
-
-            <div className="bg-bg p-12 flex flex-col">
-              <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-sm w-fit mb-8">
-                <ShieldCheck size={24} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Storefront Readiness</h4>
-              <p className="text-xs text-muted leading-relaxed mb-8">
-                Logo, cover image, profile messaging, dealer route structure, and category filtering are all exposed through the managed storefront layer.
-              </p>
-              <div className="mt-auto flex items-center space-x-2 text-data">
-                <CheckCircle2 size={18} />
-                <span className="text-xs font-black uppercase tracking-widest">
-                  {seller.verified ? 'Verified And Search Ready' : `${averageListingsPerCategory} Avg Units / Category`}
-                </span>
-              </div>
-            </div>
+        {compareList.length > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-bg px-6 py-3 rounded-sm shadow-2xl flex items-center gap-4">
+            <span className="text-[10px] font-black uppercase tracking-widest">{compareList.length} selected</span>
+            <Link
+              to={`/compare?ids=${compareList.join(',')}`}
+              className="btn-industrial btn-accent px-4 py-2 text-[10px]"
+            >
+              Compare
+            </Link>
+            <button onClick={() => setCompareList([])} className="text-[10px] font-black uppercase tracking-widest text-muted hover:text-bg">
+              Clear
+            </button>
           </div>
-        </div>
+        )}
       </section>
+
+      <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 }

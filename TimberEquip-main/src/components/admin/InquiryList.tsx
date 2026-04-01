@@ -186,15 +186,15 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           {/* Text search */}
-          <div className="relative lg:col-span-2">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <div className="flex items-center gap-2 lg:col-span-2">
             <input
               type="text"
-              placeholder="Name, email, phone, message…"
+              placeholder="Search leads..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-bg border border-line pl-8 pr-3 py-2 text-[10px] font-bold uppercase tracking-widest focus:border-accent outline-none"
+              className="input-industrial w-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest"
             />
+            <Search size={14} className="text-muted shrink-0" />
           </div>
 
           {/* Status */}
@@ -243,7 +243,8 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
           <p className="text-xs font-black uppercase tracking-widest text-muted">No inquiries match the active filters.</p>
         </div>
       ) : (
-        filtered.map((inquiry) => (
+        <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
+        {filtered.map((inquiry) => (
           <div key={inquiry.id} className="bg-surface border border-line p-6 rounded-sm shadow-sm hover:border-accent transition-colors">
             <div className="flex flex-col md:flex-row justify-between gap-6">
               <div className="flex-1 space-y-4">
@@ -398,7 +399,8 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
               </div>
             </div>
           </div>
-        ))
+        ))}
+        </div>
       )}
     </div>
   );

@@ -1167,26 +1167,26 @@ export function ListingDetail() {
                 <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
                     onClick={showPrevImage}
-                    className="p-2 bg-ink/50 text-white rounded-full hover:bg-ink transition-colors"
+                    className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronLeft size={24} />
                   </button>
-                  <button 
+                  <button
                     onClick={showNextImage}
-                    className="p-2 bg-ink/50 text-white rounded-full hover:bg-ink transition-colors"
+                    className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronRight size={24} />
                   </button>
                 </div>
 
-                <div className="absolute bottom-4 right-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm">
+                <div className="absolute bottom-4 right-4 bg-black/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm">
                   {activeImage + 1} / {galleryImages.length}
                 </div>
 
                 {hasGallery && (
                   <button
                     onClick={openFullscreenImage}
-                    className="absolute bottom-4 left-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-ink transition-colors"
+                    className="absolute bottom-4 left-4 bg-black/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-black transition-colors"
                   >
                     {t('listingDetail.fullscreen', 'Fullscreen')}
                   </button>
@@ -1582,10 +1582,10 @@ export function ListingDetail() {
                   </div>
                   {similarEquipment.length > 1 && (
                     <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 flex justify-between pointer-events-none px-1">
-                      <div className="w-8 h-8 bg-ink/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: -300, behavior: 'smooth' }); }}>
+                      <div className="w-8 h-8 bg-black/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: -300, behavior: 'smooth' }); }}>
                         <ChevronLeft size={16} />
                       </div>
-                      <div className="w-8 h-8 bg-ink/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: 300, behavior: 'smooth' }); }}>
+                      <div className="w-8 h-8 bg-black/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: 300, behavior: 'smooth' }); }}>
                         <ChevronRight size={16} />
                       </div>
                     </div>
@@ -1794,7 +1794,7 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
@@ -1902,7 +1902,7 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Market Logic</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
@@ -1969,7 +1969,7 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Credit Center</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
@@ -2055,7 +2055,7 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Logistics</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>

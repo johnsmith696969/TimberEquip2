@@ -3,14 +3,13 @@ import { Link } from 'react-router-dom';
 import {
   Clock,
   ArrowRight,
-  LayoutDashboard,
+  Newspaper,
   ShieldCheck,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
 import { Seo } from '../components/Seo';
-import { useTheme } from '../components/ThemeContext';
 
 function slugifyNewsTitle(value: string) {
   return String(value || '')
@@ -29,7 +28,6 @@ function getNewsPostPath(post: NewsPost) {
 export function Blog() {
   const [news, setNews] = useState<NewsPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const { theme } = useTheme();
 
   useEffect(() => {
     const fetchNews = async () => {
@@ -57,25 +55,19 @@ export function Blog() {
       />
 
       <section className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[#111827]">
           <img
             src="/page-photos/pine-dirt-road.jpg"
             alt="Pine dirt road through the forest"
-            className="w-full h-full object-cover opacity-20"
+            className="w-full h-full object-cover opacity-50"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/90 via-bg/70 to-bg/40 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
         </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/15 skew-x-12 translate-x-1/2"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
-            <div
-              className={`w-10 h-10 flex items-center justify-center rounded-sm border ${
-                theme === 'dark' ? 'bg-ink border-white/10' : 'bg-bg border-line'
-              }`}
-            >
-              <LayoutDashboard className={theme === 'dark' ? 'text-accent' : 'text-ink'} size={20} />
-            </div>
-            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Industry Insights</span>
+          <div className="flex items-center gap-3 mb-6">
+            <Newspaper size={20} className="text-accent" />
+            <span className="label-micro text-accent">Industry Insights</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
             Market <br />

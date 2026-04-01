@@ -562,7 +562,7 @@ export function Privacy() {
             </section>
 
             {/* Contact Section */}
-            <section className="bg-ink text-white p-12 rounded-sm space-y-6">
+            <section className="bg-[#1C1917] text-white p-12 rounded-sm space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-accent">Contact Data Protection Officer</h2>
               <p className="text-white/60">
                 If you have questions about this policy, wish to exercise your rights, or want to file a

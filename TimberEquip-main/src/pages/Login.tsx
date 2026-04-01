@@ -612,7 +612,7 @@ export function Login() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0 bg-bg flex flex-col z-20"
             >
-              <div className="bg-[#0a0a0a] text-white p-12 flex justify-between items-center">
+              <div className="bg-[#1C1917] text-white p-12 flex justify-between items-center">
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Account Recovery</span>
                   <h2 className="text-3xl font-black tracking-tighter uppercase leading-none text-white">

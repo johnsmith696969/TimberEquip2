@@ -173,7 +173,7 @@ export function SubscriptionPaymentModal({
             className="w-full max-w-2xl bg-surface border border-line rounded-sm shadow-2xl my-8"
           >
             {/* Header */}
-            <div className="bg-ink text-white p-6 flex items-start justify-between">
+            <div className="bg-[#1C1917] text-white p-6 flex items-start justify-between">
               <div>
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">{t('checkout.subscription', 'Seller Plan')}</span>
                 <h2 className="text-2xl font-black tracking-tighter uppercase">

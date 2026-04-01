@@ -79,7 +79,7 @@ export function About() {
             </div>
           </div>
 
-          <div className="border border-line bg-ink p-8 text-white md:p-12">
+          <div className="border border-line bg-[#1C1917] p-8 text-white md:p-12">
             <div className="mb-6 flex items-center space-x-3">
               <Zap className="text-accent" size={22} />
               <h3 className="text-sm font-black uppercase tracking-[0.2em]">Our Mission</h3>

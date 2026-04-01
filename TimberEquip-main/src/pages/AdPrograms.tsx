@@ -182,7 +182,7 @@ export function AdPrograms() {
   const currentSellerPlanId = hasCurrentSellerSubscription ? user?.activeSubscriptionPlanId || null : null;
   const currentSellerPlanLabel = getSellerPlanMarketingLabel(currentSellerPlanId);
   const currentSellerPlanPurchaseLabel = getSellerPlanPurchaseLabel(currentSellerPlanId);
-  const currentSellerBillingLabel = currentSellerPlanId ? getSellerProgramStatementLabel(currentSellerPlanId) : 'Free Member';
+  const currentSellerBillingLabel = currentSellerPlanId ? getSellerProgramStatementLabel(currentSellerPlanId) : 'Member';
   const selectedPlanChangeDirection = getSellerPlanChangeDirection(currentSellerPlanId, selectedSellerPlan || null);
   const isCurrentSelectedPlan = Boolean(currentSellerPlanId && selectedSellerPlan === currentSellerPlanId);
   const canExpandOwnerOperatorPlan = selectedSellerPlan === 'individual_seller' && currentSellerPlanId === 'individual_seller';
@@ -439,13 +439,13 @@ export function AdPrograms() {
       />
       {/* Hero Section */}
       <section className="relative py-24 px-4 md:px-8 border-b border-line overflow-hidden">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[#111827]">
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Winter logging road through snow-covered forest"
-            className="w-full h-full object-cover opacity-20"
+            className="w-full h-full object-cover opacity-50"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/90 via-bg/70 to-bg/40 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
         </div>
         
         <div className="max-w-7xl mx-auto relative z-10">

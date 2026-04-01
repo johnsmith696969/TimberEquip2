@@ -81,7 +81,7 @@ describe('getAssignableUserRoleOptions', () => {
 describe('getUserRoleDisplayLabel', () => {
   it('returns correct labels', () => {
     expect(getUserRoleDisplayLabel('buyer')).toBe('Buyer');
-    expect(getUserRoleDisplayLabel('member')).toBe('Free Member');
+    expect(getUserRoleDisplayLabel('member')).toBe('Member');
     expect(getUserRoleDisplayLabel('individual_seller')).toBe('Owner-Operator');
     expect(getUserRoleDisplayLabel('dealer')).toBe('Dealer');
     expect(getUserRoleDisplayLabel('pro_dealer')).toBe('Pro Dealer');

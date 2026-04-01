@@ -153,7 +153,7 @@ export function PaymentCalculatorModal({
             className="bg-bg border border-line relative z-10 mt-4 mb-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden shadow-2xl sm:my-8"
           >
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-ink text-white p-6 flex justify-between items-center">
+            <div className="sticky top-0 z-10 bg-[#1C1917] text-white p-6 flex justify-between items-center">
               <div>
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
                   Payment Calculator
@@ -245,7 +245,7 @@ export function PaymentCalculatorModal({
               </div>
 
               {/* Results */}
-              <div className="bg-ink text-white p-6 rounded-sm space-y-4">
+              <div className="bg-[#1C1917] text-white p-6 rounded-sm space-y-4">
                 <div className="flex justify-between items-end">
                   <div>
                     <span className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] block mb-1">

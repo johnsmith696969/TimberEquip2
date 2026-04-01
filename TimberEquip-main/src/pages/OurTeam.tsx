@@ -93,7 +93,7 @@ export function OurTeam() {
             </p>
           </div>
 
-          <div className="border border-line bg-ink p-8 text-white md:p-10">
+          <div className="border border-line bg-[#1C1917] p-8 text-white md:p-10">
             <span className="label-micro mb-4 block text-accent">Reach Us</span>
             <div className="space-y-4">
               <a href="tel:+12187200933" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">

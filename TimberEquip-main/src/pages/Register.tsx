@@ -24,7 +24,7 @@ const ACCOUNT_OPTIONS: Array<{
 }> = [
   {
     id: 'free_member',
-    title: 'Free Member',
+    title: 'Member',
     price: '$0',
     summary: 'Create an account to save searches, bookmark inventory, and manage your profile.',
     icon: User,
@@ -164,7 +164,7 @@ export function Register() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl bg-bg border border-line shadow-2xl relative z-10"
       >
-        <div className="bg-[#0a0a0a] text-white p-12 flex justify-between items-center">
+        <div className="bg-[#1C1917] text-white p-12 flex justify-between items-center">
           <div className="flex flex-col">
             <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Account Registration</span>
             <h1 className="text-4xl font-black tracking-tighter uppercase leading-none text-white">New <br /> <span className="text-accent">Operator</span></h1>
@@ -253,7 +253,7 @@ export function Register() {
                 <div className="bg-surface border border-line rounded-sm px-4 py-3">
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted block mb-1">Selected Account</span>
                   <span className="text-sm font-black uppercase tracking-tight text-ink">
-                    {ACCOUNT_OPTIONS.find((option) => option.id === selectedAccountType)?.title || 'Free Member'}
+                    {ACCOUNT_OPTIONS.find((option) => option.id === selectedAccountType)?.title || 'Member'}
                   </span>
                 </div>
 

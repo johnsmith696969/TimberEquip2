@@ -60,14 +60,12 @@ export function Logistics() {
 
   const isDarkMode = theme === 'dark';
   const heroClasses = useMemo(() => ({
-    shell: isDarkMode ? 'bg-ink text-white' : 'bg-surface text-ink border-b border-line',
-    image: isDarkMode ? 'opacity-30' : 'opacity-18 saturate-[0.85] brightness-110',
+    shell: isDarkMode ? 'bg-surface text-ink border-b border-line' : 'bg-surface text-ink border-b border-line',
+    image: isDarkMode ? 'opacity-30' : 'opacity-50',
     gradient: isDarkMode
       ? 'bg-gradient-to-r from-black/90 via-black/80 to-black/55'
-      : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76',
-    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/8',
-    iconChip: isDarkMode ? 'bg-accent text-white' : 'bg-accent/12 text-accent border border-accent/20',
-    eyebrow: 'text-accent',
+      : 'bg-gradient-to-r from-white/50 via-white/30 to-white/10',
+    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/15',
     titleLead: isDarkMode ? 'text-white' : 'text-ink',
     body: isDarkMode ? 'text-white/75' : 'text-muted',
   }), [isDarkMode]);
@@ -167,7 +165,7 @@ export function Logistics() {
       />
 
       <section className={`relative overflow-hidden px-4 py-24 transition-colors md:px-8 ${heroClasses.shell}`}>
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[#111827]">
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Forestry equipment transport route"
@@ -178,11 +176,9 @@ export function Logistics() {
         </div>
 
         <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-6 flex items-center space-x-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-sm transition-colors ${heroClasses.iconChip}`}>
-              <Truck size={20} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${heroClasses.eyebrow}`}>Global Logistics</span>
+          <div className="mb-6 flex items-center gap-3">
+            <Truck size={20} className="text-accent" />
+            <span className="label-micro text-accent">Global Logistics</span>
           </div>
 
           <h1 className="text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">

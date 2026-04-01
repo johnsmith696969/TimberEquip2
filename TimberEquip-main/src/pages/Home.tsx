@@ -28,6 +28,7 @@ import { useAuth } from '../components/AuthContext';
 import { appendReturnToParam, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 import {
   buildMarketplaceCategoryFamilies,
+  getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
 
 const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
@@ -302,7 +303,7 @@ export function Home() {
 
       {/* Hero Section */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0 bg-[#111827]">
           <img
             src={HERO_IMAGE_PATH}
             alt=""
@@ -311,11 +312,11 @@ export function Home() {
             loading="eager"
             decoding="async"
           />
-          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-white/72' : 'bg-black/58'}`}></div>
+          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-black/40' : 'bg-black/58'}`}></div>
           <div
             className={`absolute inset-0 ${
               theme === 'light'
-                ? 'bg-[linear-gradient(90deg,rgba(249,247,242,0.96)_0%,rgba(249,247,242,0.86)_34%,rgba(249,247,242,0.32)_70%,rgba(249,247,242,0.08)_100%)]'
+                ? 'bg-[linear-gradient(90deg,rgba(249,247,242,0.80)_0%,rgba(249,247,242,0.60)_34%,rgba(249,247,242,0.18)_70%,rgba(249,247,242,0.05)_100%)]'
                 : 'bg-[linear-gradient(90deg,rgba(10,10,10,0.92)_0%,rgba(10,10,10,0.80)_36%,rgba(10,10,10,0.36)_72%,rgba(10,10,10,0.12)_100%)]'
             }`}
           ></div>
@@ -326,7 +327,7 @@ export function Home() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center space-x-3 mb-8"
+              className="flex items-center space-x-3 mb-8 mt-12 md:mt-16"
             >
               <span className="text-xs font-black tracking-[0.4em] text-accent uppercase">{t('home.network', 'Global Equipment Network')}</span>
             </motion.div>
@@ -501,6 +502,24 @@ export function Home() {
                   </Link>
                 </div>
               </div>
+              {(() => {
+                const subcategories = getMarketplaceSubcategories(selectedCategoryFamily);
+                return subcategories.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {subcategories.map((sub) => (
+                      <Link
+                        key={sub}
+                        to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}&subcategory=${encodeURIComponent(sub)}`}
+                        className="px-4 py-2.5 bg-surface border border-line text-[10px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
+                      >
+                        {sub}
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-widest">No subcategories available for this category.</p>
+                );
+              })()}
             </div>
           </div>
         </section>
