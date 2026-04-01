@@ -800,6 +800,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAccountBootstrap(null);
     await signOut(auth);
+    window.location.href = '/login';
   };
 
   const toggleFavorite = async (listingId: string) => {
