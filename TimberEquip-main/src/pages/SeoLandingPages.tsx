@@ -331,7 +331,29 @@ function LoadingState() {
 }
 
 export function LoggingHubPage() {
-  return <ForestryHubPage />;
+  const { listings, loading } = useSeoListings();
+
+  if (loading) return <LoadingState />;
+
+  return (
+    <SeoInventoryTemplate
+      eyebrow="Logging Equipment"
+      title="Logging Equipment For Sale"
+      description="Shop new and used logging equipment for sale including skidders, forwarders, feller bunchers, log loaders, delimbers, and more from dealers and owners."
+      canonicalPath={`/${MARKET_ROUTE_LABELS.logging}`}
+      intro="Browse live logging equipment inventory from dealers and private sellers across North America. Filter by machine type, manufacturer, model, location, and price."
+      breadcrumbs={[
+        { label: 'Home', path: '/' },
+        { label: 'Logging Equipment For Sale', path: `/${MARKET_ROUTE_LABELS.logging}` },
+      ]}
+      listings={listings}
+      topCategories={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath), 'category')}
+      topManufacturers={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
+      searchPath="/search"
+      emptyMessage="No active logging inventory is available on this route yet."
+    />
+  );
 }
 
 export function ForestryHubPage() {
@@ -341,11 +363,11 @@ export function ForestryHubPage() {
 
   return (
     <SeoInventoryTemplate
-      eyebrow="Phase 1 SEO Hub"
-      title="Forestry Equipment For Sale"
-      description="Browse Forestry Equipment Sales forestry equipment inventory across core machine types, brands, and regions using the clean Phase 1 route architecture."
+      eyebrow="Equipment Marketplace"
+      title="Forestry Equipment for Sale | New & Used Machines"
+      description="Browse new and used forestry equipment for sale including logging, land clearing, firewood, sawmill, truck, trailer, and attachment inventory from dealers and owners."
       canonicalPath={`/${MARKET_ROUTE_LABELS.forestry}`}
-      intro="This is the canonical public market hub for the marketplace. It leads with live inventory, linked route families, and lighter browsing flows before buyers ever need the heavier app experience."
+      intro="Browse the full Forestry Equipment Sales marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers."
       breadcrumbs={[
         { label: 'Home', path: '/' },
         { label: 'Forestry Equipment For Sale', path: `/${MARKET_ROUTE_LABELS.forestry}` },

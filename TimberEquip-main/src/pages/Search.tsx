@@ -749,7 +749,7 @@ export function Search() {
 
   return (
     <div className="flex flex-col min-h-screen bg-bg">
-      <Seo title={seoTitle} description={seoDescription} canonicalPath="/search" jsonLd={itemListJsonLd} />
+      <Seo title={seoTitle} description={seoDescription} canonicalPath="/search" robots="noindex, follow" jsonLd={itemListJsonLd} />
       <Breadcrumbs />
 
       {/* Active filter pills bar */}

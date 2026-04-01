@@ -185,6 +185,39 @@ export function BlogPostDetail() {
         title={`${post.seoTitle || post.title} | Forestry Equipment Sales`}
         description={post.seoDescription || post.summary}
         canonicalPath={getNewsPostCanonicalPath(post)}
+        ogType="article"
+        imagePath={post.image || undefined}
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'BlogPosting',
+              headline: post.seoTitle || post.title,
+              description: post.seoDescription || post.summary,
+              datePublished: post.publishedAt || post.createdAt || undefined,
+              dateModified: post.updatedAt || post.publishedAt || post.createdAt || undefined,
+              image: post.image || undefined,
+              author: { '@type': 'Organization', name: 'Forestry Equipment Sales' },
+              publisher: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                logo: { '@type': 'ImageObject', url: 'https://www.forestryequipmentsales.com/Forestry_Equipment_Sales_Logo.png' },
+              },
+              mainEntityOfPage: {
+                '@type': 'WebPage',
+                '@id': `https://www.forestryequipmentsales.com${getNewsPostCanonicalPath(post)}`,
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Equipment News', item: 'https://www.forestryequipmentsales.com/blog' },
+                { '@type': 'ListItem', position: 3, name: post.seoTitle || post.title, item: `https://www.forestryequipmentsales.com${getNewsPostCanonicalPath(post)}` },
+              ],
+            },
+          ],
+        }}
       />
 
       <section className="bg-surface border-b border-line px-4 py-16 md:px-8">

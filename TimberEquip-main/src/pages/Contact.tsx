@@ -68,9 +68,36 @@ export function Contact() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Contact Us | Forestry Equipment Sales"
-        description="Get in touch with Forestry Equipment Sales for equipment inquiries, seller support, dealer partnerships, and general questions."
+        title="Contact Forestry Equipment Sales | Sales, Support, and Dealer Help"
+        description="Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
         canonicalPath="/contact"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'ContactPage',
+              name: 'Contact Forestry Equipment Sales',
+              url: 'https://www.forestryequipmentsales.com/contact',
+            },
+            {
+              '@type': 'Organization',
+              name: 'Forestry Equipment Sales',
+              url: 'https://www.forestryequipmentsales.com',
+              email: 'info@forestryequipmentsales.com',
+              contactPoint: [
+                { '@type': 'ContactPoint', contactType: 'customer service', email: 'support@forestryequipmentsales.com', availableLanguage: 'English' },
+                { '@type': 'ContactPoint', contactType: 'sales', email: 'info@forestryequipmentsales.com', availableLanguage: 'English' },
+              ],
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Contact', item: 'https://www.forestryequipmentsales.com/contact' },
+              ],
+            },
+          ],
+        }}
       />
       {/* Editorial Header */}
       <section className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">

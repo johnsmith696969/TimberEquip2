@@ -20,6 +20,7 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then((module)
 const Compare = lazy(() => import('./pages/Compare').then((module) => ({ default: module.Compare })));
 const Categories = lazy(() => import('./pages/Categories').then((module) => ({ default: module.Categories })));
 const ForestryHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ForestryHubPage })));
+const LoggingHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.LoggingHubPage })));
 const CategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.CategoryLandingPage })));
 const ManufacturerLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerLandingPage })));
 const ManufacturerModelLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelLandingPage })));
@@ -58,13 +59,9 @@ function RouteLoadingFallback() {
   );
 }
 
-function RedirectToCanonicalMarketHub() {
-  return <Navigate replace to="/forestry-equipment-for-sale" />;
-}
-
-function RedirectToCanonicalStateMarketHub() {
-  const { stateSlug = '' } = useParams<{ stateSlug: string }>();
-  return <Navigate replace to={`/states/${stateSlug}/forestry-equipment-for-sale`} />;
+function RedirectSellerToDealer() {
+  const { id = '' } = useParams<{ id: string }>();
+  return <Navigate replace to={`/dealers/${id}`} />;
 }
 
 function App() {
@@ -85,11 +82,11 @@ function App() {
                     <Route path="/equipment/:slug/:publicKey" element={<ListingDetail />} />
                     <Route path="/listing/:id" element={<ListingDetail />} />
                     <Route path="/listing/:id/:slug" element={<ListingDetail />} />
-                    <Route path="/seller/:id" element={<SellerProfile />} />
+                    <Route path="/seller/:id" element={<RedirectSellerToDealer />} />
                     <Route path="/blog" element={<Blog />} />
                     <Route path="/blog/:id" element={<BlogPostDetail />} />
                     <Route path="/blog/:id/:slug" element={<BlogPostDetail />} />
-                    <Route path="/logging-equipment-for-sale" element={<RedirectToCanonicalMarketHub />} />
+                    <Route path="/logging-equipment-for-sale" element={<LoggingHubPage />} />
                     <Route path="/forestry-equipment-for-sale" element={<ForestryHubPage />} />
                     <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminDashboard /></ProtectedRoute>} />
                     <Route path="/compare" element={<Compare />} />
@@ -99,7 +96,7 @@ function App() {
                     <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug" element={<ManufacturerModelLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/:categorySaleSlug" element={<ManufacturerCategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug" element={<ManufacturerLandingPage />} />
-                    <Route path="/states/:stateSlug/logging-equipment-for-sale" element={<RedirectToCanonicalStateMarketHub />} />
+                    <Route path="/states/:stateSlug/logging-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="logging" />} />
                     <Route path="/states/:stateSlug/forestry-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="forestry" />} />
                     <Route path="/states/:stateSlug/:categorySaleSlug" element={<StateCategoryLandingPage />} />
                     <Route path="/dealers" element={<Dealers />} />

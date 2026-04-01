@@ -138,9 +138,29 @@ export function Faq() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="FAQ | Forestry Equipment Sales"
-        description="Find answers to common questions about listing equipment, financing, logistics, dealer accounts, and marketplace support."
+        title="Logging Equipment Marketplace FAQ | Buyers, Sellers, and Dealers"
+        description="Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on Forestry Equipment Sales."
         canonicalPath="/faq"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'FAQPage',
+              mainEntity: faqItems.map((item) => ({
+                '@type': 'Question',
+                name: item.question,
+                acceptedAnswer: { '@type': 'Answer', text: item.answer },
+              })),
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
+                { '@type': 'ListItem', position: 2, name: 'FAQ', item: 'https://www.forestryequipmentsales.com/faq' },
+              ],
+            },
+          ],
+        }}
       />
 
       <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">

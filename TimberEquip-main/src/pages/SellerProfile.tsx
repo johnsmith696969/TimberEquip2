@@ -361,21 +361,23 @@ export function SellerProfile() {
       return preferredDealerPath;
     }
 
-    return `/seller/${seller.storefrontSlug || seller.id}`;
+    return `/dealers/${seller.storefrontSlug || seller.id}`;
   })();
 
+  const isDealer = isDealerRole(seller.role);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
       {
-        '@type': 'Organization',
+        '@type': isDealer ? 'LocalBusiness' : 'Organization',
         name: headline,
         url: `https://www.forestryequipmentsales.com${canonicalPath}`,
         logo: logoImage,
+        image: coverImage,
         description,
         email: seller.email || undefined,
         telephone: seller.phone || undefined,
-        address: seller.location || undefined,
+        ...(seller.location ? { address: { '@type': 'PostalAddress', streetAddress: seller.location } } : {}),
       },
       {
         '@type': 'BreadcrumbList',

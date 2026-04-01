@@ -260,9 +260,17 @@ export function Home() {
         {
           '@type': 'Organization',
           name: 'Forestry Equipment Sales',
-          alternateName: 'Forestry Equipment Sales',
+          alternateName: 'FES',
           url: 'https://www.forestryequipmentsales.com/',
           logo: 'https://www.forestryequipmentsales.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+          email: 'info@forestryequipmentsales.com',
+          description: 'New and used logging equipment marketplace connecting buyers, sellers, and dealers across North America.',
+          contactPoint: {
+            '@type': 'ContactPoint',
+            contactType: 'customer service',
+            email: 'support@forestryequipmentsales.com',
+            availableLanguage: 'English',
+          },
         },
         {
           '@type': 'WebSite',

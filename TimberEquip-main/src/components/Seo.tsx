@@ -13,7 +13,7 @@ interface SeoProps {
 const BASE_URL = 'https://www.forestryequipmentsales.com';
 const DEFAULT_ROBOTS =
   import.meta.env.VITE_ALLOW_INDEXING === 'true'
-    ? 'index, follow'
+    ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
     : 'noindex, nofollow, noarchive, nosnippet, noimageindex';
 
 function setMetaTag(selector: { name?: string; property?: string }, content: string) {
