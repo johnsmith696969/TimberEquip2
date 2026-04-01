@@ -140,11 +140,12 @@ export function Dealers() {
           <img
             src="/page-photos/Forestry-Equipment-Sales-Dealers.png"
             alt="Forestry Equipment Sales dealer network"
-            className="w-full h-full object-cover opacity-50"
+            className="w-full h-full object-cover object-center opacity-[0.16] brightness-110 saturate-[0.82] dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
+            style={{ objectPosition: 'center 42%' }}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/[0.99] via-bg/[0.96] to-bg/[0.85] dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
         </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/15 skew-x-12 translate-x-1/2"></div>
+        <div className="absolute top-0 right-0 h-full w-[28%] translate-x-1/2 skew-x-12 bg-white/72 dark:bg-accent/22"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="flex items-center gap-3 mb-4">
             <Building2 size={20} className="text-accent" />

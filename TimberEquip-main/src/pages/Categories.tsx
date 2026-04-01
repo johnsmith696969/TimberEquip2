@@ -149,11 +149,11 @@ export function Categories() {
           <img
             src="/page-photos/bagged-firewood.jpg"
             alt="Bagged firewood stacks"
-            className="w-full h-full object-cover opacity-50"
+            className="w-full h-full object-cover object-center opacity-[0.16] brightness-110 saturate-[0.82] dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/[0.99] via-bg/[0.96] to-bg/[0.85] dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
         </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/15 skew-x-12 translate-x-1/2"></div>
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-white/68 dark:bg-accent/22 skew-x-12 translate-x-1/2"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">

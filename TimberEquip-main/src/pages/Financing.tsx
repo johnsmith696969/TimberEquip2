@@ -44,9 +44,9 @@ export function Financing() {
   }, [user?.displayName, user?.email, user?.phoneNumber]);
 
   const heroClasses = useMemo(() => ({
-    image: 'opacity-50',
-    gradient: 'bg-gradient-to-r from-bg/[0.99] via-bg/[0.96] to-bg/[0.85] dark:from-bg/50 dark:via-bg/30 dark:to-bg/10',
-    accentBand: 'bg-accent/15',
+    image: 'object-center opacity-[0.16] brightness-110 saturate-[0.82] dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]',
+    gradient: 'bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42',
+    accentBand: 'bg-white/68 dark:bg-accent/22',
   }), []);
 
   const handleNext = () => setStep(prev => prev + 1);

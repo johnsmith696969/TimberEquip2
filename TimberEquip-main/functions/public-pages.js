@@ -781,8 +781,8 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
         <a class="brand" href="/">
           <img src="/Forestry_Equipment_Sales_Logo.svg?v=20260327c" alt="Forestry Equipment Sales" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260327c';" />
           <span class="brand-copy">
-            <strong>Hybrid Marketplace</strong>
-            <span>Dealer hub, clean routes, and crawlable equipment inventory.</span>
+            <strong>Forestry Equipment Sales</strong>
+            <span>Browse equipment inventory, dealers, categories, manufacturers, and states.</span>
           </span>
         </a>
         <nav class="nav" aria-label="Primary">
@@ -798,18 +798,18 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
     ${body}
     <footer>
       <div class="shell">
-        <div class="footer-card">
-          <div class="footer-brand">
-            <img src="/Logo-Transparent.png?v=20260327c" alt="Forestry Equipment Sales logo" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327c';" />
-            <span class="footer-copy">
-              <strong>Forestry Equipment Sales Marketplace</strong>
-              <span>Dealer storefronts, live inventory, embeds, and lead-ready public pages.</span>
-            </span>
-          </div>
-          <div class="pill-row">
-            <span class="pill">JSON Feed Ready</span>
+          <div class="footer-card">
+            <div class="footer-brand">
+              <img src="/Logo-Transparent.png?v=20260327c" alt="Forestry Equipment Sales logo" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327c';" />
+              <span class="footer-copy">
+                <strong>Forestry Equipment Sales Marketplace</strong>
+                <span>Dealer storefronts, live inventory, and clean public routes for buyers and sellers.</span>
+              </span>
+            </div>
+            <div class="pill-row">
+            <span class="pill">Live Inventory</span>
             <span class="pill">Dealer Storefronts</span>
-            <span class="pill">Search + SEO</span>
+            <span class="pill">Market Routes</span>
           </div>
         </div>
       </div>
@@ -1132,8 +1132,8 @@ function renderInventoryPage({
         <section class="shell section">
           <div class="section-head">
             <div>
-              <span class="tagline">Functional Public Layer</span>
-              <h2>Why This Route Exists</h2>
+              <span class="tagline">Marketplace Overview</span>
+              <h2>What You Can Do Here</h2>
             </div>
           </div>
           <p class="lede">${escapeHtml(description)}</p>
@@ -1145,8 +1145,8 @@ function renderInventoryPage({
         <section class="shell section">
           <div class="section-head">
             <div>
-              <span class="tagline">Marketplace Functionality</span>
-              <h2>Built For Search And Dealers</h2>
+              <span class="tagline">Buyer And Dealer Benefits</span>
+              <h2>Built For Equipment Discovery</h2>
             </div>
           </div>
           ${renderFeatureCards(featureCards)}
@@ -1703,7 +1703,7 @@ function renderQuotaFallbackPage(req, res) {
           {
             eyebrow: 'Recovery',
             title: 'Live inventory will repopulate automatically',
-            description: 'Once Firestore read capacity is available again, the hybrid public pages will resume serving live marketplace data.',
+            description: 'Once Firestore read capacity is available again, live marketplace data will repopulate automatically.',
           },
         ],
         sections: page.sections,
@@ -1823,7 +1823,7 @@ async function renderRoute(req, res) {
         {
           eyebrow: 'Lower friction',
           title: 'Less decorative UI, more utility',
-          description: 'The public layer focuses on inventory density, route context, and direct actions while the app handles auth, management, and advanced filters.',
+          description: 'These routes keep inventory, dealer coverage, and direct buyer actions front and center.',
         },
       ],
       sections: [
@@ -1904,7 +1904,7 @@ async function renderRoute(req, res) {
         description: 'Browse make-specific route hubs generated from live approved marketplace listings.',
         canonicalUrl: `${baseUrl}/manufacturers`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'This is the lighter-weight public manufacturer index designed for crawlability, ad landing pages, and faster buyer discovery.',
+        intro: 'Use this manufacturer index to browse brands, model families, and machine categories with direct paths into live inventory.',
         breadcrumbs,
         statValue,
         items,
@@ -2567,7 +2567,7 @@ async function renderRoute(req, res) {
         description: 'Browse dealer storefronts backed by live marketplace inventory, clean public URLs, and direct paths into inventory or feeds.',
         canonicalUrl: `${baseUrl}/dealers`,
         robots: dealers.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'This directory is the lighter-weight public dealer surface for the marketplace. It gives dealers more usable public URLs and gives buyers a clearer path into real storefront inventory.',
+        intro: 'Browse dealer storefronts with clean public URLs, live inventory, and direct paths into each seller\'s available equipment.',
         breadcrumbs: [
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },
@@ -2582,7 +2582,7 @@ async function renderRoute(req, res) {
           {
             eyebrow: 'Dealer Hub',
             title: 'Storefront-first public surface',
-            description: 'This page is designed to make dealer inventory and contact surfaces more visible than the older generic UI.',
+            description: 'This page keeps dealer inventory, business details, and contact paths easy to find at a glance.',
           },
           {
             eyebrow: 'Feed Ecosystem',
@@ -2666,7 +2666,7 @@ async function renderRoute(req, res) {
         intro:
           seller.storefrontDescription ||
           seller.storefrontTagline ||
-          `${seller.storefrontName} has a cleaner public storefront here so buyers can see real inventory, routes, and contact paths before jumping into the heavier app experience.`,
+          `${seller.storefrontName} has a clean public storefront where buyers can review live inventory, route links, and contact details in one place.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },

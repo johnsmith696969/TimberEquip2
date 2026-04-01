@@ -61,11 +61,13 @@ export function Logistics() {
   const isDarkMode = theme === 'dark';
   const heroClasses = useMemo(() => ({
     shell: isDarkMode ? 'bg-surface text-ink border-b border-line' : 'bg-surface text-ink border-b border-line',
-    image: isDarkMode ? 'opacity-30' : 'opacity-50',
+    image: isDarkMode
+      ? 'object-center opacity-[0.62] brightness-[0.72] saturate-[0.88]'
+      : 'object-center opacity-[0.16] brightness-110 saturate-[0.82]',
     gradient: isDarkMode
-      ? 'bg-gradient-to-r from-black/90 via-black/80 to-black/55'
-      : 'bg-gradient-to-r from-white/50 via-white/30 to-white/10',
-    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/15',
+      ? 'bg-gradient-to-r from-[#050608]/90 via-[#050608]/72 to-[#050608]/42'
+      : 'bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9]',
+    accentBand: isDarkMode ? 'bg-accent/22' : 'bg-white/68',
     titleLead: isDarkMode ? 'text-white' : 'text-ink',
     body: isDarkMode ? 'text-white/75' : 'text-muted',
   }), [isDarkMode]);
