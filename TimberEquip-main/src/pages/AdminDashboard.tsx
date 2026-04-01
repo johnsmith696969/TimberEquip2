@@ -233,7 +233,7 @@ export function AdminDashboard() {
   const [contentBlocks,  setContentBlocks]  = useState<ContentBlock[]>([]);
   const [editingPost,    setEditingPost]    = useState<BlogPost | null>(null);
   const [showCmsEditor,  setShowCmsEditor]  = useState(false);
-  const [contentSubTab,  setContentSubTab]  = useState<'posts' | 'media' | 'blocks'>('posts');
+  const [contentSubTab,  setContentSubTab]  = useState<'posts' | 'media' | 'blocks' | 'categories'>('posts');
   const [newBlock, setNewBlock] = useState<{ type: ContentBlock['type']; content: string; title: string; label: string }>({
     type: 'text', content: '', title: '', label: ''
   });
@@ -1200,6 +1200,19 @@ export function AdminDashboard() {
       setUserFeedback({
         tone: result.warning ? 'warning' : 'success',
         message: result.warning || result.message || `${account.name}'s account was unlocked.`,
+      });
+    });
+  };
+
+  const handleApproveUser = async (account: Account) => {
+    await runUserAction(account.id, 'unlock', async () => {
+      const result = await adminUserService.unlockUser(account.id);
+      if (result.user) {
+        setAccounts(prev => prev.map(entry => entry.id === account.id ? { ...result.user!, status: 'Active' } : entry));
+      }
+      setUserFeedback({
+        tone: 'success',
+        message: result.warning || `${account.name}'s account was approved.`,
       });
     });
   };
@@ -2736,9 +2749,9 @@ export function AdminDashboard() {
       </div>
 
       <div className="bg-bg border border-line rounded-sm overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-left border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-surface border-b border-line">
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">User</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted">Company</th>
@@ -2808,7 +2821,16 @@ export function AdminDashboard() {
                       >
                         <RefreshCw size={13} className={isUserActionPending(user.id, 'reset') ? 'animate-spin' : ''} /> Reset
                       </button>
-                      {user.status === 'Suspended' ? (
+                      {user.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleApproveUser(user)}
+                          disabled={isUserActionPending(user.id, 'unlock')}
+                          className="btn-industrial py-2 px-3 text-[9px] flex items-center justify-center gap-1 bg-data/10 text-data disabled:opacity-50"
+                        >
+                          <CheckCircle2 size={13} /> Approve
+                        </button>
+                      ) : user.status === 'Suspended' ? (
                         <button
                           type="button"
                           onClick={() => handleUnlockUser(user)}
@@ -3285,7 +3307,7 @@ export function AdminDashboard() {
       {/* Sub-tab navigation */}
       <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
         <div className="flex space-x-1 bg-surface border border-line p-2 rounded-sm w-max min-w-full">
-          {(['posts', 'media', 'blocks'] as const).map(tab => (
+          {(['posts', 'media', 'blocks', 'categories'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setContentSubTab(tab)}
@@ -3293,7 +3315,7 @@ export function AdminDashboard() {
                 contentSubTab === tab ? 'bg-ink text-bg' : 'text-muted hover:text-ink'
               }`}
             >
-              {tab === 'posts' ? 'Blog Posts' : tab === 'media' ? 'Media Library' : 'Content Blocks'}
+              {tab === 'posts' ? 'Blog Posts' : tab === 'media' ? 'Media Library' : tab === 'categories' ? 'Categories' : 'Content Blocks'}
             </button>
           ))}
         </div>
@@ -3414,6 +3436,19 @@ export function AdminDashboard() {
           items={mediaItems}
           onRefresh={async () => setMediaItems(await cmsService.getMedia())}
         />
+      )}
+
+      {/* ── Categories (Taxonomy) ────────────────���────────────────── */}
+      {contentSubTab === 'categories' && (
+        <div className="space-y-4">
+          {(normalizedAdminRole === 'super_admin' || normalizedAdminRole === 'admin') ? (
+            <TaxonomyManager />
+          ) : (
+            <div className="bg-surface border border-line rounded-sm p-8 text-center">
+              <p className="text-[10px] font-black text-muted uppercase tracking-widest">Only Admins and Super Admins can manage categories.</p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Content Blocks ──────────────────────────────────────────── */}
@@ -3676,7 +3711,6 @@ export function AdminDashboard() {
         </div>
       </section>
 
-      {normalizedAdminRole === 'super_admin' ? <TaxonomyManager /> : null}
     </div>
   );
 

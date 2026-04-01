@@ -207,6 +207,10 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
   const [isSaving, setIsSaving] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number>(0);
   const [videoUploadProgress, setVideoUploadProgress] = useState<number>(0);
+  const [imageDragIdx, setImageDragIdx] = useState<number | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ description: string; placeId: string }>>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [listingStorageId, setListingStorageId] = useState<string>(createDraftListingId());
   const [fullTaxonomy, setFullTaxonomy] = useState<FullEquipmentTaxonomy>(FALLBACK_FULL_TAXONOMY);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -219,12 +223,12 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
     manufacturer: '',
     make: '',
     model: '',
-    year: new Date().getFullYear(),
+    year: '' as unknown as number,
     price: 0,
     currency: 'USD',
     condition: 'Used',
     location: '',
-    hours: 0,
+    hours: '' as unknown as number,
     stockNumber: '',
     serialNumber: '',
     images: [] as string[],
@@ -301,6 +305,21 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
     const current: string[] = formData.specs.attachments || [];
     const next = current.includes(att) ? current.filter((a) => a !== att) : [...current, att];
     handleSpecChange('attachments', next);
+  };
+
+  // ── Location autocomplete ────────────────────────────────────────────────
+  const fetchLocationSuggestions = (input: string) => {
+    if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
+    if (input.length < 3) { setLocationSuggestions([]); setShowLocationSuggestions(false); return; }
+    locationDebounceRef.current = setTimeout(async () => {
+      try {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const res = await fetch(`${origin}/api/public/places-autocomplete?input=${encodeURIComponent(input)}`);
+        const data = await res.json();
+        setLocationSuggestions(data.predictions || []);
+        setShowLocationSuggestions((data.predictions || []).length > 0);
+      } catch { setLocationSuggestions([]); }
+    }, 300);
   };
 
   // ── Image upload ─────────────────────────────────────────────────────────
@@ -637,16 +656,21 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 </div>
                 <div className="space-y-1">
                   <label className="label-micro">Year <span className="text-accent">*</span></label>
-                  <input type="number" required value={formData.year}
-                    onFocus={selectZeroValue}
-                    onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
-                    className="input-industrial w-full" min={1960} max={new Date().getFullYear() + 1} />
+                  <select required value={formData.year}
+                    onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) || ('' as unknown as number) })}
+                    className="input-industrial w-full">
+                    <option value="">Select Year</option>
+                    {Array.from({ length: new Date().getFullYear() - 1960 + 1 }, (_, i) => new Date().getFullYear() - i).map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="label-micro">Operating Hours <span className="text-accent">*</span></label>
                   <input type="number" required value={formData.hours}
+                    placeholder="Enter hours"
                     onFocus={selectZeroValue}
-                    onChange={(e) => setFormData({ ...formData, hours: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, hours: e.target.value === '' ? ('' as unknown as number) : (parseInt(e.target.value) || 0) })}
                     className="input-industrial w-full" min={0} />
                 </div>
                 <div className="space-y-1">
@@ -693,11 +717,25 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                     <option>USD</option><option>CAD</option><option>EUR</option><option>GBP</option>
                   </select>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 relative">
                   <label className="label-micro">Location <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="input-industrial w-full" placeholder="City, State / Province" />
+                    onChange={(e) => { setFormData({ ...formData, location: e.target.value }); fetchLocationSuggestions(e.target.value); }}
+                    onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
+                    onFocus={() => { if (locationSuggestions.length > 0) setShowLocationSuggestions(true); }}
+                    className="input-industrial w-full" placeholder="City, State / Province" autoComplete="off" />
+                  {showLocationSuggestions && locationSuggestions.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-line bg-bg shadow-lg rounded-sm overflow-hidden">
+                      {locationSuggestions.map((s) => (
+                        <button key={s.placeId} type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => { setFormData({ ...formData, location: s.description }); setShowLocationSuggestions(false); setLocationSuggestions([]); }}
+                          className="w-full text-left px-3 py-2 text-xs font-medium text-ink hover:bg-surface transition-colors border-b border-line last:border-b-0">
+                          {s.description}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <label className="flex items-center gap-3 cursor-pointer w-fit">
@@ -922,7 +960,31 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
 
               <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
                 {formData.images.map((img, i) => (
-                  <div key={`${img}-${i}`} className="flex flex-col gap-2 bg-surface border border-line rounded-sm overflow-hidden p-2">
+                  <div key={`${img}-${i}`}
+                    draggable
+                    onDragStart={() => setImageDragIdx(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (imageDragIdx !== null && imageDragIdx !== i) {
+                        setFormData((prev) => {
+                          const images = [...prev.images];
+                          const imageTitles = normalizeListingImageTitles(prev.images, prev.imageTitles);
+                          const imageVariants = [...(prev.imageVariants || [])];
+                          const [movedImg] = images.splice(imageDragIdx, 1);
+                          images.splice(i, 0, movedImg);
+                          const [movedTitle] = imageTitles.splice(imageDragIdx, 1);
+                          imageTitles.splice(i, 0, movedTitle);
+                          if (imageVariants.length > imageDragIdx) {
+                            const [movedVar] = imageVariants.splice(imageDragIdx, 1);
+                            imageVariants.splice(i, 0, movedVar);
+                          }
+                          return { ...prev, images, imageTitles, imageVariants };
+                        });
+                      }
+                      setImageDragIdx(null);
+                    }}
+                    onDragEnd={() => setImageDragIdx(null)}
+                    className={`flex flex-col gap-2 bg-surface border rounded-sm overflow-hidden p-2 cursor-grab active:cursor-grabbing ${imageDragIdx === i ? 'border-accent opacity-50' : 'border-line'}`}>
                     <div className="relative aspect-video overflow-hidden rounded-sm group">
                       <img
                         src={img}
@@ -1006,6 +1068,9 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 onChange={(e) => handleImageFiles(e.target.files)} />
               <p className="text-[9px] text-muted font-bold uppercase tracking-widest">
                 JPG / PNG / WEBP / AVIF up to 10 MB each. First image = cover photo. Reorder with arrows and add optional photo titles. Min {MIN_IMAGE_COUNT} · Max 40.
+              </p>
+              <p className="text-[9px] text-muted font-bold uppercase tracking-widest">
+                Photo uploads may take a few minutes depending on file size and internet speed.
               </p>
               {uploadError && (
                 <p className="text-[9px] text-accent font-bold uppercase tracking-widest">{uploadError}</p>

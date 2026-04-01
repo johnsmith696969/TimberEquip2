@@ -10,14 +10,13 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { useAuth } from '../components/AuthContext';
-import { useTheme } from '../components/ThemeContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 
 export function Financing() {
   const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
   const { user } = useAuth();
-  const { theme } = useTheme();
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -45,19 +44,11 @@ export function Financing() {
     }));
   }, [user?.displayName, user?.email, user?.phoneNumber]);
 
-  const isDarkMode = theme === 'dark';
   const heroClasses = useMemo(() => ({
-    shell: isDarkMode ? 'bg-ink text-white' : 'bg-surface text-ink border-b border-line',
-    image: isDarkMode ? 'opacity-30' : 'opacity-18 saturate-[0.85] brightness-110',
-    gradient: isDarkMode
-      ? 'bg-gradient-to-r from-black/90 via-black/80 to-black/55'
-      : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76',
-    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/8',
-    iconChip: isDarkMode ? 'bg-accent text-white' : 'bg-accent/12 text-accent border border-accent/20',
-    eyebrow: isDarkMode ? 'text-accent' : 'text-accent',
-    titleLead: isDarkMode ? 'text-white' : 'text-ink',
-    body: isDarkMode ? 'text-white/75' : 'text-muted',
-  }), [isDarkMode]);
+    image: 'opacity-20',
+    gradient: 'bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60',
+    accentBand: 'bg-accent/10',
+  }), []);
 
   const handleNext = () => setStep(prev => prev + 1);
   const handlePrev = () => setStep(prev => prev - 1);
@@ -115,28 +106,23 @@ export function Financing() {
         imagePath="/page-photos/ponsse-buffalo-loading.jpg"
       />
       {/* Header */}
-      <div className={`py-24 px-4 md:px-8 relative overflow-hidden transition-colors ${heroClasses.shell}`}>
+      <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
         <div className="absolute inset-0">
           <img
             src="/page-photos/ponsse-buffalo-loading.jpg"
             alt="Ponsse Buffalo loading timber"
-            className={`w-full h-full object-cover transition-opacity ${heroClasses.image}`}
+            className={`w-full h-full object-cover ${heroClasses.image}`}
           />
-          <div className={`absolute inset-0 transition-colors ${heroClasses.gradient}`} />
-          <div className={`absolute top-0 right-0 w-1/3 h-full skew-x-12 translate-x-1/2 transition-colors ${heroClasses.accentBand}`}></div>
+          <div className={`absolute inset-0 ${heroClasses.gradient}`} />
         </div>
+        <div className={`absolute top-0 right-0 w-1/3 h-full ${heroClasses.accentBand} skew-x-12 translate-x-1/2`}></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className={`w-10 h-10 flex items-center justify-center rounded-sm transition-colors ${heroClasses.iconChip}`}>
-              <Calculator size={20} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${heroClasses.eyebrow}`}>Financing Center</span>
-          </div>
+          <span className="label-micro text-accent mb-4 block">Financing Center</span>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
-            <span className={heroClasses.titleLead}>Institutional</span> <br />
-            <span className="text-accent">Financing</span>
+            Institutional <br />
+            <span className="text-muted">Financing</span>
           </h1>
-          <p className={`font-medium max-w-2xl leading-relaxed transition-colors ${heroClasses.body}`}>
+          <p className="text-muted font-medium max-w-2xl leading-relaxed">
             Apply for equipment financing. Submit your details and get a credit decision, typically within one business day.
           </p>
         </div>

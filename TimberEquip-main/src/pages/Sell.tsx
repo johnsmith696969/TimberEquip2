@@ -231,8 +231,9 @@ export function Sell() {
           throw new Error(`Your account includes up to ${activeListingCap} active ${activeListingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`);
         }
       }
+      const { id: _stripId, ...createPayload } = formData as any;
       const listingId = await equipmentService.addListing({
-        ...formData,
+        ...createPayload,
         sellerUid: uid,
         status: 'pending',
         views: 0,

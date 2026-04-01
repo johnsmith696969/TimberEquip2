@@ -441,7 +441,14 @@ export function Search() {
     return [...(taxonomy[filters.category]?.[filters.subcategory] || [])].sort((a, b) => a.localeCompare(b));
   }, [filters.category, filters.subcategory, taxonomy]);
 
-  const listingCategories = useMemo(() => uniqueSorted(allListings.map((listing) => listing.category)), [allListings]);
+  const listingCategories = useMemo(() => {
+    const taxonomyKeys = new Set(Object.keys(taxonomy).map((k) => k.toLowerCase()));
+    return uniqueSorted(
+      allListings
+        .map((listing) => listing.category)
+        .filter((cat) => taxonomyKeys.has(cat.toLowerCase()))
+    );
+  }, [allListings, taxonomy]);
   const listingSubcategories = useMemo(
     () => uniqueSorted(allListings.map((listing) => listing.subcategory || listing.category)),
     [allListings]
@@ -519,17 +526,12 @@ export function Search() {
 
       if (filters.category) {
         const normalizedCategory = normalize(filters.category);
-        const categoryMatch =
-          normalize(listing.category) === normalizedCategory ||
-          normalize(listing.subcategory) === normalizedCategory;
-        if (!categoryMatch) return false;
+        if (normalize(listing.category) !== normalizedCategory) return false;
       }
 
       if (filters.subcategory) {
         const normalizedSubcategory = normalize(filters.subcategory);
-        const subcategoryMatch =
-          normalize(listing.subcategory) === normalizedSubcategory || normalize(listing.category) === normalizedSubcategory;
-        if (!subcategoryMatch) return false;
+        if (normalize(listing.subcategory) !== normalizedSubcategory) return false;
       }
 
       if (filters.manufacturer) {
@@ -595,16 +597,19 @@ export function Search() {
       return true;
     });
 
+    const featuredFirst = (a: Listing, b: Listing) => Number(!!b.featured) - Number(!!a.featured);
     if (filters.sortBy === 'price_asc') {
-      results = [...results].sort((a, b) => a.price - b.price);
+      results = [...results].sort((a, b) => featuredFirst(a, b) || a.price - b.price);
     } else if (filters.sortBy === 'price_desc') {
-      results = [...results].sort((a, b) => b.price - a.price);
+      results = [...results].sort((a, b) => featuredFirst(a, b) || b.price - a.price);
     } else if (filters.sortBy === 'popular') {
-      results = [...results].sort((a, b) => b.views + b.leads * 3 - (a.views + a.leads * 3));
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (b.views + b.leads * 3 - (a.views + a.leads * 3)));
     } else if (filters.sortBy === 'relevance') {
-      results = [...results].sort((a, b) => getRelevanceScore(b, filters.q) - getRelevanceScore(a, filters.q));
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (getRelevanceScore(b, filters.q) - getRelevanceScore(a, filters.q)));
     } else {
       results = [...results].sort((a, b) => {
+        const fd = featuredFirst(a, b);
+        if (fd !== 0) return fd;
         const aTime = new Date(a.createdAt).getTime() || 0;
         const bTime = new Date(b.createdAt).getTime() || 0;
         return bTime - aTime;
@@ -786,6 +791,24 @@ export function Search() {
           </div>
         </div>
       )}
+
+      {/* Quick Search Bar */}
+      <div className="bg-bg border-b border-line py-3 px-4 md:px-8 overflow-hidden">
+        <div className="max-w-[1600px] mx-auto overflow-x-auto [-webkit-overflow-scrolling:touch] scrollbar-hide">
+          <div className="flex items-center gap-2 w-max">
+            <span className="text-[9px] font-black uppercase tracking-widest text-muted whitespace-nowrap mr-1">Quick Search:</span>
+            {taxonomyCategories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => { const updated = { ...filters, category: filters.category === cat ? '' : cat, subcategory: '' }; setFilters(updated); setDraftFilters(updated); }}
+                className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-wider whitespace-nowrap border rounded-sm transition-colors ${filters.category === cat ? 'bg-ink text-bg border-ink' : 'bg-surface border-line text-muted hover:border-accent hover:text-ink'}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div className="bg-surface border-b border-line py-8 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto">

@@ -1156,7 +1156,7 @@ export function ListingDetail() {
                     transition={{ duration: 0.15 }}
                     src={galleryImages[activeImage]} 
                     alt={activeImageTitle || listing.title}
-                    className="w-full h-full object-cover cursor-zoom-in"
+                    className="w-full h-full object-cover object-center cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
                   />

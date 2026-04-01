@@ -5579,9 +5579,9 @@ async function getPublicHomeDataPayload() {
       ''
     ).slice(0, 12);
 
-    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
     const recentSoldListings = sortMarketplaceListings(
-      soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= threeDaysAgo),
+      soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= sevenDaysAgo),
       'newest',
       ''
     ).slice(0, 12);
@@ -10730,6 +10730,27 @@ exports.apiProxy = onRequest(
         return res.status(200).json(payload);
       }
 
+      if (req.method === 'GET' && path === '/public/places-autocomplete') {
+        const input = normalizeNonEmptyString(req.query.input || '');
+        if (!input) return res.status(400).json({ predictions: [] });
+        const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
+        if (!apiKey) return res.status(200).json({ predictions: [] });
+        try {
+          const placesRes = await fetch(
+            `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=(cities)&key=${encodeURIComponent(apiKey)}`
+          );
+          const placesData = await placesRes.json();
+          const predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
+            description: p.description,
+            placeId: p.place_id,
+          }));
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ predictions });
+        } catch {
+          return res.status(200).json({ predictions: [] });
+        }
+      }
+
       if (req.method === 'POST' && path === '/account/listings') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -10790,14 +10811,16 @@ exports.apiProxy = onRequest(
         const resolvedListingId = requestedId || await reserveNextSequentialListingId();
         const listingRef = getDb().collection('listings').doc(resolvedListingId);
 
+        let finalListingRef = listingRef;
         if (requestedId) {
           const existingListingSnap = await listingRef.get();
           if (existingListingSnap.exists) {
-            return res.status(409).json({ error: 'A listing with that id already exists.' });
+            const fallbackId = await reserveNextSequentialListingId();
+            finalListingRef = getDb().collection('listings').doc(fallbackId);
           }
         }
 
-        if (sellerEntitlement.listingCap > 0) {
+        if (!isAdminActor && sellerEntitlement.listingCap > 0) {
           const activeListingCount = await countSellerListingsForCapacity(requestedSellerUid);
           if (activeListingCount >= sellerEntitlement.listingCap) {
             return res.status(409).json({
@@ -10825,7 +10848,7 @@ exports.apiProxy = onRequest(
 
         const draftListing = {
           ...listingInput,
-          id: listingRef.id,
+          id: finalListingRef.id,
           sellerUid: requestedSellerUid,
           sellerId: requestedSellerUid,
           sellerVerified: isVerifiedSellerRole(sellerRole, sellerAccountState.manuallyVerified),
@@ -10854,13 +10877,13 @@ exports.apiProxy = onRequest(
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        await listingRef.set(draftListing, { merge: false });
+        await finalListingRef.set(draftListing, { merge: false });
         await applyListingLifecycleAction({
-          listingRef,
-          listingId: listingRef.id,
+          listingRef: finalListingRef,
+          listingId: finalListingRef.id,
           listing: {
             ...draftListing,
-            id: listingRef.id,
+            id: finalListingRef.id,
           },
           action: 'submit',
           actorUid,
@@ -10870,7 +10893,7 @@ exports.apiProxy = onRequest(
             : 'Submitted by administrator during listing creation.',
         });
 
-        const createdListingSnap = await listingRef.get();
+        const createdListingSnap = await finalListingRef.get();
         return res.status(201).json({
           message: 'Listing created and submitted for review.',
           lifecycleAction: 'submit',
@@ -13281,8 +13304,10 @@ exports.nightlyDataRefresh = onSchedule(
 
       if (comparables.length >= 1) {
         const amvValue = comparables.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0) / comparables.length;
+        const roundedAmv = Math.round(amvValue);
         await db.collection('listings').doc(listing.id).update({
-          computedAmv: Math.round(amvValue),
+          computedAmv: roundedAmv,
+          marketValueEstimate: roundedAmv,
           amvComparableCount: comparables.length,
           amvComputedAt: admin.firestore.FieldValue.serverTimestamp(),
         });

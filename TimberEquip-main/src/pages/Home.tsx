@@ -328,9 +328,6 @@ export function Home() {
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center space-x-3 mb-8"
             >
-              <div className="w-12 h-12 bg-accent flex items-center justify-center rounded-sm shadow-2xl overflow-hidden">
-                <img src="/logos/icons/global-equipment-icon.svg" alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
-              </div>
               <span className="text-xs font-black tracking-[0.4em] text-accent uppercase">{t('home.network', 'Global Equipment Network')}</span>
             </motion.div>
 
