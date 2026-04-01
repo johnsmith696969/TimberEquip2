@@ -63,13 +63,13 @@ export function Logistics() {
     shell: isDarkMode ? 'bg-surface text-ink border-b border-line' : 'bg-surface text-ink border-b border-line',
     image: isDarkMode
       ? 'object-center opacity-[0.62] brightness-[0.72] saturate-[0.88]'
-      : 'object-center opacity-[0.16] brightness-110 saturate-[0.82]',
+      : 'object-center opacity-[0.055] brightness-125 saturate-50',
     gradient: isDarkMode
       ? 'bg-gradient-to-r from-[#050608]/90 via-[#050608]/72 to-[#050608]/42'
-      : 'bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9]',
-    accentBand: isDarkMode ? 'bg-accent/22' : 'bg-white/68',
+      : 'bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95]',
+    accentBand: isDarkMode ? 'bg-accent/22' : 'bg-white/92',
     titleLead: isDarkMode ? 'text-white' : 'text-ink',
-    body: isDarkMode ? 'text-white/75' : 'text-muted',
+    body: isDarkMode ? 'text-white/75' : 'text-ink/72',
   }), [isDarkMode]);
 
   const updateField = (field: keyof LogisticsFormState, value: string) => {
@@ -167,7 +167,7 @@ export function Logistics() {
       />
 
       <section className={`relative overflow-hidden px-4 py-24 transition-colors md:px-8 ${heroClasses.shell}`}>
-        <div className="absolute inset-0 bg-[#111827]">
+        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Forestry equipment transport route"

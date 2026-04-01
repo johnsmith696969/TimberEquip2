@@ -439,13 +439,13 @@ export function AdPrograms() {
       />
       {/* Hero Section */}
       <section className="relative py-24 px-4 md:px-8 border-b border-line overflow-hidden">
-        <div className="absolute inset-0 bg-[#111827]">
+        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Winter logging road through snow-covered forest"
-            className="w-full h-full object-cover object-center opacity-[0.16] brightness-110 saturate-[0.82] dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
+            className="w-full h-full object-cover object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
+          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
         </div>
         
         <div className="max-w-7xl mx-auto relative z-10">
@@ -459,7 +459,7 @@ export function AdPrograms() {
               SELLER TOOLS <br />
               <span className="text-accent">AND VISIBILITY</span>
             </h1>
-            <p className="text-lg text-muted leading-relaxed mb-10 max-w-2xl">
+            <p className="text-lg text-ink/72 dark:text-muted leading-relaxed mb-10 max-w-2xl">
               Choose your Forestry Equipment Sales seller plan, complete the on-site enrollment form,
               agree to the seller legal terms, and continue into branded Stripe checkout.
             </p>

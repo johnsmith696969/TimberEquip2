@@ -44,9 +44,9 @@ export function Financing() {
   }, [user?.displayName, user?.email, user?.phoneNumber]);
 
   const heroClasses = useMemo(() => ({
-    image: 'object-center opacity-[0.16] brightness-110 saturate-[0.82] dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]',
-    gradient: 'bg-gradient-to-r from-bg/[0.995] via-bg/[0.982] to-bg/[0.9] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42',
-    accentBand: 'bg-white/68 dark:bg-accent/22',
+    image: 'object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]',
+    gradient: 'bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42',
+    accentBand: 'bg-white/92 dark:bg-accent/22',
   }), []);
 
   const handleNext = () => setStep(prev => prev + 1);
@@ -106,7 +106,7 @@ export function Financing() {
       />
       {/* Header */}
       <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[#111827]">
+        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
           <img
             src="/page-photos/ponsse-buffalo-loading.jpg"
             alt="Ponsse Buffalo loading timber"
@@ -122,9 +122,9 @@ export function Financing() {
           </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
             Institutional <br />
-            <span className="text-muted">Financing</span>
+            <span className="text-ink/72 dark:text-muted">Financing</span>
           </h1>
-          <p className="text-muted font-medium max-w-2xl leading-relaxed">
+          <p className="text-ink/72 dark:text-muted font-medium max-w-2xl leading-relaxed">
             Apply for equipment financing. Submit your details and get a credit decision, typically within one business day.
           </p>
         </div>
