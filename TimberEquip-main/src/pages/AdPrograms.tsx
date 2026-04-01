@@ -445,7 +445,7 @@ export function AdPrograms() {
             alt="Winter logging road through snow-covered forest"
             className="w-full h-full object-cover opacity-50"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/90 via-bg/70 to-bg/40 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/97 via-bg/90 to-bg/70 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10" />
         </div>
         
         <div className="max-w-7xl mx-auto relative z-10">

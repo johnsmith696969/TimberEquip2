@@ -673,3 +673,30 @@ export interface BrandAsset {
   uploadedBy: string;
   tags?: string[];
 }
+
+export type DealerWidgetCardStyle = 'fes-native' | 'grid' | 'list' | 'compact';
+
+export interface DealerWidgetConfig {
+  cardStyle: DealerWidgetCardStyle;
+  accentColor: string;
+  fontFamily: string;
+  darkMode: boolean;
+  showInquiry: boolean;
+  showCall: boolean;
+  showDetails: boolean;
+  pageSize: number;
+  customCss?: string;
+  updatedAt?: string;
+}
+
+export interface WebhookSubscription {
+  id: string;
+  dealerUid: string;
+  callbackUrl: string;
+  secret?: string;
+  events: ('listing.created' | 'listing.updated' | 'listing.sold' | 'listing.deleted')[];
+  active: boolean;
+  createdAt: string;
+  lastDeliveryAt?: string | null;
+  failureCount: number;
+}

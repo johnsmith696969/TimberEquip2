@@ -113,6 +113,29 @@ export function DealerOS() {
   const [leadActionLoading, setLeadActionLoading] = useState(false);
   const [leadActionError, setLeadActionError] = useState('');
   const [leadActionSuccess, setLeadActionSuccess] = useState('');
+
+  /* Widget Builder state */
+  const [widgetCardStyle, setWidgetCardStyle] = useState<'fes-native' | 'grid' | 'list' | 'compact'>('fes-native');
+  const [widgetAccentColor, setWidgetAccentColor] = useState('#16A34A');
+  const [widgetFontFamily, setWidgetFontFamily] = useState('');
+  const [widgetDarkMode, setWidgetDarkMode] = useState(false);
+  const [widgetShowInquiry, setWidgetShowInquiry] = useState(true);
+  const [widgetShowCall, setWidgetShowCall] = useState(true);
+  const [widgetShowDetails, setWidgetShowDetails] = useState(true);
+  const [widgetPageSize, setWidgetPageSize] = useState(12);
+  const [widgetSaving, setWidgetSaving] = useState(false);
+  const [widgetNotice, setWidgetNotice] = useState('');
+  const [widgetError, setWidgetError] = useState('');
+  const [widgetConfigLoaded, setWidgetConfigLoaded] = useState(false);
+
+  /* Webhook state */
+  const [webhooks, setWebhooks] = useState<Array<{ id: string; callbackUrl: string; events: string[]; active: boolean; secretMasked: string; failureCount: number }>>([]);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookEvents, setWebhookEvents] = useState<string[]>(['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted']);
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookNotice, setWebhookNotice] = useState('');
+  const [webhookError, setWebhookError] = useState('');
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [leadNoteDraft, setLeadNoteDraft] = useState('');
   const loadDealerOsData = async () => {
     if (!ownerUid) {
@@ -138,6 +161,21 @@ export function DealerOS() {
       setSeatSummary({ seatLimit: managedSeats.seatLimit, seatCount: managedSeats.seatCount });
       setProfiles(savedProfiles);
       setStorefrontProfile(sellerProfile || null);
+
+      /* Load widget config + webhooks in background */
+      dealerFeedService.getWidgetConfig(ownerUid).then((cfg) => {
+        if (cfg.cardStyle) setWidgetCardStyle(cfg.cardStyle as typeof widgetCardStyle);
+        if (cfg.accentColor) setWidgetAccentColor(String(cfg.accentColor));
+        if (cfg.fontFamily) setWidgetFontFamily(String(cfg.fontFamily));
+        if (typeof cfg.darkMode === 'boolean') setWidgetDarkMode(cfg.darkMode);
+        if (typeof cfg.showInquiry === 'boolean') setWidgetShowInquiry(cfg.showInquiry);
+        if (typeof cfg.showCall === 'boolean') setWidgetShowCall(cfg.showCall);
+        if (typeof cfg.showDetails === 'boolean') setWidgetShowDetails(cfg.showDetails);
+        if (cfg.pageSize) setWidgetPageSize(Number(cfg.pageSize));
+        setWidgetConfigLoaded(true);
+      }).catch(() => setWidgetConfigLoaded(true));
+
+      dealerFeedService.getWebhooks(ownerUid).then((wh) => setWebhooks(wh)).catch(() => {});
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'DealerOS could not load yet.');
     } finally {
@@ -1343,6 +1381,346 @@ export function DealerOS() {
             />
           </div>
         </div>
+      </section>
+
+      {/* ── Widget Builder ──────────────────────────────────── */}
+      <section className="rounded-sm border border-line bg-surface p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Widget Builder</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              Customize and embed an interactive inventory widget on any website. Supports four card styles including FES Native, with optional inquiry forms, call buttons, and detail lightbox.
+            </p>
+          </div>
+        </div>
+
+        {widgetNotice ? <div className="mt-4 rounded-sm border border-data/30 bg-data/10 p-3 text-sm font-bold text-data">{widgetNotice}</div> : null}
+        {widgetError ? <div className="mt-4 rounded-sm border border-accent/30 bg-accent/10 p-3 text-sm font-bold text-accent">{widgetError}</div> : null}
+
+        <div className="mt-5 grid gap-6 lg:grid-cols-2">
+          {/* Customizer */}
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Card Style</label>
+              <div className="flex flex-wrap gap-2">
+                {(['fes-native', 'grid', 'list', 'compact'] as const).map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    onClick={() => setWidgetCardStyle(style)}
+                    className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-colors ${widgetCardStyle === style ? 'border-ink bg-bg text-ink' : 'border-line text-muted hover:border-ink/30'}`}
+                  >
+                    {style === 'fes-native' ? 'FES Native' : style}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Accent Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={widgetAccentColor}
+                    onChange={(e) => setWidgetAccentColor(e.target.value)}
+                    className="h-8 w-10 cursor-pointer border border-line rounded-sm bg-bg"
+                  />
+                  <input
+                    type="text"
+                    value={widgetAccentColor}
+                    onChange={(e) => setWidgetAccentColor(e.target.value)}
+                    className="input-industrial w-full text-[11px] font-mono"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Font Family</label>
+                <select
+                  value={widgetFontFamily}
+                  onChange={(e) => setWidgetFontFamily(e.target.value)}
+                  className="input-industrial w-full text-[11px]"
+                >
+                  <option value="">System Default</option>
+                  <option value="Inter, sans-serif">Inter</option>
+                  <option value="'Roboto', sans-serif">Roboto</option>
+                  <option value="'Open Sans', sans-serif">Open Sans</option>
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="'Courier New', monospace">Courier New</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Page Size</label>
+                <input
+                  type="range"
+                  min={3}
+                  max={24}
+                  step={3}
+                  value={widgetPageSize}
+                  onChange={(e) => setWidgetPageSize(Number(e.target.value))}
+                  className="w-full accent-accent"
+                />
+                <div className="text-[10px] font-bold text-muted text-center">{widgetPageSize} per page</div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetDarkMode} onChange={(e) => setWidgetDarkMode(e.target.checked)} className="accent-accent" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Dark Mode</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowInquiry} onChange={(e) => setWidgetShowInquiry(e.target.checked)} className="accent-accent" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Inquiry</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowCall} onChange={(e) => setWidgetShowCall(e.target.checked)} className="accent-accent" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Call</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowDetails} onChange={(e) => setWidgetShowDetails(e.target.checked)} className="accent-accent" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Details</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3 pt-2">
+              <button
+                type="button"
+                disabled={widgetSaving || !publicDealerId}
+                onClick={async () => {
+                  if (!ownerUid) return;
+                  setWidgetSaving(true);
+                  setWidgetError('');
+                  setWidgetNotice('');
+                  try {
+                    await dealerFeedService.saveWidgetConfig(ownerUid, {
+                      cardStyle: widgetCardStyle,
+                      accentColor: widgetAccentColor,
+                      fontFamily: widgetFontFamily,
+                      darkMode: widgetDarkMode,
+                      showInquiry: widgetShowInquiry,
+                      showCall: widgetShowCall,
+                      showDetails: widgetShowDetails,
+                      pageSize: widgetPageSize,
+                    });
+                    setWidgetNotice('Widget configuration saved.');
+                  } catch (err) {
+                    setWidgetError(err instanceof Error ? err.message : 'Failed to save widget configuration.');
+                  } finally {
+                    setWidgetSaving(false);
+                  }
+                }}
+                className="btn-industrial btn-accent px-5 py-2.5 text-[10px]"
+              >
+                {widgetSaving ? 'Saving...' : 'Save Config'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const snippet = publicDealerId
+                    ? `<fes-dealer-inventory data-dealer="${publicDealerId}"${widgetCardStyle !== 'fes-native' ? ` data-card-style="${widgetCardStyle}"` : ''}${widgetAccentColor !== '#16A34A' ? ` data-accent-color="${widgetAccentColor}"` : ''}${widgetFontFamily ? ` data-font-family="${widgetFontFamily}"` : ''}${widgetDarkMode ? ' data-dark-mode="true"' : ''}${!widgetShowInquiry ? ' data-show-inquiry="false"' : ''}${!widgetShowCall ? ' data-show-call="false"' : ''}${!widgetShowDetails ? ' data-show-details="false"' : ''}${widgetPageSize !== 12 ? ` data-page-size="${widgetPageSize}"` : ''}></fes-dealer-inventory>\n<script src="${appOrigin}/api/public/dealer-widget.js"></script>`
+                    : '';
+                  if (!snippet) {
+                    setWidgetError('Storefront must be saved before generating widget snippet.');
+                    return;
+                  }
+                  void navigator.clipboard.writeText(snippet).then(
+                    () => { setWidgetNotice('Widget snippet copied to clipboard.'); setWidgetError(''); },
+                    () => { setWidgetError('Failed to copy snippet.'); }
+                  );
+                }}
+                className="btn-industrial px-5 py-2.5 text-[10px]"
+              >
+                <Copy size={12} className="mr-1 inline" /> Copy Widget Snippet
+              </button>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-2">Live Preview</label>
+            <div className="rounded-sm border border-line overflow-hidden" style={{ minHeight: 360 }}>
+              {publicDealerId ? (
+                <iframe
+                  key={`${widgetCardStyle}-${widgetAccentColor}-${widgetDarkMode}-${widgetPageSize}-${widgetShowInquiry}-${widgetShowCall}-${widgetShowDetails}`}
+                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;}</style></head><body><fes-dealer-inventory data-dealer="${publicDealerId}" data-card-style="${widgetCardStyle}" data-accent-color="${widgetAccentColor}"${widgetFontFamily ? ` data-font-family="${widgetFontFamily}"` : ''} data-dark-mode="${widgetDarkMode}" data-show-inquiry="${widgetShowInquiry}" data-show-call="${widgetShowCall}" data-show-details="${widgetShowDetails}" data-page-size="${widgetPageSize}"></fes-dealer-inventory><script src="${appOrigin}/api/public/dealer-widget.js"><\/script></body></html>`}
+                  className="w-full border-0"
+                  style={{ minHeight: 360 }}
+                  title="Widget Preview"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full p-8 text-center">
+                  <p className="text-sm font-bold text-muted">Save your storefront to preview the widget.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Widget embed snippet display */}
+        {publicDealerId ? (
+          <div className="mt-5 rounded-sm border border-line bg-bg p-4">
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted mb-2">Widget Embed Code</div>
+            <textarea
+              readOnly
+              rows={3}
+              value={`<fes-dealer-inventory data-dealer="${publicDealerId}"${widgetCardStyle !== 'fes-native' ? ` data-card-style="${widgetCardStyle}"` : ''}${widgetAccentColor !== '#16A34A' ? ` data-accent-color="${widgetAccentColor}"` : ''}${widgetDarkMode ? ' data-dark-mode="true"' : ''}></fes-dealer-inventory>\n<script src="${appOrigin}/api/public/dealer-widget.js"></script>`}
+              className="input-industrial w-full resize-none font-mono text-[11px]"
+            />
+          </div>
+        ) : null}
+      </section>
+
+      {/* ── Webhook Management ──────────────────────────────── */}
+      <section className="rounded-sm border border-line bg-surface p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Webhook Notifications</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              Receive real-time HMAC-signed HTTP POST notifications whenever listings are created, updated, sold, or deleted. Integrate with CRM, ERP, or custom systems.
+            </p>
+          </div>
+        </div>
+
+        {webhookNotice ? <div className="mt-4 rounded-sm border border-data/30 bg-data/10 p-3 text-sm font-bold text-data">{webhookNotice}</div> : null}
+        {webhookError ? <div className="mt-4 rounded-sm border border-accent/30 bg-accent/10 p-3 text-sm font-bold text-accent">{webhookError}</div> : null}
+
+        {/* Add webhook form */}
+        <div className="mt-5 rounded-sm border border-line bg-bg p-4">
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted mb-3">Add Webhook Subscription</div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <div className="flex-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted block mb-1">Callback URL</label>
+              <input
+                type="url"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://your-server.com/webhooks/fes"
+                className="input-industrial w-full text-[11px]"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={webhookSaving || !webhookUrl.trim()}
+              onClick={async () => {
+                if (!ownerUid || !webhookUrl.trim()) return;
+                setWebhookSaving(true);
+                setWebhookError('');
+                setWebhookNotice('');
+                try {
+                  const result = await dealerFeedService.createWebhook({
+                    sellerUid: ownerUid,
+                    callbackUrl: webhookUrl.trim(),
+                    events: webhookEvents,
+                  });
+                  setWebhookNotice(`Webhook created. Signing secret: ${result.secret} — copy it now, it won't be shown again.`);
+                  setWebhookUrl('');
+                  const fresh = await dealerFeedService.getWebhooks(ownerUid);
+                  setWebhooks(fresh);
+                } catch (err) {
+                  setWebhookError(err instanceof Error ? err.message : 'Failed to create webhook.');
+                } finally {
+                  setWebhookSaving(false);
+                }
+              }}
+              className="btn-industrial btn-accent px-5 py-2.5 text-[10px] shrink-0"
+            >
+              {webhookSaving ? 'Creating...' : 'Add Webhook'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'].map((evt) => (
+              <label key={evt} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={webhookEvents.includes(evt)}
+                  onChange={(e) => {
+                    setWebhookEvents((prev) =>
+                      e.target.checked ? [...prev, evt] : prev.filter((x) => x !== evt)
+                    );
+                  }}
+                  className="accent-accent"
+                />
+                <span className="text-[10px] font-bold text-muted">{evt}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Existing webhooks */}
+        {webhooks.length > 0 ? (
+          <div className="mt-5 overflow-hidden rounded-sm border border-line">
+            <div className="divide-y divide-line bg-bg">
+              {webhooks.map((wh) => (
+                <div key={wh.id} className="flex flex-col gap-2 px-4 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex h-2 w-2 rounded-full ${wh.active ? 'bg-data' : 'bg-muted'}`} />
+                      <span className="text-sm font-bold text-ink truncate">{wh.callbackUrl}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] font-bold text-muted">
+                      Events: {wh.events.join(', ')} &middot; Secret: {revealedSecrets[wh.id] || wh.secretMasked}
+                      {wh.failureCount > 0 ? ` · ${wh.failureCount} failures` : ''}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const secret = await dealerFeedService.revealWebhookSecret(wh.id);
+                          setRevealedSecrets((prev) => ({ ...prev, [wh.id]: secret }));
+                        } catch { /* ignore */ }
+                      }}
+                      className="btn-industrial px-2 py-1 text-[10px]"
+                    >
+                      <Eye size={12} className="mr-1 inline" /> Reveal Secret
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setWebhookNotice('');
+                        setWebhookError('');
+                        try {
+                          const result = await dealerFeedService.testWebhook(wh.id);
+                          setWebhookNotice(result.ok ? `Test delivery succeeded (HTTP ${result.statusCode}).` : `Test delivery failed: ${result.error}`);
+                        } catch (err) {
+                          setWebhookError(err instanceof Error ? err.message : 'Test delivery failed.');
+                        }
+                      }}
+                      className="btn-industrial px-2 py-1 text-[10px]"
+                    >
+                      <RefreshCw size={12} className="mr-1 inline" /> Test
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setWebhookError('');
+                        setWebhookNotice('');
+                        try {
+                          await dealerFeedService.deleteWebhook(wh.id);
+                          setWebhooks((prev) => prev.filter((w) => w.id !== wh.id));
+                          setWebhookNotice('Webhook deleted.');
+                        } catch (err) {
+                          setWebhookError(err instanceof Error ? err.message : 'Failed to delete webhook.');
+                        }
+                      }}
+                      className="btn-industrial px-2 py-1 text-[10px] text-accent"
+                    >
+                      <Trash2 size={12} className="mr-1 inline" /> Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-sm border border-dashed border-line bg-bg p-8 text-center">
+            <p className="text-sm font-bold text-muted">No webhook subscriptions configured yet.</p>
+          </div>
+        )}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">

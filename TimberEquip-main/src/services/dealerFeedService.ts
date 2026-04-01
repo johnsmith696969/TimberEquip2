@@ -578,4 +578,95 @@ export const dealerFeedService = {
       throw error;
     }
   },
+
+  /* ── Widget Config ──────────────────────────────────────── */
+  async getWidgetConfig(dealerId: string): Promise<Record<string, unknown>> {
+    const normalizedDealerId = String(dealerId || '').trim();
+    if (!normalizedDealerId) return {};
+    return requestDealerFeedApi<{ config: Record<string, unknown> }>(
+      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedDealerId)}/widget-config`
+    ).then((res) => res.config || {});
+  },
+
+  async saveWidgetConfig(
+    dealerId: string,
+    config: {
+      cardStyle?: string;
+      accentColor?: string;
+      fontFamily?: string;
+      darkMode?: boolean;
+      showInquiry?: boolean;
+      showCall?: boolean;
+      showDetails?: boolean;
+      pageSize?: number;
+      customCss?: string;
+    }
+  ): Promise<Record<string, unknown>> {
+    const normalizedDealerId = String(dealerId || '').trim();
+    if (!normalizedDealerId) throw new Error('Dealer ID is required.');
+    return requestDealerFeedApi<{ config: Record<string, unknown> }>(
+      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedDealerId)}/widget-config`,
+      { method: 'PATCH', body: config as unknown as BodyInit }
+    ).then((res) => res.config || {});
+  },
+
+  /* ── Webhook Subscriptions ──────────────────────────────── */
+  async getWebhooks(sellerUid: string): Promise<Array<{
+    id: string;
+    callbackUrl: string;
+    events: string[];
+    active: boolean;
+    secretMasked: string;
+    failureCount: number;
+    lastDeliveryAt?: unknown;
+    createdAt?: unknown;
+  }>> {
+    const normalizedUid = String(sellerUid || '').trim();
+    if (!normalizedUid) return [];
+    return requestDealerFeedApi<{ webhooks: Array<Record<string, unknown>> }>(
+      `/api/admin/dealer-feeds/webhooks?sellerUid=${encodeURIComponent(normalizedUid)}`
+    ).then((res) =>
+      (res.webhooks || []).map((w) => ({
+        id: String(w.id || ''),
+        callbackUrl: String(w.callbackUrl || ''),
+        events: Array.isArray(w.events) ? w.events.map((e: unknown) => String(e)) : [],
+        active: Boolean(w.active),
+        secretMasked: String(w.secretMasked || ''),
+        failureCount: Number(w.failureCount || 0),
+        lastDeliveryAt: w.lastDeliveryAt,
+        createdAt: w.createdAt,
+      }))
+    );
+  },
+
+  async createWebhook(params: {
+    sellerUid: string;
+    callbackUrl: string;
+    events?: string[];
+  }): Promise<{ id: string; secret: string; callbackUrl: string; events: string[]; active: boolean }> {
+    return requestDealerFeedApi<{ id: string; secret: string; callbackUrl: string; events: string[]; active: boolean }>(
+      '/api/admin/dealer-feeds/webhooks',
+      { method: 'POST', body: params as unknown as BodyInit }
+    );
+  },
+
+  async deleteWebhook(webhookId: string): Promise<void> {
+    await requestDealerFeedApi<{ ok: boolean }>(
+      `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}`,
+      { method: 'DELETE' }
+    );
+  },
+
+  async testWebhook(webhookId: string): Promise<{ ok: boolean; statusCode?: number; error?: string }> {
+    return requestDealerFeedApi<{ ok: boolean; statusCode?: number; error?: string }>(
+      `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/test`,
+      { method: 'POST' }
+    );
+  },
+
+  async revealWebhookSecret(webhookId: string): Promise<string> {
+    return requestDealerFeedApi<{ secret: string }>(
+      `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/secret`
+    ).then((res) => res.secret || '');
+  },
 };

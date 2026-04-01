@@ -32,6 +32,7 @@ const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
+const { renderDealerWidgetScript } = require('./dealer-widget.js');
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
 const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -2852,6 +2853,85 @@ async function getOptionalEmailUserContext(userUid, cache = new Map()) {
   return context;
 }
 
+/**
+ * Deliver webhook notifications to all active subscriptions for a dealer.
+ * Fire-and-forget: failures are logged but never throw.
+ */
+async function deliverDealerWebhooks(sellerUid, eventType, listingId, listingData) {
+  if (!sellerUid) return;
+  try {
+    const snap = await getDb()
+      .collection('dealerWebhookSubscriptions')
+      .where('dealerUid', '==', sellerUid)
+      .where('active', '==', true)
+      .get();
+    if (snap.empty) return;
+
+    const payload = JSON.stringify({
+      event: eventType,
+      listingId,
+      listing: {
+        title: listingData.title || '',
+        price: listingData.price || 0,
+        status: listingData.status || 'active',
+        make: listingData.make || listingData.manufacturer || '',
+        model: listingData.model || '',
+        year: listingData.year || null,
+        condition: listingData.condition || '',
+        location: listingData.location || '',
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    const deliveries = [];
+    snap.forEach((doc) => {
+      const sub = doc.data() || {};
+      if (!sub.callbackUrl) return;
+      if (Array.isArray(sub.events) && sub.events.length > 0 && !sub.events.includes(eventType)) return;
+      const signature = createHmac('sha256', sub.secret || '').update(payload).digest('hex');
+      deliveries.push(
+        fetch(sub.callbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-FES-Signature': `sha256=${signature}`,
+            'X-FES-Event': eventType,
+          },
+          body: payload,
+          signal: AbortSignal.timeout(10000),
+        })
+          .then(async (resp) => {
+            if (resp.ok) {
+              await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update({
+                lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
+                failureCount: 0,
+              });
+            } else {
+              const newFailCount = (sub.failureCount || 0) + 1;
+              const updateData = {
+                lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
+                failureCount: newFailCount,
+              };
+              if (newFailCount >= 10) updateData.active = false;
+              await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update(updateData);
+              logger.warn('Webhook delivery failed', { subId: doc.id, status: resp.status, failureCount: newFailCount });
+            }
+          })
+          .catch(async (err) => {
+            const newFailCount = (sub.failureCount || 0) + 1;
+            const updateData = { failureCount: newFailCount };
+            if (newFailCount >= 10) updateData.active = false;
+            await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update(updateData);
+            logger.warn('Webhook delivery error', { subId: doc.id, error: err.message, failureCount: newFailCount });
+          })
+      );
+    });
+    await Promise.allSettled(deliveries);
+  } catch (error) {
+    logger.warn('deliverDealerWebhooks failed', { sellerUid, eventType, error: error.message });
+  }
+}
+
 async function notifyMatchingSavedSearches(listingId, listing) {
   const listingUrl = buildCanonicalListingUrl(listingId, listing);
   const listingPrice = formatListingMoney(listing);
@@ -3372,6 +3452,11 @@ exports.onListingStatusChanged = onDocumentUpdated(
 
     if (previousStatus !== 'sold' && newStatus === 'sold') {
       await notifySavedSearchSoldStatus(event.params.listingId, after);
+      void deliverDealerWebhooks(after.sellerUid || after.sellerId, 'listing.sold', event.params.listingId, after);
+    }
+
+    if (previousStatus !== 'deleted' && newStatus === 'deleted') {
+      void deliverDealerWebhooks(after.sellerUid || after.sellerId, 'listing.deleted', event.params.listingId, after);
     }
 
     if (
@@ -3384,6 +3469,11 @@ exports.onListingStatusChanged = onDocumentUpdated(
       afterPrice < beforePrice
     ) {
       await notifySavedSearchPriceDrop(event.params.listingId, before, after);
+    }
+
+    /* Deliver webhook for any approved listing update */
+    if (newApproval === 'approved' && newStatus !== 'sold' && newStatus !== 'deleted') {
+      void deliverDealerWebhooks(after.sellerUid || after.sellerId, 'listing.updated', event.params.listingId, after);
     }
 
     if (prevApproval === newApproval) return;
@@ -3450,6 +3540,7 @@ exports.onListingCreated = onDocumentCreated(
 
     if (listing.approvalStatus === 'approved') {
       await notifyMatchingSavedSearches(event.params.listingId, listing);
+      void deliverDealerWebhooks(sellerUid, 'listing.created', event.params.listingId, listing);
 
       if (sellerEmail) {
         try {
@@ -9510,14 +9601,58 @@ exports.apiProxy = onRequest(
 
       const publicDealerFeedMatch = path.match(/^\/public\/dealers\/([^/]+)\/feed\.json$/i);
       if (req.method === 'GET' && publicDealerFeedMatch) {
-        const dealer = await resolvePublicDealer(decodeURIComponent(publicDealerFeedMatch[1] || ''));
+        const dealerIdentity = decodeURIComponent(publicDealerFeedMatch[1] || '');
+
+        // Private feed: check X-Dealer-Feed-Key if privateFeedEnabled
+        const dealer = await resolvePublicDealer(dealerIdentity);
+        if (dealer.privateFeedEnabled) {
+          const feedKey = req.headers['x-dealer-feed-key'] || '';
+          if (!feedKey || feedKey !== dealer.privateFeedApiKey) {
+            res.set('Access-Control-Allow-Origin', '*');
+            return res.status(401).json({ error: 'This feed requires authentication. Include X-Dealer-Feed-Key header.' });
+          }
+        }
+
         const limitCount = Math.max(1, Math.min(Number(req.query.limit || 24), 100));
         const featuredOnly = ['1', 'true', 'yes'].includes(String(req.query.featuredOnly || '').trim().toLowerCase());
         const listings = await getPublicDealerListings(dealer.sellerUid, { limitCount, featuredOnly });
         const payload = listings.map(({ id, data }) => buildPublicDealerListingPayload(id, data, dealer));
 
+        // Compute updatedAt from the most recent listing
+        const latestUpdate = listings.reduce((latest, { data }) => {
+          const ts = data.updatedAt || data.createdAt;
+          const d = ts && typeof ts.toDate === 'function' ? ts.toDate() : ts ? new Date(ts) : null;
+          return d && (!latest || d > latest) ? d : latest;
+        }, null);
+        const updatedAt = latestUpdate ? latestUpdate.toISOString() : new Date().toISOString();
+
+        // ETag / conditional request support
+        const crypto = require('crypto');
+        const etagSource = `${dealer.sellerUid}:${payload.length}:${updatedAt}:${limitCount}:${featuredOnly}`;
+        const etag = `"${crypto.createHash('md5').update(etagSource).digest('hex')}"`;
+
+        if (req.headers['if-none-match'] === etag) {
+          res.set('Access-Control-Allow-Origin', '*');
+          res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+          res.set('ETag', etag);
+          return res.status(304).end();
+        }
+
+        const ifModifiedSince = req.headers['if-modified-since'];
+        if (ifModifiedSince && latestUpdate) {
+          const clientDate = new Date(ifModifiedSince);
+          if (!isNaN(clientDate.getTime()) && latestUpdate <= clientDate) {
+            res.set('Access-Control-Allow-Origin', '*');
+            res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+            res.set('ETag', etag);
+            return res.status(304).end();
+          }
+        }
+
         res.set('Access-Control-Allow-Origin', '*');
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+        res.set('ETag', etag);
+        res.set('Last-Modified', updatedAt);
         return res.status(200).json({
           dealer: {
             id: dealer.sellerUid,
@@ -9529,9 +9664,11 @@ exports.apiProxy = onRequest(
             phone: dealer.phone,
             email: dealer.email,
             location: dealer.location,
+            logo: dealer.logo || '',
           },
           count: payload.length,
           featuredOnly,
+          updatedAt,
           feedUrl: `${APP_URL}/api/public/dealers/${encodeURIComponent(dealer.publicId)}/feed.json`,
           listings: payload,
         });
@@ -9546,16 +9683,121 @@ exports.apiProxy = onRequest(
         const payload = listings.map(({ id, data }) => buildPublicDealerListingPayload(id, data, dealer));
         const feedUrl = `${APP_URL}/api/public/dealers/${encodeURIComponent(dealer.publicId)}/feed.json${featuredOnly ? '?featuredOnly=true' : ''}`;
 
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
         res.set('Content-Type', 'text/html; charset=utf-8');
         return res.status(200).send(renderDealerEmbedHtml({ dealer, listings: payload, feedUrl, featuredOnly }));
       }
 
       if (req.method === 'GET' && path === '/public/dealer-embed.js') {
         res.set('Access-Control-Allow-Origin', '*');
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
         res.set('Content-Type', 'application/javascript; charset=utf-8');
         return res.status(200).send(`(function(){var script=document.currentScript;var dealer=script&&script.dataset?script.dataset.dealer:'';var targetId=script&&script.dataset?script.dataset.target:'';var limit=script&&script.dataset&&script.dataset.limit?script.dataset.limit:'12';var featuredOnly=script&&script.dataset&&script.dataset.featuredOnly?script.dataset.featuredOnly:'false';if(!dealer){console.error('Forestry Equipment Sales dealer embed requires data-dealer.');return;}var target=targetId?document.getElementById(targetId):null;if(!target){target=document.createElement('div');if(script&&script.parentNode){script.parentNode.insertBefore(target,script.nextSibling);}else{document.body.appendChild(target);}}var iframe=document.createElement('iframe');var params=new URLSearchParams();if(limit)params.set('limit',limit);if(featuredOnly)params.set('featuredOnly',featuredOnly);iframe.src='${APP_URL}/api/public/dealers/'+encodeURIComponent(dealer)+'/embed?'+params.toString();iframe.loading='lazy';iframe.style.width='100%';iframe.style.minHeight=(script&&script.dataset&&script.dataset.height?script.dataset.height:'980')+'px';iframe.style.border='0';iframe.style.display='block';iframe.setAttribute('referrerpolicy','strict-origin-when-cross-origin');target.innerHTML='';target.appendChild(iframe);})();`);
+      }
+
+      /* ── Dealer Widget JS (Web Component) ──────────────────────── */
+      if (req.method === 'GET' && path === '/public/dealer-widget.js') {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+        res.set('Content-Type', 'application/javascript; charset=utf-8');
+        return res.status(200).send(renderDealerWidgetScript(APP_URL));
+      }
+
+      /* ── Dealer Widget Config (public, read-only) ─────────────── */
+      const widgetConfigMatch = path.match(/^\/public\/dealers\/([^/]+)\/widget-config$/i);
+      if (req.method === 'GET' && widgetConfigMatch) {
+        try {
+          const dealer = await resolvePublicDealer(decodeURIComponent(widgetConfigMatch[1] || ''));
+          const configDoc = await getDb().collection('dealerWidgetConfigs').doc(dealer.sellerUid).get();
+          const config = configDoc.exists ? (configDoc.data() || {}) : {};
+          res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+          res.set('Access-Control-Allow-Origin', '*');
+          return res.status(200).json({
+            config: {
+              cardStyle: config.cardStyle || 'fes-native',
+              accentColor: config.accentColor || '#16A34A',
+              fontFamily: config.fontFamily || '',
+              darkMode: Boolean(config.darkMode),
+              showInquiry: config.showInquiry !== false,
+              showCall: config.showCall !== false,
+              showDetails: config.showDetails !== false,
+              pageSize: Number(config.pageSize) || 12,
+              dealerPhone: String(dealer.phone || ''),
+              dealerName: String(dealer.storefrontName || dealer.name || ''),
+            },
+          });
+        } catch (error) {
+          if (error && error.message && error.message.includes('not found')) {
+            return res.status(404).json({ error: 'Dealer not found.' });
+          }
+          throw error;
+        }
+      }
+
+      /* ── Public Dealer Inquiry (unauthenticated) ──────────────── */
+      const publicInquiryMatch = path.match(/^\/public\/dealers\/([^/]+)\/inquiry$/i);
+      if (req.method === 'POST' && publicInquiryMatch) {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        if (req.method === 'OPTIONS') {
+          return res.status(204).send('');
+        }
+
+        const dealer = await resolvePublicDealer(decodeURIComponent(publicInquiryMatch[1] || ''));
+        const body = req.body || {};
+        const buyerName = String(body.name || '').trim();
+        const buyerEmail = String(body.email || '').trim().toLowerCase();
+        const buyerPhone = String(body.phone || '').trim();
+        const message = String(body.message || '').trim();
+        const listingId = String(body.listingId || '').trim();
+
+        if (!buyerName || !buyerEmail) {
+          return res.status(400).json({ error: 'Name and email are required.' });
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+          return res.status(400).json({ error: 'Invalid email address.' });
+        }
+
+        const inquiryDoc = {
+          sellerUid: dealer.sellerUid,
+          listingId: listingId || null,
+          buyerName,
+          buyerEmail,
+          buyerPhone: buyerPhone || null,
+          message: message || 'Submitted via dealer widget embed.',
+          status: 'New',
+          source: 'dealer_widget',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await getDb().collection('inquiries').add(inquiryDoc);
+
+        /* Send email notification to dealer */
+        try {
+          const dealerEmail = String(dealer.email || '').trim().toLowerCase();
+          if (dealerEmail) {
+            await sgMail.send({
+              to: dealerEmail,
+              from: { email: 'noreply@forestryequipmentsales.com', name: 'Forestry Equipment Sales' },
+              subject: `New Inquiry from ${buyerName}${listingId ? ` — Listing ${listingId}` : ''}`,
+              html: `<p><strong>${buyerName}</strong> (${buyerEmail}${buyerPhone ? `, ${buyerPhone}` : ''}) submitted an inquiry via your dealer widget embed.</p>${message ? `<p>${message.replace(/\n/g, '<br>')}</p>` : ''}<p><a href="${APP_URL}/dealer-os">Open DealerOS</a></p>`,
+            });
+          }
+        } catch (emailError) {
+          logger.warn('Failed to send widget inquiry notification email', { error: emailError.message });
+        }
+
+        return res.status(200).json({ success: true });
+      }
+
+      /* ── CORS preflight for public dealer endpoints ─────────── */
+      if (req.method === 'OPTIONS' && path.match(/^\/public\/dealers\/[^/]+\/(inquiry|widget-config)$/i)) {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        res.set('Access-Control-Max-Age', '86400');
+        return res.status(204).send('');
       }
 
       if (req.method === 'POST' && (path === '/billing/webhook' || path === '/webhooks/stripe')) {
@@ -12641,6 +12883,131 @@ exports.apiProxy = onRequest(
             responseAuthRecord
           ),
         });
+      }
+
+      /* ── Widget Config CRUD (admin) ────────────────────────── */
+      const widgetConfigAdminMatch = path.match(/^\/admin\/dealer-feeds\/([^/]+)\/widget-config$/i);
+      if (widgetConfigAdminMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const targetDealerId = decodeURIComponent(widgetConfigAdminMatch[1] || '');
+        if (!canAccessDealerFeedSellerUid(actor, targetDealerId)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (req.method === 'GET') {
+          const doc = await getDb().collection('dealerWidgetConfigs').doc(targetDealerId).get();
+          return res.status(200).json({ config: doc.exists ? doc.data() : {} });
+        }
+
+        if (req.method === 'PATCH' || req.method === 'PUT') {
+          const body = req.body || {};
+          const update = {};
+          if (body.cardStyle !== undefined) update.cardStyle = String(body.cardStyle || 'fes-native');
+          if (body.accentColor !== undefined) update.accentColor = String(body.accentColor || '#16A34A');
+          if (body.fontFamily !== undefined) update.fontFamily = String(body.fontFamily || '');
+          if (body.darkMode !== undefined) update.darkMode = Boolean(body.darkMode);
+          if (body.showInquiry !== undefined) update.showInquiry = Boolean(body.showInquiry);
+          if (body.showCall !== undefined) update.showCall = Boolean(body.showCall);
+          if (body.showDetails !== undefined) update.showDetails = Boolean(body.showDetails);
+          if (body.pageSize !== undefined) update.pageSize = Math.max(3, Math.min(60, Number(body.pageSize) || 12));
+          if (body.customCss !== undefined) update.customCss = String(body.customCss || '').slice(0, 5000);
+          update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+          await getDb().collection('dealerWidgetConfigs').doc(targetDealerId).set(update, { merge: true });
+          const fresh = await getDb().collection('dealerWidgetConfigs').doc(targetDealerId).get();
+          return res.status(200).json({ config: fresh.data() || update });
+        }
+      }
+
+      /* ── Webhook Subscription CRUD (admin) ───────────────────── */
+      if (req.method === 'GET' && path === '/admin/dealer-feeds/webhooks') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const targetUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
+        const snap = await getDb().collection('dealerWebhookSubscriptions').where('dealerUid', '==', targetUid).get();
+        const subs = [];
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          subs.push({ id: doc.id, ...d, secret: undefined, secretMasked: d.secret ? d.secret.slice(0, 6) + '...' : '' });
+        });
+        return res.status(200).json({ webhooks: subs });
+      }
+
+      if (req.method === 'POST' && path === '/admin/dealer-feeds/webhooks') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const body = req.body || {};
+        const targetUid = normalizeNonEmptyString(body.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
+        const callbackUrl = String(body.callbackUrl || '').trim();
+        if (!callbackUrl || !/^https?:\/\//i.test(callbackUrl)) return res.status(400).json({ error: 'A valid HTTPS callback URL is required.' });
+        const events = Array.isArray(body.events) ? body.events.filter((e) => ['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'].includes(e)) : ['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'];
+        const secret = randomBytes(32).toString('hex');
+        const docRef = await getDb().collection('dealerWebhookSubscriptions').add({
+          dealerUid: targetUid,
+          callbackUrl,
+          secret,
+          events,
+          active: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastDeliveryAt: null,
+          failureCount: 0,
+        });
+        return res.status(201).json({ id: docRef.id, secret, callbackUrl, events, active: true });
+      }
+
+      const webhookIdMatch = path.match(/^\/admin\/dealer-feeds\/webhooks\/([^/]+)$/i);
+      if (req.method === 'DELETE' && webhookIdMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const docId = decodeURIComponent(webhookIdMatch[1] || '');
+        const doc = await getDb().collection('dealerWebhookSubscriptions').doc(docId).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Webhook subscription not found.' });
+        const data = doc.data() || {};
+        if (!canAccessDealerFeedSellerUid(actor, data.dealerUid)) return res.status(403).json({ error: 'Forbidden' });
+        await getDb().collection('dealerWebhookSubscriptions').doc(docId).delete();
+        return res.status(200).json({ ok: true });
+      }
+
+      const webhookTestMatch = path.match(/^\/admin\/dealer-feeds\/webhooks\/([^/]+)\/test$/i);
+      if (req.method === 'POST' && webhookTestMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const docId = decodeURIComponent(webhookTestMatch[1] || '');
+        const doc = await getDb().collection('dealerWebhookSubscriptions').doc(docId).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Webhook subscription not found.' });
+        const data = doc.data() || {};
+        if (!canAccessDealerFeedSellerUid(actor, data.dealerUid)) return res.status(403).json({ error: 'Forbidden' });
+        const testPayload = JSON.stringify({ event: 'test', listingId: 'test-123', listing: { title: 'Test Listing', price: 50000 }, timestamp: new Date().toISOString() });
+        const signature = createHmac('sha256', data.secret || '').update(testPayload).digest('hex');
+        try {
+          const webhookResp = await fetch(data.callbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-FES-Signature': `sha256=${signature}`, 'X-FES-Event': 'test' },
+            body: testPayload,
+            signal: AbortSignal.timeout(10000),
+          });
+          return res.status(200).json({ ok: true, statusCode: webhookResp.status });
+        } catch (testError) {
+          return res.status(200).json({ ok: false, error: testError.message || 'Delivery failed' });
+        }
+      }
+
+      /* ── Webhook Secret Reveal ───────────────────────────────── */
+      const webhookSecretMatch = path.match(/^\/admin\/dealer-feeds\/webhooks\/([^/]+)\/secret$/i);
+      if (req.method === 'GET' && webhookSecretMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const docId = decodeURIComponent(webhookSecretMatch[1] || '');
+        const doc = await getDb().collection('dealerWebhookSubscriptions').doc(docId).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Webhook subscription not found.' });
+        const data = doc.data() || {};
+        if (!canAccessDealerFeedSellerUid(actor, data.dealerUid)) return res.status(403).json({ error: 'Forbidden' });
+        return res.status(200).json({ secret: data.secret || '' });
       }
 
       if (req.method === 'GET' && path === '/admin/dealer-feeds/bootstrap') {
