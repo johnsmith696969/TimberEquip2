@@ -7,6 +7,7 @@ import {
 import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
 import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
@@ -144,27 +145,18 @@ export function Categories() {
       <Seo title={seoTitle} description={seoDescription} canonicalPath="/categories" jsonLd={categoriesSchemaData} />
       <Breadcrumbs />
       {/* Header */}
-      <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
-          <img
-            src="/page-photos/bagged-firewood.jpg"
-            alt="Bagged firewood stacks"
-            className="w-full h-full object-cover object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
-        </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-white/92 dark:bg-accent/22 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
+      <ImageHero imageSrc="/page-photos/bagged-firewood.jpg" imageAlt="Bagged firewood stacks">
+        <div>
           <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
             Equipment <br />
-            <span className="text-ink/72 dark:text-muted">Categories</span>
+            <span className="text-ink/70 dark:text-white/70">Categories</span>
           </h1>
-          <p className="text-ink/72 dark:text-muted font-medium max-w-2xl leading-relaxed">
+          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
             Find the right machine by category. Every listing includes specs, photos, and pricing.
           </p>
         </div>
-      </div>
+      </ImageHero>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

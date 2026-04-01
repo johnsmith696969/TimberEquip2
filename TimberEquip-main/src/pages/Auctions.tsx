@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { equipmentService } from '../services/equipmentService';
 import { Auction } from '../types';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 
 function formatAuctionDate(date: string) {
@@ -81,33 +82,24 @@ export function Auctions() {
       />
 
       {/* Hero */}
-      <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
-          <img
-            src="/page-photos/john-deere-harvester.jpg"
-            alt="John Deere harvester in the forest"
-            className="w-full h-full object-cover object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
-        </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-white/92 dark:bg-accent/22 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
+      <ImageHero imageSrc="/page-photos/john-deere-harvester.jpg" imageAlt="John Deere harvester in the forest">
+        <div>
           <div className="flex items-center gap-3 mb-4">
             <Gavel size={20} className="text-accent" />
             <span className="label-micro text-accent">Auction Center</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
             {hasLiveAuctions ? 'Live ' : 'Equipment '}
             <br />
-            <span className="text-ink/72 dark:text-muted">Auctions</span>
+            <span className="text-ink/70 dark:text-white/70">Auctions</span>
           </h1>
-          <p className="text-ink/72 dark:text-muted font-medium max-w-2xl leading-relaxed">
+          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
             {hasLiveAuctions
               ? 'Verified auction schedules for buyers and sellers who need a structured liquidation or bidding event.'
               : 'Timed and live auctions are not yet open for direct bidding on Forestry Equipment Sales. Use this desk for launch updates and support.'}
           </p>
         </div>
-      </div>
+      </ImageHero>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">

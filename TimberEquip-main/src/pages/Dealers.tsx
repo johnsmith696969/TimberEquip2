@@ -2,6 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Building2, Globe, Mail, MapPin, Search } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { equipmentService } from '../services/equipmentService';
 import { Seller } from '../types';
@@ -135,45 +136,39 @@ export function Dealers() {
         ]}
       />
 
-      <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
-          <img
-            src="/page-photos/Forestry-Equipment-Sales-Dealers.png"
-            alt="Forestry Equipment Sales dealer network"
-            className="w-full h-full object-cover object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
-            style={{ objectPosition: 'center 42%' }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
-        </div>
-        <div className="absolute top-0 right-0 h-full w-[28%] translate-x-1/2 skew-x-12 bg-white/92 dark:bg-accent/22"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
+      <ImageHero
+        imageSrc="/page-photos/Forestry-Equipment-Sales-Dealers.png"
+        imageAlt="Forestry Equipment Sales dealer network"
+        imageClassName="object-[center_42%] scale-[1.12] md:scale-[1.05]"
+      >
+        <div>
           <div className="flex items-center gap-3 mb-4">
             <Building2 size={20} className="text-accent" />
             <span className="label-micro text-accent">Dealer Network</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
             Active Dealer <br />
-            <span className="text-ink/72 dark:text-muted">Storefronts</span>
+            <span className="text-ink/70 dark:text-white/70">Storefronts</span>
           </h1>
-          <p className="text-ink/72 dark:text-muted font-medium max-w-2xl leading-relaxed">
+          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
             Search every active dealer storefront on Forestry Equipment Sales. Results are ordered alphabetically and open
             directly to the seller&apos;s live storefront.
           </p>
 
-          <div className="grid grid-cols-3 gap-4 mt-12 max-w-lg">
+          <div className="grid grid-cols-1 gap-4 mt-12 max-w-lg sm:grid-cols-3">
             {[
               { label: 'Active Storefronts', value: stats.total },
               { label: 'Dealers', value: stats.dealerCount },
               { label: 'Pro Dealers', value: stats.proDealerCount },
             ].map((stat) => (
-              <div key={stat.label} className="border border-line bg-white/84 backdrop-blur-sm dark:bg-bg/60 p-5">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{stat.label}</div>
-                <div className="mt-3 text-3xl font-black tracking-tight">{stat.value}</div>
+              <div key={stat.label} className="border border-line bg-white/88 backdrop-blur-sm dark:bg-black/35 p-5">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted dark:text-white/50">{stat.label}</div>
+                <div className="mt-3 text-3xl font-black tracking-tight text-ink dark:text-white">{stat.value}</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </ImageHero>
 
       <section className="px-4 py-14 md:px-8 md:py-20">
         <div className="mx-auto max-w-[1600px]">

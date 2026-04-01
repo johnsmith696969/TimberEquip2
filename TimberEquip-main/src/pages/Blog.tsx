@@ -9,6 +9,7 @@ import {
 import { motion } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 
 function slugifyNewsTitle(value: string) {
@@ -54,31 +55,22 @@ export function Blog() {
         canonicalPath="/blog"
       />
 
-      <section className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
-          <img
-            src="/page-photos/pine-dirt-road.jpg"
-            alt="Pine dirt road through the forest"
-            className="w-full h-full object-cover object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
-        </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-white/92 dark:bg-accent/22 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
+      <ImageHero imageSrc="/page-photos/pine-dirt-road.jpg" imageAlt="Pine dirt road through the forest">
+        <div>
           <div className="flex items-center gap-3 mb-6">
             <Newspaper size={20} className="text-accent" />
             <span className="label-micro text-accent">Industry Insights</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
             Market <br />
-            <span className="text-ink/72 dark:text-muted">Newsletter</span>
+            <span className="text-ink/70 dark:text-white/70">Newsletter</span>
           </h1>
-          <p className="text-ink/72 dark:text-muted font-medium max-w-2xl leading-relaxed">
+          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
             Institutional-grade analysis, regulatory updates, and global market reports for the forestry equipment industry.
             Stay ahead of the market with real-time data and expert insights.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-8 py-24">
         {loading ? (

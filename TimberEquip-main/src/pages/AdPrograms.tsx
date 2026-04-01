@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { billingService, type ListingPlanId } from '../services/billingService';
@@ -438,28 +439,23 @@ export function AdPrograms() {
         canonicalPath="/ad-programs"
       />
       {/* Hero Section */}
-      <section className="relative py-24 px-4 md:px-8 border-b border-line overflow-hidden">
-        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
-          <img
-            src="/page-photos/winter-log-road.jpg"
-            alt="Winter logging road through snow-covered forest"
-            className="w-full h-full object-cover object-center opacity-[0.055] brightness-125 saturate-50 dark:opacity-[0.62] dark:brightness-[0.72] dark:saturate-[0.88]"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95] dark:from-[#050608]/90 dark:via-[#050608]/72 dark:to-[#050608]/42" />
-        </div>
-        
-        <div className="max-w-7xl mx-auto relative z-10">
+      <ImageHero
+        imageSrc="/page-photos/winter-log-road.jpg"
+        imageAlt="Winter logging road through snow-covered forest"
+        contentClassName="max-w-7xl"
+      >
+        <div>
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="max-w-3xl"
           >
             <span className="label-micro text-accent mb-4 block">Seller Growth</span>
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none mb-8">
+            <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none mb-8 text-ink dark:text-white">
               SELLER TOOLS <br />
               <span className="text-accent">AND VISIBILITY</span>
             </h1>
-            <p className="text-lg text-ink/72 dark:text-muted leading-relaxed mb-10 max-w-2xl">
+            <p className="text-lg text-ink/70 dark:text-white/70 leading-relaxed mb-10 max-w-2xl">
               Choose your Forestry Equipment Sales seller plan, complete the on-site enrollment form,
               agree to the seller legal terms, and continue into branded Stripe checkout.
             </p>
@@ -473,7 +469,7 @@ export function AdPrograms() {
             </div>
           </motion.div>
         </div>
-      </section>
+      </ImageHero>
 
       <section ref={sellerTypesRef} className="py-24 px-4 md:px-8 border-b border-line bg-surface">
         <div className="max-w-7xl mx-auto">

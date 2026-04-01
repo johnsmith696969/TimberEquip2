@@ -680,7 +680,14 @@ function baseStyles() {
     .nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
     .nav a { padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(30, 107, 82, 0.12); background: rgba(255, 255, 255, 0.7); font-size: 0.84rem; font-weight: 700; color: var(--muted); }
     .nav a:hover { border-color: rgba(30, 107, 82, 0.32); color: var(--accent); background: var(--surface-strong); }
-    .hero { padding: 56px 0 30px; }
+    .hero { position: relative; padding: 56px 0 30px; }
+    .hero-with-image { min-height: 520px; display: flex; align-items: flex-end; overflow: hidden; }
+    .hero-content { position: relative; z-index: 1; width: min(100%, 820px); }
+    .hero-with-image .hero-content { padding-top: 176px; padding-bottom: 6px; }
+    .hero-media { position: absolute; inset: 0; background: #111827; }
+    .hero-media img { width: 100%; height: 100%; object-fit: cover; object-position: center center; }
+    .hero-media::before { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.3); }
+    .hero-media::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 34%, rgba(255, 255, 255, 0.55) 70%, rgba(255, 255, 255, 0.35) 100%); }
     .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
     .hero h1 { margin: 18px 0 16px; font-size: clamp(2.4rem, 5vw, 4.75rem); line-height: 0.95; letter-spacing: -0.05em; text-transform: uppercase; max-width: 14ch; }
     .hero p { margin: 0; max-width: 68ch; color: var(--muted); font-size: 1.02rem; line-height: 1.75; }
@@ -732,6 +739,9 @@ function baseStyles() {
     @media (max-width: 640px) {
       .shell { width: min(calc(100% - 24px), var(--max)); }
       .hero { padding-top: 38px; }
+      .hero-with-image { min-height: 460px; }
+      .hero-with-image .hero-content { padding-top: 148px; }
+      .hero-media::after { background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.84) 36%, rgba(255, 255, 255, 0.58) 70%, rgba(255, 255, 255, 0.38) 100%); }
       .hero h1 { max-width: none; }
       .hero-grid { grid-template-columns: minmax(0, 1fr); }
       .section { padding: 20px; }
@@ -1083,6 +1093,24 @@ function buildDealerJsonLd(seller, listings, canonicalUrl, breadcrumbs = []) {
   };
 }
 
+function renderHeroMedia({ heroImageUrl, heroImageAlt = '', heroImagePosition = 'center center', heroImageScale = 1 }) {
+  if (!heroImageUrl) {
+    return '';
+  }
+
+  return `
+    <div class="hero-media"${heroImageAlt ? '' : ' aria-hidden="true"'}>
+      <img
+        src="${escapeHtml(heroImageUrl)}"
+        alt="${escapeHtml(heroImageAlt)}"
+        loading="eager"
+        decoding="async"
+        style="object-position:${escapeHtml(heroImagePosition)};transform:scale(${escapeHtml(String(heroImageScale))});"
+      />
+    </div>
+  `;
+}
+
 function renderInventoryPage({
   title,
   eyebrow,
@@ -1098,7 +1126,12 @@ function renderInventoryPage({
   primaryAction,
   secondaryAction,
   jsonLd,
+  heroImageUrl,
+  heroImageAlt,
+  heroImagePosition,
+  heroImageScale,
 }) {
+  const hasHeroImage = Boolean(heroImageUrl);
   return renderShell({
     title,
     description,
@@ -1107,7 +1140,9 @@ function renderInventoryPage({
     robots,
     body: `
       <main>
-        <section class="shell hero">
+        <section class="${hasHeroImage ? 'hero hero-with-image' : 'shell hero'}">
+          ${renderHeroMedia({ heroImageUrl, heroImageAlt, heroImagePosition, heroImageScale })}
+          ${hasHeroImage ? '<div class="shell hero-content">' : ''}
           <span class="eyebrow">${escapeHtml(eyebrow)}</span>
           ${renderBreadcrumbs(breadcrumbs)}
           <h1>${escapeHtml(title)}</h1>
@@ -1128,6 +1163,7 @@ function renderInventoryPage({
               )
               .join('')}
           </div>
+          ${hasHeroImage ? '</div>' : ''}
         </section>
         <section class="shell section">
           <div class="section-head">
@@ -1278,7 +1314,12 @@ function renderIndexPage({
   items,
   emptyMessage,
   jsonLd,
+  heroImageUrl,
+  heroImageAlt,
+  heroImagePosition,
+  heroImageScale,
 }) {
+  const hasHeroImage = Boolean(heroImageUrl);
   return renderShell({
     title,
     description,
@@ -1287,7 +1328,9 @@ function renderIndexPage({
     robots,
     body: `
       <main>
-        <section class="shell hero">
+        <section class="${hasHeroImage ? 'hero hero-with-image' : 'shell hero'}">
+          ${renderHeroMedia({ heroImageUrl, heroImageAlt, heroImagePosition, heroImageScale })}
+          ${hasHeroImage ? '<div class="shell hero-content">' : ''}
           <span class="eyebrow">${escapeHtml(eyebrow)}</span>
           ${renderBreadcrumbs(breadcrumbs)}
           <h1>${escapeHtml(title)}</h1>
@@ -1307,9 +1350,10 @@ function renderIndexPage({
             </article>
             <article class="stat">
               <div class="stat-label">Use Case</div>
-              <div class="stat-value">Dealer Hub</div>
+              <div class="stat-value">Route Index</div>
             </article>
           </div>
+          ${hasHeroImage ? '</div>' : ''}
         </section>
         <section class="shell section">
           <div class="section-head">
@@ -1567,6 +1611,8 @@ function renderQuotaFallbackPage(req, res) {
       eyebrow: 'Category Directory',
       description: 'The marketplace category directory is online while live listing counts retry.',
       intro: 'This route is the stable category entry point for the public marketplace. Live listing counts are temporarily unavailable, but the canonical directory path remains active.',
+      heroImageUrl: '/page-photos/bagged-firewood.jpg',
+      heroImageAlt: 'Bagged firewood stacks',
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: 'Categories', path: '/categories' },
@@ -1645,6 +1691,10 @@ function renderQuotaFallbackPage(req, res) {
       eyebrow: 'Dealer Directory',
       description: 'The dealer directory remains online while live inventory route data retries.',
       intro: 'This directory is the public dealer hub for the marketplace. Live seller counts are temporarily unavailable, but the canonical dealer directory and search entry points remain online.',
+      heroImageUrl: '/page-photos/Forestry-Equipment-Sales-Dealers.png',
+      heroImageAlt: 'Forestry Equipment Sales dealer network',
+      heroImagePosition: 'center 42%',
+      heroImageScale: 1.08,
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: 'Dealers', path: '/dealers' },
@@ -1711,6 +1761,10 @@ function renderQuotaFallbackPage(req, res) {
         primaryAction: page.primaryAction,
         secondaryAction: page.secondaryAction,
         jsonLd: buildCollectionJsonLd(page.title, page.description, `${baseUrl}${canonicalPath}`, [], page.breadcrumbs),
+        heroImageUrl: page.heroImageUrl,
+        heroImageAlt: page.heroImageAlt,
+        heroImagePosition: page.heroImagePosition,
+        heroImageScale: page.heroImageScale,
       })
     );
   return true;
@@ -1880,6 +1934,8 @@ async function renderRoute(req, res) {
         canonicalUrl: `${baseUrl}/categories`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
         intro: 'This index highlights the main equipment families buyers actually see on the marketplace today, including logging equipment, land clearing equipment, trucks, trailers, and specialty categories backed by live approved inventory.',
+        heroImageUrl: '/page-photos/bagged-firewood.jpg',
+        heroImageAlt: 'Bagged firewood stacks',
         breadcrumbs,
         statValue,
         items,
@@ -2616,6 +2672,10 @@ async function renderRoute(req, res) {
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },
         ]),
+        heroImageUrl: '/page-photos/Forestry-Equipment-Sales-Dealers.png',
+        heroImageAlt: 'Forestry Equipment Sales dealer network',
+        heroImagePosition: 'center 42%',
+        heroImageScale: 1.08,
       })
     );
     return true;
