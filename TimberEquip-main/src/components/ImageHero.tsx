@@ -18,12 +18,12 @@ export function ImageHero({
   imageClassName = '',
 }: ImageHeroProps) {
   return (
-    <section className={`relative overflow-hidden border-b border-line px-4 py-24 md:px-8 ${sectionClassName}`.trim()}>
+    <section className={`relative flex min-h-[50vh] items-center overflow-hidden border-b border-line px-4 py-16 md:min-h-[55vh] md:px-8 md:py-24 ${sectionClassName}`.trim()}>
       <div className="absolute inset-0 bg-[#111827]">
         <img
           src={imageSrc}
           alt={imageAlt}
-          className={`absolute inset-0 h-full w-full object-cover object-center ${imageClassName}`.trim()}
+          className={`absolute inset-0 h-full w-full object-cover ${imageClassName}`.trim()}
           loading="eager"
           decoding="async"
         />

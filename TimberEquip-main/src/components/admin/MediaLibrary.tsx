@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, X, Image, Search } from 'lucide-react';
+import { Trash2, X, Image } from 'lucide-react';
 import { MediaItem } from '../../types';
 import { cmsService } from '../../services/cmsService';
 import { useAuth } from '../AuthContext';
@@ -120,7 +120,7 @@ export function MediaLibrary({ items, onRefresh }: Props) {
             placeholder="Search by filename..."
             className="input-industrial w-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest"
           />
-          <Search size={14} className="text-muted shrink-0" />
+
         </div>
         <select
           value={tagFilter}

@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Globe, Mail, MapPin, Search } from 'lucide-react';
+import { ArrowRight, Building2, Globe, Mail, MapPin } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -139,7 +139,7 @@ export function Dealers() {
       <ImageHero
         imageSrc="/page-photos/Forestry-Equipment-Sales-Dealers.png"
         imageAlt="Forestry Equipment Sales dealer network"
-        imageClassName="object-[center_42%] scale-[1.12] md:scale-[1.05]"
+        imageClassName="object-center"
       >
         <div>
           <div className="flex items-center gap-3 mb-4">
@@ -188,7 +188,7 @@ export function Dealers() {
                 placeholder="Search dealers, pro dealers, locations, or websites"
                 className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
               />
-              <Search size={14} className="text-muted shrink-0" />
+
             </div>
           </div>
 

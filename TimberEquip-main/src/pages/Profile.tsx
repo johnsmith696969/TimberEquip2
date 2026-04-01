@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
-  Search, Clock, CheckCircle2, 
+  Clock, CheckCircle2,
   ArrowRight, LayoutDashboard,
   LogOut, Bell, Package,
   CreditCard, Edit, Trash2, Plus,
@@ -1932,7 +1932,6 @@ export function Profile() {
                 onChange={(e) => { setInquirySearchQuery(e.target.value); setInquiryDisplayCount(10); }}
                 className="w-full bg-surface border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2.5 placeholder:text-muted focus:outline-none focus:border-accent"
               />
-              <Search size={14} className="text-muted shrink-0" />
             </div>
             <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
               {visible.map((inquiry) => (
@@ -2067,7 +2066,6 @@ export function Profile() {
                 onChange={(e) => { setCallSearchQuery(e.target.value); setCallDisplayCount(10); }}
                 className="w-full bg-surface border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2.5 placeholder:text-muted focus:outline-none focus:border-accent"
               />
-              <Search size={14} className="text-muted shrink-0" />
             </div>
             <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
               <div className="max-h-[600px] overflow-y-auto overflow-x-auto">

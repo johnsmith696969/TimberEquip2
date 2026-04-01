@@ -4,11 +4,11 @@ import { updateEmail, updateProfile as updateFirebaseProfile } from 'firebase/au
 import { 
   LayoutDashboard, Package, MessageSquare, 
   Users, Settings, TrendingUp, Plus,
-  Search, Filter, MoreVertical, Edit, Trash2, Download, Copy, Eye,
+  Filter, MoreVertical, Edit, Trash2, Download, Copy, Eye,
   CheckCircle2, Clock, AlertCircle, ArrowUpRight,
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
-  FileText, Image, Layers, Database, Upload, RefreshCw
+  FileText, Image, Layers, Database, Upload, RefreshCw, FolderTree
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
@@ -41,7 +41,7 @@ import {
 } from '../utils/dealerFeedSetup';
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
-type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds';
+type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds' | 'taxonomy';
 type ListingReviewFilter = 'all' | 'pending_approval' | 'paid_not_live' | 'rejected' | 'expired' | 'sold' | 'archived' | 'anomalies';
 
 const LISTINGS_PAGE_SIZE = 50;
@@ -57,6 +57,7 @@ const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
   'billing',
   'content',
   'dealer_feeds',
+  'taxonomy',
 ]);
 
 const CONTENT_ONLY_DASHBOARD_ROLES = new Set(['content_manager', 'editor']);
@@ -1995,7 +1996,6 @@ export function AdminDashboard() {
               placeholder="Search accounts..."
               className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
             />
-            <Search size={14} className="text-muted shrink-0" />
           </div>
         </div>
       </div>
@@ -2115,7 +2115,6 @@ export function AdminDashboard() {
               onChange={(e) => { setAdminCallSearchQuery(e.target.value); setAdminCallDisplayCount(20); }}
               className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2 placeholder:text-muted focus:outline-none focus:border-accent w-48"
             />
-            <Search size={14} className="text-muted shrink-0" />
           </div>
           <span className="text-[10px] font-black text-data uppercase">Total: {filteredCalls.length}</span>
           <button
@@ -2247,7 +2246,6 @@ export function AdminDashboard() {
             onChange={e => setSearchQuery(e.target.value)}
             className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
           />
-          <Search size={14} className="text-muted shrink-0" />
         </div>
         <div className="flex items-center space-x-4">
           <button onClick={exportListingsCSV} className="btn-industrial py-2 px-4 flex items-center">
@@ -2740,7 +2738,6 @@ export function AdminDashboard() {
             placeholder="Search users..."
             className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
           />
-          <Search size={14} className="text-muted shrink-0" />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -3101,7 +3098,7 @@ export function AdminDashboard() {
                   onChange={(e) => setBillingAuditQuery(e.target.value)}
                   className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm placeholder:text-white/30 focus:outline-none focus:border-accent w-52"
                 />
-                <Search size={14} className="text-white/40 shrink-0" />
+
               </div>
               <button
                 type="button"
@@ -3169,7 +3166,6 @@ export function AdminDashboard() {
                     onChange={(e) => { setAccountAuditSearchQuery(e.target.value); setAccountAuditDisplayCount(10); }}
                     className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 placeholder:text-muted focus:outline-none focus:border-accent w-44"
                   />
-                  <Search size={14} className="text-muted shrink-0" />
                 </div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
                   {filteredAccountAuditLogs.length} of {accountAuditLogs.length}
@@ -3415,7 +3411,6 @@ export function AdminDashboard() {
                   onChange={(e) => { setBlogPostSearchQuery(e.target.value); setBlogPostDisplayCount(10); }}
                   className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2 placeholder:text-muted focus:outline-none focus:border-accent w-48"
                 />
-                <Search size={14} className="text-muted shrink-0" />
               </div>
               <button
                 onClick={() => { setEditingPost(null); setShowCmsEditor(true); }}
@@ -4647,6 +4642,7 @@ export function AdminDashboard() {
     : activeTab === 'billing'   ? 'Billing Account'
     : activeTab === 'content'   ? 'Content Studio'
     : activeTab === 'dealer_feeds' ? 'Dealer Feed Manager'
+    : activeTab === 'taxonomy'  ? 'Taxonomy Manager'
     : activeTab === 'users'     ? 'Operator Directory'
     : 'Profile Settings';
   const dashboardSeoTitle = `${dashboardHeading} | Forestry Equipment Sales`;
@@ -4665,6 +4661,7 @@ export function AdminDashboard() {
     { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
+    { id: 'taxonomy', label: 'Taxonomy', icon: FolderTree, adminOnly: true },
     { id: 'users', label: 'Users', icon: Users, adminOnly: true },
     { id: 'settings', label: 'Settings', icon: Settings },
   ] as const;
@@ -4845,6 +4842,11 @@ export function AdminDashboard() {
               {activeTab === 'billing'   && renderBilling()}
               {activeTab === 'content'   && renderContent()}
               {activeTab === 'dealer_feeds' && renderDealerFeeds()}
+              {activeTab === 'taxonomy' && (
+                <div className="space-y-4">
+                  <TaxonomyManager />
+                </div>
+              )}
               {activeTab === 'users'     && renderUsers()}
               {activeTab === 'settings'  && renderSettings()}
             </div>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { MessageSquare, User, Phone, Mail, Clock, StickyNote, ShieldAlert, Search, X, Filter, Send } from 'lucide-react';
+import { MessageSquare, User, Phone, Mail, Clock, StickyNote, ShieldAlert, X, Filter, Send } from 'lucide-react';
 import { Inquiry, Account, Listing } from '../../types';
 
 interface InquiryListProps {
@@ -194,7 +194,7 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
               onChange={(e) => setSearchQuery(e.target.value)}
               className="input-industrial w-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest"
             />
-            <Search size={14} className="text-muted shrink-0" />
+
           </div>
 
           {/* Status */}

@@ -44,7 +44,7 @@ try {
   };
   sharedPublicPagesProxy = typeof publicPagesModule.handlePublicPagesRequest === 'function' ? publicPagesModule.handlePublicPagesRequest : null;
 } catch (error) {
-  console.warn('Unable to load hybrid public pages handler for local routes.', error);
+  console.warn('Unable to load public pages handler for local routes.', error);
 }
 
 try {

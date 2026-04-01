@@ -1770,7 +1770,7 @@ function renderQuotaFallbackPage(req, res) {
   return true;
 }
 
-function isHybridPublicPath(pathname) {
+function isPublicSeoPath(pathname) {
   return [
     /^\/sitemap\.xml$/i,
     /^\/logging-equipment-for-sale$/i,
@@ -1849,10 +1849,10 @@ async function renderRoute(req, res) {
       : shared.topDealers;
     const html = renderInventoryPage({
       title,
-      eyebrow: 'Hybrid SEO Hub',
+      eyebrow: 'Equipment Discovery',
       description,
       canonicalUrl: `${baseUrl}${pathname}`,
-      intro: 'This hybrid landing page is the canonical public front door for equipment discovery. It pairs live marketplace inventory with cleaner route architecture so buyers can browse inventory, dealers, and related route families without getting dropped into a heavy app flow first.',
+      intro: 'The canonical public front door for equipment discovery. Browse live marketplace inventory, dealers, and related categories with fast server-rendered pages optimized for search engines.',
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: title, path: pathname },
@@ -1865,7 +1865,7 @@ async function renderRoute(req, res) {
       ],
       featureCards: [
         {
-          eyebrow: 'Hybrid Delivery',
+          eyebrow: 'Server-Rendered',
           title: 'Server-rendered public routes',
           description: 'These pages ship complete metadata and content in the first response instead of waiting for client-side React metadata updates.',
         },
@@ -2807,7 +2807,7 @@ async function handlePublicPagesRequest(req, res, next) {
       return;
     }
 
-    if (!isHybridPublicPath(req.path || '/')) {
+    if (!isPublicSeoPath(req.path || '/')) {
       if (typeof next === 'function') return next();
       res.status(404).send('Not found');
       return;
@@ -2818,7 +2818,7 @@ async function handlePublicPagesRequest(req, res, next) {
       return next();
     }
   } catch (error) {
-    console.error('Failed to render hybrid public page:', error);
+    console.error('Failed to render public page:', error);
     if (isFirestoreQuotaError(error) && renderQuotaFallbackPage(req, res)) {
       return;
     }
@@ -2849,5 +2849,5 @@ async function handlePublicPagesRequest(req, res, next) {
 
 module.exports = {
   handlePublicPagesRequest,
-  isHybridPublicPath,
+  isPublicSeoPath,
 };

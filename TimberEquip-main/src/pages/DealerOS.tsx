@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowUpRight,
-  BadgeCheck,
   Building2,
   Copy,
   Database,
@@ -725,21 +724,19 @@ export function DealerOS() {
         description="Manage your dealer inventory, leads, feed imports, and storefront settings."
         robots={NOINDEX_ROBOTS}
       />
-      <section className="relative overflow-hidden rounded-sm border border-line bg-gradient-to-br from-surface via-surface to-accent/5 p-6 lg:p-8">
-        <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-accent/[0.07] blur-3xl" />
-        <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-accent/[0.05] blur-2xl" />
-        <div className="relative grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-          <div className="space-y-5">
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/15 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-accent shadow-sm shadow-accent/10">
-                <BadgeCheck size={12} /> DealerOS
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">
+                DealerOS
               </span>
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
                 {user?.role === 'pro_dealer' ? 'Pro Dealer Workspace' : 'Dealer Workspace'}
               </span>
             </div>
             <div>
-              <h1 className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl lg:text-[2.6rem]">Manage Inventory, Imports, and Featured Placement</h1>
+              <h1 className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl">Manage Inventory, Imports, and Featured Placement</h1>
               <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted">
                 DealerOS keeps live inventory, feed imports, and featured listing placement in one operator workspace. Featured listings stay at the front of public browse surfaces.
               </p>
@@ -751,7 +748,7 @@ export function DealerOS() {
                   setEditingListing(null);
                   setIsModalOpen(true);
                 }}
-                className="btn-industrial btn-accent flex items-center gap-2 px-5 py-3 shadow-sm shadow-accent/20"
+                className="btn-industrial btn-accent flex items-center gap-2 px-5 py-3"
               >
                 <Plus size={14} /> Add Machine
               </button>
@@ -773,18 +770,18 @@ export function DealerOS() {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             {[
-              { label: 'Active Inventory', value: activeListings.length, icon: Package, highlight: false },
-              { label: 'Listings Remaining', value: remainingListingSlots === null ? 'Unlimited' : remainingListingSlots, icon: Layers, highlight: false },
-              { label: 'Featured Slots', value: `${featuredListings.length}/${featuredCap || 0}`, icon: Star, highlight: true },
-              { label: 'New Leads', value: newLeadCount, icon: Building2, highlight: newLeadCount > 0 },
-              { label: 'Imported Units', value: importedListings.length, icon: Database, highlight: false },
+              { label: 'Active Inventory', value: activeListings.length, icon: Package },
+              { label: 'Listings Remaining', value: remainingListingSlots === null ? 'Unlimited' : remainingListingSlots, icon: Layers },
+              { label: 'Featured Slots', value: `${featuredListings.length}/${featuredCap || 0}`, icon: Star },
+              { label: 'New Leads', value: newLeadCount, icon: Building2 },
+              { label: 'Imported Units', value: importedListings.length, icon: Database },
             ].map((card) => (
-              <div key={card.label} className={`rounded-sm border p-4 transition-colors ${card.highlight ? 'border-accent/30 bg-accent/[0.06]' : 'border-line bg-bg'}`}>
+              <div key={card.label} className="rounded-sm border border-line bg-bg p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{card.label}</span>
-                  <card.icon size={15} className={card.highlight ? 'text-accent' : 'text-accent/70'} />
+                  <card.icon size={15} className="text-accent" />
                 </div>
-                <div className={`mt-3 text-3xl font-black tracking-tight ${card.highlight ? 'text-accent' : 'text-ink'}`}>{card.value}</div>
+                <div className="mt-3 text-3xl font-black tracking-tight text-ink">{card.value}</div>
               </div>
             ))}
           </div>
@@ -812,7 +809,7 @@ export function DealerOS() {
       />
 
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Featured Listing Control</h2>
@@ -855,7 +852,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Account Capacity</h2>
           <div className="mt-5 space-y-3">
             <div className="rounded-sm border border-line bg-bg p-4">
@@ -883,7 +880,7 @@ export function DealerOS() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Import Console</h2>
@@ -1154,7 +1151,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Preview</h2>
           <div className="mt-5 space-y-4">
             <div className="rounded-sm border border-line bg-bg p-4">
@@ -1272,7 +1269,7 @@ export function DealerOS() {
         </div>
       </section>
 
-      <section className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Dealer Site Syndication</h2>
@@ -1388,7 +1385,7 @@ export function DealerOS() {
       </section>
 
       {/* ── Widget Builder ──────────────────────────────────── */}
-      <section className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Widget Builder</h2>
@@ -1578,7 +1575,7 @@ export function DealerOS() {
       </section>
 
       {/* ── Webhook Management ──────────────────────────────── */}
-      <section className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Webhook Notifications</h2>
@@ -1728,7 +1725,7 @@ export function DealerOS() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
-        <div className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Lead Inbox</h2>
@@ -1782,7 +1779,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="rounded-sm border border-line border-l-accent/40 border-l-2 bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Lead Detail</h2>
             {selectedInquiry ? (
