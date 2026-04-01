@@ -147,7 +147,7 @@ export function Profile() {
     storefrontTabLabel,
   ]);
   const profileTabItems = useMemo(() => {
-    const items = [{ label: 'Profile', icon: LayoutDashboard }];
+    const items = [{ label: 'Profile', icon: User }];
     if (canViewSavedEquipment) items.push({ label: 'Saved Equipment', icon: Bookmark });
     if (canViewSearchAlerts) items.push({ label: 'Search Alerts', icon: Bell });
     if (canViewMyListings) items.push({ label: 'My Listings', icon: Package });

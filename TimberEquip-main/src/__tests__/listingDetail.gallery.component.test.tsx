@@ -46,6 +46,7 @@ vi.mock('../services/equipmentService', () => ({
     getMarketValue: getMarketValueMock,
     getMarketMatchRecommendations: getMarketMatchRecommendationsMock,
     recordListingView: vi.fn().mockResolvedValue(true),
+    getCachedPublicListings: vi.fn().mockReturnValue([]),
   },
 }));
 

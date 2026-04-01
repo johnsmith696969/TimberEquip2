@@ -61,7 +61,7 @@ describe('constants', () => {
   });
 
   it('exports correct min comparables', () => {
-    expect(AMV_MIN_COMPARABLES).toBe(2);
+    expect(AMV_MIN_COMPARABLES).toBe(1);
   });
 });
 
@@ -77,7 +77,7 @@ describe('getAmvMatchRulesSummary', () => {
 describe('getAmvInsufficientComparableMessage', () => {
   it('returns a message mentioning min comparables', () => {
     const message = getAmvInsufficientComparableMessage();
-    expect(message).toContain('2');
+    expect(message).toContain('1');
     expect(message).toContain('N/A');
   });
 });

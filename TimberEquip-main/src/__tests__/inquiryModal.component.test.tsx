@@ -27,6 +27,10 @@ vi.mock('../services/recaptchaService', () => ({
   assessRecaptcha: assessRecaptchaMock,
 }));
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
+}));
+
 import { InquiryModal } from '../components/InquiryModal';
 
 const baseListing = {
@@ -54,7 +58,7 @@ describe('InquiryModal component', () => {
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
     fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
     fireEvent.change(phoneInput, { target: { value: '+16126008268' } });
-    const submitButton = screen.getByRole('button', { name: /transmit inquiry/i });
+    const submitButton = screen.getByRole('button', { name: /send inquiry/i });
     fireEvent.submit(submitButton.closest('form')!);
 
     expect(await screen.findByText(/review and accept the seller-specific contact consent notice/i)).toBeInTheDocument();
@@ -73,7 +77,7 @@ describe('InquiryModal component', () => {
     fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
     fireEvent.change(phoneInput, { target: { value: '+16126008268' } });
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /transmit inquiry/i }));
+    fireEvent.click(screen.getByRole('button', { name: /send inquiry/i }));
 
     await waitFor(() => {
       expect(createInquiryMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -86,7 +90,7 @@ describe('InquiryModal component', () => {
       }));
     });
 
-    expect(await screen.findByText(/inquiry transmitted/i)).toBeInTheDocument();
+    expect(await screen.findByText(/inquiry sent/i)).toBeInTheDocument();
 
     const closeTimer = timeoutSpy.mock.calls.find(([, delay]) => delay === 2000)?.[0] as (() => void) | undefined;
     expect(closeTimer).toBeDefined();

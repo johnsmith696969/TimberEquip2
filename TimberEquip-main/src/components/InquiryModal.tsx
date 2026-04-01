@@ -4,6 +4,7 @@ import { X, CheckCircle2 } from 'lucide-react';
 import { Listing } from '../types';
 import { equipmentService } from '../services/equipmentService';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { useTheme } from './ThemeContext';
 
 const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
 
@@ -14,6 +15,7 @@ interface InquiryModalProps {
 }
 
 export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
+  const { theme } = useTheme();
   const initialMessage = `I'm interested in the ${listing.title}. Please provide more details regarding its condition and availability.`;
   const [inquirySent, setInquirySent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -121,12 +123,12 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
             exit={{ scale: 0.9, opacity: 0 }}
             className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden"
           >
-            <div className="bg-ink text-white p-8 flex justify-between items-center">
+            <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-surface border-b border-line text-ink' : 'bg-ink text-white'}`}>
               <div className="flex flex-col">
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
                 <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
               </div>
-              <button onClick={handleClose} className="p-2 hover:bg-white/10 transition-colors">
+              <button onClick={handleClose} className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-white/10'}`}>
                 <X size={24} />
               </button>
             </div>
@@ -137,7 +139,7 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                   <div className="w-16 h-16 bg-data/10 text-data flex items-center justify-center rounded-full mb-6">
                     <CheckCircle2 size={32} />
                   </div>
-                  <h4 className="text-2xl font-black uppercase tracking-tighter mb-2">Inquiry Transmitted</h4>
+                  <h4 className="text-2xl font-black uppercase tracking-tighter mb-2">Inquiry Sent</h4>
                   <p className="text-muted text-sm font-medium">The seller has been notified and will contact you shortly.</p>
                 </div>
               ) : (
@@ -203,7 +205,7 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                     <p className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm">{inquiryError}</p>
                   )}
                   <button type="submit" disabled={submitting} className="btn-industrial btn-accent w-full py-5 text-base disabled:opacity-60 disabled:cursor-not-allowed">
-                    {submitting ? 'Sending Inquiry...' : 'Transmit Inquiry'}
+                    {submitting ? 'Sending Inquiry...' : 'Send Inquiry'}
                   </button>
                 </form>
               )}

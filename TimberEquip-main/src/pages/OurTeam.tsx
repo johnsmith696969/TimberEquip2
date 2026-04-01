@@ -7,25 +7,16 @@ const teamMembers = [
   {
     name: 'Aaron Blake',
     role: 'Co-Owner & Sales',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/1b63bbd7f47bcd5731c901a5ad68fa48393c8482.webp',
     bio: 'With more than 22 years of experience in logging and equipment sales, Aaron has built a reputation as someone you can trust and who knows how to get deals done. He manages risk, supports all sales, and helps clients secure financing to close deals.',
   },
   {
     name: 'Erik Madsen',
     role: 'Co-Owner & Sales',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/2b41123220474453445f2a2e50123f64cafd5d0b.jpg',
     bio: 'Erik brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
-  },
-  {
-    name: 'Kelly Brooks',
-    role: 'Front Office & Logistics',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/9d11f5ae877b93e2968e86026c9558ab7e740108.jpg',
-    bio: 'Kelly keeps our front office running like a machine. She handles phones, logistics, customs, overseas shipping, customer support, and website updates to make sure everything stays organized and efficient.',
   },
   {
     name: 'Caleb Happy',
     role: 'Marketing & Platform Development',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/675a11d33eca36acc1fa34fa96075f11c1302b2a.jpg',
     bio: 'Caleb brings eight years of marketing experience and a hands-on systems mindset. He handles marketing, infrastructure, and customer relations to keep the platform running smoothly.',
   },
 ];
@@ -70,19 +61,13 @@ export function OurTeam() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3">
             {teamMembers.map((member) => (
               <div key={member.name} className="flex flex-col overflow-hidden border border-line bg-surface">
-                <div className="aspect-[4/5] overflow-hidden bg-bg">
-                  <img
-                    src={member.image}
-                    alt={member.name}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <div className="flex flex-1 flex-col p-6">
+                <div className="flex flex-1 flex-col p-8">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-bg border border-line">
+                    <Users className="text-accent" size={24} />
+                  </div>
                   <h2 className="text-2xl font-black uppercase tracking-tight">{member.name}</h2>
                   <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent">{member.role}</p>
                   <p className="mt-5 text-sm font-medium leading-relaxed text-muted">{member.bio}</p>

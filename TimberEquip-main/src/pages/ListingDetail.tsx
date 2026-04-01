@@ -116,6 +116,7 @@ export function ListingDetail() {
   const [inquiryConsentAccepted, setInquiryConsentAccepted] = useState(false);
   const [financingConsentAccepted, setFinancingConsentAccepted] = useState(false);
   const [marketMatchRecommendations, setMarketMatchRecommendations] = useState<Listing[]>([]);
+  const [similarEquipment, setSimilarEquipment] = useState<Listing[]>([]);
   const [amvExplanation, setAmvExplanation] = useState<string | null>(null);
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
@@ -397,6 +398,40 @@ export function ListingDetail() {
       isActive = false;
     };
   }, [id, publicKey, slugPublicKey]);
+
+  // Compute Similar Equipment fallback when no market match recommendations exist
+  useEffect(() => {
+    if (loadingMarketMatches || marketMatchRecommendations.length > 0 || !listing) {
+      setSimilarEquipment([]);
+      return;
+    }
+    const price = parseFloat(String(listing.price)) || 0;
+    const subcategory = listing.subcategory || listing.category || '';
+    if (!subcategory || price <= 0) {
+      setSimilarEquipment([]);
+      return;
+    }
+    const cached = equipmentService.getCachedPublicListings();
+    const getPriceThreshold = (p: number) => {
+      if (p > 600000) return 0.05;
+      if (p > 300000) return 0.15;
+      if (p > 100000) return 0.20;
+      return 0.25;
+    };
+    const threshold = getPriceThreshold(price);
+    const matches = cached
+      .filter((l) => {
+        if (l.id === listing.id) return false;
+        const lSub = l.subcategory || l.category || '';
+        if (lSub.toLowerCase() !== subcategory.toLowerCase()) return false;
+        const lPrice = parseFloat(String(l.price)) || 0;
+        if (lPrice <= 0) return false;
+        return Math.abs(lPrice - price) / price <= threshold;
+      })
+      .sort((a, b) => Math.abs((parseFloat(String(a.price)) || 0) - price) - Math.abs((parseFloat(String(b.price)) || 0) - price))
+      .slice(0, 3);
+    setSimilarEquipment(matches);
+  }, [listing, loadingMarketMatches, marketMatchRecommendations]);
 
   useEffect(() => {
     if (!listing) return;
@@ -1497,6 +1532,67 @@ export function ListingDetail() {
               ) : null}
             </div>
             ) : null}
+
+            {/* Similar Equipment (fallback when no market matches) */}
+            {!showMarketMatchRecommendations && similarEquipment.length > 0 && (
+              <div className="flex flex-col space-y-6">
+                <div className="flex items-center justify-between border-b border-line pb-4">
+                  <h3 className="text-xl font-black uppercase tracking-tighter">Similar Equipment</h3>
+                  <span className="label-micro">{similarEquipment.length} listings</span>
+                </div>
+                <div className="relative group/scroll">
+                  <div className="flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {similarEquipment.map((sim, simIdx) => {
+                      const simImage =
+                        sim.imageVariants?.[0]?.thumbnailUrl ||
+                        sim.images?.find(Boolean) ||
+                        LISTING_IMAGE_PLACEHOLDER;
+                      const simPath = buildListingPath(sim);
+                      return (
+                        <Link
+                          key={sim.id}
+                          to={simPath}
+                          className="group min-w-[280px] max-w-[320px] flex-shrink-0 snap-start overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
+                        >
+                          <div className="aspect-[4/3] overflow-hidden bg-bg relative">
+                            <img
+                              src={simImage}
+                              alt={sim.title || `${sim.year} ${sim.make || sim.manufacturer || ''} ${sim.model}`}
+                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <WatermarkOverlay index={simIdx} />
+                          </div>
+                          <div className="space-y-3 p-5">
+                            <span className="label-micro">{sim.make || sim.manufacturer || sim.brand || sim.subcategory || ''}</span>
+                            <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
+                              {sim.year || ''} {sim.make || sim.manufacturer || ''} {sim.model || ''}
+                            </h4>
+                            <div className="flex items-center justify-between">
+                              <span className="text-lg font-black tracking-tight">{formatPrice(sim.price || 0, sim.currency || 'USD', 0)}</span>
+                              <span className="text-[10px] font-bold text-muted uppercase">{formatNumber(sim.hours || 0)} hrs</span>
+                            </div>
+                            <p className="text-[10px] font-medium text-muted">{sim.location || ''}</p>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  {similarEquipment.length > 1 && (
+                    <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 flex justify-between pointer-events-none px-1">
+                      <div className="w-8 h-8 bg-ink/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: -300, behavior: 'smooth' }); }}>
+                        <ChevronLeft size={16} />
+                      </div>
+                      <div className="w-8 h-8 bg-ink/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: 300, behavior: 'smooth' }); }}>
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar (Right) */}

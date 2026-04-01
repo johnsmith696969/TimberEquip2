@@ -102,9 +102,24 @@ describe('equipmentService market intelligence helpers', () => {
     expect(result).toBe(100000);
   });
 
-  it('returns null AMV when fewer than the minimum comparable listings match', async () => {
+  it('returns AMV from a single comparable since minimum is 1', async () => {
     vi.spyOn(equipmentService, 'getListings').mockResolvedValue([
       makeListing({ id: 'a', price: 98000, year: 2021, hours: 5200 }),
+      makeListing({ id: 'b', model: '855E', price: 102000, year: 2023, hours: 4800 }),
+    ] as any);
+
+    const result = await equipmentService.getMarketValue({
+      manufacturer: 'Tigercat',
+      model: '1075B',
+      price: 100000,
+      year: 2022,
+      hours: 5000,
+    });
+    expect(result).toBe(98000);
+  });
+
+  it('returns null AMV when zero comparables match', async () => {
+    vi.spyOn(equipmentService, 'getListings').mockResolvedValue([
       makeListing({ id: 'b', model: '855E', price: 102000, year: 2023, hours: 4800 }),
     ] as any);
 

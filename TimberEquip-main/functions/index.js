@@ -13279,7 +13279,7 @@ exports.nightlyDataRefresh = onSchedule(
         return true;
       });
 
-      if (comparables.length >= 2) {
+      if (comparables.length >= 1) {
         const amvValue = comparables.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0) / comparables.length;
         await db.collection('listings').doc(listing.id).update({
           computedAmv: Math.round(amvValue),

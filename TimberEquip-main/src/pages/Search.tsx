@@ -276,7 +276,10 @@ function FilterSectionPanel({ open, children }: { open: boolean; children: React
   );
 }
 
-const PAGE_SIZE = 18;
+function getPageSize() {
+  if (typeof window === 'undefined') return 21;
+  return window.innerWidth < 768 ? 15 : 21;
+}
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
 export function Search() {
@@ -314,7 +317,8 @@ export function Search() {
     specs: false,
     location: false,
   });
-  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const [pageSize] = useState(getPageSize);
+  const [displayCount, setDisplayCount] = useState(getPageSize);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertEmail, setAlertEmail] = useState('');
   const [savedSearchName, setSavedSearchName] = useState('');
@@ -612,7 +616,7 @@ export function Search() {
 
   // Reset pagination whenever the result set changes (new filters applied)
   useEffect(() => {
-    setDisplayCount(PAGE_SIZE);
+    setDisplayCount(pageSize);
   }, [filteredListings]);
 
   const displayedListings = filteredListings.slice(0, displayCount);
@@ -1377,13 +1381,13 @@ export function Search() {
               {displayCount < filteredListings.length && (
                 <div className="mt-12 flex flex-col items-center space-y-3">
                   <button
-                    onClick={() => setDisplayCount((prev) => prev + PAGE_SIZE)}
+                    onClick={() => setDisplayCount((prev) => prev + pageSize)}
                     className="btn-industrial btn-accent py-4 px-12"
                   >
                     {t('search.loadMore', 'Load More')}
                   </button>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                    {formatNumber(Math.min(displayCount + PAGE_SIZE, filteredListings.length))} {t('search.of', 'of')}{' '}
+                    {formatNumber(Math.min(displayCount + pageSize, filteredListings.length))} {t('search.of', 'of')}{' '}
                     {formatNumber(filteredListings.length)} {t('search.afterLoad', 'after load')}
                   </span>
                 </div>

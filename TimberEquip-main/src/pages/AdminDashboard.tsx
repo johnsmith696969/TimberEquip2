@@ -90,6 +90,7 @@ export function AdminDashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [billingLogs, setBillingLogs] = useState<BillingAuditLog[]>([]);
+  const [billingAuditQuery, setBillingAuditQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [listingsLoading, setListingsLoading] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -1281,6 +1282,9 @@ export function AdminDashboard() {
       listing.title,
       listing.manufacturer || listing.make || '',
       listing.model,
+      listing.id,
+      listing.sellerUid || listing.sellerId || '',
+      listing.location || '',
     ]
       .join(' ')
       .toLowerCase();
@@ -1960,14 +1964,14 @@ export function AdminDashboard() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface p-6 border border-line rounded-sm">
         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Account Management</h3>
         <div className="flex items-center space-x-4">
-          <div className="flex items-center bg-bg border border-line px-4 py-2 rounded-sm w-full sm:w-64">
-            <Search size={14} className="text-muted mr-3" />
+          <div className="relative w-full sm:w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
               type="text"
               value={userSearchQuery}
               onChange={(e) => setUserSearchQuery(e.target.value)}
               placeholder="Search accounts..."
-              className="bg-transparent border-none text-[10px] font-bold focus:ring-0 w-full text-ink uppercase"
+              className="input-industrial w-full pl-10 text-[10px] font-bold uppercase"
             />
           </div>
         </div>
@@ -2172,14 +2176,14 @@ export function AdminDashboard() {
         </div>
       )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface p-6 border border-line rounded-sm">
-        <div className="flex items-center bg-bg border border-line px-4 py-2 rounded-sm w-full sm:w-96">
-          <Search size={16} className="text-muted mr-3" />
-          <input 
-            type="text" 
-            placeholder="Filter loaded inventory..." 
+        <div className="relative w-full sm:w-96">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            type="text"
+            placeholder="Search by name, ID, seller, or location..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none text-xs font-bold focus:ring-0 w-full text-ink uppercase" 
+            className="input-industrial w-full pl-10 text-xs font-bold uppercase"
           />
         </div>
         <div className="flex items-center space-x-4">
@@ -2697,13 +2701,13 @@ export function AdminDashboard() {
 
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
-          <input 
-            type="text" 
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={14} />
+          <input
+            type="text"
             value={userSearchQuery}
             onChange={(e) => setUserSearchQuery(e.target.value)}
-            placeholder="Search all users..." 
-            className="input-industrial w-full pl-10 placeholder:text-muted/70"
+            placeholder="Search all users..."
+            className="input-industrial w-full pl-11 py-2.5 text-xs placeholder:text-muted/70"
           />
         </div>
         <div className="flex items-center gap-3">
@@ -2898,6 +2902,12 @@ export function AdminDashboard() {
     const activeSubs = subscriptions.filter(s => s.status === 'active').length;
     const recentAccountAuditLogs = accountAuditLogs.slice(0, 10);
     const recentSellerAgreementAcceptances = sellerAgreementAcceptances.slice(0, 10);
+    const filteredBillingLogs = billingAuditQuery
+      ? billingLogs.filter((log) => {
+          const q = billingAuditQuery.toLowerCase();
+          return (log.action || '').toLowerCase().includes(q) || (log.details || '').toLowerCase().includes(q);
+        })
+      : billingLogs;
 
     return (
       <div className="space-y-8">
@@ -3027,11 +3037,45 @@ export function AdminDashboard() {
         </div>
 
         <div className="bg-ink text-white p-8 rounded-sm">
-          <div className="flex items-center space-x-4 mb-6">
-            <Shield className="text-accent" size={24} />
-            <h3 className="text-lg font-black uppercase tracking-tighter">Billing Audit Trail</h3>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-4">
+              <Shield className="text-accent" size={24} />
+              <h3 className="text-lg font-black uppercase tracking-tighter">Billing Audit Trail</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search audit logs..."
+                  value={billingAuditQuery}
+                  onChange={(e) => setBillingAuditQuery(e.target.value)}
+                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold pl-8 pr-3 py-1.5 rounded-sm placeholder:text-white/30 focus:outline-none focus:border-accent w-48"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const rows = filteredBillingLogs.map((log) => {
+                    const ts = log.timestamp?.toDate ? log.timestamp.toDate().toISOString() : new Date(log.timestamp).toISOString();
+                    return [ts, log.action, log.details].join(',');
+                  });
+                  const csv = ['Timestamp,Action,Details', ...rows].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `billing-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline flex items-center gap-1"
+              >
+                <Download size={10} /> Export
+              </button>
+            </div>
           </div>
-          <div className="space-y-4">
+          <div className="max-h-96 overflow-y-auto space-y-0">
             {billingLoadError ? (
               <div className="flex items-center gap-3 rounded-sm border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-800">
                 <AlertCircle size={14} className="shrink-0" />
@@ -3039,13 +3083,17 @@ export function AdminDashboard() {
               </div>
             ) : null}
 
-            {billingLogs.map((log, i) => (
-              <div key={i} className="flex justify-between items-center py-2 border-b border-white/10 last:border-0">
+            {filteredBillingLogs.length === 0 && !billingLoadError ? (
+              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest py-4 text-center">
+                {billingAuditQuery ? 'No audit logs match your search' : 'No audit logs recorded'}
+              </p>
+            ) : filteredBillingLogs.map((log, i) => (
+              <div key={i} className="flex justify-between items-center py-3 border-b border-white/10 last:border-0">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-accent uppercase tracking-widest">{log.action}</span>
                   <span className="text-[11px] text-white/60 mt-1">{log.details}</span>
                 </div>
-                <span className="text-[9px] font-bold text-white/30">
+                <span className="text-[9px] font-bold text-white/30 flex-shrink-0 ml-4">
                   {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : new Date(log.timestamp).toLocaleString()}
                 </span>
               </div>
