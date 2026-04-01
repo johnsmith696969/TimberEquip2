@@ -45,7 +45,7 @@ export function Financing() {
 
   const heroClasses = useMemo(() => ({
     image: 'opacity-50',
-    gradient: 'bg-gradient-to-r from-bg/97 via-bg/90 to-bg/70 dark:from-bg/50 dark:via-bg/30 dark:to-bg/10',
+    gradient: 'bg-gradient-to-r from-bg/[0.99] via-bg/[0.96] to-bg/[0.85] dark:from-bg/50 dark:via-bg/30 dark:to-bg/10',
     accentBand: 'bg-accent/15',
   }), []);
 

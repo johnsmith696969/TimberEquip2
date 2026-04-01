@@ -551,9 +551,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <span className="label-micro block mb-2">{t('layout.customerSupport', 'Customer Support')}</span>
                   <a
                     href="tel:+12187200933"
-                    className="text-sm font-black tracking-tight hover:text-accent transition-colors"
+                    className="text-sm font-black tracking-tight hover:text-accent transition-colors block"
                   >
                     (218) 720-0933
+                  </a>
+                  <a
+                    href="mailto:support@forestryequipmentsales.com"
+                    className="text-xs font-bold tracking-tight text-muted hover:text-accent transition-colors mt-2 block"
+                  >
+                    support@forestryequipmentsales.com
                   </a>
                 </div>
                 <div className="bg-bg border border-line p-5 rounded-sm">

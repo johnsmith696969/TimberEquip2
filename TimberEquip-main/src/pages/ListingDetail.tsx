@@ -19,8 +19,7 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
 import { useTheme } from '../components/ThemeContext';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 import WatermarkOverlay from '../components/WatermarkOverlay';
@@ -1648,8 +1647,19 @@ export function ListingDetail() {
                     <button
                       onClick={async () => {
                         const newVal = !seller.manuallyVerified;
+                        const action = newVal ? 'verify' : 'unverify';
                         try {
-                          await updateDoc(doc(db, 'users', seller.id), { manuallyVerified: newVal });
+                          const idToken = await auth.currentUser?.getIdToken();
+                          if (!idToken) return;
+                          const resp = await fetch(`/api/admin/users/${encodeURIComponent(seller.id)}/${action}`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                            body: '{}',
+                          });
+                          if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({}));
+                            throw new Error(err?.error || `Failed to ${action} seller`);
+                          }
                           setSeller((prev) => prev ? { ...prev, manuallyVerified: newVal } : prev);
                         } catch (err) {
                           console.error('Failed to update verification:', err);

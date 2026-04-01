@@ -90,6 +90,11 @@ export function Profile() {
   const canViewSellerCalls = canViewMyListings;
   const canViewBuyerFinancing = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
+  const profilePageTitle = user?.role === 'pro_dealer'
+    ? 'Pro Dealer Storefront'
+    : user?.role === 'dealer'
+      ? 'Dealer Storefront'
+      : 'Profile';
   const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
   const hasPaidSellerSubscription = entitlement.sellerAccessMode === 'subscription';
   const subscriptionPlanLabel = hasPaidSellerSubscription
@@ -126,7 +131,7 @@ export function Profile() {
         ? 'hidden until billing is restored'
         : 'not applicable';
   const profileTabs = useMemo(() => {
-    const tabs = ['Profile'];
+    const tabs = ['Overview'];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
     if (canViewSearchAlerts) tabs.push('Search Alerts');
     if (canViewMyListings) tabs.push('My Listings');
@@ -147,7 +152,7 @@ export function Profile() {
     storefrontTabLabel,
   ]);
   const profileTabItems = useMemo(() => {
-    const items = [{ label: 'Profile', icon: User }];
+    const items: Array<{ label: string; icon: React.ComponentType<{ className?: string; size?: number }>; href?: string }> = [{ label: 'Overview', icon: User }];
     if (canViewSavedEquipment) items.push({ label: 'Saved Equipment', icon: Bookmark });
     if (canViewSearchAlerts) items.push({ label: 'Search Alerts', icon: Bell });
     if (canViewMyListings) items.push({ label: 'My Listings', icon: Package });
@@ -156,6 +161,9 @@ export function Profile() {
     if (canViewBuyerFinancing) items.push({ label: 'Financing', icon: CreditCard });
     if (hasStorefrontAccess) {
       items.push({ label: storefrontTabLabel, icon: Building2 });
+    }
+    if (hasDealerWorkspaceAccess) {
+      items.push({ label: 'DealerOS', icon: Database, href: '/dealer-os' });
     }
     items.push(
       { label: 'Privacy & Data', icon: Shield },
@@ -169,6 +177,7 @@ export function Profile() {
     canViewSearchAlerts,
     canViewSellerCalls,
     canViewSellerInquiries,
+    hasDealerWorkspaceAccess,
     hasStorefrontAccess,
     storefrontTabLabel,
   ]);
@@ -203,8 +212,8 @@ export function Profile() {
   const resolveRequestedProfileTab = useCallback((requestedTab: string | null) => {
     const normalizedRequestedTab = requestedTab?.trim().toLowerCase() || '';
     const tabAlias =
-      normalizedRequestedTab === 'overview'
-        ? 'profile'
+      normalizedRequestedTab === 'profile'
+        ? 'overview'
         : normalizedRequestedTab === 'settings'
         ? 'account settings'
         : normalizedRequestedTab === 'privacy'
@@ -441,20 +450,41 @@ export function Profile() {
         ? user.seoKeywords.join(', ')
         : '';
 
+    const sellerName = storefrontPreview?.storefrontName || user.storefrontName || user.company || user.displayName || '';
+    const sellerLocation = storefrontPreview?.location || user.location || '';
+    const roleLabel = user.role === 'pro_dealer' ? 'Pro Dealer' : user.role === 'dealer' ? 'Dealer' : user.role === 'owner_operator' ? 'Owner-Operator' : '';
+    const locationSuffix = sellerLocation ? ` in ${sellerLocation}` : '';
+
+    const defaultSeoTitle = sellerName
+      ? `${sellerName} | ${roleLabel || 'Equipment Seller'} on Forestry Equipment Sales`
+      : '';
+    const defaultSeoDescription = sellerName
+      ? `Browse forestry and logging equipment from ${sellerName}${locationSuffix}. Verified ${roleLabel || 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery, skidders, harvesters, feller bunchers, and more.`
+      : '';
+    const defaultSeoKeywords = [
+      sellerName,
+      'forestry equipment',
+      'logging equipment',
+      'used forestry equipment',
+      roleLabel ? `${roleLabel.toLowerCase()} forestry` : '',
+      sellerLocation || '',
+      'skidders', 'harvesters', 'feller bunchers', 'forwarders',
+    ].filter(Boolean).join(', ');
+
     setStorefrontForm({
-      storefrontName: storefrontPreview?.storefrontName || user.storefrontName || user.company || user.displayName || '',
+      storefrontName: sellerName,
       storefrontSlug: storefrontPreview?.storefrontSlug || user.storefrontSlug || '',
       storefrontTagline: storefrontPreview?.storefrontTagline || user.storefrontTagline || '',
       storefrontDescription: storefrontPreview?.storefrontDescription || user.storefrontDescription || user.about || '',
-      location: storefrontPreview?.location || user.location || '',
+      location: sellerLocation,
       phone: storefrontPreview?.phone || user.phoneNumber || '',
       email: storefrontPreview?.email || user.email || '',
       website: storefrontPreview?.website || user.website || '',
       logo: storefrontPreview?.logo || user.photoURL || '',
       coverPhotoUrl: storefrontPreview?.coverPhotoUrl || user.coverPhotoUrl || '',
-      seoTitle: storefrontPreview?.seoTitle || user.seoTitle || '',
-      seoDescription: storefrontPreview?.seoDescription || user.seoDescription || '',
-      seoKeywordsCsv: keywords,
+      seoTitle: storefrontPreview?.seoTitle || user.seoTitle || defaultSeoTitle,
+      seoDescription: storefrontPreview?.seoDescription || user.seoDescription || defaultSeoDescription,
+      seoKeywordsCsv: keywords || defaultSeoKeywords,
     });
   }, [storefrontPreview, user]);
 
@@ -956,7 +986,7 @@ export function Profile() {
     }
 
     replaceProfileSearchParams((nextParams) => {
-      if (nextTab === 'Profile') {
+      if (nextTab === 'Overview') {
         nextParams.delete('tab');
       } else {
         nextParams.set('tab', nextTab);
@@ -1017,7 +1047,7 @@ export function Profile() {
   const getProfileSectionsForTab = useCallback((tab: string) => {
     const sections = new Set<string>();
 
-    if (tab === 'Profile') {
+    if (tab === 'Overview') {
       if (canViewSavedEquipment) sections.add('savedAssets');
       if (canViewSearchAlerts) sections.add('savedSearches');
       if (canViewMyListings) sections.add('myListings');
@@ -1103,7 +1133,7 @@ export function Profile() {
   const isCurrentProfileTabReady = currentProfileSections.every((section) => loadedProfileSections[section]);
   const shouldShowProfileLoadingShell =
     profileDataLoading &&
-    activeTab === 'Profile' &&
+    activeTab === 'Overview' &&
     currentProfileSections.length > 0 &&
     !isCurrentProfileTabReady &&
     Object.keys(loadedProfileSections).length === 0;
@@ -1497,32 +1527,49 @@ export function Profile() {
         })}
       </div>
 
-      {/* Recent Activity */}
-      <div className="bg-bg border border-line shadow-sm">
-        <div className="p-6 border-b border-line flex justify-between items-center bg-surface/30">
-          <h3 className="text-xs font-black uppercase tracking-widest">Recent Activity</h3>
-          <button className="text-[10px] font-bold text-accent uppercase hover:underline">View All</button>
-        </div>
-        <div className="divide-y divide-line">
-          {[
-            { action: 'Equipment Saved', target: '2022 Tigercat 855E', time: '2 hours ago' },
-            { action: 'Inquiry Sent', target: '2019 John Deere 959M', time: '1 day ago' },
-            { action: 'Alert Triggered', target: 'New Skidder Inventory', time: '3 days ago' },
-            { action: 'Profile Login', target: 'Mobile Device', time: '5 days ago' }
-          ].map((activity, i) => (
-            <div key={i} className="p-6 flex justify-between items-center hover:bg-surface/50 transition-colors">
-              <div className="flex items-center space-x-4">
-                <div className="w-2 h-2 bg-accent rounded-full"></div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold uppercase tracking-wider">{activity.action}</span>
-                  <span className="text-[10px] font-medium text-muted uppercase tracking-widest">{activity.target}</span>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{activity.time}</span>
+      {/* Recent Activity — populated from user's own data */}
+      {(() => {
+        const recentItems: Array<{ action: string; target: string; time: string }> = [];
+        if (canViewSellerInquiries) {
+          inquiries.slice(0, 3).forEach((inq) => {
+            const title = listingTitleLookup.get(inq.listingId || '') || inq.listingId || 'Equipment';
+            const ago = inq.createdAt ? new Date(typeof inq.createdAt === 'object' && 'toDate' in inq.createdAt ? (inq.createdAt as { toDate: () => Date }).toDate() : inq.createdAt as string).toLocaleDateString() : '';
+            recentItems.push({ action: `Inquiry — ${inq.status || 'New'}`, target: title, time: ago });
+          });
+        }
+        if (canViewSavedEquipment) {
+          savedAssets.slice(0, 2).forEach((listing) => {
+            recentItems.push({ action: 'Saved Equipment', target: listing.title || 'Equipment', time: '' });
+          });
+        }
+        if (canViewMyListings) {
+          myListings.slice(0, 2).forEach((listing) => {
+            recentItems.push({ action: `Listing — ${listing.status || 'active'}`, target: listing.title || 'Equipment', time: '' });
+          });
+        }
+        if (recentItems.length === 0) return null;
+        return (
+          <div className="bg-bg border border-line shadow-sm">
+            <div className="p-6 border-b border-line flex justify-between items-center bg-surface/30">
+              <h3 className="text-xs font-black uppercase tracking-widest">Recent Activity</h3>
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="divide-y divide-line">
+              {recentItems.slice(0, 6).map((activity, i) => (
+                <div key={i} className="p-6 flex justify-between items-center hover:bg-surface/50 transition-colors">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-2 h-2 bg-accent rounded-full"></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold uppercase tracking-wider">{activity.action}</span>
+                      <span className="text-[10px] font-medium text-muted uppercase tracking-widest">{activity.target}</span>
+                    </div>
+                  </div>
+                  {activity.time ? <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{activity.time}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
@@ -2691,7 +2738,7 @@ export function Profile() {
               )}
             </div>
             <div className="flex flex-col min-w-0">
-              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{roleDisplayLabel} Profile</span>
+              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{profilePageTitle}</span>
               <h1 className={`text-2xl md:text-4xl font-black uppercase tracking-tighter truncate ${coverPhotoPreview ? 'text-white' : ''}`}>
                 {user?.displayName}
               </h1>
@@ -2759,20 +2806,31 @@ export function Profile() {
 
         <div className="lg:hidden mb-8">
           <div className="grid grid-cols-2 gap-2">
-            {profileTabItems.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => selectProfileTab(item.label)}
-              className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
-                activeTab === item.label
-                  ? 'bg-ink text-bg border-ink'
-                  : 'bg-surface border-line text-muted hover:border-accent/50 hover:text-ink'
-              }`}
-            >
-              <item.icon size={14} className="shrink-0" />
-              <span className="truncate text-center">{item.label}</span>
-            </button>
-            ))}
+            {profileTabItems.map((item) =>
+              item.href ? (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className="w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden bg-surface border-accent/30 text-accent hover:border-accent"
+                >
+                  <item.icon size={14} className="shrink-0" />
+                  <span className="truncate text-center">{item.label}</span>
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  onClick={() => selectProfileTab(item.label)}
+                  className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
+                    activeTab === item.label
+                      ? 'bg-ink text-bg border-ink'
+                      : 'bg-surface border-line text-muted hover:border-accent/50 hover:text-ink'
+                  }`}
+                >
+                  <item.icon size={14} className="shrink-0" />
+                  <span className="truncate text-center">{item.label}</span>
+                </button>
+              )
+            )}
           </div>
         </div>
 
@@ -2797,16 +2855,28 @@ export function Profile() {
               </div>
             )}
 
-            {profileTabItems.map((item) => (
-              <button 
-                key={item.label}
-                onClick={() => selectProfileTab(item.label)}
-                className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-bg shadow-lg' : 'hover:bg-surface text-muted'}`}
-              >
-                <item.icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            ))}
+            {profileTabItems.map((item) =>
+              item.href ? (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className="w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm hover:bg-surface text-accent"
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                  <ArrowRight size={14} className="ml-auto opacity-50" />
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  onClick={() => selectProfileTab(item.label)}
+                  className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-bg shadow-lg' : 'hover:bg-surface text-muted'}`}
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              )
+            )}
           </div>
 
           {/* Main Content */}
@@ -2820,7 +2890,7 @@ export function Profile() {
                 </div>
               ) : (
                 <>
-              {activeTab === 'Profile' && renderOverview()}
+              {activeTab === 'Overview' && renderOverview()}
               {activeTab === 'My Listings' && renderMyListings()}
               {activeTab === 'Search Alerts' && renderAlerts()}
               {activeTab === 'Inquiries' && renderInquiries()}

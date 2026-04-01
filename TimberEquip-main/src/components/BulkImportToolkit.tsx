@@ -134,8 +134,7 @@ export function BulkImportToolkit({
           <h3 className="text-lg font-black uppercase tracking-tight text-ink">Bulk Import Templates &amp; Media Mapping</h3>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Export a ready-to-fill machine template for {workspaceLabel}, then upload images or videos in bulk and download a
-            manifest that maps filenames to listing keys. Use the same <span className="font-black text-ink">stock number</span> or
-            <span className="font-black text-ink"> external ID</span> in the import file and the filename prefix.
+            manifest that maps filenames to listing keys.
           </p>
           <p className="mt-2 text-[11px] font-black uppercase tracking-[0.18em] text-accent">
             Current allowance: {listingAllowanceText}
@@ -176,7 +175,7 @@ export function BulkImportToolkit({
             <Images size={14} className="text-accent" /> Bulk Asset Uploader
           </div>
           <p className="mt-2 text-sm text-muted">
-            Upload all listing photos and walkaround videos once. Forestry Equipment Sales groups them by filename prefix and prepares an import-ready manifest.
+            Upload all listing photos and walkaround videos in bulk. Forestry Equipment Sales prepares an import-ready manifest automatically.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <input

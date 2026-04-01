@@ -11513,11 +11513,13 @@ exports.apiProxy = onRequest(
               website: normalizeNonEmptyString(nextUserData.website),
               logo: normalizeNonEmptyString(nextUserData.photoURL),
               coverPhotoUrl: normalizeNonEmptyString(nextUserData.coverPhotoUrl),
-              seoTitle: normalizeNonEmptyString(nextUserData.seoTitle),
-              seoDescription: normalizeNonEmptyString(nextUserData.seoDescription),
-              seoKeywords: Array.isArray(nextUserData.seoKeywords)
+              seoTitle: normalizeNonEmptyString(nextUserData.seoTitle) ||
+                `${storefrontName} | ${nextRole === 'pro_dealer' ? 'Pro Dealer' : nextRole === 'dealer' ? 'Dealer' : 'Equipment Seller'} on Forestry Equipment Sales`,
+              seoDescription: normalizeNonEmptyString(nextUserData.seoDescription) ||
+                `Browse forestry and logging equipment from ${storefrontName}${nextUserData.location ? ' in ' + nextUserData.location : ''}. Verified ${nextRole === 'pro_dealer' ? 'Pro Dealer' : nextRole === 'dealer' ? 'Dealer' : 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery.`,
+              seoKeywords: Array.isArray(nextUserData.seoKeywords) && nextUserData.seoKeywords.length > 0
                 ? nextUserData.seoKeywords.filter((keyword) => typeof keyword === 'string').slice(0, 30)
-                : [],
+                : [storefrontName, 'forestry equipment', 'logging equipment', 'used forestry equipment', 'skidders', 'harvesters', 'feller bunchers', 'forwarders'].filter(Boolean),
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -12483,7 +12485,7 @@ exports.apiProxy = onRequest(
         });
       }
 
-      const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock)$/);
+      const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock|verify|unverify)$/);
       if (adminUserActionMatch && req.method === 'POST') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
@@ -12524,6 +12526,26 @@ exports.apiProxy = onRequest(
 
         if ((action === 'lock' || action === 'unlock') && targetUid === actor.actorUid) {
           return res.status(400).json({ error: `You cannot ${action} your own account.` });
+        }
+
+        if (action === 'verify' || action === 'unverify') {
+          const newVal = action === 'verify';
+          try {
+            await targetRef.set(
+              {
+                manuallyVerified: newVal,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+            return res.status(200).json({
+              message: newVal ? 'Seller verified.' : 'Seller verification removed.',
+              manuallyVerified: newVal,
+            });
+          } catch (error) {
+            logger.error(`Failed to ${action} seller ${targetUid}`, error);
+            return res.status(500).json({ error: `Unable to ${action} this seller.` });
+          }
         }
 
         if (action === 'reset-password') {

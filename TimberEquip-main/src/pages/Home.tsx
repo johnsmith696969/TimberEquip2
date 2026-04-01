@@ -312,11 +312,11 @@ export function Home() {
             loading="eager"
             decoding="async"
           />
-          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-black/40' : 'bg-black/58'}`}></div>
+          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-black/30' : 'bg-black/58'}`}></div>
           <div
             className={`absolute inset-0 ${
               theme === 'light'
-                ? 'bg-[linear-gradient(90deg,rgba(249,247,242,0.80)_0%,rgba(249,247,242,0.60)_34%,rgba(249,247,242,0.18)_70%,rgba(249,247,242,0.05)_100%)]'
+                ? 'bg-[linear-gradient(90deg,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.90)_34%,rgba(255,255,255,0.55)_70%,rgba(255,255,255,0.35)_100%)]'
                 : 'bg-[linear-gradient(90deg,rgba(10,10,10,0.92)_0%,rgba(10,10,10,0.80)_36%,rgba(10,10,10,0.36)_72%,rgba(10,10,10,0.12)_100%)]'
             }`}
           ></div>
