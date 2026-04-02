@@ -43,10 +43,10 @@ export function About() {
         title="About Us | Forestry Equipment Sales"
         description="Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster."
         canonicalPath="/about"
-        imagePath="/page-photos/pine-forest.jpg"
+        imagePath="/page-photos/pine-forest.webp"
       />
 
-      <ImageHero imageSrc="/page-photos/about-us.jpg" imageAlt="Forestry equipment in the field">
+      <ImageHero imageSrc="/page-photos/about-us.webp" imageAlt="Forestry equipment in the field">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <Building className="text-accent" size={20} />

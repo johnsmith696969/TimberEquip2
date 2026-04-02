@@ -83,11 +83,11 @@ export function Auctions() {
         title="Live Auctions | Forestry Equipment Auctions | Forestry Equipment Sales"
         description="Browse upcoming and live forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers."
         canonicalPath="/auctions"
-        imagePath="/page-photos/john-deere-harvester.jpg"
+        imagePath="/page-photos/john-deere-harvester.webp"
       />
 
       {/* Hero */}
-      <ImageHero imageSrc="/page-photos/john-deere-harvester.jpg" imageAlt="John Deere harvester in the forest">
+      <ImageHero imageSrc="/page-photos/john-deere-harvester.webp" imageAlt="John Deere harvester in the forest">
         <div>
           <div className="flex items-center gap-3 mb-4">
             <Gavel size={20} className="text-accent" />

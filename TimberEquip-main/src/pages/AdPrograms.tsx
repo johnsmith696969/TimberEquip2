@@ -448,7 +448,7 @@ export function AdPrograms() {
       />
       {/* Hero Section */}
       <ImageHero
-        imageSrc="/page-photos/winter-log-road.jpg"
+        imageSrc="/page-photos/winter-log-road.webp"
         imageAlt="Winter logging road through snow-covered forest"
         contentClassName="max-w-7xl"
       >

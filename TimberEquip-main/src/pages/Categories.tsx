@@ -156,7 +156,7 @@ export function Categories() {
       <Seo title={seoTitle} description={seoDescription} canonicalPath="/categories" jsonLd={categoriesSchemaData} />
       <Breadcrumbs />
       {/* Header */}
-      <ImageHero imageSrc="/page-photos/bagged-firewood.jpg" imageAlt="Bagged firewood stacks">
+      <ImageHero imageSrc="/page-photos/bagged-firewood.webp" imageAlt="Bagged firewood stacks">
         <div>
           <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
           <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>

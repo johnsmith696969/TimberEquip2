@@ -34,6 +34,7 @@ export function ImageHero({
           className={`absolute inset-0 h-full w-full object-cover ${imageClassName}`.trim()}
           loading="eager"
           decoding="async"
+          fetchPriority="high"
         />
         <div className={`absolute inset-0 ${shadowOverlay}`}></div>
         <div className={`absolute inset-0 ${gradientOverlay}`}></div>

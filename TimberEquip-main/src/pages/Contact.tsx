@@ -79,7 +79,7 @@ export function Contact() {
         title="Contact Forestry Equipment Sales | Sales, Support, and Dealer Help"
         description="Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
         canonicalPath="/contact"
-        imagePath="/page-photos/grapple-hero-image.jpeg"
+        imagePath="/page-photos/grapple-hero-image.webp"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [
@@ -108,7 +108,7 @@ export function Contact() {
           ],
         }}
       />
-      <ImageHero imageSrc="/page-photos/contact-us.jpg" imageAlt="Contact Forestry Equipment Sales">
+      <ImageHero imageSrc="/page-photos/contact-us.webp" imageAlt="Contact Forestry Equipment Sales">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <MessageSquare size={20} className="text-accent" />

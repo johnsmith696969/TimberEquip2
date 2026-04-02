@@ -102,10 +102,10 @@ export function Financing() {
         title="Equipment Financing | Apply for Credit | Forestry Equipment Sales"
         description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales."
         canonicalPath="/financing"
-        imagePath="/page-photos/ponsse-buffalo-loading.jpg"
+        imagePath="/page-photos/ponsse-buffalo-loading.webp"
       />
       {/* Header */}
-      <ImageHero imageSrc="/page-photos/ponsse-buffalo-loading.jpg" imageAlt="Ponsse Buffalo loading timber">
+      <ImageHero imageSrc="/page-photos/ponsse-buffalo-loading.webp" imageAlt="Ponsse Buffalo loading timber">
         <div>
           <div className="flex items-center gap-3 mb-4">
             <Building size={20} className="text-accent" />

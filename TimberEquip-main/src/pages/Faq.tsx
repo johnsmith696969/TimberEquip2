@@ -149,7 +149,7 @@ export function Faq() {
         title="Logging Equipment Marketplace FAQ | Buyers, Sellers, and Dealers"
         description="Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on Forestry Equipment Sales."
         canonicalPath="/faq"
-        imagePath="/page-photos/winter-log-road.jpg"
+        imagePath="/page-photos/winter-log-road.webp"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [
@@ -172,7 +172,7 @@ export function Faq() {
         }}
       />
 
-      <ImageHero imageSrc="/page-photos/faq.jpg" imageAlt="Frequently asked questions about forestry equipment">
+      <ImageHero imageSrc="/page-photos/faq.webp" imageAlt="Frequently asked questions about forestry equipment">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <HelpCircle className="text-accent" size={20} />

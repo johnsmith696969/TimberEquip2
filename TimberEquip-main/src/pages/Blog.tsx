@@ -63,7 +63,7 @@ export function Blog() {
         canonicalPath="/blog"
       />
 
-      <ImageHero imageSrc="/page-photos/pine-dirt-road.jpg" imageAlt="Pine dirt road through the forest">
+      <ImageHero imageSrc="/page-photos/pine-dirt-road.webp" imageAlt="Pine dirt road through the forest">
         <div>
           <div className="flex items-center gap-3 mb-6">
             <Newspaper size={20} className="text-accent" />

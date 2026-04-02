@@ -59,7 +59,7 @@ const SUBCATEGORY_MARKET_ORDER = [
   'Skidders',
 ];
 
-const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.jpeg?v=20260330a';
+const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.webp?v=20260402a';
 
 const formatChange = (value: unknown) => {
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -322,6 +322,7 @@ export function Home() {
             className="absolute inset-0 h-full w-full object-cover object-center"
             loading="eager"
             decoding="async"
+            fetchPriority="high"
           />
           <div className={`absolute inset-0 ${theme === 'light' ? 'bg-black/30' : 'bg-black/58'}`}></div>
           <div
@@ -501,6 +502,7 @@ export function Home() {
                   <select
                     value={selectedCategoryFamily}
                     onChange={(event) => setSelectedCategoryFamily(event.target.value)}
+                    aria-label="Equipment category family"
                     className="bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none min-w-0"
                   >
                     {categoryCards.map((category) => (
@@ -630,9 +632,10 @@ export function Home() {
                     key={i}
                     onClick={() => setCarouselIndex(i)}
                     aria-label={`Go to card ${i + 1}`}
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                    className={`w-3 h-3 rounded-full transition-colors touch-manipulation ${
                       i === carouselIndex ? 'bg-accent' : 'bg-line hover:bg-muted'
                     }`}
+                    style={{ minWidth: 44, minHeight: 44, padding: 16, margin: -14, backgroundClip: 'content-box' }}
                   />
                 ))}
               </div>

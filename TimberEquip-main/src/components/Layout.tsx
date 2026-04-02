@@ -20,7 +20,7 @@ const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO = `/Logo-Transparent.png?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO = `/Logo-Transparent.webp?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -329,6 +329,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <img
             src={headerLogoSrc}
             alt={headerLogoAlt}
+            width={200}
+            height={64}
             className="h-14 md:h-16 w-auto object-contain"
             onError={() => {
               setHeaderLogoSrc((current) => current === HEADER_LOGO_FALLBACK ? current : HEADER_LOGO_FALLBACK);
@@ -503,6 +505,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <img
                   src={FOOTER_LOGO}
                   alt="Forestry Equipment Sales"
+                  width={180}
+                  height={48}
                   className="h-12 w-auto max-w-[180px] object-contain"
                   onError={(event) => {
                     const target = event.currentTarget;

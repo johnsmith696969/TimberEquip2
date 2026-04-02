@@ -40,10 +40,10 @@ export function OurTeam() {
         title="Our Team | Forestry Equipment Sales"
         description="Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development."
         canonicalPath="/our-team"
-        imagePath="/page-photos/john-deere-harvester.jpg"
+        imagePath="/page-photos/john-deere-harvester.webp"
       />
 
-      <ImageHero imageSrc="/page-photos/our-team.jpg" imageAlt="The Forestry Equipment Sales team">
+      <ImageHero imageSrc="/page-photos/our-team.webp" imageAlt="The Forestry Equipment Sales team">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <Users className="text-accent" size={20} />
