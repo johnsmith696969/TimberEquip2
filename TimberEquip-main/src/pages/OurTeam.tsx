@@ -1,7 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Mail, Phone, Users } from 'lucide-react';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 const teamMembers = [
   {
@@ -22,34 +24,42 @@ const teamMembers = [
 ];
 
 export function OurTeam() {
+  const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+  const contactPanelClass = theme === 'dark' ? 'border border-white/10 bg-[#1C1917] text-white' : 'border border-line bg-surface text-ink';
+  const contactItemClass = theme === 'dark'
+    ? 'border border-white/10 text-white hover:border-accent'
+    : 'border border-line bg-bg text-ink hover:border-accent';
+  const contactMetaClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
+
   return (
     <div className="min-h-screen bg-bg">
       <Seo
         title="Our Team | Forestry Equipment Sales"
         description="Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development."
         canonicalPath="/our-team"
+        imagePath="/page-photos/john-deere-harvester.jpg"
       />
 
-      <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">
-        <div className="absolute right-0 top-0 h-full w-1/3 translate-x-1/2 skew-x-12 bg-accent/10" />
-        <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-6 flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-ink">
-              <Users className="text-accent" size={20} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">Our Team</span>
+      <ImageHero imageSrc="/page-photos/john-deere-harvester.jpg" imageAlt="John Deere harvester in the woods">
+        <div>
+          <div className="mb-6 flex items-center gap-3">
+            <Users className="text-accent" size={20} />
+            <span className="label-micro text-accent">Our Team</span>
           </div>
-          <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
+          <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             We Know The Industry
             <br />
-            <span className="text-muted">Because We Are From It</span>
+            <span className={heroSecondaryClass}>Because We Are From It</span>
           </h1>
-          <p className="max-w-3xl text-base font-medium leading-relaxed text-muted md:text-lg">
+          <p className={`max-w-3xl text-base font-medium leading-relaxed md:text-lg ${heroBodyClass}`}>
             This platform was not built by tech investors. It was built by people who have spent years around
             equipment, sellers, buyers, shipping, and the real work it takes to move iron.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
         <div className="mx-auto max-w-[1600px]">
@@ -93,21 +103,21 @@ export function OurTeam() {
             </p>
           </div>
 
-          <div className="border border-line bg-[#1C1917] p-8 text-white md:p-10">
+          <div className={`${contactPanelClass} p-8 md:p-10`}>
             <span className="label-micro mb-4 block text-accent">Reach Us</span>
             <div className="space-y-4">
-              <a href="tel:+12187200933" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">
+              <a href="tel:+12187200933" className={`flex items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
                 <Phone className="mt-0.5 text-accent" size={18} />
                 <div>
-                  <span className="label-micro block text-white/60">Customer Support</span>
-                  <span className="text-sm font-black tracking-tight text-white">(218) 720-0933</span>
+                  <span className={`label-micro block ${contactMetaClass}`}>Customer Support</span>
+                  <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                 </div>
               </a>
-              <a href="mailto:info@forestryequipmentsales.com" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">
+              <a href="mailto:support@forestryequipmentsales.com" className={`flex min-w-0 items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
                 <Mail className="mt-0.5 text-accent" size={18} />
-                <div>
-                  <span className="label-micro block text-white/60">Email</span>
-                  <span className="text-sm font-black tracking-tight text-white">info@forestryequipmentsales.com</span>
+                <div className="min-w-0">
+                  <span className={`label-micro block ${contactMetaClass}`}>Email</span>
+                  <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
                 </div>
               </a>
               <div className="pt-2">

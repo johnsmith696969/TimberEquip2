@@ -1,20 +1,25 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Mail, Phone, MapPin, 
-  Globe, ShieldCheck, Clock, 
-  ArrowRight, CheckCircle2, AlertCircle,
-  TrendingUp, Activity, LayoutDashboard,
-  ChevronRight, MessageSquare, Send,
+  Mail, MapPin, Clock,
+  CheckCircle2, MessageSquare, Send,
   Headphones, HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 export function Contact() {
+  const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+  const supportPanelClass = theme === 'dark' ? 'bg-[#1C1917] text-white border border-white/10' : 'bg-surface text-ink border border-line';
+  const supportBodyClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [contactError, setContactError] = useState('');
@@ -71,6 +76,7 @@ export function Contact() {
         title="Contact Forestry Equipment Sales | Sales, Support, and Dealer Help"
         description="Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
         canonicalPath="/contact"
+        imagePath="/page-photos/grapple-hero-image.jpeg"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [
@@ -99,23 +105,21 @@ export function Contact() {
           ],
         }}
       />
-      {/* Editorial Header */}
-      <section className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
+      <ImageHero imageSrc="/page-photos/grapple-hero-image.jpeg" imageAlt="Forestry grapple loader in the woods">
+        <div>
+          <div className="mb-6 flex items-center gap-3">
             <MessageSquare size={20} className="text-accent" />
-            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Contact Center</span>
+            <span className="label-micro text-accent">Contact Center</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             Contact <br />
-            <span className="text-muted">Us</span>
+            <span className={heroSecondaryClass}>Us</span>
           </h1>
-          <p className="text-muted font-medium max-w-2xl leading-relaxed">
+          <p className={`max-w-2xl font-medium leading-relaxed ${heroBodyClass}`}>
             Have a question about a listing, your account, or dealer services? Reach out and we will get back to you.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
@@ -241,34 +245,34 @@ export function Contact() {
               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Contact Information</h4>
               <div className="space-y-10">
                 {[
-                  { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933' },
-                  { title: 'Email Support', desc: 'SUPPORT@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com' },
-                  { title: 'HQ', desc: '4788 RICE LAKE RD, DULUTH, MN 55803', icon: MapPin, link: '#' },
-                  { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST · EMAIL 8AM-10PM CST', icon: Clock, link: '#' }
+                  { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Email Support', desc: 'support@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com', valueClassName: 'block break-all text-xs font-semibold text-muted leading-relaxed normal-case tracking-normal' },
+                  { title: 'HQ', desc: '4788 RICE LAKE RD, DULUTH, MN 55803', icon: MapPin, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST | EMAIL 8AM-10PM CST', icon: Clock, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' }
                 ].map((item, i) => (
                   <a 
                     key={i} 
                     href={item.link}
-                    className="flex space-x-4 group"
+                    className="flex min-w-0 space-x-4 group"
                   >
                     <div className="p-3 bg-bg border border-line rounded-sm h-fit group-hover:border-accent transition-colors">
                       <item.icon className="text-accent" size={20} />
                     </div>
-                    <div className="flex flex-col">
+                    <div className="flex min-w-0 flex-col">
                       <span className="text-xs font-black uppercase tracking-tight mb-1 group-hover:text-accent transition-colors">{item.title}</span>
-                      <p className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest">{item.desc}</p>
+                      <p className={item.valueClassName}>{item.desc}</p>
                     </div>
                   </a>
                 ))}
               </div>
             </div>
 
-            <div className="bg-[#1C1917] p-8 text-white rounded-sm">
+            <div className={`${supportPanelClass} rounded-sm p-8`}>
               <div className="flex items-center space-x-3 mb-6">
                 <HelpCircle className="text-accent" size={24} />
                 <h4 className="text-sm font-black uppercase tracking-tighter">Frequently Asked Questions</h4>
               </div>
-              <p className="text-[11px] font-medium text-white/60 leading-relaxed mb-8">
+              <p className={`mb-8 text-[11px] font-medium leading-relaxed ${supportBodyClass}`}>
                 Find answers to common questions about buying, selling, subscriptions, financing, and more.
               </p>
               <Link to="/faq" className="btn-industrial btn-accent w-full py-4 text-center block">View FAQ</Link>

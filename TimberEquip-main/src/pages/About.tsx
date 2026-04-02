@@ -1,7 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Award, Building, Users, Zap } from 'lucide-react';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 const missionPoints = [
   'Help contractors and dealers sell faster.',
@@ -28,35 +30,40 @@ const audiences = [
 ];
 
 export function About() {
+  const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+  const accentPanelClass = theme === 'dark' ? 'border border-white/10 bg-[#1C1917] text-white' : 'border border-line bg-surface text-ink';
+  const accentPanelBodyClass = theme === 'dark' ? 'text-white/80' : 'text-muted';
+
   return (
     <div className="min-h-screen bg-bg">
       <Seo
         title="About Us | Forestry Equipment Sales"
         description="Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster."
         canonicalPath="/about"
+        imagePath="/page-photos/pine-forest.jpg"
       />
 
-      <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">
-        <div className="absolute right-0 top-0 h-full w-1/3 translate-x-1/2 skew-x-12 bg-accent/10" />
-        <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-6 flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-ink">
-              <Building className="text-accent" size={20} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">About Forestry Equipment Sales</span>
+      <ImageHero imageSrc="/page-photos/pine-forest.jpg" imageAlt="Pine forest with a logging road">
+        <div>
+          <div className="mb-6 flex items-center gap-3">
+            <Building className="text-accent" size={20} />
+            <span className="label-micro text-accent">About Forestry Equipment Sales</span>
           </div>
-          <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
+          <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             Built For The
             <br />
-            <span className="text-muted">Forestry Equipment Trade</span>
+            <span className={heroSecondaryClass}>Forestry Equipment Trade</span>
           </h1>
-          <p className="max-w-3xl text-base font-medium leading-relaxed text-muted md:text-lg">
+          <p className={`max-w-3xl text-base font-medium leading-relaxed md:text-lg ${heroBodyClass}`}>
             Our platform was built from the ground up by people who have been in the woods, walked the job sites,
             and marketed machines for over two decades. Forestry Equipment Sales is a modern marketplace designed
             specifically for buying and selling forestry equipment.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
         <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-10 lg:grid-cols-[1.2fr_0.8fr]">
@@ -79,14 +86,14 @@ export function About() {
             </div>
           </div>
 
-          <div className="border border-line bg-[#1C1917] p-8 text-white md:p-12">
+          <div className={`${accentPanelClass} p-8 md:p-12`}>
             <div className="mb-6 flex items-center space-x-3">
               <Zap className="text-accent" size={22} />
               <h3 className="text-sm font-black uppercase tracking-[0.2em]">Our Mission</h3>
             </div>
             <ul className="space-y-4">
               {missionPoints.map((point) => (
-                <li key={point} className="flex items-start space-x-3 text-sm font-medium leading-relaxed text-white/80">
+                <li key={point} className={`flex items-start space-x-3 text-sm font-medium leading-relaxed ${accentPanelBodyClass}`}>
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent" />
                   <span>{point}</span>
                 </li>
@@ -108,7 +115,7 @@ export function About() {
           <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
             {audiences.map(({ title, description, icon: Icon }) => (
               <div key={title} className="border border-line bg-bg p-8 transition-colors hover:border-accent">
-                <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-sm bg-surface text-accent">
+                <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-sm border border-line bg-surface text-accent">
                   <Icon size={24} />
                 </div>
                 <h3 className="mb-4 text-xl font-black uppercase tracking-tight">{title}</h3>

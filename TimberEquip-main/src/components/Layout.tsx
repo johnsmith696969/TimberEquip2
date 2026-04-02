@@ -557,7 +557,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </a>
                   <a
                     href="mailto:support@forestryequipmentsales.com"
-                    className="text-xs font-bold tracking-tight text-muted hover:text-accent transition-colors mt-2 block"
+                    className="mt-2 block break-all text-xs font-semibold normal-case tracking-normal text-muted transition-colors hover:text-accent"
                   >
                     support@forestryequipmentsales.com
                   </a>

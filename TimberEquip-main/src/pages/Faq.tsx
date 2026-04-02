@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronDown, HelpCircle, Mail, Phone } from 'lucide-react';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 interface FaqCategory {
   title: string;
@@ -133,6 +135,12 @@ const faqCategories: FaqCategory[] = [
 const faqItems = faqCategories.flatMap((cat) => cat.items);
 
 export function Faq() {
+  const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+  const linkPanelClass = theme === 'dark' ? 'border border-white/10 bg-[#1C1917] text-white' : 'border border-line bg-surface text-ink';
+  const linkPanelRuleClass = theme === 'dark' ? 'border-white/10 text-white' : 'border-line text-ink';
   const [openIndex, setOpenIndex] = useState<string>('');
 
   return (
@@ -141,6 +149,7 @@ export function Faq() {
         title="Logging Equipment Marketplace FAQ | Buyers, Sellers, and Dealers"
         description="Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on Forestry Equipment Sales."
         canonicalPath="/faq"
+        imagePath="/page-photos/winter-log-road.jpg"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [
@@ -163,26 +172,23 @@ export function Faq() {
         }}
       />
 
-      <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">
-        <div className="absolute right-0 top-0 h-full w-1/3 translate-x-1/2 skew-x-12 bg-accent/10" />
-        <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-6 flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-ink">
-              <HelpCircle className="text-accent" size={20} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">Frequently Asked Questions</span>
+      <ImageHero imageSrc="/page-photos/winter-log-road.jpg" imageAlt="Winter logging road through the forest">
+        <div>
+          <div className="mb-6 flex items-center gap-3">
+            <HelpCircle className="text-accent" size={20} />
+            <span className="label-micro text-accent">Frequently Asked Questions</span>
           </div>
-          <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
+          <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             Answers For
             <br />
-            <span className="text-muted">Buyers And Sellers</span>
+            <span className={heroSecondaryClass}>Buyers And Sellers</span>
           </h1>
-          <p className="max-w-3xl text-base font-medium leading-relaxed text-muted md:text-lg">
+          <p className={`max-w-3xl text-base font-medium leading-relaxed md:text-lg ${heroBodyClass}`}>
             Quick answers to common questions about listing equipment, financing, logistics, dealer programs,
             and support at Forestry Equipment Sales.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
         <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-10 lg:grid-cols-[0.85fr_1.15fr]">
@@ -205,28 +211,28 @@ export function Faq() {
                     <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                   </div>
                 </a>
-                <a href="mailto:info@forestryequipmentsales.com" className="flex items-start space-x-3 border border-line bg-bg p-4 transition-colors hover:border-accent">
+                <a href="mailto:support@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 border border-line bg-bg p-4 transition-colors hover:border-accent">
                   <Mail className="mt-0.5 text-accent" size={18} />
-                  <div>
+                  <div className="min-w-0">
                     <span className="label-micro block">Email Support</span>
-                    <span className="text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
+                    <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
                   </div>
                 </a>
               </div>
             </div>
 
-            <div className="border border-line bg-[#1C1917] p-8 text-white md:p-10">
+            <div className={`${linkPanelClass} p-8 md:p-10`}>
               <span className="label-micro mb-4 block text-accent">Popular Pages</span>
               <div className="space-y-4">
-                <Link to="/financing" className="flex items-center justify-between border-b border-white/10 pb-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:text-accent">
+                <Link to="/financing" className={`flex items-center justify-between border-b pb-4 text-sm font-black uppercase tracking-widest transition-colors hover:text-accent ${linkPanelRuleClass}`}>
                   Financing
                   <ArrowRight size={16} />
                 </Link>
-                <Link to="/logistics" className="flex items-center justify-between border-b border-white/10 pb-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:text-accent">
+                <Link to="/logistics" className={`flex items-center justify-between border-b pb-4 text-sm font-black uppercase tracking-widest transition-colors hover:text-accent ${linkPanelRuleClass}`}>
                   Logistics
                   <ArrowRight size={16} />
                 </Link>
-                <Link to="/contact" className="flex items-center justify-between text-sm font-black uppercase tracking-widest text-white transition-colors hover:text-accent">
+                <Link to="/contact" className={`flex items-center justify-between text-sm font-black uppercase tracking-widest transition-colors hover:text-accent ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
                   Contact Us
                   <ArrowRight size={16} />
                 </Link>
