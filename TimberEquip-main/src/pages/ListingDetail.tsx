@@ -770,8 +770,13 @@ export function ListingDetail() {
         </div>
       </div>
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
-          <div className="lg:col-span-3 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          <div className="lg:col-span-8 space-y-6">
+            <div className="space-y-2">
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-24" />
+              <div className="animate-pulse bg-surface rounded-sm h-10 w-3/4" />
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-48" />
+            </div>
             <div className="animate-pulse bg-surface rounded-sm aspect-[16/9] w-full" />
             <div className="flex gap-2">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -779,17 +784,16 @@ export function ListingDetail() {
               ))}
             </div>
           </div>
-          <div className="lg:col-span-2 space-y-6">
-            <div className="animate-pulse bg-surface rounded-sm h-8 w-3/4" />
-            <div className="animate-pulse bg-surface rounded-sm h-6 w-1/2" />
+          <div className="lg:col-span-4 space-y-6">
+            <div className="animate-pulse bg-surface rounded-sm h-6 w-24" />
             <div className="animate-pulse bg-surface rounded-sm h-10 w-40" />
+            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
+            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
             <div className="space-y-3 pt-4">
               <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
               <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
               <div className="animate-pulse bg-surface rounded-sm h-4 w-2/3" />
             </div>
-            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
-            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
           </div>
         </div>
       </div>
@@ -1208,17 +1212,18 @@ export function ListingDetail() {
             <div className="flex flex-col space-y-4">
               <div className="aspect-[16/9] bg-surface border border-line overflow-hidden relative group">
                 <AnimatePresence mode="wait">
-                  <motion.img 
+                  <motion.img
                     key={activeImage}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    src={galleryImages[activeImage]} 
+                    src={galleryImages[activeImage]}
                     alt={activeImageTitle || listing.title}
                     className="w-full h-full object-cover object-center cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
+                    fetchPriority={activeImage === 0 ? 'high' : undefined}
                   />
                 </AnimatePresence>
                 <WatermarkOverlay index={activeImage} />

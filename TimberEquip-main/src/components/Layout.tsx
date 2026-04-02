@@ -306,7 +306,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {theme === 'light' ? <Moon size={14} className="sm:w-3 sm:h-3" /> : <Sun size={14} className="sm:w-3 sm:h-3" />}
             <span className="hidden sm:inline">{theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}</span>
           </button>
-          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-[#15803D] dark:text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
+          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-accent-link font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
           {hasDealerOsAccess ? <Link to="/dealer-os" className="text-ink font-bold hover:underline">DealerOS</Link> : null}
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-4">
@@ -342,7 +342,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <nav className="hidden lg:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
           <Link to="/search" className="hover:text-accent transition-colors">{t('layout.inventory', 'Inventory')}</Link>
           <Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link>
-          <Link to="/ad-programs" className="hover:text-accent transition-colors text-[#15803D] dark:text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link>
+          <Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
           <Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.auctions', 'Auctions')}</Link>
           <Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financing', 'Financing')}</Link>
           <Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealers')}</Link>
@@ -414,12 +414,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
              <div className="flex flex-col space-y-8 text-2xl font-black tracking-tighter uppercase pt-20 px-6">
               <Link to="/search" onClick={() => setIsMenuOpen(false)}>{t('layout.inventory', 'Inventory')}</Link>
               <Link to="/categories" onClick={() => setIsMenuOpen(false)}>{t('layout.categories', 'Categories')}</Link>
-              <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-[#15803D] dark:text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link>
+              <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
               <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
-              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-[#15803D] dark:text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
+              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent-link">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>
             
              <div className="mt-8 pb-12 px-6 flex flex-col space-y-6">
@@ -547,7 +547,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="text-[11px] font-black uppercase tracking-[0.2em] mb-8 text-ink">{t('layout.partnership', 'Partnership')}</h4>
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
-                <li><Link to="/ad-programs" className="hover:text-accent transition-colors text-[#15803D] dark:text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link></li>
+                <li><Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link></li>
                 <li><Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealer Network')}</Link></li>
                 <li><Link to="/logistics" className="hover:text-accent transition-colors">{t('layout.globalLogistics', 'Global Logistics')}</Link></li>
                 <li><Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link></li>

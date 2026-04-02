@@ -21,6 +21,7 @@
   --color-line: var(--line);
   --color-ink: var(--ink);
   --color-accent: var(--accent);
+  --color-accent-link: var(--accent-link);
   --color-secondary: var(--secondary);
   --color-data: var(--data);
   --color-muted: var(--muted);
@@ -44,6 +45,7 @@
   --ink: #1C1917;
   --btn-text: #FFFFFF;
   --accent: #16A34A; /* Timber Green */
+  --accent-link: #15803D; /* WCAG AA link green (4.56:1 on white) */
   --secondary: #334155; /* Slate */
   --data: #10B981; /* Success Green */
   --muted: #78716C;
@@ -57,6 +59,7 @@
   --ink: #FAFAF9;
   --btn-text: #FAFAF9;
   --accent: #22C55E;
+  --accent-link: #22C55E;
   --secondary: #94A3B8;
   --data: #34D399;
   --muted: #A8A29E;
@@ -71,6 +74,7 @@
     --ink: #FAFAF9;
     --btn-text: #FAFAF9;
     --accent: #22C55E;
+    --accent-link: #22C55E;
     --secondary: #94A3B8;
     --data: #34D399;
     --muted: #A8A29E;
