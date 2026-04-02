@@ -102,7 +102,7 @@ describe('adminUserService bootstrap cache coverage', () => {
       fetchedAt: '2026-03-30T02:00:00.000Z',
     };
     window.localStorage.setItem(ADMIN_BOOTSTRAP_CACHE_KEY, JSON.stringify({
-      savedAt: '2026-03-30T02:05:00.000Z',
+      savedAt: new Date().toISOString(),
       data: cachedBootstrap,
     }));
     fetchMock.mockRejectedValueOnce(new Error('network down'));
@@ -115,7 +115,7 @@ describe('adminUserService bootstrap cache coverage', () => {
   it('falls back to cached users when the full admin bootstrap cache is unavailable', async () => {
     const cachedUsers = [makeAccount({ id: 'cached-user' })];
     window.localStorage.setItem(ADMIN_USER_CACHE_KEY, JSON.stringify({
-      savedAt: '2026-03-30T03:05:00.000Z',
+      savedAt: new Date().toISOString(),
       data: cachedUsers,
     }));
     fetchMock.mockRejectedValueOnce(new Error('daily read quota is exhausted'));

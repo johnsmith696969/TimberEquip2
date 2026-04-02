@@ -502,7 +502,7 @@ class FESDealerInventory extends HTMLElement{
     if(self._hasMore){
       html+='<div class="fes-load-more"><button class="fes-load-more-btn">Load More</button></div>';
     }
-    html+='<div class="fes-powered">Powered by <a href="https://www.forestryequipmentsales.com" target="_blank" rel="noopener noreferrer">Forestry Equipment Sales</a></div>';
+    html+='<div class="fes-powered">Powered by <a href="https://timberequip.com" target="_blank" rel="noopener noreferrer">Forestry Equipment Sales</a></div>';
     self._wrapper.innerHTML=html;
     self._wrapper.className='fes-widget style-'+self._cfg.cardStyle;
 

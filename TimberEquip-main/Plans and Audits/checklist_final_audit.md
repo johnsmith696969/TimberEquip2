@@ -66,7 +66,7 @@
 - [x] **4.1 - JSON-LD structured data** - Already on Home (WebSite + SearchAction), ListingDetail (Product), Search (ItemList), SellerProfile (Organization).
 - [x] **4.2 - SSR proxy for SEO routes** - `functions/public-pages.js` exists for SEO landing pages.
 - [x] **4.3 - Default noindex safety net** - Added to `index.html`. `Seo.tsx` overrides per-page.
-- [ ] **4.4 - Expand SSR coverage** - Static pages (About, Contact, Financing, Terms, Privacy, Cookies, DMCA) still serve empty SPA shells to crawlers. Add SSR templates for all indexable pages.
+- [ ] **4.4 - Expand SSR coverage** - Static pages (About, Contact, Financing, Terms, Privacy, Cookies, DMCA, our team, faq, etc) still serve empty SPA shells to crawlers. Add SSR templates for all indexable pages.
   - Files: `functions/public-pages.js`, `server.ts`
   - Effort: 40-60 hours
 - [ ] **4.5 - Image optimization pipeline** - Firebase Storage trigger -> sharp -> thumbnail/medium/large WebP variants. Update ListingCard/ListingDetail with `srcSet` and `loading="lazy"`.
