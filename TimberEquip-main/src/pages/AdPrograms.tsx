@@ -109,7 +109,7 @@ export function AdPrograms() {
   });
   const flowIntent = String(searchParams.get('intent') || '').trim().toLowerCase();
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
-  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
   const openLeadForm = (type: 'media-kit' | 'support') => {

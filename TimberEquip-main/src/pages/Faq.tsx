@@ -137,7 +137,7 @@ const faqItems = faqCategories.flatMap((cat) => cat.items);
 export function Faq() {
   const { theme } = useTheme();
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
-  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const linkPanelClass = theme === 'dark' ? 'border border-white/10 bg-[#1C1917] text-white' : 'border border-line bg-surface text-ink';
   const linkPanelRuleClass = theme === 'dark' ? 'border-white/10 text-white' : 'border-line text-ink';

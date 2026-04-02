@@ -31,7 +31,7 @@ function getWebsiteLabel(website?: string): string {
 export function Dealers() {
   const { theme } = useTheme();
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
-  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const [dealers, setDealers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);

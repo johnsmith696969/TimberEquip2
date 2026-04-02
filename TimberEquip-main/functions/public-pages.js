@@ -691,7 +691,7 @@ function baseStyles() {
     .hero-media::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 34%, rgba(255, 255, 255, 0.55) 70%, rgba(255, 255, 255, 0.35) 100%); }
     .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
     .hero h1 { margin: 18px 0 16px; font-size: clamp(2.4rem, 5vw, 4.75rem); line-height: 0.95; letter-spacing: -0.05em; text-transform: uppercase; max-width: 14ch; color: var(--ink); }
-    .hero h1 .hero-secondary { color: var(--secondary); }
+    .hero h1 .hero-secondary { color: #16A34A; }
     .hero p { margin: 0; max-width: 68ch; color: var(--muted); font-size: 1.02rem; line-height: 1.75; }
     .hero-grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 28px; }
     .stat { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.82); box-shadow: var(--shadow); }

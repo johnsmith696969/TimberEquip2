@@ -95,7 +95,7 @@ export function Categories() {
   );
   const isDuskMode = theme === 'dark';
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
-  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const marketNewsStyles = isDuskMode
     ? {
