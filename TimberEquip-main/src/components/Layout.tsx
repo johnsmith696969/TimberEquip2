@@ -156,7 +156,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const selectedCurrency = CURRENCY_OPTIONS.find((c) => c.key === selectedCurrencyKey) || CURRENCY_OPTIONS[0];
   const selectedCurrencySymbol = CURRENCY_SYMBOLS[selectedCurrency.code] || selectedCurrency.code;
   const hydratedProfileUidRef = useRef<string | null>(null);
-  const selectorButtonClass = 'flex items-center gap-2 px-2 py-1 rounded hover:bg-line/50 transition-colors text-muted text-[9px] font-bold';
+  const selectorButtonClass = 'flex items-center gap-2 min-h-[44px] min-w-[44px] p-2 rounded hover:bg-line/50 transition-colors text-muted text-[9px] font-bold';
   const selectorMenuClass = 'absolute top-full left-0 mt-1 bg-surface border border-line rounded shadow-lg z-50';
 
   useEffect(() => {
