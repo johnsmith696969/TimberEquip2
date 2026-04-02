@@ -167,7 +167,7 @@ export function Logistics() {
       />
 
       <section className={`relative overflow-hidden px-4 py-24 transition-colors md:px-8 ${heroClasses.shell}`}>
-        <div className="absolute inset-0 bg-white dark:bg-[#111827]">
+        <div className="absolute inset-0 bg-bg">
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Forestry equipment transport route"

@@ -256,9 +256,9 @@ export function ImageVideoUploader({
 
       {/* Error Messages */}
       {errors.length > 0 && (
-        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
           {errors.map((error, idx) => (
-            <div key={idx} className="flex items-start gap-2 text-xs text-red-700 mb-2 last:mb-0">
+            <div key={idx} className="flex items-start gap-2 text-xs text-red-500 mb-2 last:mb-0">
               <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
               <span>{error}</span>
             </div>

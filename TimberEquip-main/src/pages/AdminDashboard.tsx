@@ -1393,26 +1393,26 @@ export function AdminDashboard() {
 
     if (type === 'payment') {
       if (normalized === 'paid') return 'bg-data/10 border border-data/30 text-data';
-      if (normalized === 'failed') return 'bg-red-50 border border-red-200 text-red-700';
-      return 'bg-amber-50 border border-amber-200 text-amber-800';
+      if (normalized === 'failed') return 'bg-red-500/10 border border-red-500/20 text-red-500';
+      return 'bg-amber-500/10 border border-amber-500/20 text-amber-600';
     }
 
     if (type === 'approval') {
       if (normalized === 'approved') return 'bg-data/10 border border-data/30 text-data';
-      if (normalized === 'rejected') return 'bg-red-50 border border-red-200 text-red-700';
-      return 'bg-amber-50 border border-amber-200 text-amber-800';
+      if (normalized === 'rejected') return 'bg-red-500/10 border border-red-500/20 text-red-500';
+      return 'bg-amber-500/10 border border-amber-500/20 text-amber-600';
     }
 
     if (type === 'visibility') {
       if (normalized === 'public' || normalized === 'live') return 'bg-data/10 border border-data/30 text-data';
       if (normalized === 'private' || normalized === 'archived') return 'bg-surface border border-line text-muted';
-      return 'bg-amber-50 border border-amber-200 text-amber-800';
+      return 'bg-amber-500/10 border border-amber-500/20 text-amber-600';
     }
 
     if (normalized === 'active') return 'bg-data/10 border border-data/30 text-data';
     if (normalized === 'sold') return 'bg-secondary/10 border border-secondary/30 text-secondary';
     if (normalized === 'archived' || normalized === 'expired') return 'bg-surface border border-line text-muted';
-    return 'bg-amber-50 border border-amber-200 text-amber-800';
+    return 'bg-amber-500/10 border border-amber-500/20 text-amber-600';
   };
 
   const getAdminLifecycleActions = (listing: Listing): Array<{ action: ListingLifecycleAction; label: string; tone: 'primary' | 'secondary' | 'danger' }> => {
@@ -2269,10 +2269,10 @@ export function AdminDashboard() {
   const renderListings = () => (
     <div className="space-y-6">
       {listingsLoadError && (
-        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 rounded-sm p-4">
+        <div className="flex items-center justify-between gap-4 bg-red-500/10 border border-red-500/20 rounded-sm p-4">
           <div className="flex items-center gap-3">
             <AlertCircle size={16} className="text-red-500 shrink-0" />
-            <span className="text-xs font-bold text-red-700">{listingsLoadError}</span>
+            <span className="text-xs font-bold text-red-500">{listingsLoadError}</span>
           </div>
           <button
             type="button"
@@ -2322,20 +2322,20 @@ export function AdminDashboard() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-800">Pending Review</p>
-          <p className="mt-2 text-2xl font-black tracking-tight text-amber-900">{pendingReviewCount}</p>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-amber-800">Needs admin or super admin decision</p>
+        <div className="rounded-sm border border-amber-500/20 bg-amber-500/10 px-4 py-4">
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-600">Pending Review</p>
+          <p className="mt-2 text-2xl font-black tracking-tight text-amber-600">{pendingReviewCount}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-amber-600">Needs admin or super admin decision</p>
         </div>
         <div className="rounded-sm border border-data/30 bg-data/10 px-4 py-4">
           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-data">Live Listings</p>
           <p className="mt-2 text-2xl font-black tracking-tight text-ink">{liveListingCount}</p>
           <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-data">Approved, paid, and publicly visible</p>
         </div>
-        <div className="rounded-sm border border-red-200 bg-red-50 px-4 py-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-red-700">Rejected Listings</p>
-          <p className="mt-2 text-2xl font-black tracking-tight text-red-900">{rejectedListingCount}</p>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-red-700">Require correction before resubmission</p>
+        <div className="rounded-sm border border-red-500/20 bg-red-500/10 px-4 py-4">
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-red-500">Rejected Listings</p>
+          <p className="mt-2 text-2xl font-black tracking-tight text-red-500">{rejectedListingCount}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-red-500">Require correction before resubmission</p>
         </div>
       </div>
 
@@ -2386,7 +2386,7 @@ export function AdminDashboard() {
           })}
         </div>
         {listingReviewSummariesError ? (
-          <div className="mt-4 flex items-center gap-2 rounded-sm border border-yellow-200 bg-yellow-50 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-yellow-800">
+          <div className="mt-4 flex items-center gap-2 rounded-sm border border-yellow-500/20 bg-yellow-500/10 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-yellow-600">
             <AlertCircle size={14} className="shrink-0" />
             <span>{listingReviewSummariesError}</span>
           </div>
@@ -2473,7 +2473,7 @@ export function AdminDashboard() {
                   disabled={isListingLifecyclePending(selectedListingAudit.id, option.action)}
                   className={`rounded-sm px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     option.tone === 'danger'
-                      ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                      ? 'border border-red-500/20 bg-red-500/10 text-red-500 hover:bg-red-500/20'
                       : option.tone === 'primary'
                         ? 'border border-accent bg-accent text-white hover:bg-accent/90'
                         : 'border border-line bg-bg text-ink hover:border-accent'
@@ -2485,7 +2485,7 @@ export function AdminDashboard() {
             </div>
 
             {listingAuditError && (
-              <div className="flex items-start gap-3 rounded-sm border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              <div className="flex items-start gap-3 rounded-sm border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-500">
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <div className="space-y-1">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em]">Audit Unavailable</p>
@@ -2541,7 +2541,7 @@ export function AdminDashboard() {
                         <div className="flex flex-wrap gap-2">
                           {(listingAuditData.report.anomalyCodes || []).length > 0 ? (
                             listingAuditData.report.anomalyCodes.map((code) => (
-                              <span key={code} className="rounded-sm border border-red-200 bg-red-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-700">
+                              <span key={code} className="rounded-sm border border-red-500/20 bg-red-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-500">
                                 {formatLifecycleLabel(code)}
                               </span>
                             ))
@@ -2585,7 +2585,7 @@ export function AdminDashboard() {
                         <div className="flex flex-wrap gap-2">
                           {(listingAuditData.mediaAudit.validationErrors || []).length > 0 ? (
                             listingAuditData.mediaAudit.validationErrors.map((errorCode) => (
-                              <span key={errorCode} className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-800">
+                              <span key={errorCode} className="rounded-sm border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-600">
                                 {formatLifecycleLabel(errorCode)}
                               </span>
                             ))
@@ -2641,7 +2641,7 @@ export function AdminDashboard() {
                           {(transition.anomalyCodes || []).length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {transition.anomalyCodes.map((code) => (
-                                <span key={code} className="rounded-sm border border-red-200 bg-red-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-700">
+                                <span key={code} className="rounded-sm border border-red-500/20 bg-red-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-500">
                                   {formatLifecycleLabel(code)}
                                 </span>
                               ))}
@@ -2814,10 +2814,10 @@ export function AdminDashboard() {
     <div className="space-y-8">
       {/* Error banner */}
       {usersLoadError && (
-        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 rounded-sm p-4">
+        <div className="flex items-center justify-between gap-4 bg-red-500/10 border border-red-500/20 rounded-sm p-4">
           <div className="flex items-center gap-3">
             <AlertCircle size={16} className="text-red-500 shrink-0" />
-            <span className="text-xs font-bold text-red-700">{usersLoadError}</span>
+            <span className="text-xs font-bold text-red-500">{usersLoadError}</span>
           </div>
           <button
             type="button"
@@ -3042,10 +3042,10 @@ export function AdminDashboard() {
       sellerAgreementAcceptances.length === 0
     ) {
       return (
-        <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
+        <div className="flex items-center justify-between gap-4 rounded-sm border border-red-500/20 bg-red-500/10 p-4">
           <div className="flex items-center gap-3">
             <AlertCircle size={16} className="text-red-500 shrink-0" />
-            <span className="text-xs font-bold text-red-700">{billingLoadError}</span>
+            <span className="text-xs font-bold text-red-500">{billingLoadError}</span>
           </div>
           <button
             type="button"
@@ -3285,7 +3285,7 @@ export function AdminDashboard() {
           </div>
           <div className="max-h-96 overflow-y-auto space-y-0">
             {billingLoadError ? (
-              <div className="flex items-center gap-3 rounded-sm border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-800">
+              <div className="flex items-center gap-3 rounded-sm border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-xs font-bold text-yellow-600">
                 <AlertCircle size={14} className="shrink-0" />
                 <span>{billingLoadError}</span>
               </div>
@@ -3502,10 +3502,10 @@ export function AdminDashboard() {
 
     if (contentLoadError && blogPosts.length === 0 && mediaItems.length === 0 && contentBlocks.length === 0) {
       return (
-        <div className="flex items-center justify-between gap-4 rounded-sm border border-red-200 bg-red-50 p-4">
+        <div className="flex items-center justify-between gap-4 rounded-sm border border-red-500/20 bg-red-500/10 p-4">
           <div className="flex items-center gap-3">
             <AlertCircle size={16} className="text-red-500 shrink-0" />
-            <span className="text-xs font-bold text-red-700">{contentLoadError}</span>
+            <span className="text-xs font-bold text-red-500">{contentLoadError}</span>
           </div>
           <button
             type="button"
@@ -3521,7 +3521,7 @@ export function AdminDashboard() {
     return (
     <div className="space-y-6">
       {contentLoadError ? (
-        <div className="flex items-center gap-3 rounded-sm border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-800">
+        <div className="flex items-center gap-3 rounded-sm border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-xs font-bold text-yellow-600">
           <AlertCircle size={14} className="shrink-0" />
           <span>{contentLoadError}</span>
         </div>
@@ -4977,9 +4977,9 @@ export function AdminDashboard() {
             <>
               <div className={`mb-6 rounded-sm border px-4 py-3 shadow-sm ${
                 userFeedback.tone === 'error'
-                  ? 'border-red-200 bg-red-50 text-red-700'
+                  ? 'border-red-500/20 bg-red-500/10 text-red-500'
                   : userFeedback.tone === 'warning'
-                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    ? 'border-amber-500/20 bg-amber-500/10 text-amber-600'
                     : 'border-data/30 bg-data/10 text-data'
               }`}>
                 <div className="flex items-start gap-3">
@@ -4997,9 +4997,9 @@ export function AdminDashboard() {
                 <div
                   className={`pointer-events-auto rounded-sm border px-4 py-3 shadow-[0_18px_55px_rgba(15,23,42,0.22)] backdrop-blur ${
                     userFeedback.tone === 'error'
-                      ? 'border-red-200 bg-red-50/95 text-red-700'
+                      ? 'border-red-500/20 bg-red-500/10 text-red-500'
                       : userFeedback.tone === 'warning'
-                        ? 'border-amber-200 bg-amber-50/95 text-amber-800'
+                        ? 'border-amber-500/20 bg-amber-500/10 text-amber-600'
                         : 'border-data/30 bg-white/95 text-data'
                   }`}
                   role="status"

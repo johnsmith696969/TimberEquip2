@@ -135,7 +135,7 @@ export function Unsubscribe() {
             ) : null}
 
             {!loading && error ? (
-              <div className={`flex items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-red-200 bg-red-50 text-red-700'}`}>
+              <div className={`flex items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-red-500/20 bg-red-500/10 text-red-500'}`}>
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>

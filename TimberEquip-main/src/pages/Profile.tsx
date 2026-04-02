@@ -2004,9 +2004,9 @@ export function Profile() {
         return 'bg-accent/10 text-accent';
       case 'Qualified':
       case 'Contacted':
-        return 'bg-amber-500/10 text-amber-700';
+        return 'bg-amber-500/10 text-amber-600';
       default:
-        return 'bg-[#1C1917] text-white';
+        return 'bg-surface text-muted';
     }
   };
 

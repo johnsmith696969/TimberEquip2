@@ -388,7 +388,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
       {draftBanner && (
         <div className="max-w-4xl mx-auto mt-4 px-8">
           <div className="flex items-center justify-between gap-4 px-4 py-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-600 dark:text-yellow-400">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-500">
               Unsaved draft found from {new Date(draftBanner.savedAt).toLocaleString()}
             </span>
             <div className="flex items-center gap-2">

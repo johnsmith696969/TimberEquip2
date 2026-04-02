@@ -86,8 +86,8 @@ export function BrandAssetManager({ onAssetUpdate }: BrandAssetManagerProps) {
 
       {/* Error Message */}
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+          <p className="text-xs text-red-500">{error}</p>
         </div>
       )}
 
@@ -199,7 +199,7 @@ function AssetCard({
           <button
             onClick={() => onCopy(asset.url)}
             title={isCopied ? 'Copied!' : 'Copy URL'}
-            className="p-1.5 bg-white rounded text-ink hover:bg-accent hover:text-white transition-colors"
+            className="p-1.5 bg-bg rounded text-ink hover:bg-accent hover:text-white transition-colors"
             disabled={isLoading}
           >
             <Copy size={14} />
@@ -209,14 +209,14 @@ function AssetCard({
             target="_blank"
             rel="noopener noreferrer"
             title="Open in new tab"
-            className="p-1.5 bg-white rounded text-ink hover:bg-accent hover:text-white transition-colors"
+            className="p-1.5 bg-bg rounded text-ink hover:bg-accent hover:text-white transition-colors"
           >
             <ExternalLink size={14} />
           </a>
           <button
             onClick={() => onDelete(asset.url)}
             title="Delete asset"
-            className="p-1.5 bg-white rounded text-ink hover:bg-red-500 hover:text-white transition-colors"
+            className="p-1.5 bg-bg rounded text-ink hover:bg-red-500 hover:text-white transition-colors"
             disabled={isLoading}
           >
             {isLoading ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
