@@ -1,4 +1,3 @@
-const functions = require('firebase-functions');
 const { onObjectFinalized } = require('firebase-functions/v2/storage');
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -34,6 +33,17 @@ const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-en
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
 const { renderDealerWidgetScript } = require('./dealer-widget.js');
+
+const LEGACY_RUNTIME_CONFIG = (() => {
+  try {
+    return JSON.parse(process.env.CLOUD_RUNTIME_CONFIG || '{}');
+  } catch (error) {
+    logger.warn('Unable to parse CLOUD_RUNTIME_CONFIG; falling back to empty config.', {
+      message: error instanceof Error ? error.message : String(error || ''),
+    });
+    return {};
+  }
+})();
 
 const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
 const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -255,7 +265,7 @@ function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
   return `${resolveConfiguredAppUrl()}/unsubscribe?${params.toString()}`;
 }
 const PRIVILEGED_ADMIN_EMAILS = new Set(
-  (process.env.PRIVILEGED_ADMIN_EMAILS || functions.config().app?.privileged_admin_emails || '')
+  (process.env.PRIVILEGED_ADMIN_EMAILS || LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '')
     .split(',')
     .map(e => e.trim().toLowerCase())
     .filter(Boolean)
@@ -5930,24 +5940,24 @@ const LISTING_CHECKOUT_PLANS = {
     name: 'Owner-Operator Ad Program',
     amountUsd: 39,
     listingCap: 1,
-    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || (functions.config().stripe || {}).product_owner_operator || '',
-    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || (functions.config().stripe || {}).price_owner_operator || '',
+    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_owner_operator || '',
+    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_owner_operator || '',
   },
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
     amountUsd: 499,
     listingCap: 50,
-    productId: process.env.STRIPE_PRODUCT_DEALER || (functions.config().stripe || {}).product_dealer || '',
-    priceId: process.env.STRIPE_PRICE_DEALER || (functions.config().stripe || {}).price_dealer || '',
+    productId: process.env.STRIPE_PRODUCT_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_dealer || '',
+    priceId: process.env.STRIPE_PRICE_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_dealer || '',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
     amountUsd: 999,
     listingCap: 150,
-    productId: process.env.STRIPE_PRODUCT_FLEET || (functions.config().stripe || {}).product_fleet || '',
-    priceId: process.env.STRIPE_PRICE_FLEET || (functions.config().stripe || {}).price_fleet || '',
+    productId: process.env.STRIPE_PRODUCT_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_fleet || '',
+    priceId: process.env.STRIPE_PRICE_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_fleet || '',
   },
 };
 
