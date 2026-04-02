@@ -90,13 +90,14 @@ export function ConsentBanner() {
               </div>
               <button
                 onClick={() => setIsVisible(false)}
+                aria-label="Close cookie banner"
                 className={theme === 'light' ? 'text-ink/60 hover:text-ink' : 'text-white/40 hover:text-white'}
               >
                 <X size={20} />
               </button>
             </div>
 
-            <p className={`text-[11px] font-medium leading-relaxed mb-6 uppercase tracking-wider ${theme === 'light' ? 'text-ink/75' : 'text-white/60'}`}>
+            <p className={`text-[11px] font-medium leading-relaxed mb-6 uppercase tracking-wider ${theme === 'light' ? 'text-muted' : 'text-white/70'}`}>
               We use cookies to enhance your marketplace experience and ensure site integrity.
               By continuing, you agree to our cookie policies.
             </p>

@@ -304,7 +304,7 @@ function FilterSectionPanel({ open, children }: { open: boolean; children: React
       }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       className="overflow-hidden"
-      aria-hidden={!open}
+      {...(!open ? { inert: true as unknown as boolean } : {})}
     >
       <div className="border-t border-line bg-surface/40 p-4 space-y-4">
         {children}
@@ -1588,6 +1588,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     handleFilterChange('sortBy', nextSort);
                     handleDraftFilterChange('sortBy', nextSort);
                   }}
+                  aria-label="Sort by"
                   className="bg-transparent border-none focus:ring-0 cursor-pointer text-ink ml-1 pl-2"
                 >
                   <option value="newest">{t('search.sortNewest', 'Newest')}</option>

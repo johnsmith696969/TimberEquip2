@@ -47,7 +47,7 @@ export function ListingCard({
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
   const amvPercent = hasAmv ? Math.abs((amvDiff / safeMarketValueEstimate) * 100).toFixed(1) : null;
-  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/forestryequipmentsales-placeholder/640/480';
+  const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='480' fill='%23e5e5e5'%3E%3Crect width='640' height='480'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='sans-serif' font-size='20'%3ENo Image%3C/text%3E%3C/svg%3E";
   const heroDetailImage = safeImageVariants[0]?.detailUrl || '';
   const heroSrcSet = heroDetailImage
     ? `${heroImage} 480w, ${heroDetailImage} 1600w`
@@ -180,17 +180,19 @@ export function ListingCard({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Link 
+            <Link
               to={listingPath}
+              aria-label={`View details for ${displayTitle}`}
               className="btn-industrial py-2.5 text-center bg-surface hover:bg-ink hover:text-bg"
             >
               {t('listingCard.details', 'Details')}
             </Link>
-            <button 
+            <button
               onClick={(e) => {
                 e.preventDefault();
                 onInquire?.(listing);
               }}
+              aria-label={`Inquire about ${displayTitle}`}
               className="btn-industrial btn-accent py-2.5"
             >
               {t('listingCard.inquire', 'Inquire')}
