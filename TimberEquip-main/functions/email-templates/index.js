@@ -18,6 +18,7 @@ const MARKETPLACE_URL = normalizeMarketplaceUrl(process.env.EMAIL_MARKETPLACE_UR
 const SEARCH_URL = `${MARKETPLACE_URL}/search`;
 const PROFILE_URL = `${MARKETPLACE_URL}/profile`;
 const ADMIN_URL = `${MARKETPLACE_URL}/admin`;
+const CONTACT_URL = `${MARKETPLACE_URL}/contact`;
 const PRIVACY_URL = `${MARKETPLACE_URL}/privacy`;
 const TERMS_URL = `${MARKETPLACE_URL}/terms`;
 const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260401a`;
@@ -269,6 +270,96 @@ const templates = {
         <a href="${resetUrl}" style="word-break:break-word;">${resetUrl}</a>
       </p>
       <p>If you did not request this change, you can safely ignore this email and your password will stay the same.</p>
+    `);
+    return { subject, html };
+  },
+
+  voicemailNotification({ sellerName, callerNumber, callTimestamp, dashboardUrl }) {
+    const subject = 'New voicemail on Forestry Equipment Sales';
+    const html = baseLayout(subject, 'Voicemail Received', `
+      <p class="label">Call Tracking</p>
+      <h2>A buyer left you a voicemail</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>A caller was unable to reach you live and left a voicemail through your Forestry Equipment Sales call tracking line.</p>
+      ${renderInfoPanel([
+        { label: 'Caller', value: callerNumber || 'Unknown caller' },
+        { label: 'Received', value: callTimestamp || 'Just now' },
+        { label: 'Next Step', value: 'Open your Calls tab to review the voicemail and return the lead quickly.' },
+      ])}
+      <a href="${dashboardUrl}" class="cta">Review Voicemail</a>
+    `);
+    return { subject, html };
+  },
+
+  dealerWidgetInquiryNotification({ sellerName, dealerName, buyerName, buyerEmail, buyerPhone, listingId, message, dashboardUrl }) {
+    const subject = `New dealer widget inquiry${dealerName ? ` for ${dealerName}` : ''}`;
+    const html = baseLayout(subject, 'Dealer Widget Inquiry', `
+      <p class="label">Dealer Widget Lead</p>
+      <h2>A buyer submitted an inquiry from your embedded storefront</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>A new inquiry was submitted through your Forestry Equipment Sales dealer widget${dealerName ? ` for <strong>${dealerName}</strong>` : ''}.</p>
+      ${renderInfoPanel([
+        { label: 'Buyer Name', value: buyerName || 'N/A' },
+        { label: 'Buyer Email', value: buyerEmail || 'N/A' },
+        { label: 'Buyer Phone', value: buyerPhone || 'Not provided' },
+        { label: 'Dealer', value: dealerName || 'Embedded storefront' },
+        { label: 'Listing ID', value: listingId || 'General storefront inquiry' },
+      ])}
+      ${message ? `<div class="message-box"><p>${message}</p></div>` : ''}
+      <a href="${dashboardUrl}" class="cta">Open DealerOS</a>
+    `);
+    return { subject, html };
+  },
+
+  paymentFailedPastDue({ displayName, planName, amountDue, invoiceNumber, retryDate, billingUrl, hostedInvoiceUrl }) {
+    const subject = `Payment issue for your ${planName} plan`;
+    const html = baseLayout(subject, 'Billing Action Required', `
+      <p class="label">Billing Notice</p>
+      <h2>We could not process your latest payment</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>We were unable to process the latest payment for your <span class="badge">${planName}</span> plan. Update your billing details to keep your Forestry Equipment Sales account and listings active.</p>
+      ${renderInfoPanel([
+        { label: 'Plan', value: planName || 'Marketplace subscription' },
+        { label: 'Amount Due', value: amountDue || 'Balance due' },
+        { label: 'Invoice', value: invoiceNumber || 'N/A' },
+        { label: 'Next Retry', value: retryDate || 'Stripe will retry automatically based on your billing schedule' },
+      ])}
+      <p>If the payment issue is not resolved, your subscription may move to past due status and your listings can be hidden from the marketplace until billing is restored.</p>
+      <a href="${billingUrl}" class="cta">Update Billing</a>
+      ${hostedInvoiceUrl ? `<a href="${hostedInvoiceUrl}" class="cta cta-secondary">View Invoice</a>` : ''}
+    `);
+    return { subject, html };
+  },
+
+  accountLocked({ displayName, actorName, supportUrl }) {
+    const subject = 'Your Forestry Equipment Sales account has been locked';
+    const html = baseLayout(subject, 'Account Locked', `
+      <p class="label">Account Status</p>
+      <h2>Your account is currently suspended</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your Forestry Equipment Sales account has been locked${actorName ? ` by <strong>${actorName}</strong>` : ''}. While this status is active, you may not be able to sign in or manage your listings.</p>
+      ${renderInfoPanel([
+        { label: 'Status', value: 'Locked' },
+        { label: 'Support', value: 'Contact the Forestry Equipment Sales team if you believe this was done in error.' },
+      ])}
+      <a href="${supportUrl || CONTACT_URL}" class="cta">Contact Support</a>
+    `);
+    return { subject, html };
+  },
+
+  accountUnlocked({ displayName, actorName, loginUrl, supportUrl }) {
+    const subject = 'Your Forestry Equipment Sales account has been unlocked';
+    const html = baseLayout(subject, 'Account Restored', `
+      <p class="label">Account Status</p>
+      <h2>Your account has been restored</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your Forestry Equipment Sales account has been unlocked${actorName ? ` by <strong>${actorName}</strong>` : ''}. You can sign in again and return to your account workspace.</p>
+      ${renderInfoPanel([
+        { label: 'Status', value: 'Active' },
+        { label: 'Next Step', value: 'Sign in and confirm your account details, listings, and billing status.' },
+      ])}
+      <a href="${loginUrl}" class="cta">Sign In</a>
+      <a href="${supportUrl || CONTACT_URL}" class="cta cta-secondary">Contact Support</a>
     `);
     return { subject, html };
   },

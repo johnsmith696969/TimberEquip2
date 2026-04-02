@@ -1,7 +1,7 @@
 {
-  "syncedAt": "2026-04-02T00:45:46.086Z",
+  "syncedAt": "2026-04-02T10:42:58.000Z",
   "appUrl": "https://timberequip.com",
-  "totalDynamicTemplates": 30,
+  "totalDynamicTemplates": 36,
   "templates": [
     {
       "key": "leadNotification",
@@ -34,10 +34,28 @@
       "status": "updated"
     },
     {
+      "key": "passwordReset",
+      "name": "Password Reset | Forestry Equipment Sales",
+      "templateId": "d-6d1f7f53ea5b43099337b9561b8ccf50",
+      "status": "created"
+    },
+    {
       "key": "subscriptionExpiring",
       "name": "Subscription Expiring | Forestry Equipment Sales",
       "templateId": "d-907e32e8448646c09f3fd306a2793e6b",
       "status": "updated"
+    },
+    {
+      "key": "voicemailNotification",
+      "name": "Voicemail Notification | Forestry Equipment Sales",
+      "templateId": "d-70ee80b42a0b454eb2cf1fce3f325ff1",
+      "status": "created"
+    },
+    {
+      "key": "dealerWidgetInquiryNotification",
+      "name": "Dealer Widget Inquiry Notification | Forestry Equipment Sales",
+      "templateId": "d-e77a0b0eac9c43b29ef86f544988d678",
+      "status": "created"
     },
     {
       "key": "listingApproved",
@@ -68,6 +86,12 @@
       "name": "Subscription Expired | Forestry Equipment Sales",
       "templateId": "d-6328068d117b45f39cf37797676f1784",
       "status": "updated"
+    },
+    {
+      "key": "paymentFailedPastDue",
+      "name": "Payment Failed Past Due | Forestry Equipment Sales",
+      "templateId": "d-58734da726d444359a8aee9f6c8958d3",
+      "status": "created"
     },
     {
       "key": "mediaKitRequest",
@@ -134,6 +158,18 @@
       "name": "Managed Account Invite | Forestry Equipment Sales",
       "templateId": "d-da79a8e85ca840fd957ddefb88e3b8c0",
       "status": "updated"
+    },
+    {
+      "key": "accountLocked",
+      "name": "Account Locked | Forestry Equipment Sales",
+      "templateId": "d-39609d0f78fe4026a9d1063caa1f97ce",
+      "status": "created"
+    },
+    {
+      "key": "accountUnlocked",
+      "name": "Account Unlocked | Forestry Equipment Sales",
+      "templateId": "d-1556214a259f4fa398d97bd1d45a3966",
+      "status": "created"
     },
     {
       "key": "adminInquiryAlert",

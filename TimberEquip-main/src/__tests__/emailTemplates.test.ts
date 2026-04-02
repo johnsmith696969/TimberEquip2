@@ -45,4 +45,34 @@ describe('email templates', () => {
     expect(html).toContain('/reset-password?oobCode=demo123');
     expect(html).toContain('Back To Login');
   });
+
+  it('renders billing recovery actions for failed payment emails', () => {
+    const { subject, html } = templates.paymentFailedPastDue({
+      displayName: 'Dealer Admin',
+      planName: 'Dealer Ad Package',
+      amountDue: '$299.00',
+      invoiceNumber: 'INV-10024',
+      retryDate: 'April 5, 2026',
+      billingUrl: 'https://timberequip.com/profile?tab=Account%20Settings',
+      hostedInvoiceUrl: 'https://billing.example.com/invoice/10024',
+    });
+
+    expect(subject).toContain('Payment issue');
+    expect(html).toContain('Update Billing');
+    expect(html).toContain('INV-10024');
+    expect(html).toContain('https://billing.example.com/invoice/10024');
+  });
+
+  it('renders account unlock emails with sign-in and support actions', () => {
+    const { subject, html } = templates.accountUnlocked({
+      displayName: 'Dealer Admin',
+      actorName: 'Forestry Equipment Sales Admin',
+      loginUrl: 'https://timberequip.com/login',
+      supportUrl: 'https://timberequip.com/contact',
+    });
+
+    expect(subject).toContain('account has been unlocked');
+    expect(html).toContain('Sign In');
+    expect(html).toContain('https://timberequip.com/contact');
+  });
 });

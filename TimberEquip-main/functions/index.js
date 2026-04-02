@@ -925,35 +925,111 @@ async function sendVoicemailNotificationEmailMessage({
   callTimestamp,
   dashboardUrl,
 }) {
-  const safeSellerName = String(sellerName || 'there').trim() || 'there';
-  const safeCallerNumber = String(callerNumber || 'Unknown caller').trim() || 'Unknown caller';
-  const safeCallTimestamp = String(callTimestamp || '').trim() || new Date().toLocaleString('en-US');
-  const safeDashboardUrl = String(dashboardUrl || `${APP_URL}/profile?tab=Calls`).trim() || `${APP_URL}/profile?tab=Calls`;
-
-  await sendEmail({
-    to: email,
-    subject: 'New voicemail on Forestry Equipment Sales',
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-        <h2 style="margin-bottom: 16px;">New voicemail received</h2>
-        <p>Hello ${safeSellerName},</p>
-        <p>A caller left a voicemail on your Forestry Equipment Sales tracking number.</p>
-        <ul style="padding-left: 18px;">
-          <li><strong>Caller:</strong> ${safeCallerNumber}</li>
-          <li><strong>Received:</strong> ${safeCallTimestamp}</li>
-        </ul>
-        <p>
-          <a
-            href="${safeDashboardUrl}"
-            style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;"
-          >
-            Review Voicemail
-          </a>
-        </p>
-        <p>You can listen to the voicemail from your Calls tab inside Forestry Equipment Sales.</p>
-      </div>
-    `,
+  const payload = templates.voicemailNotification({
+    sellerName: String(sellerName || 'there').trim() || 'there',
+    callerNumber: String(callerNumber || 'Unknown caller').trim() || 'Unknown caller',
+    callTimestamp: String(callTimestamp || '').trim() || new Date().toLocaleString('en-US'),
+    dashboardUrl: String(dashboardUrl || `${APP_URL}/profile?tab=Calls`).trim() || `${APP_URL}/profile?tab=Calls`,
   });
+
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendDealerWidgetInquiryNotificationEmailMessage({
+  email,
+  sellerName,
+  dealerName,
+  buyerName,
+  buyerEmail,
+  buyerPhone,
+  listingId,
+  message,
+  dashboardUrl,
+}) {
+  const payload = templates.dealerWidgetInquiryNotification({
+    sellerName: String(sellerName || dealerName || 'there').trim() || 'there',
+    dealerName: String(dealerName || '').trim(),
+    buyerName: String(buyerName || 'Buyer').trim() || 'Buyer',
+    buyerEmail: String(buyerEmail || '').trim(),
+    buyerPhone: String(buyerPhone || '').trim(),
+    listingId: String(listingId || '').trim(),
+    message: String(message || '').trim(),
+    dashboardUrl: String(dashboardUrl || `${APP_URL}/dealer-os`).trim() || `${APP_URL}/dealer-os`,
+  });
+
+  await sendEmail({ to: email, ...payload });
+}
+
+function formatEmailCurrencyAmount(amountMinor, currency = 'usd') {
+  const normalizedCurrency = String(currency || 'usd').trim().toUpperCase() || 'USD';
+  const numericAmount = Number(amountMinor);
+  if (!Number.isFinite(numericAmount)) {
+    return 'Balance due';
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: normalizedCurrency,
+  }).format(numericAmount / 100);
+}
+
+function formatUnixDateForEmail(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return '';
+
+  return new Date(numericValue * 1000).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+async function sendPaymentFailedPastDueEmailMessage({
+  email,
+  displayName,
+  planName,
+  amountDue,
+  currency,
+  invoiceNumber,
+  retryDate,
+  billingUrl,
+  hostedInvoiceUrl,
+}) {
+  const payload = templates.paymentFailedPastDue({
+    displayName: String(displayName || 'there').trim() || 'there',
+    planName: String(planName || 'Marketplace subscription').trim() || 'Marketplace subscription',
+    amountDue: formatEmailCurrencyAmount(amountDue, currency),
+    invoiceNumber: String(invoiceNumber || '').trim(),
+    retryDate: formatUnixDateForEmail(retryDate),
+    billingUrl: String(billingUrl || `${APP_URL}/profile?tab=Account%20Settings`).trim() || `${APP_URL}/profile?tab=Account%20Settings`,
+    hostedInvoiceUrl: String(hostedInvoiceUrl || '').trim(),
+  });
+
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAccountStatusEmailMessage({
+  email,
+  displayName,
+  actorName,
+  loginUrl,
+  supportUrl,
+  locked,
+}) {
+  const payload = locked
+    ? templates.accountLocked({
+        displayName: String(displayName || 'there').trim() || 'there',
+        actorName: String(actorName || '').trim(),
+        supportUrl: String(supportUrl || `${APP_URL}/contact`).trim() || `${APP_URL}/contact`,
+      })
+    : templates.accountUnlocked({
+        displayName: String(displayName || 'there').trim() || 'there',
+        actorName: String(actorName || '').trim(),
+        loginUrl: String(loginUrl || `${APP_URL}/login`).trim() || `${APP_URL}/login`,
+        supportUrl: String(supportUrl || `${APP_URL}/contact`).trim() || `${APP_URL}/contact`,
+      });
+
+  await sendEmail({ to: email, ...payload });
 }
 
 async function sendVerificationEmailMessage({ email, displayName }) {
@@ -9847,6 +9923,13 @@ function buildTemplateTestPayload(templateKey) {
   const renewUrl = `${APP_URL}/profile#subscription`;
 
   switch (normalizedTemplateKey) {
+    case 'passwordReset':
+      return templates.passwordReset({
+        displayName: 'Caleb',
+        intro: 'We received a request to reset your Forestry Equipment Sales password.',
+        resetUrl: `${APP_URL}/reset-password?oobCode=demo-code&mode=resetPassword&continueUrl=%2Flogin`,
+        loginUrl: `${APP_URL}/login`,
+      });
     case 'subscriptionCreated':
       return templates.subscriptionCreated({
         displayName: 'Caleb',
@@ -9864,6 +9947,24 @@ function buildTemplateTestPayload(templateKey) {
         planName: 'Dealer Ad Package',
         expiryDate: 'April 1, 2026',
         renewUrl,
+      });
+    case 'voicemailNotification':
+      return templates.voicemailNotification({
+        sellerName: 'Caleb',
+        callerNumber: '(218) 555-0133',
+        callTimestamp: 'April 2, 2026 at 5:40 AM',
+        dashboardUrl: `${APP_URL}/profile?tab=Calls`,
+      });
+    case 'dealerWidgetInquiryNotification':
+      return templates.dealerWidgetInquiryNotification({
+        sellerName: 'Red Pine Equipment',
+        dealerName: 'Red Pine Equipment',
+        buyerName: 'Forestry Buyer',
+        buyerEmail: 'buyer@example.com',
+        buyerPhone: '(218) 555-0177',
+        listingId: 'listing-1001',
+        message: 'Interested in this machine and would like delivery options.',
+        dashboardUrl: `${APP_URL}/dealer-os`,
       });
     case 'mediaKitRequestConfirmation':
       return templates.mediaKitRequestConfirmation({
@@ -9886,6 +9987,16 @@ function buildTemplateTestPayload(templateKey) {
         company: 'North Woods Logging',
         dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Financing')}`,
       });
+    case 'paymentFailedPastDue':
+      return templates.paymentFailedPastDue({
+        displayName: 'Caleb',
+        planName: 'Dealer Ad Package',
+        amountDue: '$299.00',
+        invoiceNumber: 'INV-10024',
+        retryDate: 'April 5, 2026',
+        billingUrl: `${APP_URL}/profile?tab=Account%20Settings`,
+        hostedInvoiceUrl: `${APP_URL}/profile?tab=Account%20Settings`,
+      });
     case 'logisticsInquiryConfirmation':
       return templates.inquiryConfirmation({
         buyerName: 'Caleb',
@@ -9906,6 +10017,19 @@ function buildTemplateTestPayload(templateKey) {
       return templates.contactRequestConfirmation({
         name: 'Caleb',
         category: 'Partner With Us',
+        supportUrl: `${APP_URL}/contact`,
+      });
+    case 'accountLocked':
+      return templates.accountLocked({
+        displayName: 'Caleb',
+        actorName: 'Forestry Equipment Sales Admin',
+        supportUrl: `${APP_URL}/contact`,
+      });
+    case 'accountUnlocked':
+      return templates.accountUnlocked({
+        displayName: 'Caleb',
+        actorName: 'Forestry Equipment Sales Admin',
+        loginUrl: `${APP_URL}/login`,
         supportUrl: `${APP_URL}/contact`,
       });
     default:
@@ -10139,6 +10263,19 @@ exports.apiProxy = onRequest(
         try {
           const dealerEmail = String(dealer.email || '').trim().toLowerCase();
           if (dealerEmail) {
+            await sendDealerWidgetInquiryNotificationEmailMessage({
+              email: dealerEmail,
+              sellerName: String(dealer.storefrontName || dealer.name || '').trim(),
+              dealerName: String(dealer.storefrontName || dealer.name || '').trim(),
+              buyerName,
+              buyerEmail,
+              buyerPhone,
+              listingId,
+              message,
+              dashboardUrl: `${APP_URL}/dealer-os`,
+            });
+          }
+          if (false && dealerEmail) {
             await sgMail.send({
               to: dealerEmail,
               from: { email: 'noreply@forestryequipmentsales.com', name: 'Forestry Equipment Sales' },
@@ -10209,11 +10346,10 @@ exports.apiProxy = onRequest(
             const metadata = invoiceObject.metadata || invoiceObject.parent?.subscription_details?.metadata || invoiceObject.subscription_details?.metadata || {};
             const userUid = String(metadata.userUid || '').trim() || await resolveUserUidFromStripeCustomerId(invoiceObject.customer, stripe);
             const planName = getPlanDisplayName(metadata.planId);
+            const invoiceEmail =
+              String(invoiceObject.customer_email || '').trim().toLowerCase() ||
+              String(invoiceObject.customer_details?.email || '').trim().toLowerCase();
             if (event.type === 'invoice.payment_succeeded') {
-              const invoiceEmail =
-                String(invoiceObject.customer_email || '').trim().toLowerCase() ||
-                String(invoiceObject.customer_details?.email || '').trim().toLowerCase();
-
               if (invoiceEmail) {
                 const payload = templates.invoicePaidReceipt({
                   displayName: String(invoiceObject.customer_name || '').trim() || 'there',
@@ -10226,6 +10362,19 @@ exports.apiProxy = onRequest(
                 });
                 await sendEmail({ to: invoiceEmail, ...payload });
               }
+            }
+            if (event.type === 'invoice.payment_failed' && invoiceEmail) {
+              await sendPaymentFailedPastDueEmailMessage({
+                email: invoiceEmail,
+                displayName: String(invoiceObject.customer_name || '').trim() || 'there',
+                planName,
+                amountDue: typeof invoiceObject.amount_due === 'number' ? invoiceObject.amount_due : invoiceObject.amount_remaining,
+                currency: invoiceObject.currency || 'usd',
+                invoiceNumber: invoiceObject.number || invoiceObject.id,
+                retryDate: invoiceObject.next_payment_attempt,
+                billingUrl: `${APP_URL}/profile?tab=Account%20Settings`,
+                hostedInvoiceUrl: invoiceObject.hosted_invoice_url || '',
+              });
             }
 
             const rawSubscriptionId = typeof invoiceObject.subscription === 'string'
@@ -13049,6 +13198,31 @@ exports.apiProxy = onRequest(
           );
         } else {
           warning = 'Authentication status updated. Firestore profile status will sync after the Firestore quota window resets.';
+        }
+
+        const targetEmail = String(targetData.email || refreshedAuthUserRecord?.email || authUserRecord?.email || '').trim().toLowerCase();
+        if (targetEmail && !/@example\.com$/i.test(targetEmail)) {
+          try {
+            const actorName = String(actor.actorDoc.data()?.displayName || actor.actorEmail || 'Forestry Equipment Sales Admin').trim();
+            await sendAccountStatusEmailMessage({
+              email: targetEmail,
+              displayName: String(targetData.displayName || targetData.name || refreshedAuthUserRecord?.displayName || targetEmail).trim(),
+              actorName,
+              loginUrl: `${resolveAppUrlFromRequest(req)}/login`,
+              supportUrl: `${resolveAppUrlFromRequest(req)}/contact`,
+              locked: nextDisabledState,
+            });
+          } catch (emailError) {
+            logger.warn('Failed to send account status email notification.', {
+              action,
+              targetUid,
+              email: targetEmail,
+              error: emailError instanceof Error ? emailError.message : String(emailError),
+            });
+            warning = warning
+              ? `${warning} Account email notification could not be sent.`
+              : 'Account email notification could not be sent.';
+          }
         }
 
         return res.status(200).json({
