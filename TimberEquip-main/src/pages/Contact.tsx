@@ -108,7 +108,7 @@ export function Contact() {
           ],
         }}
       />
-      <ImageHero imageSrc="/page-photos/grapple-hero-image.jpeg" imageAlt="Forestry grapple loader in the woods">
+      <ImageHero imageSrc="/page-photos/contact-us.jpg" imageAlt="Contact Forestry Equipment Sales">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <MessageSquare size={20} className="text-accent" />

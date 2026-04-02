@@ -299,7 +299,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <button 
             onClick={toggleTheme}
-            className="flex items-center gap-1 text-muted hover:text-ink transition-colors py-1 px-1 focus:ring-2 focus:ring-accent focus:ring-offset-2"
+            className="flex items-center gap-1 text-muted hover:text-ink transition-colors py-1 px-1"
             aria-label={theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}
             title={theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}
           >

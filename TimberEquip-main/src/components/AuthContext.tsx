@@ -611,7 +611,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               try {
                 const tokenResult = await firebaseUser.getIdTokenResult();
                 if (!tokenResult.claims.role) {
-                  await bootstrapPrivilegedAdminProfile(firebaseUser);
+                  const bootstrapOk = await bootstrapPrivilegedAdminProfile(firebaseUser);
+                  if (bootstrapOk) {
+                    // Force-refresh ID token to pick up newly-set custom claims
+                    await firebaseUser.getIdToken(true);
+                  }
                 }
               } catch (_) {
                 // Non-critical; server decides admin status.

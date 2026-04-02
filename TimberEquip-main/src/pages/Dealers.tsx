@@ -142,7 +142,7 @@ export function Dealers() {
       />
 
       <ImageHero
-        imageSrc="/page-photos/Forestry-Equipment-Sales-Dealers.png"
+        imageSrc="/page-photos/dealers.png"
         imageAlt="Forestry Equipment Sales dealer network"
         imageClassName="object-center"
       >

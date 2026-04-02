@@ -46,7 +46,7 @@ export function About() {
         imagePath="/page-photos/pine-forest.jpg"
       />
 
-      <ImageHero imageSrc="/page-photos/pine-forest.jpg" imageAlt="Pine forest with a logging road">
+      <ImageHero imageSrc="/page-photos/about-us.jpg" imageAlt="Forestry equipment in the field">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <Building className="text-accent" size={20} />

@@ -172,7 +172,7 @@ export function Faq() {
         }}
       />
 
-      <ImageHero imageSrc="/page-photos/winter-log-road.jpg" imageAlt="Winter logging road through the forest">
+      <ImageHero imageSrc="/page-photos/faq.jpg" imageAlt="Frequently asked questions about forestry equipment">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <HelpCircle className="text-accent" size={20} />
