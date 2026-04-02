@@ -12220,6 +12220,40 @@ exports.apiProxy = onRequest(
             managedByRole: parentRole,
           });
 
+          if (['individual_seller', 'dealer', 'pro_dealer'].includes(normalizedRole)) {
+            await syncEnterpriseStorefrontState({
+              uid: authUserRecord.uid,
+              role: normalizedRole,
+              userData: {
+                uid: authUserRecord.uid,
+                email,
+                displayName,
+                role: normalizedRole,
+                accountAccessSource: manualAccessSource || null,
+                phoneNumber,
+                company: company || String(actorDoc.data()?.company || '').trim(),
+                accountStatus: 'pending',
+                storefrontEnabled: true,
+              },
+              authRecord: buildSerializableAuthRecord(authUserRecord, {
+                uid: authUserRecord.uid,
+                email,
+                displayName,
+                customClaims: buildAccessClaims(authUserRecord.customClaims || {}, {
+                  role: normalizedRole,
+                  accountStatus: 'pending',
+                  accountAccessSource: manualAccessSource,
+                  parentAccountUid: ownerUid,
+                  subscriptionPlanId: null,
+                  subscriptionStatus: null,
+                  listingCap: null,
+                  managedAccountCap: null,
+                }),
+              }),
+              force: true,
+            });
+          }
+
           const emailPayload = templates.managedAccountInvite({
             displayName,
             inviterName: String(actorDoc.data()?.displayName || actorDoc.data()?.company || 'Forestry Equipment Sales Admin').trim(),
