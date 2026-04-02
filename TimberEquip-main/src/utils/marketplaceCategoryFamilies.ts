@@ -1,6 +1,7 @@
 import type { CategoryInventoryMetric } from '../services/equipmentService';
 import type { EquipmentTaxonomy } from '../services/taxonomyService';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
+import { normalizeSeoSlug } from './seoRoutes';
 
 type TaxonomyLike = EquipmentTaxonomy | typeof EQUIPMENT_TAXONOMY;
 
@@ -55,7 +56,7 @@ export function getMarketplaceCategoryFamilyNames(taxonomy?: TaxonomyLike): stri
 }
 
 export function buildMarketplaceCategorySearchPath(categoryName: string): string {
-  return `/search?category=${encodeURIComponent(categoryName)}`;
+  return `/categories/${normalizeSeoSlug(categoryName)}`;
 }
 
 export function getMarketplaceSubcategories(categoryName: string, taxonomy?: TaxonomyLike): string[] {

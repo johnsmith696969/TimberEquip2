@@ -30,6 +30,7 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
+import { normalizeSeoSlug } from '../utils/seoRoutes';
 
 const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
   'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
@@ -505,7 +506,7 @@ export function Home() {
                       </option>
                     ))}
                   </select>
-                  <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 text-center whitespace-nowrap">
+                  <Link to={`/categories/${normalizeSeoSlug(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 text-center whitespace-nowrap">
                     Browse {selectedCategoryFamily}
                   </Link>
                 </div>
@@ -517,7 +518,7 @@ export function Home() {
                     {subcategories.map((sub) => (
                       <Link
                         key={sub}
-                        to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}&subcategory=${encodeURIComponent(sub)}`}
+                        to={`/categories/${normalizeSeoSlug(sub)}`}
                         className="px-4 py-2.5 bg-surface border border-line text-[10px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
                       >
                         {sub}

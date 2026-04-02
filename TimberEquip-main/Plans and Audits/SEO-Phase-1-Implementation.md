@@ -310,8 +310,8 @@ Both are valid and serve different purposes. The key is consistency:
 
 **Implementation:** Instead of a redirect, render the same `ForestryHubPage` component at both routes. The `/logging-equipment-for-sale` route gets a slightly different title and description to capture the "logging" head term:
 
-- Title: `Logging Equipment for Sale | New & Used Forestry Machines`
-- Description: `Shop new and used logging equipment for sale including skidders, forwarders, feller bunchers, log loaders, delimbers, and more from dealers and owners.`
+- Title: `Logging Equipment for Sale | New & Used Forestry Equipment For Sale`
+- Description: `Browse new and used logging equipment for sale including skidders, forwarders, feller bunchers, log loaders, delimbers, and more from dealers and owners.`
 
 The page content, listings, and internal links are identical. The canonical for `/logging-equipment-for-sale` self-canonicalizes (it is NOT a duplicate — it has a distinct title and description targeting a different search intent).
 

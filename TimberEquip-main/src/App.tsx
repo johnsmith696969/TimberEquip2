@@ -22,6 +22,7 @@ const Categories = lazy(() => import('./pages/Categories').then((module) => ({ d
 const ForestryHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ForestryHubPage })));
 const LoggingHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.LoggingHubPage })));
 const CategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.CategoryLandingPage })));
+const CategorySearchPage = lazy(() => import('./pages/CategorySearchPage').then((module) => ({ default: module.CategorySearchPage })));
 const ManufacturerLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerLandingPage })));
 const ManufacturerModelLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelLandingPage })));
 const ManufacturerModelCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelCategoryLandingPage })));
@@ -91,7 +92,7 @@ function App() {
                     <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminDashboard /></ProtectedRoute>} />
                     <Route path="/compare" element={<Compare />} />
                     <Route path="/categories" element={<Categories />} />
-                    <Route path="/categories/:categorySlug" element={<CategoryLandingPage />} />
+                    <Route path="/categories/:categorySlug" element={<CategorySearchPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug/:categorySaleSlug" element={<ManufacturerModelCategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug" element={<ManufacturerModelLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/:categorySaleSlug" element={<ManufacturerCategoryLandingPage />} />

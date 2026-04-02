@@ -12,6 +12,7 @@ import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
 import { buildMarketplaceCategoryFamilies } from '../utils/marketplaceCategoryFamilies';
+import { normalizeSeoSlug } from '../utils/seoRoutes';
 
 const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
   'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
@@ -139,7 +140,7 @@ export function Categories() {
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://www.forestryequipmentsales.com/search?category=${encodeURIComponent(cat.name)}`
+      url: `https://www.forestryequipmentsales.com/categories/${normalizeSeoSlug(cat.name)}`
     }))
   };
 
@@ -182,8 +183,8 @@ export function Categories() {
               </p>
               
               <div className="flex flex-col space-y-4">
-                <Link 
-                  to={`/search?category=${encodeURIComponent(cat.name)}`}
+                <Link
+                  to={`/categories/${normalizeSeoSlug(cat.name)}`}
                   className="btn-industrial btn-accent py-4 w-full text-center"
                 >
                   Browse Inventory

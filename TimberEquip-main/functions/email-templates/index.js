@@ -8,7 +8,7 @@
  *   firebase functions:secrets:set SENDGRID_API_KEY EMAIL_FROM ADMIN_EMAILS
  */
 
-const DEFAULT_MARKETPLACE_URL = 'https://www.forestryequipmentsales.com';
+const DEFAULT_MARKETPLACE_URL = 'https://timberequip.com';
 
 function normalizeMarketplaceUrl(url) {
   return String(url || DEFAULT_MARKETPLACE_URL).trim().replace(/\/+$/, '') || DEFAULT_MARKETPLACE_URL;
@@ -20,8 +20,8 @@ const PROFILE_URL = `${MARKETPLACE_URL}/profile`;
 const ADMIN_URL = `${MARKETPLACE_URL}/admin`;
 const PRIVACY_URL = `${MARKETPLACE_URL}/privacy`;
 const TERMS_URL = `${MARKETPLACE_URL}/terms`;
-const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260331a`;
-const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Logo-Transparent.png?v=20260331a`;
+const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260401a`;
+const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260401a`;
 
 const BASE_STYLES = `
   :root { color-scheme: light only; supported-color-schemes: light only; }
@@ -52,7 +52,7 @@ const BASE_STYLES = `
   .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
   .footer { background: #ffffff !important; padding: 24px 40px 32px; border-top: 1px solid #e5e7eb; }
   .footer-logo-wrap { margin: 0 0 18px; }
-  .footer-logo-img { display: block; width: 240px; max-width: 100%; height: auto; }
+  .footer-logo-img { display: block; width: 88px; max-width: 100%; height: auto; }
   .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; }
   .footer-title { color: #111827; font-size: 11px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 8px; }
   .footer p { color: #6b7280 !important; font-size: 11px; margin: 0; line-height: 1.5; }
@@ -104,7 +104,7 @@ function baseLayout(title, headerSubtitle, content) {
       </div>
       <div class="footer">
         <div class="footer-logo-wrap">
-          <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales" />
+          <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales tree mark" />
         </div>
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>

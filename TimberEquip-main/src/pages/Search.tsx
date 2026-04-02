@@ -29,8 +29,15 @@ import { startPerformanceTrace } from '../services/performance';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
+import { normalizeSeoSlug } from '../utils/seoRoutes';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
+
+export interface CategoryRouteInfo {
+  categoryName: string;
+  slug: string;
+  isTopLevel: boolean;
+}
 
 interface SearchFilters {
   q: string;
@@ -282,7 +289,7 @@ function getPageSize() {
 }
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
-export function Search() {
+export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } = {}) {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -309,8 +316,28 @@ export function Search() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showFilters, setShowFilters] = useState(true);
   const [compareList, setCompareList] = useState<string[]>([]);
-  const [filters, setFilters] = useState<SearchFilters>(() => getInitialFilters(searchParams));
-  const [draftFilters, setDraftFilters] = useState<SearchFilters>(() => getInitialFilters(searchParams));
+  const [filters, setFilters] = useState<SearchFilters>(() => {
+    const initial = getInitialFilters(searchParams);
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        initial.category = initial.category || categoryRoute.categoryName;
+      } else {
+        initial.subcategory = initial.subcategory || categoryRoute.categoryName;
+      }
+    }
+    return initial;
+  });
+  const [draftFilters, setDraftFilters] = useState<SearchFilters>(() => {
+    const initial = getInitialFilters(searchParams);
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        initial.category = initial.category || categoryRoute.categoryName;
+      } else {
+        initial.subcategory = initial.subcategory || categoryRoute.categoryName;
+      }
+    }
+    return initial;
+  });
   const [openSections, setOpenSections] = useState<Record<FilterSectionKey, boolean>>({
     equipment: true,
     pricing: false,
@@ -418,6 +445,13 @@ export function Search() {
 
   useEffect(() => {
     const parsed = getInitialFilters(searchParams);
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        parsed.category = categoryRoute.categoryName;
+      } else {
+        parsed.subcategory = categoryRoute.categoryName;
+      }
+    }
     if (!areFiltersEqual(parsed, filters)) {
       setFilters(parsed);
       setDraftFilters(parsed);
@@ -426,6 +460,9 @@ export function Search() {
 
   useEffect(() => {
     const params = serializeFiltersToParams(filters);
+    if (categoryRoute) {
+      params.delete(categoryRoute.isTopLevel ? 'category' : 'subcategory');
+    }
     setSearchParams(params, { replace: true, preventScrollReset: true });
   }, [filters, setSearchParams]);
 
@@ -645,8 +682,16 @@ export function Search() {
   };
 
   const resetFilters = () => {
-    setFilters(DEFAULT_FILTERS);
-    setDraftFilters(DEFAULT_FILTERS);
+    const base = { ...DEFAULT_FILTERS };
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        base.category = categoryRoute.categoryName;
+      } else {
+        base.subcategory = categoryRoute.categoryName;
+      }
+    }
+    setFilters(base);
+    setDraftFilters(base);
   };
 
   const toggleSection = (section: FilterSectionKey) => {
@@ -714,51 +759,129 @@ export function Search() {
     setCompareList((prev) => (prev.includes(id) ? prev.filter((listingId) => listingId !== id) : [...prev, id]));
   };
 
-  const seoTitle = filters.q
-    ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
-    : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
+  const isCategoryPage = !!categoryRoute;
+  const categoryLabel = categoryRoute?.categoryName || '';
+  const categorySlugPath = categoryRoute ? `/categories/${categoryRoute.slug}` : '/search';
+  const visibleActiveFilterCount = countActiveFilters(filters) - (isCategoryPage ? 1 : 0);
 
-  const seoDescription =
-    'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
+  const seoTitle = isCategoryPage
+    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | Forestry Equipment Sales`
+    : filters.q
+      ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
+      : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
 
-  const itemListJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name: 'In-Stock Logging Equipment Listings',
-    itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
-      item: {
-        '@type': 'Product',
-        name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
-        sku: listing.id,
-        brand: {
-          '@type': 'Brand',
-          name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales'
-        },
-        offers: {
-          '@type': 'Offer',
-          priceCurrency: listing.currency || 'USD',
-          price: listing.price,
-          availability: 'https://schema.org/InStock'
-        }
+  const seoDescription = isCategoryPage
+    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on Forestry Equipment Sales.`
+    : 'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
+
+  const seoRobots = isCategoryPage ? undefined : 'noindex, follow';
+  const seoCanonical = categorySlugPath;
+
+  const itemListJsonLd: Record<string, unknown> = isCategoryPage
+    ? {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'CollectionPage',
+            name: `${categoryLabel} for Sale`,
+            description: seoDescription,
+            url: `https://www.forestryequipmentsales.com${categorySlugPath}`,
+          },
+          {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
+              { '@type': 'ListItem', position: 2, name: 'Categories', item: 'https://www.forestryequipmentsales.com/categories' },
+              { '@type': 'ListItem', position: 3, name: categoryLabel, item: `https://www.forestryequipmentsales.com${categorySlugPath}` },
+            ],
+          },
+          {
+            '@type': 'ItemList',
+            name: `${categoryLabel} inventory`,
+            itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
+              '@type': 'ListItem',
+              position: index + 1,
+              url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+              item: {
+                '@type': 'Product',
+                name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
+                sku: listing.id,
+                brand: {
+                  '@type': 'Brand',
+                  name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
+                },
+                offers: {
+                  '@type': 'Offer',
+                  priceCurrency: listing.currency || 'USD',
+                  price: listing.price,
+                  availability: 'https://schema.org/InStock',
+                },
+              },
+            })),
+          },
+        ],
       }
-    }))
-  };
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: 'In-Stock Logging Equipment Listings',
+        itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+          item: {
+            '@type': 'Product',
+            name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
+            sku: listing.id,
+            brand: {
+              '@type': 'Brand',
+              name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
+            },
+            offers: {
+              '@type': 'Offer',
+              priceCurrency: listing.currency || 'USD',
+              price: listing.price,
+              availability: 'https://schema.org/InStock',
+            },
+          },
+        })),
+      };
 
   return (
     <div className="flex flex-col min-h-screen bg-bg">
-      <Seo title={seoTitle} description={seoDescription} canonicalPath="/search" robots="noindex, follow" jsonLd={itemListJsonLd} />
-      <Breadcrumbs />
+      <Seo title={seoTitle} description={seoDescription} canonicalPath={seoCanonical} robots={seoRobots} jsonLd={itemListJsonLd} />
+      <Breadcrumbs items={isCategoryPage ? [
+        { label: 'Home', path: '/' },
+        { label: 'Categories', path: '/categories' },
+        { label: categoryLabel, path: categorySlugPath },
+      ] : undefined} />
+
+      {/* Category page header */}
+      {isCategoryPage && (
+        <div className="bg-surface border-b border-line px-4 md:px-8 py-10">
+          <div className="max-w-[1600px] mx-auto">
+            <span className="label-micro text-accent mb-3 block">Equipment Category</span>
+            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">{categoryLabel} <span className="text-muted">For Sale</span></h1>
+            <p className="text-xs text-muted font-medium max-w-2xl">
+              Browse {filteredListings.length.toLocaleString()} new and used {categoryLabel.toLowerCase()} listings from dealers and private sellers.
+              {' '}Filter by manufacturer, price, condition, and more.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Active filter pills bar */}
-      {countActiveFilters(filters) > 0 && (
+      {visibleActiveFilterCount > 0 && (
         <div className="bg-surface border-b border-line px-4 md:px-8 py-3 overflow-x-auto">
           <div className="max-w-[1600px] mx-auto flex items-center gap-2 whitespace-nowrap">
             <span className="text-[9px] font-black uppercase tracking-widest text-muted mr-1 flex-shrink-0">Filters:</span>
             {(Object.entries(filters) as [keyof SearchFilters, string][])
-              .filter(([key, value]) => key !== 'sortBy' && Boolean(value))
+              .filter(([key, value]) => {
+                if (key === 'sortBy' || !value) return false;
+                if (categoryRoute?.isTopLevel && key === 'category') return false;
+                if (!categoryRoute?.isTopLevel && categoryRoute && key === 'subcategory') return false;
+                return true;
+              })
               .map(([key, value]) => {
                 const labels: Record<string, string> = {
                   q: 'Search', category: 'Category', subcategory: 'Subcategory', manufacturer: 'Manufacturer',

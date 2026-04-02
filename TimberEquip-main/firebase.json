@@ -33,14 +33,6 @@
         "function": "publicPages"
       },
       {
-        "source": "/categories",
-        "function": "publicPages"
-      },
-      {
-        "source": "/categories/**",
-        "function": "publicPages"
-      },
-      {
         "source": "/manufacturers",
         "function": "publicPages"
       },

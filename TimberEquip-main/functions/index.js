@@ -197,7 +197,7 @@ function getAdminRecipients() {
   return fallback ? [fallback] : ['caleb@forestryequipmentsales.com'];
 }
 
-const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://www.forestryequipmentsales.com');
+const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://timberequip.com');
 const STAGING_APP_URL = 'https://timberequip-staging.web.app';
 function resolveConfiguredAppUrl() {
   const projectId = String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || '').trim().toLowerCase();

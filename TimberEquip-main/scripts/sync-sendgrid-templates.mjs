@@ -10,7 +10,7 @@ const SENDGRID_AUTH_HEADER = String(process.env.SENDGRID_AUTH_HEADER || '').trim
 const AUTHORIZATION_HEADER = SENDGRID_AUTH_HEADER || (SENDGRID_API_KEY ? `Bearer ${SENDGRID_API_KEY}` : '');
 
 const SENDGRID_API_BASE = 'https://api.sendgrid.com/v3';
-const APP_URL = String(process.env.SENDGRID_APP_URL || process.env.APP_URL || 'https://www.forestryequipmentsales.com').trim().replace(/\/+$/, '');
+const APP_URL = String(process.env.SENDGRID_APP_URL || process.env.APP_URL || 'https://timberequip.com').trim().replace(/\/+$/, '');
 const LISTING_URL = `${APP_URL}/equipment/2020-tigercat-635h-skidder`;
 const DASHBOARD_URL = `${APP_URL}/profile`;
 const SEARCH_URL = `${APP_URL}/search`;
@@ -305,7 +305,6 @@ async function updateVersion(templateId, versionId, spec, rendered) {
     method: 'PATCH',
     body: JSON.stringify({
       active: 1,
-      editor: 'code',
       name: `${spec.key} synced from code`,
       subject: rendered.subject,
       html_content: rendered.html,
