@@ -34,6 +34,8 @@ import { TagSelectorModal } from '../components/TagSelectorModal';
 import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
 import { SERVICE_AREA_REGION_OPTIONS, SERVICE_AREA_SCOPE_OPTIONS, STOREFRONT_COUNTRY_OPTIONS } from '../constants/storefrontRegions';
 import { buildDealerPath } from '../utils/seoRoutes';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
@@ -75,6 +77,7 @@ export function Profile() {
   const { formatPrice, language, currency, setLanguage, setCurrency } = useLocale();
   const { user, logout, toggleFavorite, patchCurrentUserProfile } = useAuth();
   const navigate = useNavigate();
+  const { confirm: showConfirm, alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams] = useSearchParams();
   const hasUser = Boolean(user);
   const entitlement = useMemo(() => resolveAccountEntitlement(user), [user]);
@@ -1003,7 +1006,7 @@ export function Profile() {
       window.location.href = '/';
     } catch (error) {
       console.error('Error deleting account:', error);
-      alert('Failed to delete account. Please contact support.');
+      await showAlert({ title: 'Error', message: 'Failed to delete account. Please contact support.', variant: 'warning' });
     }
   };
 
@@ -1496,7 +1499,8 @@ export function Profile() {
   };
 
   const handleDeleteListing = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this listing?')) {
+    const ok = await showConfirm({ title: 'Confirm Delete', message: 'Are you sure you want to delete this listing?', variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) {
       return;
     }
 
@@ -1505,7 +1509,7 @@ export function Profile() {
       setMyListings((prev) => prev.filter((listing) => listing.id !== id));
     } catch (error) {
       console.error('Failed to delete listing:', error);
-      alert('Unable to delete listing right now. Please try again.');
+      await showAlert({ title: 'Error', message: 'Unable to delete listing right now. Please try again.', variant: 'warning' });
     }
   };
 
@@ -1801,10 +1805,10 @@ export function Profile() {
                  <div className="flex items-center gap-2 flex-shrink-0">
                    <span className="text-base md:text-xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
                    <div className="flex gap-1 sm:hidden">
-                     <button onClick={() => handleEditListing(listing)} className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
+                     <button onClick={() => handleEditListing(listing)} aria-label="Edit listing" className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
                        <Edit size={14} />
                      </button>
-                     <button onClick={() => handleDeleteListing(listing.id)} className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
+                     <button onClick={() => handleDeleteListing(listing.id)} aria-label="Delete listing" className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
                        <Trash2 size={14} />
                      </button>
                    </div>
@@ -1854,14 +1858,16 @@ export function Profile() {
               </div>
             </div>
              <div className="hidden sm:flex sm:flex-col gap-2 flex-shrink-0">
-              <button 
+              <button
                 onClick={() => handleEditListing(listing)}
+                aria-label="Edit listing"
                 className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm"
               >
                 <Edit size={16} />
               </button>
-              <button 
+              <button
                 onClick={() => handleDeleteListing(listing.id)}
+                aria-label="Delete listing"
                 className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm"
               >
                 <Trash2 size={16} />
@@ -1892,10 +1898,10 @@ export function Profile() {
               <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${alert.status === 'active' ? 'bg-data/10 text-data' : 'bg-line text-muted'}`}>
                 {alert.status}
               </span>
-              <button className="p-2 text-muted hover:text-ink transition-colors" onClick={() => handleToggleSavedSearchStatus(alert)}>
+              <button className="p-2 text-muted hover:text-ink transition-colors" onClick={() => handleToggleSavedSearchStatus(alert)} aria-label="Toggle saved search status">
                 <Settings size={16} />
               </button>
-              <button className="p-2 text-muted hover:text-accent transition-colors" onClick={() => handleDeleteSavedSearch(alert.id)}>
+              <button className="p-2 text-muted hover:text-accent transition-colors" onClick={() => handleDeleteSavedSearch(alert.id)} aria-label="Delete saved search">
                 <Trash2 size={16} />
               </button>
             </div>
@@ -2335,71 +2341,71 @@ export function Profile() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-2">
-              <label className="label-micro">{storefrontTabLabel} Name</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontName} onChange={(e) => handleStorefrontInputChange('storefrontName', e.target.value)} />
+              <label htmlFor="profile-storefront-name" className="label-micro">{storefrontTabLabel} Name</label>
+              <input id="profile-storefront-name" type="text" className="input-industrial w-full" value={storefrontForm.storefrontName} onChange={(e) => handleStorefrontInputChange('storefrontName', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Canonical Slug</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontSlug} onChange={(e) => handleStorefrontInputChange('storefrontSlug', e.target.value)} placeholder="auto-generated-from-name" />
+              <label htmlFor="profile-storefront-slug" className="label-micro">Canonical Slug</label>
+              <input id="profile-storefront-slug" type="text" className="input-industrial w-full" value={storefrontForm.storefrontSlug} onChange={(e) => handleStorefrontInputChange('storefrontSlug', e.target.value)} placeholder="auto-generated-from-name" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Legal Business Name</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.businessName} onChange={(e) => handleStorefrontInputChange('businessName', e.target.value)} placeholder="Business name used on your storefront and schema" />
+              <label htmlFor="profile-storefront-business-name" className="label-micro">Legal Business Name</label>
+              <input id="profile-storefront-business-name" type="text" className="input-industrial w-full" value={storefrontForm.businessName} onChange={(e) => handleStorefrontInputChange('businessName', e.target.value)} placeholder="Business name used on your storefront and schema" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">Tagline</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontTagline} onChange={(e) => handleStorefrontInputChange('storefrontTagline', e.target.value)} placeholder="Short positioning line for the public page" />
+              <label htmlFor="profile-storefront-tagline" className="label-micro">Tagline</label>
+              <input id="profile-storefront-tagline" type="text" className="input-industrial w-full" value={storefrontForm.storefrontTagline} onChange={(e) => handleStorefrontInputChange('storefrontTagline', e.target.value)} placeholder="Short positioning line for the public page" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">Unique About Section</label>
-              <textarea rows={7} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Describe the equipment you specialize in, brands carried, service counties and states, buyer support, financing or logistics help, and what makes your business credible." />
+              <label htmlFor="profile-storefront-description" className="label-micro">Unique About Section</label>
+              <textarea id="profile-storefront-description" rows={7} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Describe the equipment you specialize in, brands carried, service counties and states, buyer support, financing or logistics help, and what makes your business credible." />
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
                 Write original descriptive copy. Explain what you sell, where you operate, how buyers should work with you, and why your dealership is different.
               </p>
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Website</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.website} onChange={(e) => handleStorefrontInputChange('website', e.target.value)} placeholder="https://example.com" />
+              <label htmlFor="profile-storefront-website" className="label-micro">Website</label>
+              <input id="profile-storefront-website" type="text" className="input-industrial w-full" value={storefrontForm.website} onChange={(e) => handleStorefrontInputChange('website', e.target.value)} placeholder="https://example.com" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Public Email</label>
-              <input type="email" className="input-industrial w-full" value={storefrontForm.email} onChange={(e) => handleStorefrontInputChange('email', e.target.value)} />
+              <label htmlFor="profile-storefront-email" className="label-micro">Public Email</label>
+              <input id="profile-storefront-email" type="email" className="input-industrial w-full" value={storefrontForm.email} onChange={(e) => handleStorefrontInputChange('email', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Public Phone</label>
-              <input type="tel" className="input-industrial w-full" value={storefrontForm.phone} onChange={(e) => handleStorefrontInputChange('phone', e.target.value)} />
+              <label htmlFor="profile-storefront-phone" className="label-micro">Public Phone</label>
+              <input id="profile-storefront-phone" type="tel" className="input-industrial w-full" value={storefrontForm.phone} onChange={(e) => handleStorefrontInputChange('phone', e.target.value)} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">Display Location Summary</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} placeholder="Optional. Leave blank to derive from city, state, and country." />
+              <label htmlFor="profile-storefront-location" className="label-micro">Display Location Summary</label>
+              <input id="profile-storefront-location" type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} placeholder="Optional. Leave blank to derive from city, state, and country." />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Street Address 1</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.street1} onChange={(e) => handleStorefrontInputChange('street1', e.target.value)} placeholder="Street address used for mapping and geo coordinates" />
+              <label htmlFor="profile-storefront-street1" className="label-micro">Street Address 1</label>
+              <input id="profile-storefront-street1" type="text" className="input-industrial w-full" value={storefrontForm.street1} onChange={(e) => handleStorefrontInputChange('street1', e.target.value)} placeholder="Street address used for mapping and geo coordinates" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Street Address 2</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.street2} onChange={(e) => handleStorefrontInputChange('street2', e.target.value)} placeholder="Suite, yard number, or optional secondary line" />
+              <label htmlFor="profile-storefront-street2" className="label-micro">Street Address 2</label>
+              <input id="profile-storefront-street2" type="text" className="input-industrial w-full" value={storefrontForm.street2} onChange={(e) => handleStorefrontInputChange('street2', e.target.value)} placeholder="Suite, yard number, or optional secondary line" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">City</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.city} onChange={(e) => handleStorefrontInputChange('city', e.target.value)} />
+              <label htmlFor="profile-storefront-city" className="label-micro">City</label>
+              <input id="profile-storefront-city" type="text" className="input-industrial w-full" value={storefrontForm.city} onChange={(e) => handleStorefrontInputChange('city', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">State / Province</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.state} onChange={(e) => handleStorefrontInputChange('state', e.target.value)} placeholder="State or province for your storefront address" />
+              <label htmlFor="profile-storefront-state" className="label-micro">State / Province</label>
+              <input id="profile-storefront-state" type="text" className="input-industrial w-full" value={storefrontForm.state} onChange={(e) => handleStorefrontInputChange('state', e.target.value)} placeholder="State or province for your storefront address" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">County</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.county} onChange={(e) => handleStorefrontInputChange('county', e.target.value)} placeholder="Primary county for the physical business location" />
+              <label htmlFor="profile-storefront-county" className="label-micro">County</label>
+              <input id="profile-storefront-county" type="text" className="input-industrial w-full" value={storefrontForm.county} onChange={(e) => handleStorefrontInputChange('county', e.target.value)} placeholder="Primary county for the physical business location" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Postal Code</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.postalCode} onChange={(e) => handleStorefrontInputChange('postalCode', e.target.value)} />
+              <label htmlFor="profile-storefront-postal-code" className="label-micro">Postal Code</label>
+              <input id="profile-storefront-postal-code" type="text" className="input-industrial w-full" value={storefrontForm.postalCode} onChange={(e) => handleStorefrontInputChange('postalCode', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Country</label>
-              <select className="input-industrial w-full" value={storefrontForm.country} onChange={(e) => handleStorefrontInputChange('country', e.target.value)}>
+              <label htmlFor="profile-storefront-country" className="label-micro">Country</label>
+              <select id="profile-storefront-country" className="input-industrial w-full" value={storefrontForm.country} onChange={(e) => handleStorefrontInputChange('country', e.target.value)}>
                 {STOREFRONT_COUNTRY_OPTIONS.map((country) => (
                   <option key={country} value={country}>{country}</option>
                 ))}
@@ -2466,24 +2472,24 @@ export function Profile() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Logo URL Override</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.logo} onChange={(e) => handleStorefrontInputChange('logo', e.target.value)} placeholder="Leave blank to reuse account profile image" />
+              <label htmlFor="profile-storefront-logo" className="label-micro">Logo URL Override</label>
+              <input id="profile-storefront-logo" type="text" className="input-industrial w-full" value={storefrontForm.logo} onChange={(e) => handleStorefrontInputChange('logo', e.target.value)} placeholder="Leave blank to reuse account profile image" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Cover URL Override</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.coverPhotoUrl} onChange={(e) => handleStorefrontInputChange('coverPhotoUrl', e.target.value)} placeholder="Leave blank to reuse account cover image" />
+              <label htmlFor="profile-storefront-cover" className="label-micro">Cover URL Override</label>
+              <input id="profile-storefront-cover" type="text" className="input-industrial w-full" value={storefrontForm.coverPhotoUrl} onChange={(e) => handleStorefrontInputChange('coverPhotoUrl', e.target.value)} placeholder="Leave blank to reuse account cover image" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">SEO Title</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} />
+              <label htmlFor="profile-storefront-seo-title" className="label-micro">SEO Title</label>
+              <input id="profile-storefront-seo-title" type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">SEO Description</label>
-              <textarea rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} />
+              <label htmlFor="profile-storefront-seo-description" className="label-micro">SEO Description</label>
+              <textarea id="profile-storefront-seo-description" rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">SEO Keywords</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" />
+              <label htmlFor="profile-storefront-seo-keywords" className="label-micro">SEO Keywords</label>
+              <input id="profile-storefront-seo-keywords" type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" />
             </div>
           </div>
 
@@ -2580,8 +2586,9 @@ export function Profile() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-2">
-            <label className="label-micro">Full Name</label>
+            <label htmlFor="profile-settings-name" className="label-micro">Full Name</label>
             <input
+              id="profile-settings-name"
               type="text"
               className="input-industrial w-full"
               value={settingsForm.displayName}
@@ -2589,8 +2596,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Email Address</label>
+            <label htmlFor="profile-settings-email" className="label-micro">Email Address</label>
             <input
+              id="profile-settings-email"
               type="email"
               className="input-industrial w-full"
               value={settingsForm.email}
@@ -2598,8 +2606,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Phone Number</label>
+            <label htmlFor="profile-settings-phone" className="label-micro">Phone Number</label>
             <input
+              id="profile-settings-phone"
               type="tel"
               className="input-industrial w-full"
               placeholder="+1 (555) 000-0000"
@@ -2608,8 +2617,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Company Name</label>
+            <label htmlFor="profile-settings-company" className="label-micro">Company Name</label>
             <input
+              id="profile-settings-company"
               type="text"
               className="input-industrial w-full"
               value={settingsForm.company}
@@ -2617,8 +2627,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Website</label>
+            <label htmlFor="profile-settings-website" className="label-micro">Website</label>
             <input
+              id="profile-settings-website"
               type="url"
               className="input-industrial w-full"
               placeholder="https://example.com"
@@ -2627,8 +2638,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Preferred Language</label>
+            <label htmlFor="profile-settings-language" className="label-micro">Preferred Language</label>
             <select
+              id="profile-settings-language"
               className="input-industrial w-full"
               value={settingsForm.preferredLanguage}
               onChange={(e) => handleSettingsInputChange('preferredLanguage', e.target.value as Language)}
@@ -2639,8 +2651,9 @@ export function Profile() {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Preferred Currency</label>
+            <label htmlFor="profile-settings-currency" className="label-micro">Preferred Currency</label>
             <select
+              id="profile-settings-currency"
               className="input-industrial w-full"
               value={settingsForm.preferredCurrency}
               onChange={(e) => handleSettingsInputChange('preferredCurrency', e.target.value as Currency)}
@@ -2651,8 +2664,9 @@ export function Profile() {
             </select>
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="label-micro">Address</label>
+            <label htmlFor="profile-settings-address" className="label-micro">Address</label>
             <input
+              id="profile-settings-address"
               type="text"
               className="input-industrial w-full"
               placeholder="Street, City, State/Province, Country"
@@ -2661,8 +2675,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="label-micro">Short Bio</label>
+            <label htmlFor="profile-settings-bio" className="label-micro">Short Bio</label>
             <textarea
+              id="profile-settings-bio"
               className="input-industrial w-full min-h-[100px]"
               placeholder="Short introduction shown across your account presence"
               value={settingsForm.bio}
@@ -2670,8 +2685,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="label-micro">About</label>
+            <label htmlFor="profile-settings-about" className="label-micro">About</label>
             <textarea
+              id="profile-settings-about"
               className="input-industrial w-full min-h-[140px]"
               placeholder="Company background, specialties, service area, or buyer preferences"
               value={settingsForm.about}
@@ -2770,8 +2786,9 @@ export function Profile() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="label-micro">Mobile Number For SMS Codes</label>
+                  <label htmlFor="profile-mfa-phone" className="label-micro">Mobile Number For SMS Codes</label>
                   <input
+                    id="profile-mfa-phone"
                     type="tel"
                     className="input-industrial w-full"
                     placeholder="+15551234567"
@@ -2783,8 +2800,9 @@ export function Profile() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <label className="label-micro">Device Label</label>
+                  <label htmlFor="profile-mfa-device-label" className="label-micro">Device Label</label>
                   <input
+                    id="profile-mfa-device-label"
                     type="text"
                     className="input-industrial w-full"
                     placeholder="Primary mobile"
@@ -2935,7 +2953,8 @@ export function Profile() {
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm('Are you sure you want to cancel your subscription? It will remain active until the end of your current billing period.')) return;
+                    const ok = await showConfirm({ title: 'Cancel Subscription', message: 'Are you sure you want to cancel your subscription? It will remain active until the end of your current billing period.', variant: 'danger', confirmLabel: 'Cancel Subscription', cancelLabel: 'Keep Subscription' });
+                    if (!ok) return;
                     try {
                       await billingService.cancelSubscription();
                       setSettingsNotice('Your subscription has been scheduled for cancellation at the end of the current billing period.');
@@ -3232,8 +3251,9 @@ export function Profile() {
                       <div key={listing.id} className="bg-surface border border-line overflow-hidden rounded-sm shadow-sm group">
                         <div className="aspect-video relative">
                           <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
-                          <button 
+                          <button
                             onClick={() => toggleFavorite(listing.id)}
+                            aria-label="Remove from favorites"
                             className="absolute top-4 right-4 p-2 bg-ink/80 text-accent rounded-sm hover:bg-ink transition-colors"
                           >
                             <Bookmark size={16} fill="currentColor" />
@@ -3304,6 +3324,8 @@ export function Profile() {
           </motion.div>
         </div>
       )}
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

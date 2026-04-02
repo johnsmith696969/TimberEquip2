@@ -6,15 +6,18 @@ import {
   Headphones, HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { AlertMessage } from '../components/AlertMessage';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 
 export function Contact() {
   const { theme } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
   const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
@@ -83,12 +86,12 @@ export function Contact() {
             {
               '@type': 'ContactPage',
               name: 'Contact Forestry Equipment Sales',
-              url: 'https://www.forestryequipmentsales.com/contact',
+              url: 'https://timberequip.com/contact',
             },
             {
               '@type': 'Organization',
               name: 'Forestry Equipment Sales',
-              url: 'https://www.forestryequipmentsales.com',
+              url: 'https://timberequip.com',
               email: 'info@forestryequipmentsales.com',
               contactPoint: [
                 { '@type': 'ContactPoint', contactType: 'customer service', email: 'support@forestryequipmentsales.com', availableLanguage: 'English' },
@@ -98,8 +101,8 @@ export function Contact() {
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-                { '@type': 'ListItem', position: 2, name: 'Contact', item: 'https://www.forestryequipmentsales.com/contact' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Contact', item: 'https://timberequip.com/contact' },
               ],
             },
           ],
@@ -129,11 +132,12 @@ export function Contact() {
               <div className="p-12">
                 <AnimatePresence mode="wait">
                   {step === 1 ? (
-                    <motion.div 
+                    <motion.div
                       key="form"
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : undefined}
                       className="space-y-10"
                     >
                       <div className="flex flex-col">
@@ -144,8 +148,9 @@ export function Contact() {
                       <form onSubmit={handleSubmit} className="space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           <div className="flex flex-col space-y-3">
-                            <label className="label-micro">Your Name</label>
+                            <label htmlFor="contact-name" className="label-micro">Your Name</label>
                             <input
+                              id="contact-name"
                               required
                               type="text"
                               value={contactForm.name}
@@ -155,8 +160,9 @@ export function Contact() {
                             />
                           </div>
                           <div className="flex flex-col space-y-3">
-                            <label className="label-micro">Email Address</label>
+                            <label htmlFor="contact-email" className="label-micro">Email Address</label>
                             <input
+                              id="contact-email"
                               required
                               type="email"
                               value={contactForm.email}
@@ -166,8 +172,9 @@ export function Contact() {
                             />
                           </div>
                           <div className="flex flex-col space-y-3 md:col-span-2">
-                            <label className="label-micro">Inquiry Category</label>
+                            <label htmlFor="contact-category" className="label-micro">Inquiry Category</label>
                             <select
+                              id="contact-category"
                               value={contactForm.category}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, category: e.target.value }))}
                               className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
@@ -180,8 +187,9 @@ export function Contact() {
                             </select>
                           </div>
                           <div className="flex flex-col space-y-3 md:col-span-2">
-                            <label className="label-micro">Message Content</label>
+                            <label htmlFor="contact-message" className="label-micro">Message Content</label>
                             <textarea
+                              id="contact-message"
                               required
                               rows={6}
                               value={contactForm.message}
@@ -193,14 +201,15 @@ export function Contact() {
                         </div>
 
                         {contactError && (
-                          <p className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm mb-4">{contactError}</p>
+                          <AlertMessage severity="error" className="mb-4">{contactError}</AlertMessage>
                         )}
                         <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                           Protected by reCAPTCHA Enterprise before submission.
                         </p>
-                        <button 
-                          type="submit" 
+                        <button
+                          type="submit"
                           disabled={loading}
+                          aria-disabled={loading}
                           className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit flex items-center justify-center"
                         >
                           {loading ? (
@@ -215,10 +224,11 @@ export function Contact() {
                       </form>
                     </motion.div>
                   ) : (
-                    <motion.div 
+                    <motion.div
                       key="success"
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : undefined}
                       className="py-20 flex flex-col items-center text-center"
                     >
                       <div className="w-24 h-24 bg-data/10 text-data flex items-center justify-center rounded-full mb-10">

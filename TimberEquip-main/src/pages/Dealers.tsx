@@ -107,13 +107,13 @@ export function Dealers() {
               '@type': 'CollectionPage',
               name: 'Dealer Network',
               description: 'Browse active dealer and pro dealer storefronts on Forestry Equipment Sales.',
-              url: 'https://www.forestryequipmentsales.com/dealers',
+              url: 'https://timberequip.com/dealers',
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-                { '@type': 'ListItem', position: 2, name: 'Dealer Network', item: 'https://www.forestryequipmentsales.com/dealers' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Dealer Network', item: 'https://timberequip.com/dealers' },
               ],
             },
             {
@@ -123,7 +123,7 @@ export function Dealers() {
               itemListElement: sortedDealers.slice(0, 50).map((dealer, index) => ({
                 '@type': 'ListItem',
                 position: index + 1,
-                url: `https://www.forestryequipmentsales.com${buildDealerPath(dealer)}`,
+                url: `https://timberequip.com${buildDealerPath(dealer)}`,
                 item: {
                   '@type': 'Organization',
                   name: getDealerDisplayName(dealer),

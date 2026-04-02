@@ -68,7 +68,7 @@ function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const urls = [rawInput];
   const hostname = window.location.hostname.trim().toLowerCase();
   if (hostname === 'www.forestryequipmentsales.com') {
-    urls.push(`https://www.forestryequipmentsales.com${rawInput}`);
+    urls.push(`https://timberequip.com${rawInput}`);
   }
 
   return Array.from(new Set(urls));

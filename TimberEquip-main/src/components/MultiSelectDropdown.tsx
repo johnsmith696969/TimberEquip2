@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { ChevronDown, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface MultiSelectOption {
@@ -28,6 +29,14 @@ export function MultiSelectDropdown({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const trapRef = useFocusTrap(open);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
 
   const showSearch = searchable ?? options.length > 8;
 
@@ -104,6 +113,10 @@ export function MultiSelectDropdown({
             className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
           />
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="msd-dialog-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -112,7 +125,7 @@ export function MultiSelectDropdown({
             {/* Header */}
             <div className="flex items-center justify-between border-b border-line px-6 py-5">
               <div>
-                <h3 className="text-sm font-black uppercase tracking-widest">{label}</h3>
+                <h3 id="msd-dialog-title" className="text-sm font-black uppercase tracking-widest">{label}</h3>
                 <p className="text-[9px] font-bold uppercase tracking-widest text-muted mt-1">
                   {selected.length} of {options.length} selected
                 </p>
@@ -126,14 +139,13 @@ export function MultiSelectDropdown({
             {showSearch && (
               <div className="border-b border-line px-6 py-3">
                 <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                   <input
                     ref={searchRef}
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder={`Search ${label.toLowerCase()}...`}
-                    className="input-industrial w-full pl-9 py-2.5"
+                    className="input-industrial w-full py-2.5"
                   />
                   {query && (
                     <button
@@ -220,6 +232,8 @@ export function MultiSelectDropdown({
       <button
         type="button"
         onClick={() => setOpen(true)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
         className="select-industrial w-full text-left flex items-center justify-between gap-2"
       >
         <span className={`truncate ${selected.length === 0 ? 'text-muted' : 'text-ink'}`}>

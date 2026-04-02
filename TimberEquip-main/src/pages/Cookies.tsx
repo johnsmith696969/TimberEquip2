@@ -12,6 +12,8 @@ export function Cookies() {
         title="Cookie Policy | Forestry Equipment Sales"
         description="Learn how Forestry Equipment Sales uses cookies, localStorage, and tracking technologies. Manage your preferences and understand your choices."
         canonicalPath="/cookies"
+        ogType="website"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
       />
       <div className="max-w-4xl mx-auto">
         <motion.div

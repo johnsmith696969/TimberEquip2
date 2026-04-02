@@ -42,30 +42,37 @@ export function Categories() {
 
   const { formatNumber } = useLocale();
   const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const [marketplaceData, mergedTaxonomy] = await Promise.all([
+        equipmentService.getHomeMarketplaceData(),
+        taxonomyService.getTaxonomy(),
+      ]);
+      const metricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
+        acc[metric.category] = {
+          activeCount: metric.activeCount,
+          weeklyChangePercent: metric.weeklyChangePercent,
+          averagePrice: metric.averagePrice,
+          previousWeekCount: metric.previousWeekCount,
+        };
+        return acc;
+      }, {});
+      setCategoryMetrics(metricMap);
+      setTaxonomy(mergedTaxonomy);
+    } catch (err) {
+      console.error('Error loading category data:', err);
+      setError('Unable to load category data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [marketplaceData, mergedTaxonomy] = await Promise.all([
-          equipmentService.getHomeMarketplaceData(),
-          taxonomyService.getTaxonomy(),
-        ]);
-        const metricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
-          acc[metric.category] = {
-            activeCount: metric.activeCount,
-            weeklyChangePercent: metric.weeklyChangePercent,
-            averagePrice: metric.averagePrice,
-            previousWeekCount: metric.previousWeekCount,
-          };
-          return acc;
-        }, {});
-        setCategoryMetrics(metricMap);
-        setTaxonomy(mergedTaxonomy);
-      } catch (error) {
-        console.error('Error loading category data:', error);
-      }
-    };
-
     fetchData();
   }, []);
 
@@ -135,12 +142,12 @@ export function Categories() {
     '@type': 'CollectionPage',
     name: 'Equipment Categories',
     description: seoDescription,
-    url: 'https://www.forestryequipmentsales.com/categories',
+    url: 'https://timberequip.com/categories',
     hasPart: categoryCards.map(cat => ({
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://www.forestryequipmentsales.com/categories/${normalizeSeoSlug(cat.name)}`
+      url: `https://timberequip.com/categories/${normalizeSeoSlug(cat.name)}`
     }))
   };
 
@@ -162,7 +169,32 @@ export function Categories() {
         </div>
       </ImageHero>
 
-      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
+      {error && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <p className="text-sm font-bold text-muted mb-4">{error}</p>
+          <button
+            onClick={() => { setError(null); fetchData(); }}
+            className="btn-industrial btn-accent px-6 py-3"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24" aria-live="polite" aria-busy={loading}>
+        {loading && categoryCards.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="border border-line p-10 flex flex-col space-y-6">
+                <div className="animate-pulse bg-surface rounded-sm w-20 h-20" />
+                <div className="animate-pulse bg-surface rounded-sm h-6 w-3/4" />
+                <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
+                <div className="animate-pulse bg-surface rounded-sm h-4 w-2/3" />
+                <div className="animate-pulse bg-surface rounded-sm h-12 w-full mt-auto" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {categoryCards.map((cat, i) => (
             <div
@@ -199,6 +231,7 @@ export function Categories() {
             </div>
           ))}
         </div>
+        )}
       </div>
 
       {/* Market News CTA */}

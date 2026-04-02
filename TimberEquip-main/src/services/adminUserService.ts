@@ -3,6 +3,7 @@ import { Account, CallLog, Inquiry, Listing, UserRole } from '../types';
 
 const ADMIN_USER_CACHE_KEY = 'te-admin-users-cache-v1';
 const ADMIN_BOOTSTRAP_CACHE_KEY = 'te-admin-operations-cache-v1';
+const ADMIN_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 type AdminUserCacheEnvelope<T> = {
   savedAt: string;
@@ -22,7 +23,12 @@ function readAdminUserCache<T>(): T | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AdminUserCacheEnvelope<T> | T;
     if (parsed && typeof parsed === 'object' && 'data' in (parsed as AdminUserCacheEnvelope<T>)) {
-      return ((parsed as AdminUserCacheEnvelope<T>).data ?? null) as T | null;
+      const envelope = parsed as AdminUserCacheEnvelope<T>;
+      if (envelope.savedAt && (Date.now() - new Date(envelope.savedAt).getTime()) > ADMIN_CACHE_TTL_MS) {
+        window.localStorage.removeItem(ADMIN_USER_CACHE_KEY);
+        return null;
+      }
+      return (envelope.data ?? null) as T | null;
     }
     return parsed as T;
   } catch (error) {
@@ -100,7 +106,12 @@ function readAdminBootstrapCache<T>(): T | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AdminUserCacheEnvelope<T> | T;
     if (parsed && typeof parsed === 'object' && 'data' in (parsed as AdminUserCacheEnvelope<T>)) {
-      return ((parsed as AdminUserCacheEnvelope<T>).data ?? null) as T | null;
+      const envelope = parsed as AdminUserCacheEnvelope<T>;
+      if (envelope.savedAt && (Date.now() - new Date(envelope.savedAt).getTime()) > ADMIN_CACHE_TTL_MS) {
+        window.localStorage.removeItem(ADMIN_BOOTSTRAP_CACHE_KEY);
+        return null;
+      }
+      return (envelope.data ?? null) as T | null;
     }
     return parsed as T;
   } catch (error) {
@@ -138,7 +149,7 @@ function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const urls = [rawInput];
   const hostname = window.location.hostname.trim().toLowerCase();
   if (hostname === 'www.forestryequipmentsales.com') {
-    urls.push(`https://www.forestryequipmentsales.com${rawInput}`);
+    urls.push(`https://timberequip.com${rawInput}`);
   }
 
   return Array.from(new Set(urls));

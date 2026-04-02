@@ -20,6 +20,8 @@ import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { billingService, type ListingPlanId } from '../services/billingService';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useAuth } from '../components/AuthContext';
 import { hasActiveSellerSubscription } from '../utils/sellerAccess';
 import {
@@ -77,6 +79,7 @@ type SellerTier = {
 export function AdPrograms() {
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isAuthenticated } = useAuth();
   const sellerTypesRef = useRef<HTMLElement | null>(null);
@@ -414,7 +417,7 @@ export function AdPrograms() {
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'MEDIA_KIT_REQUEST');
         if (!pass) {
-          alert('Security check failed. Please try again.');
+          await showAlert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
           setSendingMediaKit(false);
           return;
         }
@@ -430,7 +433,7 @@ export function AdPrograms() {
       setMediaKitForm({ firstName: '', companyName: '', email: '', phone: '', notes: '' });
     } catch (error) {
       console.error('Failed to submit media kit request:', error);
-      alert('Unable to send the media kit request right now.');
+      await showAlert({ title: 'Request Failed', message: 'Unable to send the media kit request right now.', variant: 'warning' });
     } finally {
       setSendingMediaKit(false);
     }
@@ -1008,6 +1011,8 @@ export function AdPrograms() {
         )}
 
       </AnimatePresence>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

@@ -62,7 +62,7 @@ function buildBreadcrumbJsonLd(breadcrumbs: BreadcrumbItem[]) {
       '@type': 'ListItem',
       position: index + 1,
       name: item.label,
-      item: `https://www.forestryequipmentsales.com${item.path || '/'}`,
+      item: `https://timberequip.com${item.path || '/'}`,
     })),
   };
 }
@@ -75,7 +75,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
         '@type': 'CollectionPage',
         name,
         description,
-        url: `https://www.forestryequipmentsales.com${canonicalPath}`,
+        url: `https://timberequip.com${canonicalPath}`,
       },
       buildBreadcrumbJsonLd(breadcrumbs),
       {
@@ -84,7 +84,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
         itemListElement: listings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+          url: `https://timberequip.com${buildListingPath(listing)}`,
           item: {
             '@type': 'Product',
             name: `${listing.year} ${getListingManufacturer(listing)} ${listing.model}`.trim(),

@@ -34,6 +34,8 @@ import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap, g
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 import { useLocale } from '../components/LocaleContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   buildDealerFeedApiCurlSnippet,
   buildDealerFeedSampleUrl,
@@ -64,6 +66,7 @@ function isImportedListing(listing: Listing): boolean {
 export function DealerOS() {
   const { user } = useAuth();
   const { formatPrice } = useLocale();
+  const { confirm: showConfirm, dialogProps } = useConfirmDialog();
   const ownerUid = getDealerInventoryOwnerUid(user);
   const featuredCap = getFeaturedListingCap(user);
   const dealerAccess = canAccessDealerOs(user);
@@ -258,7 +261,7 @@ export function DealerOS() {
     () => inquiries.find((inquiry) => inquiry.id === selectedInquiryId) || null,
     [inquiries, selectedInquiryId]
   );
-  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.forestryequipmentsales.com';
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
   const publicDealerId = storefrontProfile?.storefrontSlug || ownerUid;
   const publicDealerPageUrl = publicDealerId ? `${appOrigin}/dealers/${encodeURIComponent(publicDealerId)}` : '';
   const publicDealerFeedUrl = publicDealerId ? `${appOrigin}/api/public/dealers/${encodeURIComponent(publicDealerId)}/feed.json` : '';
@@ -345,7 +348,8 @@ export function DealerOS() {
   };
 
   const handleDeleteListing = async (listing: Listing) => {
-    if (!window.confirm(`Delete ${listing.title}? This cannot be undone.`)) {
+    const ok = await showConfirm({ title: 'Confirm Delete', message: `Delete ${listing.title}? This cannot be undone.`, variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) {
       return;
     }
 
@@ -462,7 +466,8 @@ export function DealerOS() {
 
   const handleDeleteFeedProfile = async (profile: DealerFeedProfile) => {
     if (!ownerUid) return;
-    if (!window.confirm(`Delete the feed profile "${profile.sourceName}"?`)) {
+    const ok = await showConfirm({ title: 'Confirm Delete', message: `Delete the feed profile "${profile.sourceName}"?`, variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) {
       return;
     }
 
@@ -2065,6 +2070,8 @@ export function DealerOS() {
         listing={editingListing}
         onSave={handleSaveListing}
       />
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

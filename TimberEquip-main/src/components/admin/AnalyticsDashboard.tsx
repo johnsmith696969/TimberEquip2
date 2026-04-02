@@ -119,7 +119,10 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
               <kpi.icon size={18} className={kpi.color} />
             </div>
             <div className={`text-3xl font-black tracking-tighter ${kpi.color}`}>{kpi.value}</div>
-            <div className="text-[9px] font-bold text-muted uppercase tracking-widest">{kpi.sub}</div>
+            <div className="flex items-center text-[9px] font-bold text-muted uppercase tracking-widest">
+              {kpi.sub}
+              <span className="text-[9px] font-bold text-muted ml-2" title="Trend data coming soon">&mdash;</span>
+            </div>
           </div>
         ))}
       </div>
@@ -150,11 +153,11 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           </div>
           <div className="border-t border-line pt-3 grid grid-cols-2 gap-2 text-center">
             <div>
-              <div className="text-lg font-black tracking-tighter text-ink">{newListings7d}</div>
+              <div className="text-lg font-black tracking-tighter text-ink">{newListings7d}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">New (7d)</div>
             </div>
             <div>
-              <div className="text-lg font-black tracking-tighter text-ink">{newListings30d}</div>
+              <div className="text-lg font-black tracking-tighter text-ink">{newListings30d}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">New (30d)</div>
             </div>
           </div>
@@ -183,15 +186,15 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           </div>
           <div className="border-t border-line pt-3 flex items-center justify-between">
             <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-data">{conversionRate}%</div>
+              <div className="text-lg font-black tracking-tighter text-data">{conversionRate}%<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">Conversion</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-ink">{newInquiries30d}</div>
+              <div className="text-lg font-black tracking-tighter text-ink">{newInquiries30d}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">New (30d)</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-accent">{wonInquiries}</div>
+              <div className="text-lg font-black tracking-tighter text-accent">{wonInquiries}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">Won</div>
             </div>
           </div>
@@ -298,11 +301,11 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           </div>
           <div className="border-t border-line pt-3 flex gap-6">
             <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-data">{activeAccounts}</div>
+              <div className="text-lg font-black tracking-tighter text-data">{activeAccounts}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">Active</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-accent">{totalAccounts - activeAccounts}</div>
+              <div className="text-lg font-black tracking-tighter text-accent">{totalAccounts - activeAccounts}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
               <div className="text-[8px] font-bold text-muted uppercase">Inactive</div>
             </div>
           </div>

@@ -6,8 +6,14 @@ function normalize(value: unknown): string {
 
 function normalizeRole(role: unknown): string {
   const normalized = normalize(role);
-  if (normalized === 'dealer_staff') return 'dealer';
-  if (normalized === 'dealer_manager') return 'pro_dealer';
+  if (normalized === 'dealer_staff') {
+    console.warn('Deprecated role "dealer_staff" normalized to "dealer". Update the user profile.');
+    return 'dealer';
+  }
+  if (normalized === 'dealer_manager') {
+    console.warn('Deprecated role "dealer_manager" normalized to "pro_dealer". Update the user profile.');
+    return 'pro_dealer';
+  }
   return normalized;
 }
 

@@ -31,6 +31,10 @@
     <link rel="dns-prefetch" href="https://js.stripe.com" />
   </head>
   <body>
+    <script>
+      // Prevent Flash of Wrong Theme (FOWT) — runs before React
+      (function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark');document.querySelector('meta[name="theme-color"]').setAttribute('content','#0C0A09')}}catch(e){}})();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

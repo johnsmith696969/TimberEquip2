@@ -153,8 +153,8 @@ export function Financing() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Business Structure</label>
-                          <select value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                          <label htmlFor="financing-business-structure" className="label-micro">Business Structure</label>
+                          <select id="financing-business-structure" value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
                             <option value="">-Select-</option>
                             <option value="Corporation">Corporation</option>
                             <option value="LLC">LLC</option>
@@ -163,16 +163,16 @@ export function Financing() {
                           </select>
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Legal Entity Name</label>
-                          <input type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-entity-name" className="label-micro">Legal Entity Name</label>
+                          <input id="financing-entity-name" type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Years in Operation</label>
-                          <input type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-years-operation" className="label-micro">Years in Operation</label>
+                          <input id="financing-years-operation" type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
-                      <button onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit">
+                      <button type="button" onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit">
                         Continue to Equipment Details
                         <ArrowRight className="ml-3" size={18} />
                       </button>
@@ -194,16 +194,16 @@ export function Financing() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Estimated Equipment Value (USD)</label>
-                          <input type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-asset-value" className="label-micro">Estimated Equipment Value (USD)</label>
+                          <input id="financing-asset-value" type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Requested Loan Amount (USD)</label>
-                          <input type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-requested-amount" className="label-micro">Requested Loan Amount (USD)</label>
+                          <input id="financing-requested-amount" type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Preferred Term Length</label>
-                          <select value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                          <label htmlFor="financing-term-length" className="label-micro">Preferred Term Length</label>
+                          <select id="financing-term-length" value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
                             <option>24 Months</option>
                             <option>36 Months</option>
                             <option>48 Months</option>
@@ -213,14 +213,14 @@ export function Financing() {
                           </select>
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Down Payment Available (USD)</label>
-                          <input type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-down-payment" className="label-micro">Down Payment Available (USD)</label>
+                          <input id="financing-down-payment" type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
                       <div className="flex space-x-4">
-                        <button onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
-                        <button onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 flex-1">
+                        <button type="button" onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
+                        <button type="button" onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 flex-1">
                           Continue to Verification
                           <ArrowRight className="ml-3" size={18} />
                         </button>
@@ -243,16 +243,16 @@ export function Financing() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Primary Contact Name</label>
-                          <input type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-contact-name" className="label-micro">Primary Contact Name</label>
+                          <input id="financing-contact-name" type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Primary Contact Email</label>
-                          <input type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-contact-email" className="label-micro">Primary Contact Email</label>
+                          <input id="financing-contact-email" type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3 md:col-span-2">
-                          <label className="label-micro">Primary Contact Phone</label>
-                          <input type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-contact-phone" className="label-micro">Primary Contact Phone</label>
+                          <input id="financing-contact-phone" type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
@@ -280,9 +280,10 @@ export function Financing() {
                       </p>
 
                       <div className="flex space-x-4">
-                        <button onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
-                        <button 
-                          onClick={handleSubmit} 
+                        <button type="button" onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
+                        <button
+                          type="button"
+                          onClick={handleSubmit}
                           disabled={loading}
                           className="btn-industrial btn-accent py-5 px-12 flex-1 flex items-center justify-center"
                         >

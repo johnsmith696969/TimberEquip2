@@ -18,6 +18,7 @@ import {
   Calculator
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
@@ -114,6 +115,7 @@ export function Home() {
   const { theme } = useTheme();
   const { t, formatNumber, formatCurrency } = useLocale();
   const { user, isAuthenticated } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
   const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
   const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
@@ -262,8 +264,8 @@ export function Home() {
           '@type': 'Organization',
           name: 'Forestry Equipment Sales',
           alternateName: 'FES',
-          url: 'https://www.forestryequipmentsales.com/',
-          logo: 'https://www.forestryequipmentsales.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+          url: 'https://timberequip.com/',
+          logo: 'https://timberequip.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
           email: 'info@forestryequipmentsales.com',
           description: 'New and used logging equipment marketplace connecting buyers, sellers, and dealers across North America.',
           contactPoint: {
@@ -276,23 +278,23 @@ export function Home() {
         {
           '@type': 'WebSite',
           name: 'Forestry Equipment Sales',
-          url: 'https://www.forestryequipmentsales.com/',
+          url: 'https://timberequip.com/',
           inLanguage: 'en-US',
         },
         {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
           description: 'Browse in-stock forestry equipment across categories, manufacturers, models, dealers, and state markets.',
-          url: 'https://www.forestryequipmentsales.com/',
+          url: 'https://timberequip.com/',
         },
         {
           '@type': 'ItemList',
           name: 'Primary marketplace routes',
           itemListElement: [
-            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://www.forestryequipmentsales.com/forestry-equipment-for-sale' },
-            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://www.forestryequipmentsales.com/categories' },
-            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://www.forestryequipmentsales.com/manufacturers' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://www.forestryequipmentsales.com/dealers' },
+            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
+            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
+            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
           ],
         },
       ],
@@ -312,7 +314,7 @@ export function Home() {
 
       {/* Hero Section */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
-        <div className="absolute inset-0 z-0 bg-[#111827]">
+        <div className="absolute inset-0 z-0 bg-ink">
           <img
             src={HERO_IMAGE_PATH}
             alt=""
@@ -336,6 +338,7 @@ export function Home() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={prefersReducedMotion ? { duration: 0 } : undefined}
               className="flex items-center space-x-3 mb-8 mt-12 md:mt-16"
             >
               <span className="text-xs font-black tracking-[0.4em] text-accent uppercase">{t('home.network', 'Global Equipment Network')}</span>
@@ -344,7 +347,7 @@ export function Home() {
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.1 }}
               className={`text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter leading-[0.88] mb-8 uppercase pr-2 sm:pr-0 ${
                 theme === 'light' ? 'text-ink' : 'text-white'
               }`}
@@ -358,7 +361,7 @@ export function Home() {
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.2 }}
               className={`text-lg font-medium max-w-xl mb-12 leading-relaxed ${
                 theme === 'light' ? 'text-ink/70' : 'text-white/70'
               }`}
@@ -369,7 +372,7 @@ export function Home() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.3 }}
               className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4"
             >
               <Link to="/search" className="btn-industrial btn-accent py-5 px-10 text-base">
@@ -582,7 +585,7 @@ export function Home() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.25 }}
+                transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25 }}
                 className="grid grid-cols-1 md:grid-cols-3 gap-1"
               >
               {visibleCards.map((card) => (
@@ -598,7 +601,7 @@ export function Home() {
                       {card.badge}
                     </span>
                   </div>
-                  <h4 className="text-sm font-black uppercase mb-2">{card.title}</h4>
+                  <h3 className="text-sm font-black uppercase mb-2">{card.title}</h3>
                   <p className="text-xs text-muted mb-8 flex-1">{card.description}</p>
                   <div className="flex items-end justify-between">
                     <div className="flex items-end space-x-1">
@@ -667,7 +670,7 @@ export function Home() {
       <section
         className={`py-24 px-4 md:px-8 relative overflow-hidden ${
           theme === 'dark'
-            ? 'bg-[#111827]'
+            ? 'bg-ink'
             : 'bg-gradient-to-br from-[#f7f4ec] via-white to-[#eef6f0] border-y border-line'
         }`}
       >

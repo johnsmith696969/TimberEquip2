@@ -232,8 +232,9 @@ export function Logistics() {
 
                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Primary Contact Name</label>
+                      <label htmlFor="logistics-name" className="label-micro">Primary Contact Name</label>
                       <input
+                        id="logistics-name"
                         type="text"
                         value={formData.name}
                         onChange={(event) => updateField('name', event.target.value)}
@@ -242,8 +243,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Company</label>
+                      <label htmlFor="logistics-company" className="label-micro">Company</label>
                       <input
+                        id="logistics-company"
                         type="text"
                         value={formData.company}
                         onChange={(event) => updateField('company', event.target.value)}
@@ -252,8 +254,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Email</label>
+                      <label htmlFor="logistics-email" className="label-micro">Email</label>
                       <input
+                        id="logistics-email"
                         type="email"
                         value={formData.email}
                         onChange={(event) => updateField('email', event.target.value)}
@@ -262,8 +265,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Phone</label>
+                      <label htmlFor="logistics-phone" className="label-micro">Phone</label>
                       <input
+                        id="logistics-phone"
                         type="tel"
                         value={formData.phone}
                         onChange={(event) => updateField('phone', event.target.value)}
@@ -272,8 +276,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3 md:col-span-2">
-                      <label className="label-micro">Equipment Reference</label>
+                      <label htmlFor="logistics-equipment-reference" className="label-micro">Equipment Reference</label>
                       <input
+                        id="logistics-equipment-reference"
                         type="text"
                         value={formData.equipmentReference}
                         onChange={(event) => updateField('equipmentReference', event.target.value)}
@@ -282,8 +287,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Pickup Location</label>
+                      <label htmlFor="logistics-pickup" className="label-micro">Pickup Location</label>
                       <input
+                        id="logistics-pickup"
                         type="text"
                         value={formData.pickupLocation}
                         onChange={(event) => updateField('pickupLocation', event.target.value)}
@@ -292,8 +298,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Destination</label>
+                      <label htmlFor="logistics-destination" className="label-micro">Destination</label>
                       <input
+                        id="logistics-destination"
                         type="text"
                         value={formData.destination}
                         onChange={(event) => updateField('destination', event.target.value)}
@@ -302,8 +309,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Preferred Timeline</label>
+                      <label htmlFor="logistics-timeline" className="label-micro">Preferred Timeline</label>
                       <input
+                        id="logistics-timeline"
                         type="text"
                         value={formData.timeline}
                         onChange={(event) => updateField('timeline', event.target.value)}
@@ -312,8 +320,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Trailer Type</label>
+                      <label htmlFor="logistics-trailer-type" className="label-micro">Trailer Type</label>
                       <select
+                        id="logistics-trailer-type"
                         value={formData.trailerType}
                         onChange={(event) => updateField('trailerType', event.target.value)}
                         className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
@@ -326,8 +335,9 @@ export function Logistics() {
                       </select>
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Load Ready</label>
+                      <label htmlFor="logistics-load-ready" className="label-micro">Load Ready</label>
                       <select
+                        id="logistics-load-ready"
                         value={formData.loadReady}
                         onChange={(event) => updateField('loadReady', event.target.value)}
                         className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
@@ -338,8 +348,9 @@ export function Logistics() {
                       </select>
                     </div>
                     <div className="flex flex-col space-y-3 md:col-span-2">
-                      <label className="label-micro">Notes</label>
+                      <label htmlFor="logistics-notes" className="label-micro">Notes</label>
                       <textarea
+                        id="logistics-notes"
                         value={formData.notes}
                         onChange={(event) => updateField('notes', event.target.value)}
                         rows={6}

@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { MessageSquare, User, Phone, Mail, Clock, StickyNote, ShieldAlert, X, Filter, Send } from 'lucide-react';
 import { Inquiry, Account, Listing } from '../../types';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface InquiryListProps {
   inquiries: Inquiry[];
@@ -39,6 +41,8 @@ function toMillis(value: unknown): number {
 }
 
 export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onAssignInquiry, onAddNote }: InquiryListProps) {
+  const { confirm, dialogProps } = useConfirmDialog();
+
   // ── Filter state ────────────────────────────────────────────────
   const [searchQuery, setSearchQuery]       = useState('');
   const [filterStatus, setFilterStatus]     = useState<Inquiry['status'] | ''>('');
@@ -114,7 +118,7 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
       <div className="p-12 text-center bg-surface/50 border border-line rounded-sm">
         <MessageSquare size={48} className="mx-auto mb-4 text-muted opacity-20" />
         <h4 className="text-lg font-black uppercase tracking-tighter text-ink mb-2">No Active Inquiries</h4>
-        <p className="text-xs font-bold text-muted uppercase tracking-widest">When buyers contact you, their messages will appear here.</p>
+        <p className="text-xs font-bold text-muted uppercase tracking-widest">No inquiries yet. Inquiries will appear here when visitors contact you about a listing.</p>
       </div>
     );
   }
@@ -138,7 +142,7 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
                     : 'hover:bg-surface text-ink'
                 }`}
               >
-                <span className="truncate mr-2 text-left">{row.title}</span>
+                <span className="truncate mr-2 text-left" title={row.title}>{row.title}</span>
                 <span className="text-muted shrink-0">{row.total}</span>
               </button>
             ))}
@@ -240,7 +244,7 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
       {/* ── Inquiry cards ───────────────────────────────────────── */}
       {filtered.length === 0 ? (
         <div className="p-10 text-center border border-line rounded-sm bg-surface/50">
-          <p className="text-xs font-black uppercase tracking-widest text-muted">No inquiries match the active filters.</p>
+          <p className="text-xs font-black uppercase tracking-widest text-muted">No inquiries match the active filters. Try adjusting or clearing your filters above.</p>
         </div>
       ) : (
         <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
@@ -276,7 +280,9 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
                   <span className="bg-bg border border-line px-2 py-1 rounded-sm text-muted">
                     {inquiry.assignedToName || 'Unassigned'}
                   </span>
-                  <span className={`px-2 py-1 rounded-sm border ${
+                  <span
+                    title="Spam likelihood score: 0-30 = Low risk, 31-60 = Moderate, 61-100 = High risk"
+                    className={`px-2 py-1 rounded-sm border ${
                     (inquiry.spamScore || 0) >= 70 ? 'bg-red-500/10 text-red-500 border-red-500/20' :
                     (inquiry.spamScore || 0) >= 40 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
                     'bg-data/10 text-data border-data/20'
@@ -385,9 +391,21 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
 
                 <select
                   value={inquiry.assignedToUid || ''}
-                  onChange={(e) => {
-                    const selected = accounts.find((a) => a.id === e.target.value);
-                    onAssignInquiry(inquiry.id, e.target.value, selected?.name || undefined);
+                  onChange={async (e) => {
+                    const newValue = e.target.value;
+                    const selected = accounts.find((a) => a.id === newValue);
+                    const staffName = selected?.name || 'Unassigned';
+                    const confirmed = await confirm({
+                      title: 'Assign Inquiry',
+                      message: `Assign this inquiry to ${staffName}?`,
+                      confirmLabel: 'Assign',
+                      variant: 'info',
+                    });
+                    if (!confirmed) {
+                      e.target.value = inquiry.assignedToUid || '';
+                      return;
+                    }
+                    onAssignInquiry(inquiry.id, newValue, selected?.name || undefined);
                   }}
                   className="select-industrial min-w-40"
                 >
@@ -402,6 +420,7 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
         ))}
         </div>
       )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ export type DealerFeedSampleFormat = 'json' | 'csv';
 type DealerFeedSetupMeta = {
   label: string;
   sourceType: DealerFeedSourceType;
+  shortDesc: string;
   helper: string;
   placeholder: string;
   accept: string;
@@ -17,6 +18,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
   json: {
     label: 'JSON Array',
     sourceType: 'json',
+    shortDesc: 'Paste or upload a JSON array of inventory items.',
     helper: 'Paste a JSON array of machines or upload a JSON export from your current inventory system.',
     placeholder: '[{"externalId":"SKU-1","title":"2021 Tigercat 620E Skidder"}]',
     accept: '.json,application/json,text/json',
@@ -25,6 +27,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
   csv: {
     label: 'CSV Upload',
     sourceType: 'csv',
+    shortDesc: 'Upload or paste a spreadsheet-style CSV file.',
     helper: 'Upload or paste a CSV with headers like externalId, title, price, year, make, model, category, and location.',
     placeholder: 'externalId,title,price,year,manufacturer,model,category,location\nSKU-1,2021 Tigercat 620E Skidder,189500,2021,Tigercat,620E,Skidders,Roseburg OR',
     accept: '.csv,text/csv,application/csv,text/plain',
@@ -33,6 +36,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
   xml: {
     label: 'XML Paste',
     sourceType: 'xml',
+    shortDesc: 'Paste raw XML from vendor inventory exports.',
     helper: 'Paste raw XML inventory feeds when a vendor exports XML directly instead of JSON or CSV.',
     placeholder: '<inventory><item><id>SKU-1</id><title>2021 Tigercat 620E Skidder</title></item></inventory>',
     accept: '.xml,text/xml,application/xml,text/plain',
@@ -41,6 +45,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
   url: {
     label: 'API / Feed URL',
     sourceType: 'auto',
+    shortDesc: 'We fetch inventory from your live URL endpoint.',
     helper: 'Point Forestry Equipment Sales at a live JSON, XML, or CSV endpoint and preview the mapped inventory before importing.',
     placeholder: 'https://dealer.example.com/inventory-feed.json',
     accept: '',

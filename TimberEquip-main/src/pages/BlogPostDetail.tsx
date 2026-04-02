@@ -201,19 +201,19 @@ export function BlogPostDetail() {
               publisher: {
                 '@type': 'Organization',
                 name: 'Forestry Equipment Sales',
-                logo: { '@type': 'ImageObject', url: 'https://www.forestryequipmentsales.com/Forestry_Equipment_Sales_Logo.png' },
+                logo: { '@type': 'ImageObject', url: 'https://timberequip.com/Forestry_Equipment_Sales_Logo.png' },
               },
               mainEntityOfPage: {
                 '@type': 'WebPage',
-                '@id': `https://www.forestryequipmentsales.com${getNewsPostCanonicalPath(post)}`,
+                '@id': `https://timberequip.com${getNewsPostCanonicalPath(post)}`,
               },
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-                { '@type': 'ListItem', position: 2, name: 'Equipment News', item: 'https://www.forestryequipmentsales.com/blog' },
-                { '@type': 'ListItem', position: 3, name: post.seoTitle || post.title, item: `https://www.forestryequipmentsales.com${getNewsPostCanonicalPath(post)}` },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
+                { '@type': 'ListItem', position: 2, name: 'Equipment News', item: 'https://timberequip.com/blog' },
+                { '@type': 'ListItem', position: 3, name: post.seoTitle || post.title, item: `https://timberequip.com${getNewsPostCanonicalPath(post)}` },
               ],
             },
           ],

@@ -299,7 +299,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <button 
             onClick={toggleTheme}
-            className="flex items-center gap-1 text-muted hover:text-ink transition-colors py-1 px-1"
+            className="flex items-center gap-1 text-muted hover:text-ink transition-colors py-1 px-1 focus:ring-2 focus:ring-accent focus:ring-offset-2"
             aria-label={theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}
             title={theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}
           >
@@ -347,7 +347,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link>
         </nav>
         <div className="flex items-center space-x-4">
-          <Link to="/bookmarks" className="p-2 text-muted hover:text-ink relative" aria-label="Bookmarks">
+          <Link to="/bookmarks" className="p-2 text-muted hover:text-ink relative focus:ring-2 focus:ring-accent focus:ring-offset-2" aria-label="Bookmarks">
             <Bookmark size={20} />
             {isAuthenticated && (user?.favorites?.length ?? 0) > 0 && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-accent rounded-full"></span>
@@ -355,7 +355,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           
           <button
-            className="lg:hidden p-2 text-ink"
+            className="lg:hidden p-2 text-ink focus:ring-2 focus:ring-accent focus:ring-offset-2"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={isMenuOpen}
@@ -372,7 +372,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <input
               type="text"
               placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
-              className="bg-transparent border-none text-xs font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
+              className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
               style={{ fontSize: '16px' }}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

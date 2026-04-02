@@ -26,10 +26,13 @@ import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { startPerformanceTrace } from '../services/performance';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { normalizeSeoSlug } from '../utils/seoRoutes';
+import { AlertMessage } from '../components/AlertMessage';
 import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
@@ -319,6 +322,7 @@ const getInitialCachedListings = () => equipmentService.getCachedPublicListings(
 export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } = {}) {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber } = useLocale();
+  const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [allListings, setAllListings] = useState<Listing[]>(() => getInitialCachedListings());
@@ -709,11 +713,6 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   }, [allListings, matchesFilters]);
 
   // Build MultiSelectOption arrays from options + faceted counts
-  const subcategoryMultiOptions: MultiSelectOption[] = useMemo(
-    () => uniqueSorted([...taxonomySubcategories, ...listingSubcategories]).map((v) => ({ value: v, count: facetedCounts.subcategory.get(v) || 0 })),
-    [taxonomySubcategories, listingSubcategories, facetedCounts.subcategory]
-  );
-
   const manufacturerMultiOptions: MultiSelectOption[] = useMemo(
     () => manufacturerOptions.map((v) => ({ value: v, count: facetedCounts.manufacturer.get(v) || 0 })),
     [manufacturerOptions, facetedCounts.manufacturer]
@@ -839,7 +838,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'SAVE_SEARCH_ALERT');
         if (!pass) {
-          alert('Security check failed. Please try again.');
+          await showAlert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
           return;
         }
       }
@@ -865,10 +864,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       setAlertEmail(user?.email || currentUser.email || '');
       setAlertPreferences(DEFAULT_ALERT_PREFERENCES);
       setPendingSaveSearch(false);
-      alert('Saved search and alerts are active.');
+      await showAlert({ title: 'Search Saved', message: 'Saved search and alerts are active.', variant: 'info' });
     } catch (error) {
       console.error('Error saving search:', error);
-      alert(error instanceof Error ? error.message : 'Unable to save search right now.');
+      await showAlert({ title: 'Error', message: error instanceof Error ? error.message : 'Unable to save search right now.', variant: 'warning' });
     } finally {
       setSavingSearch(false);
     }
@@ -904,14 +903,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             '@type': 'CollectionPage',
             name: `${categoryLabel} for Sale`,
             description: seoDescription,
-            url: `https://www.forestryequipmentsales.com${categorySlugPath}`,
+            url: `https://timberequip.com${categorySlugPath}`,
           },
           {
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-              { '@type': 'ListItem', position: 2, name: 'Categories', item: 'https://www.forestryequipmentsales.com/categories' },
-              { '@type': 'ListItem', position: 3, name: categoryLabel, item: `https://www.forestryequipmentsales.com${categorySlugPath}` },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
+              { '@type': 'ListItem', position: 2, name: 'Categories', item: 'https://timberequip.com/categories' },
+              { '@type': 'ListItem', position: 3, name: categoryLabel, item: `https://timberequip.com${categorySlugPath}` },
             ],
           },
           {
@@ -920,7 +919,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
               '@type': 'ListItem',
               position: index + 1,
-              url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+              url: `https://timberequip.com${buildListingPath(listing)}`,
               item: {
                 '@type': 'Product',
                 name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
@@ -947,7 +946,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+          url: `https://timberequip.com${buildListingPath(listing)}`,
           item: {
             '@type': 'Product',
             name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
@@ -980,7 +979,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         <div className="bg-surface border-b border-line px-4 md:px-8 py-10">
           <div className="max-w-[1600px] mx-auto">
             <span className="label-micro text-accent mb-3 block">Equipment Category</span>
-            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">{categoryLabel} <span className="text-muted">For Sale</span></h1>
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">{categoryLabel} <span className="text-muted">For Sale</span></h2>
             <p className="text-xs text-muted font-medium max-w-2xl">
               Browse {filteredListings.length.toLocaleString()} new and used {categoryLabel.toLowerCase()} listings from dealers and private sellers.
               {' '}Filter by manufacturer, price, condition, and more.
@@ -1063,13 +1062,15 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
               <div className="flex items-center bg-bg border border-line rounded-sm p-0.5">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-sm ${viewMode === 'grid' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
+                  aria-label="Grid view"
+                  className={`p-2.5 rounded-sm ${viewMode === 'grid' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
                 >
                   <Grid size={14} />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-sm ${viewMode === 'list' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
+                  aria-label="List view"
+                  className={`p-2.5 rounded-sm ${viewMode === 'list' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
                 >
                   <List size={14} />
                 </button>
@@ -1109,8 +1110,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   </button>
                   <FilterSectionPanel open={openSections.equipment}>
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Category</span>
+                        <label htmlFor="search-category" className="label-micro">Category</label>
                         <select
+                          id="search-category"
                           value={draftFilters.category}
                           onChange={(e) => handleDraftFilterChange('category', e.target.value)}
                           className="select-industrial w-full"
@@ -1125,18 +1127,24 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Subcategory</span>
-                        <MultiSelectDropdown
-                          label="Subcategory"
-                          placeholder="All Subcategories"
-                          options={subcategoryMultiOptions}
-                          selected={parseMultiValue(draftFilters.subcategory)}
-                          onChange={(sel) => handleDraftMultiSelect('subcategory', sel)}
-                        />
+                        <label htmlFor="search-subcategory" className="label-micro">Subcategory</label>
+                        <select
+                          id="search-subcategory"
+                          value={draftFilters.subcategory}
+                          onChange={(e) => handleDraftFilterChange('subcategory', e.target.value)}
+                          className="select-industrial w-full"
+                        >
+                          <option value="">All Subcategories</option>
+                          {uniqueSorted([...taxonomySubcategories, ...listingSubcategories]).map((sub) => (
+                            <option key={sub} value={sub}>
+                              {sub}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Manufacturer / Brand</span>
+                        <label className="label-micro">Manufacturer / Brand</label>
                         <MultiSelectDropdown
                           label="Manufacturers"
                           placeholder="All Manufacturers"
@@ -1147,7 +1155,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Model</span>
+                        <label className="label-micro">Model</label>
                         <MultiSelectDropdown
                           label="Models"
                           placeholder="All Models"
@@ -1177,8 +1185,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <FilterSectionPanel open={openSections.pricing}>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Min Price</span>
+                          <label htmlFor="search-min-price" className="label-micro">Min Price</label>
                           <input
+                            id="search-min-price"
                             type="number"
                             placeholder="0"
                             className="input-industrial w-full"
@@ -1187,8 +1196,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Max Price</span>
+                          <label htmlFor="search-max-price" className="label-micro">Max Price</label>
                           <input
+                            id="search-max-price"
                             type="number"
                             placeholder="No Max"
                             className="input-industrial w-full"
@@ -1200,8 +1210,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Min Year</span>
+                          <label htmlFor="search-min-year" className="label-micro">Min Year</label>
                           <input
+                            id="search-min-year"
                             type="number"
                             placeholder="1990"
                             className="input-industrial w-full"
@@ -1210,8 +1221,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Max Year</span>
+                          <label htmlFor="search-max-year" className="label-micro">Max Year</label>
                           <input
+                            id="search-max-year"
                             type="number"
                             placeholder={String(new Date().getFullYear())}
                             className="input-industrial w-full"
@@ -1223,8 +1235,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Min Hours</span>
+                          <label htmlFor="search-min-hours" className="label-micro">Min Hours</label>
                           <input
+                            id="search-min-hours"
                             type="number"
                             placeholder="0"
                             className="input-industrial w-full"
@@ -1233,8 +1246,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Max Hours</span>
+                          <label htmlFor="search-max-hours" className="label-micro">Max Hours</label>
                           <input
+                            id="search-max-hours"
                             type="number"
                             placeholder="20000"
                             className="input-industrial w-full"
@@ -1262,7 +1276,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   </button>
                   <FilterSectionPanel open={openSections.specs}>
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Condition</span>
+                        <label className="label-micro">Condition</label>
                         <MultiSelectDropdown
                           label="Condition"
                           placeholder="All Conditions"
@@ -1275,8 +1289,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Attachment</span>
+                          <label htmlFor="search-attachment" className="label-micro">Attachment</label>
                           <input
+                            id="search-attachment"
                             type="text"
                             list="attachment-suggestions"
                             placeholder="e.g. Grapple"
@@ -1291,8 +1306,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           </datalist>
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Feature</span>
+                          <label htmlFor="search-feature" className="label-micro">Feature</label>
                           <input
+                            id="search-feature"
                             type="text"
                             list="feature-suggestions"
                             placeholder="e.g. Winch"
@@ -1310,8 +1326,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Stock #</span>
+                          <label htmlFor="search-stock-number" className="label-micro">Stock #</label>
                           <input
+                            id="search-stock-number"
                             type="text"
                             placeholder="Stock number"
                             className="input-industrial w-full"
@@ -1320,8 +1337,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Serial #</span>
+                          <label htmlFor="search-serial-number" className="label-micro">Serial #</label>
                           <input
+                            id="search-serial-number"
                             type="text"
                             placeholder="Serial number"
                             className="input-industrial w-full"
@@ -1350,8 +1368,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <FilterSectionPanel open={openSections.location}>
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2 flex flex-col space-y-2">
-                          <span className="label-micro">Location / Center</span>
+                          <label htmlFor="search-location" className="label-micro">Location / Center</label>
                           <input
+                            id="search-location"
                             type="text"
                             placeholder="City/State or lat,lng"
                             className="input-industrial w-full"
@@ -1360,8 +1379,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Radius (mi)</span>
+                          <label htmlFor="search-radius" className="label-micro">Radius (mi)</label>
                           <select
+                            id="search-radius"
                             value={draftFilters.locationRadius}
                             onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
                             className="select-industrial w-full"
@@ -1378,7 +1398,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">State / Province</span>
+                          <label className="label-micro">State / Province</label>
                           <MultiSelectDropdown
                             label="States / Provinces"
                             placeholder="All States"
@@ -1388,7 +1408,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Country</span>
+                          <label className="label-micro">Country</label>
                           <MultiSelectDropdown
                             label="Countries"
                             placeholder="All Countries"
@@ -1412,7 +1432,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
               </div>
             </div>
 
-            <div className="bg-[#1C1917] p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
+            <div className="bg-ink p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Bell size={48} className="text-accent" />
               </div>
@@ -1445,7 +1465,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-sm border border-line bg-bg p-8 shadow-2xl"
               >
-                <button onClick={closeAlertModal} className="absolute top-4 right-4 text-muted hover:text-ink">
+                <button onClick={closeAlertModal} aria-label="Close alert modal" className="absolute top-4 right-4 text-muted hover:text-ink">
                   <X size={20} />
                 </button>
 
@@ -1474,8 +1494,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     </div>
 
                     <div className="flex flex-col space-y-2 text-left">
-                      <span className="label-micro">Saved Search Name</span>
+                      <label htmlFor="search-alert-name" className="label-micro">Saved Search Name</label>
                       <input
+                        id="search-alert-name"
                         type="text"
                         value={savedSearchName}
                         onChange={(e) => setSavedSearchName(e.target.value)}
@@ -1485,8 +1506,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     </div>
 
                     <div className="flex flex-col space-y-2 text-left">
-                      <span className="label-micro">Email Address</span>
+                      <label htmlFor="search-alert-email" className="label-micro">Email Address</label>
                       <input
+                        id="search-alert-email"
                         type="email"
                         value={alertEmail}
                         onChange={(e) => setAlertEmail(e.target.value)}
@@ -1549,7 +1571,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
           )}
         </AnimatePresence>
 
-        <div className="flex-1">
+        <div className="flex-1" aria-live="polite" aria-busy={loading}>
           <div className="flex justify-between items-center mb-10 border-b border-line pb-6">
             <div className="flex items-center space-x-4">
               <span className="text-sm font-black uppercase tracking-tighter">
@@ -1579,15 +1601,15 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
           </div>
 
           {inventoryError ? (
-            <div className="mb-6 rounded-sm border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent">
+            <AlertMessage severity="error" className="mb-6">
               {inventoryError}
-            </div>
+            </AlertMessage>
           ) : null}
 
           {inventoryNotice ? (
-            <div className="mb-6 rounded-sm border border-data/20 bg-data/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-data">
+            <AlertMessage severity="info" className="mb-6">
               {inventoryNotice}
-            </div>
+            </AlertMessage>
           ) : null}
 
           {loading ? (
@@ -1668,7 +1690,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-[#1C1917] text-white z-50 py-6 px-4 md:px-8 border-t border-accent/30 shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 bg-ink text-white z-50 py-6 px-4 md:px-8 border-t border-accent/30 shadow-2xl"
           >
             <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
               <div className="flex items-center space-x-8">
@@ -1681,9 +1703,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     const listing = filteredListings.find((item) => item.id === id) || allListings.find((item) => item.id === id);
                     return listing ? (
                       <div key={id} className="relative w-12 h-12 rounded-sm border-2 border-ink overflow-hidden group">
-                        <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />
+                        <img src={listing.images[0]} alt={listing.title || 'Equipment image'} className="w-full h-full object-cover" />
                         <button
                           onClick={() => toggleCompare(id)}
+                          aria-label="Remove from comparison"
                           className="absolute inset-0 bg-accent/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X size={14} />
@@ -1722,6 +1745,8 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         }}
         message={t('search.loginPrompt', 'Sign in to bookmark equipment and track your saved listings.')}
       />
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

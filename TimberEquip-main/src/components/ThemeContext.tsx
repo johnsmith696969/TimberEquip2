@@ -27,6 +27,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0C0A09' : '#FFFFFF');
   }, [theme]);
 
   const toggleTheme = () => {

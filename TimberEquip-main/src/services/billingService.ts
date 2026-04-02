@@ -205,6 +205,7 @@ export interface AdminDealerPerformanceReportResponse {
 
 const PRIVATE_BILLING_CACHE_PREFIX = 'te-billing-cache-v1';
 const ACCOUNT_ACCESS_CACHE_SCOPE = 'account-access-summary';
+const BILLING_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 type BillingCacheEnvelope<T> = {
   savedAt: string;
@@ -229,7 +230,12 @@ function readBillingCache<T>(scope: string): T | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BillingCacheEnvelope<T> | T;
     if (parsed && typeof parsed === 'object' && 'data' in (parsed as BillingCacheEnvelope<T>)) {
-      return ((parsed as BillingCacheEnvelope<T>).data ?? null) as T | null;
+      const envelope = parsed as BillingCacheEnvelope<T>;
+      if (envelope.savedAt && (Date.now() - new Date(envelope.savedAt).getTime()) > BILLING_CACHE_TTL_MS) {
+        window.localStorage.removeItem(getBillingCacheKey(scope));
+        return null;
+      }
+      return (envelope.data ?? null) as T | null;
     }
     return parsed as T;
   } catch (error) {
@@ -276,7 +282,7 @@ function getBillingApiBaseUrls(): string[] {
   }
 
   if (hostname === 'www.forestryequipmentsales.com') {
-    bases.push('https://www.forestryequipmentsales.com');
+    bases.push('https://timberequip.com');
   }
 
   return Array.from(new Set(bases));

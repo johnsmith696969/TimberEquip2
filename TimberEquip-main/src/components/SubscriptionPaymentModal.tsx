@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle2, Loader2, User, Building2, AlertCircle, Crown } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
@@ -95,6 +97,7 @@ export function SubscriptionPaymentModal({
   const { user } = useAuth();
   const { t } = useLocale();
   const navigate = useNavigate();
+  const prefersReducedMotion = useReducedMotion();
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('dealer');
   const [subscriptionQuantity, setSubscriptionQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -149,10 +152,19 @@ export function SubscriptionPaymentModal({
     }
   };
 
+  const trapRef = useFocusTrap(isOpen);
+
   const handleClose = () => {
     if (loading) return;
     onClose();
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !loading) onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, loading, onClose]);
 
   return (
     <AnimatePresence>
@@ -161,22 +173,27 @@ export function SubscriptionPaymentModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={prefersReducedMotion ? { duration: 0 } : undefined}
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
           onClick={handleClose}
         >
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscription-dialog-title"
             initial={{ scale: 0.95, opacity: 0, y: 8 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={{ duration: 0.18 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18 }}
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-2xl bg-surface border border-line rounded-sm shadow-2xl my-8"
           >
             {/* Header */}
-            <div className="bg-[#1C1917] text-white p-6 flex items-start justify-between">
+            <div className="bg-ink text-white p-6 flex items-start justify-between">
               <div>
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">{t('checkout.subscription', 'Seller Plan')}</span>
-                <h2 className="text-2xl font-black tracking-tighter uppercase">
+                <h2 id="subscription-dialog-title" className="text-2xl font-black tracking-tighter uppercase">
                   {t('checkout.choosePlan', 'Choose Your Plan')}
                 </h2>
               </div>
@@ -254,6 +271,7 @@ export function SubscriptionPaymentModal({
                           onClick={() => setSubscriptionQuantity((prev) => Math.max(1, prev - 1))}
                           className="btn-industrial py-1.5 px-3 text-xs"
                           disabled={loading || clampedQuantity <= 1}
+                          aria-disabled={loading || clampedQuantity <= 1}
                         >
                           -
                         </button>
@@ -278,6 +296,7 @@ export function SubscriptionPaymentModal({
                           onClick={() => setSubscriptionQuantity((prev) => Math.min(10, prev + 1))}
                           className="btn-industrial py-1.5 px-3 text-xs"
                           disabled={loading || clampedQuantity >= 10}
+                          aria-disabled={loading || clampedQuantity >= 10}
                         >
                           +
                         </button>
@@ -290,7 +309,7 @@ export function SubscriptionPaymentModal({
                 )}
 
                 {error && (
-                  <div className="flex items-center gap-2 text-accent text-xs font-medium">
+                  <div role="alert" className="flex items-center gap-2 text-accent text-xs font-medium">
                     <AlertCircle size={14} className="shrink-0" />
                     <span>{error}</span>
                   </div>
@@ -308,6 +327,7 @@ export function SubscriptionPaymentModal({
                     onClick={handleClose}
                     className="btn-industrial py-3 px-6"
                     disabled={loading}
+                    aria-disabled={loading}
                   >
                     {t('checkout.back', 'Back')}
                   </button>
@@ -315,6 +335,8 @@ export function SubscriptionPaymentModal({
                     type="button"
                     onClick={handleStartCheckout}
                     disabled={loading}
+                    aria-disabled={loading}
+                    aria-busy={loading}
                     className="flex-1 btn-industrial btn-accent py-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {loading ? <Loader2 size={16} className="animate-spin" /> : null}

@@ -20,6 +20,7 @@ import {
   type RecaptchaVerifier,
 } from 'firebase/auth';
 
+import { AlertMessage } from '../components/AlertMessage';
 import { useAuth } from '../components/AuthContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import {
@@ -547,17 +548,11 @@ export function Login() {
           ) : null}
 
           {infoMessage ? (
-            <div className="mt-4 flex items-start space-x-3 bg-data/10 border border-data/30 p-4 rounded-sm">
-              <CheckCircle2 className="text-data flex-shrink-0 mt-0.5" size={16} />
-              <p className="text-xs font-medium text-data">{infoMessage}</p>
-            </div>
+            <AlertMessage severity="info" className="mt-4">{infoMessage}</AlertMessage>
           ) : null}
 
           {error ? (
-            <div role="alert" className="mt-4 flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
-              <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-              <p className="text-xs font-medium text-red-500">{error}</p>
-            </div>
+            <AlertMessage severity="error" className="mt-4">{error}</AlertMessage>
           ) : null}
 
           <div className="mt-6">
@@ -681,10 +676,7 @@ export function Login() {
                       </div>
 
                       {resetError ? (
-                        <div role="alert" className="flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
-                          <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-                          <p className="text-xs font-medium text-red-500">{resetError}</p>
-                        </div>
+                        <AlertMessage severity="error">{resetError}</AlertMessage>
                       ) : null}
 
                       <button

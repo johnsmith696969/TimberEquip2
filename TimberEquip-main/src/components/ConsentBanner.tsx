@@ -77,8 +77,8 @@ export function ConsentBanner() {
           <div
             className={`p-6 rounded-sm shadow-2xl backdrop-blur-md border ${
               theme === 'light'
-                ? 'bg-white text-[#1C1917] border-[#E7E5E4]'
-                : 'bg-[#1C1917] text-[#FAFAF9] border-white/10'
+                ? 'bg-white text-ink border-line'
+                : 'bg-ink text-bg border-white/10'
             }`}
           >
             <div className="flex items-start justify-between mb-4">
@@ -90,13 +90,13 @@ export function ConsentBanner() {
               </div>
               <button
                 onClick={() => setIsVisible(false)}
-                className={theme === 'light' ? 'text-[#1C1917]/60 hover:text-[#1C1917]' : 'text-white/40 hover:text-white'}
+                className={theme === 'light' ? 'text-ink/60 hover:text-ink' : 'text-white/40 hover:text-white'}
               >
                 <X size={20} />
               </button>
             </div>
 
-            <p className={`text-[11px] font-medium leading-relaxed mb-6 uppercase tracking-wider ${theme === 'light' ? 'text-[#1C1917]/75' : 'text-white/60'}`}>
+            <p className={`text-[11px] font-medium leading-relaxed mb-6 uppercase tracking-wider ${theme === 'light' ? 'text-ink/75' : 'text-white/60'}`}>
               We use cookies to enhance your marketplace experience and ensure site integrity.
               By continuing, you agree to our cookie policies.
             </p>
@@ -113,7 +113,7 @@ export function ConsentBanner() {
                   onClick={handleDecline}
                   className={`flex-1 btn-industrial py-3 text-[10px] ${
                     theme === 'light'
-                      ? 'bg-[#F5F5F4] border border-[#E7E5E4] hover:bg-[#E7E5E4] text-[#1C1917]'
+                      ? 'bg-surface border border-line hover:bg-line text-ink'
                       : 'bg-white/10 hover:bg-white/20 text-white'
                   }`}
                 >
@@ -123,7 +123,7 @@ export function ConsentBanner() {
               <Link
                 to="/cookies"
                 className={`flex items-center justify-center text-[9px] font-bold uppercase tracking-[0.2em] transition-colors ${
-                  theme === 'light' ? 'text-[#1C1917]/60 hover:text-[#1C1917]' : 'text-white/40 hover:text-white'
+                  theme === 'light' ? 'text-ink/60 hover:text-ink' : 'text-white/40 hover:text-white'
                 }`}
                 onClick={() => setIsVisible(false)}
               >

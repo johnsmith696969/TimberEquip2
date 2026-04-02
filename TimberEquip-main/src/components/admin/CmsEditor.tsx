@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Save, Send, Globe, Calendar, RotateCcw,
   ChevronDown, ChevronUp
@@ -6,6 +6,8 @@ import {
 import { BlogPost } from '../../types';
 import { cmsService } from '../../services/cmsService';
 import { useAuth } from '../AuthContext';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface Props {
   post: BlogPost | null;
@@ -27,6 +29,7 @@ const STATUS_BADGE: Record<string, { label: string; color: string }> = {
 
 export function CmsEditor({ post, onClose, onSaved }: Props) {
   const { user } = useAuth();
+  const { confirm, dialogProps } = useConfirmDialog();
 
   const [form, setForm] = useState({
     title:          post?.title          ?? '',
@@ -54,6 +57,117 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
   const [showSchedule,  setShowSchedule]  = useState(false);
   const [saving,        setSaving]        = useState(false);
   const [actionMsg,     setActionMsg]     = useState('');
+  const [isDirty,       setIsDirty]       = useState(false);
+  const [autoSaveMsg,   setAutoSaveMsg]   = useState('');
+  const [draftBanner,   setDraftBanner]   = useState<{ savedAt: number } | null>(null);
+
+  const hasUnsavedChanges = useRef(false);
+  const draftKey = useMemo(
+    () => `cms-draft-${post?.id || 'new'}`,
+    [post?.id]
+  );
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // Auto-save draft to localStorage every 30 seconds when changes are detected
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (hasUnsavedChanges.current) {
+        try {
+          localStorage.setItem(draftKey, JSON.stringify({
+            title: form.title,
+            excerpt: form.excerpt,
+            content: form.content,
+            category: form.category,
+            tags: form.tags,
+            image: form.image,
+            seoTitle: form.seoTitle,
+            seoDescription: form.seoDescription,
+            seoKeywords: form.seoKeywords,
+            seoSlug: form.seoSlug,
+            savedAt: Date.now()
+          }));
+          hasUnsavedChanges.current = false;
+          const now = new Date();
+          setAutoSaveMsg(`Draft auto-saved at ${now.toLocaleTimeString()}`);
+          setTimeout(() => setAutoSaveMsg(''), 5000);
+        } catch {
+          // localStorage full or unavailable — silently skip
+        }
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [draftKey, form.title, form.excerpt, form.content, form.category, form.tags, form.image, form.seoTitle, form.seoDescription, form.seoKeywords, form.seoSlug]);
+
+  // On mount, check for a saved draft and show restoration banner
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (!saved) return;
+      const draft = JSON.parse(saved);
+      const age = Date.now() - draft.savedAt;
+      if (age < 24 * 60 * 60 * 1000) {
+        setDraftBanner({ savedAt: draft.savedAt });
+      } else {
+        localStorage.removeItem(draftKey);
+      }
+    } catch {
+      // Corrupted draft — remove it
+      localStorage.removeItem(draftKey);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const restoreDraft = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (!saved) return;
+      const draft = JSON.parse(saved);
+      setForm(f => ({
+        ...f,
+        title:          draft.title          ?? f.title,
+        excerpt:        draft.excerpt        ?? f.excerpt,
+        content:        draft.content        ?? f.content,
+        category:       draft.category       ?? f.category,
+        tags:           draft.tags           ?? f.tags,
+        image:          draft.image          ?? f.image,
+        seoTitle:       draft.seoTitle       ?? f.seoTitle,
+        seoDescription: draft.seoDescription ?? f.seoDescription,
+        seoKeywords:    draft.seoKeywords    ?? f.seoKeywords,
+        seoSlug:        draft.seoSlug        ?? f.seoSlug
+      }));
+      setIsDirty(true);
+    } catch {
+      // Corrupted draft — ignore
+    }
+    setDraftBanner(null);
+  }, [draftKey]);
+
+  const dismissDraft = useCallback(() => {
+    localStorage.removeItem(draftKey);
+    setDraftBanner(null);
+  }, [draftKey]);
+
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(draftKey); } catch {}
+    hasUnsavedChanges.current = false;
+    setAutoSaveMsg('');
+  }, [draftKey]);
+
+  const updateForm: typeof setForm = (updater) => {
+    setIsDirty(true);
+    hasUnsavedChanges.current = true;
+    setForm(updater);
+  };
 
   const normalizeText = (value: string) => value.replace(/\s+/g, ' ').trim();
 
@@ -104,14 +218,14 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .trim();
-    setForm(f => ({ ...f, seoSlug: slug }));
+    updateForm(f => ({ ...f, seoSlug: slug }));
   };
 
   const onTagKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.key === 'Enter' || e.key === ',') && newTag.trim()) {
       e.preventDefault();
       const t = newTag.trim();
-      if (!form.tags.includes(t)) setForm(f => ({ ...f, tags: [...f.tags, t] }));
+      if (!form.tags.includes(t)) updateForm(f => ({ ...f, tags: [...f.tags, t] }));
       setNewTag('');
     }
   };
@@ -120,7 +234,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
     if ((e.key === 'Enter' || e.key === ',') && newKeyword.trim()) {
       e.preventDefault();
       const kw = newKeyword.trim();
-      if (!form.seoKeywords.includes(kw)) setForm(f => ({ ...f, seoKeywords: [...f.seoKeywords, kw] }));
+      if (!form.seoKeywords.includes(kw)) updateForm(f => ({ ...f, seoKeywords: [...f.seoKeywords, kw] }));
       setNewKeyword('');
     }
   };
@@ -153,6 +267,8 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
         await cmsService.createPost(payload);
       }
       setForm(f => ({ ...f, reviewStatus: payload.reviewStatus, status: payload.status }));
+      setIsDirty(false);
+      clearDraft();
       flash(
         targetStatus === 'published' ? 'Published!' :
         targetStatus === 'in_review' ? 'Submitted for review' :
@@ -173,6 +289,8 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
     try {
       await cmsService.schedulePost(post.id, scheduledDate);
       setForm(f => ({ ...f, reviewStatus: 'scheduled', scheduledAt: scheduledDate }));
+      setIsDirty(false);
+      clearDraft();
       flash('Scheduled!');
       onSaved();
     } catch (err) {
@@ -184,11 +302,14 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
 
   const handleRollback = async (rev: NonNullable<BlogPost['revisions']>[number]) => {
     if (!post?.id) return;
-    if (!window.confirm(`Restore content saved on ${new Date(rev.savedAt).toLocaleString()}?`)) return;
+    const ok = await confirm({ title: 'Restore Revision', message: `Restore content saved on ${new Date(rev.savedAt).toLocaleString()}?`, variant: 'warning' });
+    if (!ok) return;
     setSaving(true);
     try {
       await cmsService.rollbackToRevision(post.id, rev);
       setForm(f => ({ ...f, title: rev.title, content: rev.content }));
+      setIsDirty(false);
+      clearDraft();
       flash('Rolled back');
       onSaved();
     } catch (err) {
@@ -216,6 +337,11 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          {autoSaveMsg && !actionMsg && (
+            <span className="text-[9px] font-bold text-muted uppercase tracking-widest">
+              {autoSaveMsg}
+            </span>
+          )}
           {actionMsg && (
             <span className="text-[10px] font-bold text-data uppercase tracking-widest animate-pulse">
               {actionMsg}
@@ -258,6 +384,33 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
         </div>
       </div>
 
+      {/* Draft restoration banner */}
+      {draftBanner && (
+        <div className="max-w-4xl mx-auto mt-4 px-8">
+          <div className="flex items-center justify-between gap-4 px-4 py-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-600 dark:text-yellow-400">
+              Unsaved draft found from {new Date(draftBanner.savedAt).toLocaleString()}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={restoreDraft}
+                className="btn-industrial py-1.5 px-3 text-[9px] font-black uppercase tracking-widest"
+              >
+                Restore Draft
+              </button>
+              <button
+                type="button"
+                onClick={dismissDraft}
+                className="text-[9px] font-black uppercase tracking-widest text-muted hover:text-ink transition-colors px-2 py-1.5"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Editor body */}
       <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
 
@@ -267,7 +420,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
           <input
             type="text"
             value={form.title}
-            onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+            onChange={e => updateForm(f => ({ ...f, title: e.target.value }))}
             placeholder="Post title…"
             className="input-industrial w-full"
           />
@@ -278,7 +431,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
           <label className="label-micro">Excerpt / Summary</label>
           <textarea
             value={form.excerpt}
-            onChange={e => setForm(f => ({ ...f, excerpt: e.target.value }))}
+            onChange={e => updateForm(f => ({ ...f, excerpt: e.target.value }))}
             placeholder="Short summary shown in post listings…"
             rows={2}
             className="input-industrial w-full resize-none"
@@ -290,7 +443,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
           <label className="label-micro">Content (Markdown supported)</label>
           <textarea
             value={form.content}
-            onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+            onChange={e => updateForm(f => ({ ...f, content: e.target.value }))}
             placeholder="Write your post content here…"
             rows={18}
             className="input-industrial w-full resize-y font-mono text-sm"
@@ -304,7 +457,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
             <input
               type="url"
               value={form.image}
-              onChange={e => setForm(f => ({ ...f, image: e.target.value }))}
+              onChange={e => updateForm(f => ({ ...f, image: e.target.value }))}
               placeholder="https://…"
               className="input-industrial w-full"
             />
@@ -318,7 +471,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
             <label className="label-micro">Category</label>
             <select
               value={form.category}
-              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              onChange={e => updateForm(f => ({ ...f, category: e.target.value }))}
               className="select-industrial w-full"
             >
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -335,7 +488,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                 {tag}
                 <button
                   type="button"
-                  onClick={() => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }))}
+                  onClick={() => updateForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }))}
                   className="text-muted hover:text-accent ml-1"
                 >
                   <X size={9} />
@@ -370,7 +523,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                 <input
                   type="text"
                   value={form.seoTitle}
-                  onChange={e => setForm(f => ({ ...f, seoTitle: e.target.value }))}
+                  onChange={e => updateForm(f => ({ ...f, seoTitle: e.target.value }))}
                   placeholder={form.title || 'Override title for search engines…'}
                   className="input-industrial w-full"
                 />
@@ -379,7 +532,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                 <label className="label-micro">Meta Description <span className="text-muted">(max 160)</span></label>
                 <textarea
                   value={form.seoDescription}
-                  onChange={e => setForm(f => ({ ...f, seoDescription: e.target.value.slice(0, 160) }))}
+                  onChange={e => updateForm(f => ({ ...f, seoDescription: e.target.value.slice(0, 160) }))}
                   rows={2}
                   placeholder={derivedSeoDescription}
                   className="input-industrial w-full resize-none"
@@ -392,7 +545,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                   <input
                     type="text"
                     value={form.seoSlug}
-                    onChange={e => setForm(f => ({
+                    onChange={e => updateForm(f => ({
                       ...f,
                       seoSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
                     }))}
@@ -412,7 +565,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
                       {kw}
                       <button
                         type="button"
-                        onClick={() => setForm(f => ({ ...f, seoKeywords: f.seoKeywords.filter(k => k !== kw) }))}
+                        onClick={() => updateForm(f => ({ ...f, seoKeywords: f.seoKeywords.filter(k => k !== kw) }))}
                         className="ml-1 hover:text-accent"
                       >
                         <X size={9} />
@@ -519,6 +672,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
           </button>
         </div>
       </div>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

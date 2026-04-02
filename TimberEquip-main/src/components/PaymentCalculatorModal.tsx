@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Calculator, TrendingDown } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 
 interface FinancingRequestPayload {
@@ -53,6 +57,8 @@ export function PaymentCalculatorModal({
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const { alert, dialogProps } = useConfirmDialog();
+  const prefersReducedMotion = useReducedMotion();
 
   // Reset defaults whenever the modal re-opens
   useEffect(() => {
@@ -90,7 +96,7 @@ export function PaymentCalculatorModal({
   const handleSubmitFinancingRequest = async () => {
     if (!onSubmitFinancingRequest || submitting) return;
     if (!buyerName.trim() || !buyerEmail.trim() || !buyerPhone.trim()) {
-      window.alert('Please enter your name, email, and phone to submit a financing request.');
+      await alert({ title: 'Missing Information', message: 'Please enter your name, email, and phone to submit a financing request.', variant: 'info' });
       return;
     }
 
@@ -100,7 +106,7 @@ export function PaymentCalculatorModal({
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'PAYMENT_CALCULATOR_FINANCING');
         if (!pass) {
-          window.alert('Security check failed. Please try again.');
+          await alert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
           setSubmitting(false);
           return;
         }
@@ -121,18 +127,28 @@ export function PaymentCalculatorModal({
       setSubmitted(true);
     } catch (error) {
       console.error('Failed to submit financing request:', error);
-      window.alert('Unable to submit financing request right now. Please try again.');
+      await alert({ title: 'Submission Error', message: 'Unable to submit financing request right now. Please try again.', variant: 'warning' });
     } finally {
       setSubmitting(false);
     }
   };
+
+  const trapRef = useFocusTrap(isOpen);
 
   const handleClose = () => {
     if (submitting) return;
     onClose();
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !submitting) onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, submitting, onClose]);
+
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
@@ -141,24 +157,30 @@ export function PaymentCalculatorModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             onClick={handleClose}
             className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
           />
 
           {/* Modal */}
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calc-dialog-title"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="bg-bg border border-line relative z-10 mt-4 mb-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden shadow-2xl sm:my-8"
           >
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-[#1C1917] text-white p-6 flex justify-between items-center">
+            <div className="sticky top-0 z-10 bg-ink text-white p-6 flex justify-between items-center">
               <div>
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
                   Payment Calculator
                 </span>
-                <h3 className="text-xl font-black tracking-tighter uppercase leading-snug line-clamp-1">
+                <h3 id="calc-dialog-title" className="text-xl font-black tracking-tighter uppercase leading-snug line-clamp-1">
                   {equipmentName}
                 </h3>
               </div>
@@ -180,17 +202,19 @@ export function PaymentCalculatorModal({
               {/* Down Payment */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="label-micro">Down Payment</label>
+                  <label htmlFor="calc-down-payment" className="label-micro">Down Payment</label>
                   <span className="text-sm font-black tracking-tighter">
                     {downPct}% — {fmt(downAmount)}
                   </span>
                 </div>
                 <input
+                  id="calc-down-payment"
                   type="range"
                   min={0}
                   max={50}
                   step={5}
                   value={downPct}
+                  aria-valuetext={`${downPct}%`}
                   onChange={(e) => setDownPct(Number(e.target.value))}
                   className="w-full accent-accent cursor-pointer"
                 />
@@ -226,15 +250,17 @@ export function PaymentCalculatorModal({
               {/* Interest Rate */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="label-micro">Annual Interest Rate</label>
+                  <label htmlFor="calc-interest-rate" className="label-micro">Annual Interest Rate</label>
                   <span className="text-sm font-black tracking-tighter">{ratePct.toFixed(2)}%</span>
                 </div>
                 <input
+                  id="calc-interest-rate"
                   type="range"
                   min={3}
                   max={19}
                   step={0.25}
                   value={ratePct}
+                  aria-valuetext={`${ratePct.toFixed(2)}%`}
                   onChange={(e) => setRatePct(Number(e.target.value))}
                   className="w-full accent-accent cursor-pointer"
                 />
@@ -245,7 +271,7 @@ export function PaymentCalculatorModal({
               </div>
 
               {/* Results */}
-              <div className="bg-[#1C1917] text-white p-6 rounded-sm space-y-4">
+              <div className="bg-ink text-white p-6 rounded-sm space-y-4">
                 <div className="flex justify-between items-end">
                   <div>
                     <span className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
@@ -329,6 +355,8 @@ export function PaymentCalculatorModal({
                       type="button"
                       onClick={handleSubmitFinancingRequest}
                       disabled={submitting || !onSubmitFinancingRequest}
+                      aria-disabled={submitting || !onSubmitFinancingRequest}
+                      aria-busy={submitting}
                       className="btn-industrial btn-accent w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting ? 'Submitting...' : 'Send Financing Request'}
@@ -345,5 +373,7 @@ export function PaymentCalculatorModal({
         </div>
       )}
     </AnimatePresence>
+    <ConfirmDialog {...dialogProps} />
+    </>
   );
 }

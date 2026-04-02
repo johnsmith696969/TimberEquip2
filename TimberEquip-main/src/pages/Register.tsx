@@ -7,6 +7,7 @@ import {
   CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { AlertMessage } from '../components/AlertMessage';
 import { useAuth } from '../components/AuthContext';
 import { Seo } from '../components/Seo';
 import { auth } from '../firebase';
@@ -158,7 +159,7 @@ export function Register() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl bg-bg border border-line shadow-2xl relative z-10"
       >
-        <div className="bg-[#1C1917] text-white p-12 flex justify-between items-center">
+        <div className="bg-ink text-white p-12 flex justify-between items-center">
           <div className="flex flex-col">
             <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Account Registration</span>
             <h1 className="text-4xl font-black tracking-tighter uppercase leading-none text-white">New <br /> <span className="text-accent">Operator</span></h1>
@@ -199,16 +200,17 @@ export function Register() {
                   </div>
                 </div>
 
-                <div className="flex flex-col space-y-2">
-                  <label className="label-micro">Full Name</label>
+                <div className="flex flex-col space-y-3">
+                  <label htmlFor="register-name" className="label-micro">Full Name</label>
                   <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <User size={18} />
                     </div>
-                    <input 
+                    <input
+                      id="register-name"
                       required
-                      type="text" 
-                      placeholder="OPERATOR NAME" 
+                      type="text"
+                      placeholder="OPERATOR NAME"
                       className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                       value={formData.displayName}
                       onChange={(e) => setFormData((prev) => ({ ...prev, displayName: e.target.value }))}
@@ -216,15 +218,16 @@ export function Register() {
                   </div>
                 </div>
 
-                <div className="flex flex-col space-y-2">
-                  <label className="label-micro">Company Name (Optional)</label>
+                <div className="flex flex-col space-y-3">
+                  <label htmlFor="register-company" className="label-micro">Company Name (Optional)</label>
                   <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <Building size={18} />
                     </div>
-                    <input 
-                      type="text" 
-                      placeholder="ENTITY NAME" 
+                    <input
+                      id="register-company"
+                      type="text"
+                      placeholder="ENTITY NAME"
                       className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                       value={formData.company}
                       onChange={(e) => setFormData((prev) => ({ ...prev, company: e.target.value }))}
@@ -251,16 +254,17 @@ export function Register() {
                   </span>
                 </div>
 
-                <div className="flex flex-col space-y-2">
-                  <label className="label-micro">Email Address</label>
+                <div className="flex flex-col space-y-3">
+                  <label htmlFor="register-email" className="label-micro">Email Address</label>
                   <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <Mail size={18} />
                     </div>
-                    <input 
+                    <input
+                      id="register-email"
                       required
-                      type="email" 
-                      placeholder="YOUR@EMAIL.COM" 
+                      type="email"
+                      placeholder="YOUR@EMAIL.COM"
                       className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                       value={formData.email}
                       onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
@@ -268,16 +272,17 @@ export function Register() {
                   </div>
                 </div>
 
-                <div className="flex flex-col space-y-2">
-                  <label className="label-micro">Access Key (Password)</label>
+                <div className="flex flex-col space-y-3">
+                  <label htmlFor="register-password" className="label-micro">Access Key (Password)</label>
                   <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <Lock size={18} />
                     </div>
-                    <input 
+                    <input
+                      id="register-password"
                       required
-                      type="password" 
-                      placeholder="••••••••••••" 
+                      type="password"
+                      placeholder="••••••••••••"
                       className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-widest"
                       value={formData.password}
                       onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
@@ -286,10 +291,7 @@ export function Register() {
                 </div>
 
                 {error && (
-                  <div className="flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
-                    <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-                    <p className="text-xs font-medium text-red-500">{error}</p>
-                  </div>
+                  <AlertMessage severity="error">{error}</AlertMessage>
                 )}
 
                 <div className="flex items-center space-x-3">
@@ -301,9 +303,10 @@ export function Register() {
 
                 <div className="flex space-x-4">
                   <button type="button" onClick={() => setStep(1)} className="btn-industrial py-5 px-8 bg-surface">Back</button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={loading}
+                    aria-disabled={loading}
                     className="btn-industrial btn-accent flex-1 py-5 text-base flex items-center justify-center"
                   >
                     {loading ? (

@@ -22,6 +22,8 @@ import { useTheme } from '../components/ThemeContext';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import WatermarkOverlay from '../components/WatermarkOverlay';
 import { buildListingPath, decodeListingPublicKey, extractListingPublicKeyFromSlug, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
@@ -94,6 +96,7 @@ export function ListingDetail() {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
   const { theme } = useTheme();
+  const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [listing, setListing] = useState<Listing | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
   const [sellerListingCount, setSellerListingCount] = useState<number | null>(null);
@@ -498,7 +501,7 @@ export function ListingDetail() {
     if (!token) return true;
     const pass = await assessRecaptcha(token, action);
     if (!pass) {
-      window.alert('Security check failed. Please try again.');
+      await showAlert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
       return false;
     }
     return true;
@@ -674,7 +677,7 @@ export function ListingDetail() {
       : rawSellerPhone.replace(/[^\d+]/g, '');
 
     if (!dialablePhone) {
-      window.alert('Seller phone number is not available on this listing yet.');
+      await showAlert({ title: 'Phone Unavailable', message: 'Seller phone number is not available on this listing yet.', variant: 'warning' });
       return;
     }
 
@@ -760,15 +763,71 @@ export function ListingDetail() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-bg">
-      <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+    <div className="min-h-screen bg-bg" aria-live="polite" aria-busy={true}>
+      <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
+        <div className="max-w-[1600px] mx-auto">
+          <div className="animate-pulse bg-line/60 rounded-sm h-4 w-40" />
+        </div>
+      </div>
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
+          <div className="lg:col-span-3 space-y-6">
+            <div className="animate-pulse bg-surface rounded-sm aspect-[16/9] w-full" />
+            <div className="flex gap-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="animate-pulse bg-surface rounded-sm h-16 w-20" />
+              ))}
+            </div>
+          </div>
+          <div className="lg:col-span-2 space-y-6">
+            <div className="animate-pulse bg-surface rounded-sm h-8 w-3/4" />
+            <div className="animate-pulse bg-surface rounded-sm h-6 w-1/2" />
+            <div className="animate-pulse bg-surface rounded-sm h-10 w-40" />
+            <div className="space-y-3 pt-4">
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-2/3" />
+            </div>
+            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
+            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 
   if (!listing) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg">
       <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">{t('listingDetail.notFound', 'Equipment Not Found')}</h2>
-      {loadError ? <p className="text-muted mb-6 max-w-xl text-center">{loadError}</p> : null}
+      {loadError ? (
+        <div className="flex flex-col items-center justify-center text-center">
+          <p className="text-sm font-bold text-muted mb-4 max-w-xl">{loadError}</p>
+          <button
+            onClick={() => {
+              setLoadError('');
+              setLoading(true);
+              const requestedListingId = String(slugDerivedListingId || id || '').trim();
+              if (requestedListingId) {
+                equipmentService.getListing(requestedListingId).then((data) => {
+                  if (data) {
+                    setListing({ ...data, marketValueEstimate: data.marketValueEstimate ?? null });
+                  } else {
+                    setLoadError('This equipment record is temporarily unavailable. Please return to inventory and try again shortly.');
+                  }
+                }).catch((err) => {
+                  console.error('Error retrying listing fetch:', err);
+                  setLoadError(err instanceof Error ? err.message : 'This equipment record is temporarily unavailable right now.');
+                }).finally(() => setLoading(false));
+              } else {
+                setLoading(false);
+              }
+            }}
+            className="btn-industrial btn-accent px-6 py-3 mb-4"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : null}
       <Link to="/search" className="btn-industrial btn-accent">{t('listingDetail.returnToInventory', 'Return to Inventory')}</Link>
     </div>
   );
@@ -1025,7 +1084,7 @@ export function ListingDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-bg pb-24">
+    <div className="min-h-screen bg-bg pb-24" aria-live="polite" aria-busy={false}>
       <Seo
         title={detailSeoTitle}
         description={detailSeoDescription}
@@ -1047,6 +1106,7 @@ export function ListingDetail() {
               <button
                 onClick={() => setShowShareMenu((prev) => !prev)}
                 className="p-2 text-muted hover:text-ink"
+                aria-label="Share listing"
               ><Share2 size={18} /></button>
               {showShareMenu && (
                 <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-line shadow-xl rounded-sm z-50 py-1">
@@ -1080,8 +1140,9 @@ export function ListingDetail() {
                 </div>
               )}
             </div>
-            <button 
+            <button
               onClick={handleToggleFavorite}
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               className={`p-2 transition-colors ${isFavorite ? 'text-accent' : 'text-muted hover:text-ink'}`}
             >
               <Bookmark size={18} fill={isFavorite ? 'currentColor' : 'none'} />
@@ -1164,14 +1225,16 @@ export function ListingDetail() {
 
                 {/* Navigation Arrows */}
                 <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
+                  <button
                     onClick={showPrevImage}
+                    aria-label="Previous image"
                     className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronLeft size={24} />
                   </button>
                   <button
                     onClick={showNextImage}
+                    aria-label="Next image"
                     className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronRight size={24} />
@@ -1260,7 +1323,7 @@ export function ListingDetail() {
                               <a
                                 href={descriptor.src}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="btn-industrial btn-accent px-4 py-3 text-[10px]"
                               >
                                 Open Video
@@ -1809,7 +1872,7 @@ export function ListingDetail() {
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
                 </div>
-                <button onClick={dismissInquiryModal} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissInquiryModal} aria-label="Close inquiry form" className="p-2 hover:bg-white/10 transition-colors">
                   <X size={24} />
                 </button>
               </div>
@@ -1917,7 +1980,7 @@ export function ListingDetail() {
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Market Logic</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
                 </div>
-                <button onClick={() => setShowAMVModal(false)} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={() => setShowAMVModal(false)} aria-label="Close AMV modal" className="p-2 hover:bg-white/10 transition-colors">
                   <X size={24} />
                 </button>
               </div>
@@ -1984,7 +2047,7 @@ export function ListingDetail() {
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Credit Center</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
                 </div>
-                <button onClick={dismissFinancingModal} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissFinancingModal} aria-label="Close financing form" className="p-2 hover:bg-white/10 transition-colors">
                   <X size={24} />
                 </button>
               </div>
@@ -2070,7 +2133,7 @@ export function ListingDetail() {
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Logistics</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>
                 </div>
-                <button onClick={dismissShippingModal} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissShippingModal} aria-label="Close shipping form" className="p-2 hover:bg-white/10 transition-colors">
                   <X size={24} />
                 </button>
               </div>
@@ -2169,6 +2232,7 @@ export function ListingDetail() {
         onSubmitFinancingRequest={submitFinanceRequestFromCalculator}
       />
 
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

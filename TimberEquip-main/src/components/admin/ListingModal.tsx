@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Upload, Video, ShieldCheck, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Video, ShieldCheck, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Listing, ListingConditionChecklist } from '../../types';
 import { getSchemaForListing } from '../../constants/categorySpecs';
@@ -109,9 +109,15 @@ interface SpecInputProps {
   onChange: (key: string, value: any) => void;
 }
 
+let _selectZeroFrameId: number | null = null;
 const selectZeroValue = (event: React.FocusEvent<HTMLInputElement>) => {
   if (event.target.value === '0') {
-    requestAnimationFrame(() => event.target.select());
+    if (_selectZeroFrameId !== null) cancelAnimationFrame(_selectZeroFrameId);
+    const target = event.target;
+    _selectZeroFrameId = requestAnimationFrame(() => {
+      _selectZeroFrameId = null;
+      target.select();
+    });
   }
 };
 
@@ -199,7 +205,7 @@ function SpecInput({ fieldKey, label, type, required, unit, options, placeholder
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalProps) {
-  const [validationError, setValidationError] = useState('');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [submitError, setSubmitError] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -283,7 +289,7 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
         subcategory: inferred.subcategory,
       });
     }
-    setValidationError('');
+    setValidationErrors([]);
     setSubmitError('');
     setUploadError('');
   }, [listing, isOpen]);
@@ -490,28 +496,33 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
   const handleSubmit = async () => {
     setSubmitError('');
 
-    if (!formData.category.trim()) { setValidationError('Category is required.'); return; }
-    if (!String(formData.subcategory || '').trim()) { setValidationError('Subcategory is required.'); return; }
-    if (!formData.title.trim()) { setValidationError('Listing title is required.'); return; }
-    if (!String(formData.manufacturer || formData.make || '').trim()) { setValidationError('Manufacturer is required.'); return; }
-    if (!formData.model.trim()) { setValidationError('Model is required.'); return; }
-    if (!Number.isFinite(Number(formData.year)) || Number(formData.year) <= 0) { setValidationError('Year is required.'); return; }
-    if (!Number.isFinite(Number(formData.hours)) || Number(formData.hours) < 0) { setValidationError('Operating hours are required.'); return; }
-    if (!String(formData.condition || '').trim()) { setValidationError('Condition is required.'); return; }
-    if (!Number.isFinite(Number(formData.price)) || Number(formData.price) < 0) { setValidationError('Price is required.'); return; }
-    if (!formData.location.trim()) { setValidationError('Location is required.'); return; }
+    const errors: string[] = [];
+    if (!formData.category.trim()) errors.push('Category is required.');
+    if (!String(formData.subcategory || '').trim()) errors.push('Subcategory is required.');
+    if (!formData.title.trim()) errors.push('Listing title is required.');
+    if (!String(formData.manufacturer || formData.make || '').trim()) errors.push('Manufacturer is required.');
+    if (!formData.model.trim()) errors.push('Model is required.');
+    if (!Number.isFinite(Number(formData.year)) || Number(formData.year) <= 0) errors.push('Year is required.');
+    if (!Number.isFinite(Number(formData.hours)) || Number(formData.hours) < 0) errors.push('Operating hours are required.');
+    if (!String(formData.condition || '').trim()) errors.push('Condition is required.');
+    if (!Number.isFinite(Number(formData.price)) || Number(formData.price) < 0) errors.push('Price is required.');
+    if (!formData.location.trim()) errors.push('Location is required.');
 
     const imgCount = formData.images.length;
-    if (imgCount < MIN_IMAGE_COUNT) { setValidationError(`Minimum ${MIN_IMAGE_COUNT} images required. You have ${imgCount}.`); return; }
-    if (imgCount > 40) { setValidationError('Maximum 40 images allowed.'); return; }
+    if (imgCount < MIN_IMAGE_COUNT) errors.push(`Minimum ${MIN_IMAGE_COUNT} images required. You have ${imgCount}.`);
+    if (imgCount > 40) errors.push('Maximum 40 images allowed.');
 
     const hydraulicsLeakStatus = formData.conditionChecklist.hydraulicsLeakStatus;
     if (hydraulicsLeakStatus && !['yes', 'no'].includes(String(hydraulicsLeakStatus))) {
-      setValidationError('Hydraulics leak status must be set to Yes or No.');
+      errors.push('Hydraulics leak status must be set to Yes or No.');
+    }
+
+    if (errors.length > 0) {
+      setValidationErrors(errors);
       return;
     }
 
-    setValidationError('');
+    setValidationErrors([]);
 
     try {
       setIsSaving(true);
@@ -1015,6 +1026,24 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                         <button
                           type="button"
                           onClick={() => moveImage(i, -1)}
+                          aria-label={`Move image ${i + 1} up`}
+                          disabled={i === 0}
+                          className="p-1 text-muted hover:text-ink disabled:opacity-30"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveImage(i, 1)}
+                          aria-label={`Move image ${i + 1} down`}
+                          disabled={i === formData.images.length - 1}
+                          className="p-1 text-muted hover:text-ink disabled:opacity-30"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveImage(i, -1)}
                           aria-label={`Move photo ${i + 1} earlier`}
                           disabled={i === 0}
                           className="inline-flex items-center justify-center border border-line bg-bg p-1 text-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
@@ -1051,7 +1080,10 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                     {uploadingImages ? (
                       <>
                         <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mb-1" />
-                        <span className="text-[9px] font-black uppercase">{imageUploadProgress}%</span>
+                        <span className="text-[9px] font-black uppercase">Uploading {imageUploadProgress}%</span>
+                        <div className="h-1 w-3/4 bg-accent/20 rounded overflow-hidden mt-1">
+                          <div className="h-full bg-accent transition-all duration-300" style={{ width: `${imageUploadProgress}%` }} />
+                        </div>
                       </>
                     ) : (
                       <>
@@ -1066,6 +1098,9 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
               <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif"
                 multiple className="hidden"
                 onChange={(e) => handleImageFiles(e.target.files)} />
+              <span className="text-[9px] font-bold text-muted uppercase tracking-wider">
+                Max 10 MB per image · Max 500 MB per video
+              </span>
               <p className="text-[9px] text-muted font-bold uppercase tracking-widest">
                 JPG / PNG / WEBP / AVIF up to 10 MB each. First image = cover photo. Reorder with arrows and add optional photo titles. Min {MIN_IMAGE_COUNT} · Max 40.
               </p>
@@ -1142,11 +1177,15 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 placeholder="Describe the machine's condition, recent maintenance, service history, and any notable features or defects..." />
             </section>
 
-            {/* ── Validation error ────────────────────────────────────────────── */}
-            {validationError && (
+            {/* ── Validation errors ───────────────────────────────────────────── */}
+            {validationErrors.length > 0 && (
               <div className="flex items-start gap-3 bg-accent/10 border border-accent p-4 rounded-sm">
                 <AlertCircle size={16} className="text-accent flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] font-black uppercase tracking-widest text-accent">{validationError}</p>
+                <ul className="list-disc list-inside space-y-1">
+                  {validationErrors.map((error, idx) => (
+                    <li key={idx} className="text-[11px] font-black uppercase tracking-widest text-accent">{error}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {submitError && (

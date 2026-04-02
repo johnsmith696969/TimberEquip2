@@ -27,7 +27,7 @@ export function ImageHero({
 
   return (
     <section className={`relative flex min-h-[50vh] items-center overflow-hidden border-b border-line px-4 py-16 md:min-h-[55vh] md:px-8 md:py-24 ${sectionClassName}`.trim()}>
-      <div className="absolute inset-0 bg-[#111827]">
+      <div className="absolute inset-0 bg-ink">
         <img
           src={imageSrc}
           alt={imageAlt}

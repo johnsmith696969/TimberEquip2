@@ -11,6 +11,8 @@ export function Terms() {
         title="Terms of Service | Forestry Equipment Sales"
         description="Terms of service governing the use of the Forestry Equipment Sales marketplace, including listing rules, billing, dispute resolution, and governing law."
         canonicalPath="/terms"
+        ogType="website"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
       />
       <div className="max-w-4xl mx-auto">
         <motion.div

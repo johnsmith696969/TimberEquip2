@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useAuth } from './AuthContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { clearPendingFavoriteIntent, getPendingFavoriteIntent } from '../utils/pendingFavorite';
@@ -16,6 +18,7 @@ interface LoginPromptModalProps {
 
 export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, message }: LoginPromptModalProps) {
   const { login, loginWithGoogle } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -80,6 +83,8 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
     }
   };
 
+  const trapRef = useFocusTrap(isOpen);
+
   const handleClose = () => {
     if (loading) return;
     setEmail('');
@@ -89,6 +94,20 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
     onDismiss?.();
     onClose();
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        setEmail(''); setPassword(''); setError('');
+        clearPendingFavoriteIntent();
+        onDismiss?.();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, loading, onClose, onDismiss]);
 
   const handleNavigateToAuth = () => {
     if (loading) return;
@@ -105,21 +124,26 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={prefersReducedMotion ? { duration: 0 } : undefined}
           className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 bg-black/60 backdrop-blur-sm sm:items-center"
           onClick={handleClose}
         >
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="login-prompt-title"
             initial={{ scale: 0.95, opacity: 0, y: 8 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={{ duration: 0.18 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18 }}
             onClick={(e) => e.stopPropagation()}
             className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-y-auto bg-surface border border-line rounded-sm p-8 shadow-2xl"
           >
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-xl font-black tracking-tighter uppercase">Sign In Required</h2>
+                <h2 id="login-prompt-title" className="text-xl font-black tracking-tighter uppercase">Sign In Required</h2>
                 {message && <p className="text-sm text-muted mt-1">{message}</p>}
               </div>
               <button onClick={handleClose} className="text-muted hover:text-ink transition-colors -mt-1 -mr-2 p-1">
@@ -131,6 +155,8 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
             <button
               onClick={handleGoogle}
               disabled={loading}
+              aria-disabled={loading}
+              aria-busy={loading}
               className="w-full flex items-center justify-center gap-3 border border-line bg-bg hover:bg-ink/5 text-ink font-bold py-3 px-4 rounded-sm transition-colors mb-4 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -184,7 +210,7 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 text-accent text-xs font-medium">
+                <div role="alert" className="flex items-center gap-2 text-accent text-xs font-medium">
                   <AlertCircle size={14} className="shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -197,6 +223,8 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
               <button
                 type="submit"
                 disabled={loading}
+                aria-disabled={loading}
+                aria-busy={loading}
                 className="w-full btn-industrial btn-accent py-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : 'Sign In'}

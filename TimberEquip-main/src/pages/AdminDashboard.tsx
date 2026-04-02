@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { updateEmail, updateProfile as updateFirebaseProfile } from 'firebase/auth';
 import { 
-  LayoutDashboard, Package, MessageSquare, 
+  LayoutDashboard, Package, MessageSquare,
   Users, Settings, TrendingUp, Plus,
   Filter, MoreVertical, Edit, Trash2, Download, Copy, Eye,
   CheckCircle2, Clock, AlertCircle, ArrowUpRight,
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
-  FileText, Image, Layers, Database, Upload, RefreshCw, FolderTree
+  FileText, Image, Layers, Database, Upload, RefreshCw, FolderTree,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
@@ -29,6 +30,8 @@ import { TaxonomyManager } from '../components/admin/TaxonomyManager';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { auth } from '../firebase';
 import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
 import {
@@ -44,7 +47,8 @@ import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types
 type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds' | 'taxonomy';
 type ListingReviewFilter = 'all' | 'pending_approval' | 'paid_not_live' | 'rejected' | 'expired' | 'sold' | 'archived' | 'anomalies';
 
-const LISTINGS_PAGE_SIZE = 50;
+const LISTINGS_PAGE_SIZE_DEFAULT = 50;
+const LISTINGS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
   'overview',
   'listings',
@@ -74,6 +78,7 @@ function resolveDashboardTab(tab: string | null | undefined): DashboardTab {
 export function AdminDashboard() {
   const { user: authUser, logout: authLogout, patchCurrentUserProfile } = useAuth();
   const { formatPrice } = useLocale();
+  const { confirm, alert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
   const profileName = authUser?.displayName || 'Admin';
@@ -94,6 +99,8 @@ export function AdminDashboard() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [billingLogs, setBillingLogs] = useState<BillingAuditLog[]>([]);
   const [billingAuditQuery, setBillingAuditQuery] = useState('');
+  const [billingAuditActionFilter, setBillingAuditActionFilter] = useState('');
+  const [billingAuditUserFilter, setBillingAuditUserFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [listingsLoading, setListingsLoading] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -104,6 +111,8 @@ export function AdminDashboard() {
   const [accountAuditLogs, setAccountAuditLogs] = useState<AccountAuditLog[]>([]);
   const [accountAuditDisplayCount, setAccountAuditDisplayCount] = useState(10);
   const [accountAuditSearchQuery, setAccountAuditSearchQuery] = useState('');
+  const [accountAuditEventTypeFilter, setAccountAuditEventTypeFilter] = useState('');
+  const [accountAuditActorFilter, setAccountAuditActorFilter] = useState('');
   const [blogPostDisplayCount, setBlogPostDisplayCount] = useState(10);
   const [blogPostSearchQuery, setBlogPostSearchQuery] = useState('');
   const [sellerAgreementAcceptances, setSellerAgreementAcceptances] = useState<SellerProgramAgreementAcceptance[]>([]);
@@ -126,6 +135,7 @@ export function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showDemoListings, setShowDemoListings] = useState(false);
   const [listingPage, setListingPage] = useState(1);
+  const [listingsPerPage, setListingsPerPage] = useState(LISTINGS_PAGE_SIZE_DEFAULT);
   const [listingHasMore, setListingHasMore] = useState(false);
   const [nextListingCursor, setNextListingCursor] = useState<AdminListingsCursor>(null);
   const [listingCursorHistory, setListingCursorHistory] = useState<AdminListingsCursor[]>([null]);
@@ -582,13 +592,14 @@ export function AdminDashboard() {
   const loadListingsPage = async (
     cursor: AdminListingsCursor,
     pageNumber: number,
-    includeDemoListings = showDemoListings
+    includeDemoListings = showDemoListings,
+    pageSizeOverride?: number
   ) => {
     setListingsLoading(true);
     setListingsLoadError('');
     try {
       const page = await equipmentService.getAdminListingsPage({
-        pageSize: LISTINGS_PAGE_SIZE,
+        pageSize: pageSizeOverride ?? listingsPerPage,
         cursor,
         includeDemoListings,
       });
@@ -707,7 +718,7 @@ export function AdminDashboard() {
 
     try {
       const listingsPage = await equipmentService.getAdminListingsPage({
-        pageSize: LISTINGS_PAGE_SIZE,
+        pageSize: listingsPerPage,
         includeDemoListings: showDemoListings,
       });
 
@@ -771,7 +782,7 @@ export function AdminDashboard() {
     const listingIds = listings
       .map((listing) => String(listing.id || '').trim())
       .filter(Boolean)
-      .slice(0, LISTINGS_PAGE_SIZE);
+      .slice(0, listingsPerPage);
 
     if (listingIds.length === 0) {
       setListingReviewSummaries({});
@@ -857,27 +868,56 @@ export function AdminDashboard() {
   };
 
   const handleDeleteListing = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this listing? This action cannot be undone.')) {
-      try {
-        await equipmentService.deleteListing(id);
-        if (selectedListingAuditId === id) {
-          setSelectedListingAuditId('');
-          setSelectedListingForAudit(null);
-          setListingAuditData(null);
-          setListingAuditError('');
-        }
-        setUserFeedback({
-          tone: 'success',
-          message: 'Listing deleted successfully.',
-        });
-        fetchData();
-      } catch (error) {
-        console.error('Error deleting listing:', error);
-        setUserFeedback({
-          tone: 'error',
-          message: error instanceof Error ? error.message : 'Unable to delete this listing right now.',
-        });
+    const ok = await confirm({ title: 'Delete Listing', message: 'Are you sure you want to delete this listing? This action cannot be undone.', variant: 'danger' });
+    if (!ok) return;
+    try {
+      await equipmentService.deleteListing(id);
+      if (selectedListingAuditId === id) {
+        setSelectedListingAuditId('');
+        setSelectedListingForAudit(null);
+        setListingAuditData(null);
+        setListingAuditError('');
       }
+      setUserFeedback({
+        tone: 'success',
+        message: 'Listing deleted successfully.',
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting listing:', error);
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to delete this listing right now.',
+      });
+    }
+  };
+
+  const handleBulkDeleteListings = async (ids: string[]) => {
+    const ok = await confirm({
+      title: 'Bulk Delete',
+      message: `Are you sure you want to delete ${ids.length} listing${ids.length === 1 ? '' : 's'}? This action cannot be undone.`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await Promise.all(ids.map(id => equipmentService.deleteListing(id)));
+      if (ids.includes(selectedListingAuditId)) {
+        setSelectedListingAuditId('');
+        setSelectedListingForAudit(null);
+        setListingAuditData(null);
+        setListingAuditError('');
+      }
+      setUserFeedback({
+        tone: 'success',
+        message: `${ids.length} listing${ids.length === 1 ? '' : 's'} deleted successfully.`,
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error bulk deleting listings:', error);
+      setUserFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to delete listings right now.',
+      });
     }
   };
 
@@ -1016,7 +1056,7 @@ export function AdminDashboard() {
       console.error('Error creating managed account:', error);
       const message = error instanceof Error ? error.message : 'Unable to create managed account';
       setManagedSeatError(message);
-      alert(message);
+      await alert({ title: 'Account Creation Failed', message, variant: 'info' });
     } finally {
       setCreatingAccount(false);
     }
@@ -1083,7 +1123,8 @@ export function AdminDashboard() {
   };
 
   const handleSuspendUser = async (uid: string) => {
-    if (!window.confirm('Lock this account and prevent sign-in?')) return;
+    const ok = await confirm({ title: 'Lock Account', message: 'Lock this account and prevent sign-in?', variant: 'danger' });
+    if (!ok) return;
     try {
       setUserFeedback(null);
       const result = await adminUserService.lockUser(uid);
@@ -1184,7 +1225,8 @@ export function AdminDashboard() {
   };
 
   const handleLockUser = async (account: Account) => {
-    if (!window.confirm(`Lock ${account.name}'s account?`)) return;
+    const ok = await confirm({ title: 'Lock Account', message: `Lock ${account.name}'s account?`, variant: 'danger' });
+    if (!ok) return;
 
     await runUserAction(account.id, 'lock', async () => {
       const result = await adminUserService.lockUser(account.id);
@@ -1225,7 +1267,8 @@ export function AdminDashboard() {
   };
 
   const handleDeleteUser = async (account: Account) => {
-    if (!window.confirm(`Delete ${account.name} permanently? This removes both the profile and auth account.`)) return;
+    const ok = await confirm({ title: 'Delete Account', message: `Delete ${account.name} permanently? This removes both the profile and auth account.`, variant: 'danger' });
+    if (!ok) return;
 
     await runUserAction(account.id, 'delete', async () => {
       await adminUserService.deleteUser(account.id);
@@ -1567,8 +1610,10 @@ export function AdminDashboard() {
     downloadCsv('performance', headers, rows);
   };
 
-  const exportBillingCSV = () => {
+  const exportBillingCSV = async () => {
     setExportingBillingCsv(true);
+    // Yield to the browser so the loading state renders before heavy computation
+    await new Promise(resolve => requestAnimationFrame(resolve));
     try {
       const headers = [
         'section',
@@ -1850,7 +1895,7 @@ export function AdminDashboard() {
                     </td>
                     <td className="px-6 py-4 text-xs font-black tracking-tighter text-ink">{formatPrice(listing.price, listing.currency || 'USD', 0)}</td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => openNativeMap(listing.location)} className="p-2 text-accent hover:text-accent/80">
+                      <button onClick={() => openNativeMap(listing.location)} aria-label="Open location in map" className="p-2 text-accent hover:text-accent/80">
                         <MapPin size={14} />
                       </button>
                     </td>
@@ -1879,7 +1924,7 @@ export function AdminDashboard() {
                 {recentOverviewCalls.length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-6 py-10 text-center text-[10px] font-black uppercase tracking-widest text-muted">
-                      No calls available yet.
+                      No calls available yet. Calls will appear here when visitors reach out by phone.
                     </td>
                   </tr>
                 )}
@@ -2061,11 +2106,12 @@ export function AdminDashboard() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end space-x-2">
-                      <button className="p-2 text-muted hover:text-ink" title="Edit" onClick={() => openUserEditor(account)}><Edit size={14} /></button>
+                      <button className="p-2 text-muted hover:text-ink" title="Edit" aria-label="Edit user" onClick={() => openUserEditor(account)}><Edit size={14} /></button>
                       <button
                         onClick={() => handleSuspendUser(account.id)}
                         className="p-2 text-muted hover:text-accent"
                         title="Suspend user"
+                        aria-label="Suspend user"
                       >
                         <ShieldAlert size={14} />
                       </button>
@@ -2347,13 +2393,16 @@ export function AdminDashboard() {
         ) : null}
       </div>
 
-      <VirtualizedListingsTable
-        listings={filteredListings}
-        onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
-        onDelete={handleDeleteListing}
-        onInspect={(listing) => { void loadListingLifecycleAudit(listing); }}
-        openNativeMap={openNativeMap}
-      />
+      <div className="overflow-x-auto -mx-4 px-4">
+        <VirtualizedListingsTable
+          listings={filteredListings}
+          onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
+          onDelete={handleDeleteListing}
+          onBulkDelete={handleBulkDeleteListings}
+          onInspect={(listing) => { void loadListingLifecycleAudit(listing); }}
+          openNativeMap={openNativeMap}
+        />
+      </div>
 
       {selectedListingAudit && (
         <div className="rounded-sm border border-line bg-surface shadow-sm">
@@ -2611,27 +2660,102 @@ export function AdminDashboard() {
         </div>
       )}
 
-      {listingPage > 1 || listingHasMore ? (
-        <div className="flex items-center justify-between rounded-sm border border-line bg-surface px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted">
-          <button
-            type="button"
-            onClick={() => void loadListingsPage(listingCursorHistory[listingPage - 2] ?? null, listingPage - 1, showDemoListings)}
-            disabled={listingPage === 1 || listingsLoading}
-            className="btn-industrial py-2 px-4 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Previous
-          </button>
-          <span>{filteredListings.length.toLocaleString()} currently loaded</span>
-          <button
-            type="button"
-            onClick={() => void loadListingsPage(nextListingCursor, listingPage + 1, showDemoListings)}
-            disabled={!listingHasMore || listingsLoading || !nextListingCursor}
-            className="btn-industrial py-2 px-4 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Next
-          </button>
-        </div>
-      ) : null}
+      {listingPage > 1 || listingHasMore ? (() => {
+        const maxVisitedPage = listingCursorHistory.length;
+        const lastKnownPage = listingHasMore ? maxVisitedPage + 1 : maxVisitedPage;
+
+        const getPageNumbers = (): (number | 'ellipsis')[] => {
+          if (lastKnownPage <= 7) {
+            return Array.from({ length: lastKnownPage }, (_, i) => i + 1);
+          }
+          const pages: (number | 'ellipsis')[] = [];
+          const near = new Set<number>();
+          for (let p = 1; p <= Math.min(2, lastKnownPage); p++) near.add(p);
+          for (let p = Math.max(1, lastKnownPage - 1); p <= lastKnownPage; p++) near.add(p);
+          for (let p = Math.max(1, listingPage - 1); p <= Math.min(lastKnownPage, listingPage + 1); p++) near.add(p);
+          const sorted = [...near].sort((a, b) => a - b);
+          for (let i = 0; i < sorted.length; i++) {
+            if (i > 0 && sorted[i] - sorted[i - 1] > 1) pages.push('ellipsis');
+            pages.push(sorted[i]);
+          }
+          return pages;
+        };
+
+        const pageNumbers = getPageNumbers();
+
+        const navigateToPage = (page: number) => {
+          if (page < 1 || page > maxVisitedPage || page === listingPage || listingsLoading) return;
+          void loadListingsPage(listingCursorHistory[page - 1] ?? null, page, showDemoListings);
+        };
+
+        return (
+          <div className="flex flex-col gap-3 rounded-sm border border-line bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => navigateToPage(listingPage - 1)}
+                disabled={listingPage === 1 || listingsLoading}
+                className="btn-industrial py-1.5 px-3 text-[10px] font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+              {pageNumbers.map((entry, idx) =>
+                entry === 'ellipsis' ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-[10px] font-black text-muted select-none">...</span>
+                ) : (
+                  <button
+                    key={entry}
+                    type="button"
+                    onClick={() => navigateToPage(entry)}
+                    disabled={entry === listingPage || entry > maxVisitedPage || listingsLoading}
+                    className={`min-w-[28px] py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-sm border transition-colors ${
+                      entry === listingPage
+                        ? 'bg-ink text-bg border-ink'
+                        : entry > maxVisitedPage
+                          ? 'border-line text-muted/40 cursor-not-allowed'
+                          : 'border-line text-muted hover:bg-ink/5 hover:text-ink'
+                    }`}
+                  >
+                    {entry}
+                  </button>
+                )
+              )}
+              <button
+                type="button"
+                onClick={() => void loadListingsPage(nextListingCursor, listingPage + 1, showDemoListings)}
+                disabled={!listingHasMore || listingsLoading || !nextListingCursor}
+                className="btn-industrial py-1.5 px-3 text-[10px] font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-muted">
+              <span>
+                Page {listingPage}{listingHasMore ? '+' : ` of ${maxVisitedPage}`}
+                {' \u00b7 '}{filteredListings.length.toLocaleString()} loaded
+              </span>
+              <label className="flex items-center gap-1.5">
+                <span className="whitespace-nowrap">Per page:</span>
+                <select
+                  value={listingsPerPage}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setListingsPerPage(next);
+                    setListingCursorHistory([null]);
+                    void loadListingsPage(null, 1, showDemoListings, next);
+                  }}
+                  className="border border-line rounded-sm bg-bg px-2 py-1 text-[10px] font-black uppercase text-ink cursor-pointer"
+                >
+                  {LISTINGS_PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+        );
+      })() : null}
     </div>
   );
 
@@ -2938,25 +3062,37 @@ export function AdminDashboard() {
     const pendingCount = invoices.filter(i => i.status === 'pending').length;
     const failedCount = invoices.filter(i => i.status === 'failed').length;
     const activeSubs = subscriptions.filter(s => s.status === 'active').length;
+    const uniqueAccountEventTypes = Array.from(new Set(accountAuditLogs.map((log) => log.eventType).filter(Boolean))).sort();
+    const uniqueAccountActors = Array.from(new Set(accountAuditLogs.map((log) => log.actorUid).filter((uid): uid is string => Boolean(uid)))).sort();
     const accountAuditQ = accountAuditSearchQuery.toLowerCase();
-    const filteredAccountAuditLogs = accountAuditQ
-      ? accountAuditLogs.filter((log) =>
-          (log.eventType || '').toLowerCase().includes(accountAuditQ) ||
-          (log.reason || '').toLowerCase().includes(accountAuditQ) ||
-          (log.actorUid || '').toLowerCase().includes(accountAuditQ) ||
-          (log.targetUid || '').toLowerCase().includes(accountAuditQ) ||
-          (log.source || '').toLowerCase().includes(accountAuditQ)
-        )
-      : accountAuditLogs;
+    const filteredAccountAuditLogs = accountAuditLogs.filter((log) => {
+      if (accountAuditEventTypeFilter && (log.eventType || '') !== accountAuditEventTypeFilter) return false;
+      if (accountAuditActorFilter && (log.actorUid || '') !== accountAuditActorFilter) return false;
+      if (accountAuditQ) {
+        if (
+          !(log.eventType || '').toLowerCase().includes(accountAuditQ) &&
+          !(log.reason || '').toLowerCase().includes(accountAuditQ) &&
+          !(log.actorUid || '').toLowerCase().includes(accountAuditQ) &&
+          !(log.targetUid || '').toLowerCase().includes(accountAuditQ) &&
+          !(log.source || '').toLowerCase().includes(accountAuditQ)
+        ) return false;
+      }
+      return true;
+    });
     const visibleAccountAuditLogs = filteredAccountAuditLogs.slice(0, accountAuditDisplayCount);
     const hasMoreAccountAudit = filteredAccountAuditLogs.length > accountAuditDisplayCount;
     const recentSellerAgreementAcceptances = sellerAgreementAcceptances.slice(0, 10);
-    const filteredBillingLogs = billingAuditQuery
-      ? billingLogs.filter((log) => {
-          const q = billingAuditQuery.toLowerCase();
-          return (log.action || '').toLowerCase().includes(q) || (log.details || '').toLowerCase().includes(q);
-        })
-      : billingLogs;
+    const uniqueBillingActions = Array.from(new Set(billingLogs.map((log) => log.action).filter(Boolean))).sort();
+    const uniqueBillingUsers = Array.from(new Set(billingLogs.map((log) => log.userUid).filter(Boolean))).sort();
+    const filteredBillingLogs = billingLogs.filter((log) => {
+      if (billingAuditActionFilter && (log.action || '') !== billingAuditActionFilter) return false;
+      if (billingAuditUserFilter && (log.userUid || '') !== billingAuditUserFilter) return false;
+      if (billingAuditQuery) {
+        const q = billingAuditQuery.toLowerCase();
+        if (!(log.action || '').toLowerCase().includes(q) && !(log.details || '').toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
 
     return (
       <div className="space-y-8">
@@ -2965,20 +3101,26 @@ export function AdminDashboard() {
           <div className="flex space-x-4">
             <button
               type="button"
-              onClick={exportBillingCSV}
+              onClick={() => void exportBillingCSV()}
               disabled={exportingBillingCsv}
+              aria-busy={exportingBillingCsv}
               className="btn-industrial bg-surface py-2 px-4 text-[10px] flex items-center disabled:opacity-60"
             >
-              <Download size={14} className="mr-2" /> {exportingBillingCsv ? 'Exporting...' : 'Export Billing CSV'}
+              {exportingBillingCsv
+                ? <><Loader2 size={14} className="mr-2 animate-spin" /> Exporting...</>
+                : <><Download size={14} className="mr-2" /> Export Billing CSV</>}
             </button>
             {hasFullAdminDashboardScope ? (
               <button
                 type="button"
                 onClick={() => void exportDealerPerformance30DayCSV()}
                 disabled={exportingDealerPerformanceCsv}
+                aria-busy={exportingDealerPerformanceCsv}
                 className="btn-industrial py-2 px-4 text-[10px] flex items-center disabled:opacity-60"
               >
-                <Download size={14} className="mr-2" /> {exportingDealerPerformanceCsv ? 'Building 30-Day Report...' : 'Export 30-Day Lead Report'}
+                {exportingDealerPerformanceCsv
+                  ? <><Loader2 size={14} className="mr-2 animate-spin" /> Building 30-Day Report...</>
+                  : <><Download size={14} className="mr-2" /> Export 30-Day Lead Report</>}
               </button>
             ) : null}
           </div>
@@ -3098,7 +3240,26 @@ export function AdminDashboard() {
                   onChange={(e) => setBillingAuditQuery(e.target.value)}
                   className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm placeholder:text-white/30 focus:outline-none focus:border-accent w-52"
                 />
-
+                <select
+                  value={billingAuditActionFilter}
+                  onChange={(e) => setBillingAuditActionFilter(e.target.value)}
+                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm focus:outline-none focus:border-accent"
+                >
+                  <option value="">All Actions</option>
+                  {uniqueBillingActions.map((action) => (
+                    <option key={action} value={action}>{action}</option>
+                  ))}
+                </select>
+                <select
+                  value={billingAuditUserFilter}
+                  onChange={(e) => setBillingAuditUserFilter(e.target.value)}
+                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm focus:outline-none focus:border-accent max-w-[160px]"
+                >
+                  <option value="">All Users</option>
+                  {uniqueBillingUsers.map((uid) => (
+                    <option key={uid} value={uid}>{uid}</option>
+                  ))}
+                </select>
               </div>
               <button
                 type="button"
@@ -3132,7 +3293,7 @@ export function AdminDashboard() {
 
             {filteredBillingLogs.length === 0 && !billingLoadError ? (
               <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest py-4 text-center">
-                {billingAuditQuery ? 'No audit logs match your search' : 'No audit logs recorded'}
+                {(billingAuditQuery || billingAuditActionFilter || billingAuditUserFilter) ? 'No audit logs match your filters' : 'No audit logs recorded'}
               </p>
             ) : filteredBillingLogs.map((log, i) => (
               <div key={i} className="flex justify-between items-center py-3 border-b border-white/10 last:border-0">
@@ -3157,7 +3318,7 @@ export function AdminDashboard() {
                   Role changes, entitlement syncs, subscription-linked changes, and operator-side account actions.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -3166,6 +3327,26 @@ export function AdminDashboard() {
                     onChange={(e) => { setAccountAuditSearchQuery(e.target.value); setAccountAuditDisplayCount(10); }}
                     className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 placeholder:text-muted focus:outline-none focus:border-accent w-44"
                   />
+                  <select
+                    value={accountAuditEventTypeFilter}
+                    onChange={(e) => { setAccountAuditEventTypeFilter(e.target.value); setAccountAuditDisplayCount(10); }}
+                    className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 text-ink focus:outline-none focus:border-accent"
+                  >
+                    <option value="">All Events</option>
+                    {uniqueAccountEventTypes.map((eventType) => (
+                      <option key={eventType} value={eventType}>{formatLifecycleLabel(eventType)}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={accountAuditActorFilter}
+                    onChange={(e) => { setAccountAuditActorFilter(e.target.value); setAccountAuditDisplayCount(10); }}
+                    className="bg-bg border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 text-ink focus:outline-none focus:border-accent max-w-[160px]"
+                  >
+                    <option value="">All Actors</option>
+                    {uniqueAccountActors.map((actor) => (
+                      <option key={actor} value={actor}>{actor}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
                   {filteredAccountAuditLogs.length} of {accountAuditLogs.length}
@@ -3176,7 +3357,7 @@ export function AdminDashboard() {
               {visibleAccountAuditLogs.length === 0 ? (
                 <div className="px-6 py-10 text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
-                    {accountAuditSearchQuery ? 'No audit events match your search' : 'No account audit events loaded'}
+                    {(accountAuditSearchQuery || accountAuditEventTypeFilter || accountAuditActorFilter) ? 'No audit events match your filters' : 'No account audit events loaded'}
                   </p>
                 </div>
               ) : visibleAccountAuditLogs.map((log) => (
@@ -3473,18 +3654,20 @@ export function AdminDashboard() {
                           onClick={() => { setEditingPost(post); setShowCmsEditor(true); }}
                           className="p-2 text-muted hover:text-ink"
                           title="Edit post"
+                          aria-label="Edit post"
                         >
                           <Edit size={14} />
                         </button>
                         <button
                           onClick={async () => {
-                            if (window.confirm('Delete this post permanently?')) {
-                              await cmsService.deletePost(post.id);
-                              setBlogPosts(await cmsService.getBlogPosts());
-                            }
+                            const ok = await confirm({ title: 'Delete Post', message: 'Delete this post permanently?', variant: 'danger' });
+                            if (!ok) return;
+                            await cmsService.deletePost(post.id);
+                            setBlogPosts(await cmsService.getBlogPosts());
                           }}
                           className="p-2 text-muted hover:text-accent"
                           title="Delete post"
+                          aria-label="Delete post"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -3634,12 +3817,13 @@ export function AdminDashboard() {
                 </div>
                 <button
                   onClick={async () => {
-                    if (window.confirm('Delete this block?')) {
-                      await cmsService.deleteContentBlock(block.id);
-                      setContentBlocks(await cmsService.getContentBlocks());
-                    }
+                    const ok = await confirm({ title: 'Delete Block', message: 'Delete this block?', variant: 'danger' });
+                    if (!ok) return;
+                    await cmsService.deleteContentBlock(block.id);
+                    setContentBlocks(await cmsService.getContentBlocks());
                   }}
                   className="p-2 text-muted hover:text-accent flex-shrink-0"
+                  aria-label="Delete content block"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -3806,7 +3990,7 @@ export function AdminDashboard() {
   );
 
   const renderDealerFeeds = () => {
-    const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.forestryequipmentsales.com';
+    const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
     const currentDfCurlSnippet = dfActiveProfile?.ingestUrl
       ? buildDealerFeedApiCurlSnippet({
           ingestUrl: dfActiveProfile.ingestUrl,
@@ -4043,10 +4227,25 @@ export function AdminDashboard() {
               confirm the preview, then run a dry import or live ingest.
             </p>
           </div>
-          <div className="rounded-sm border border-line bg-bg px-4 py-3 text-right">
-            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Setup Flow</div>
-            <div className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-ink">
-              1. Select format 2. Resolve 3. Preview 4. Import
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-black flex items-center justify-center">1</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Choose Format</span>
+            </div>
+            <div className="w-8 h-px bg-line" />
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line">2</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">Configure</span>
+            </div>
+            <div className="w-8 h-px bg-line" />
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line">3</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">Preview</span>
+            </div>
+            <div className="w-8 h-px bg-line" />
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line">4</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">Import</span>
             </div>
           </div>
         </div>
@@ -4188,7 +4387,7 @@ export function AdminDashboard() {
                       }`}
                     >
                       <div className="text-[10px] font-black uppercase tracking-[0.2em]">{DEALER_FEED_SETUP_META[mode].label}</div>
-                      <div className="mt-2 text-xs leading-relaxed">{DEALER_FEED_SETUP_META[mode].helper}</div>
+                      <div className="mt-1 text-[11px] leading-snug">{DEALER_FEED_SETUP_META[mode].shortDesc}</div>
                     </button>
                   ))}
                 </div>
@@ -4748,7 +4947,7 @@ export function AdminDashboard() {
             </div>
           </section>
 
-          <section className="lg:hidden mb-6">
+          <section className="lg:hidden mb-6 overflow-x-auto">
             <div className="grid grid-cols-2 gap-2">
               {visibleTabs.map(item => (
                 <button
@@ -4890,7 +5089,7 @@ export function AdminDashboard() {
                   <h3 className="text-sm font-black uppercase tracking-[0.2em] text-ink">Edit User</h3>
                   <p className="text-[10px] font-bold text-muted uppercase mt-1">Update profile details, role, and contact info.</p>
                 </div>
-                <button type="button" onClick={closeUserEditor} className="p-2 text-muted hover:text-ink">
+                <button type="button" onClick={closeUserEditor} className="p-2 text-muted hover:text-ink" aria-label="Close user editor">
                   <AlertCircle size={16} />
                 </button>
               </div>
@@ -4965,6 +5164,7 @@ export function AdminDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

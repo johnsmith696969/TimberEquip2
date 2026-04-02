@@ -31,24 +31,27 @@ export function Blog() {
   const { theme } = useTheme();
   const [news, setNews] = useState<NewsPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
   const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
-  useEffect(() => {
-    const fetchNews = async () => {
-      setLoading(true);
-      try {
-        const data = await equipmentService.getNews();
-        setNews(data);
-      } catch (error) {
-        console.error('Error fetching news:', error);
-        setNews([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchNews = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await equipmentService.getNews();
+      setNews(data);
+    } catch (err) {
+      console.error('Error fetching news:', err);
+      setNews([]);
+      setError('Unable to load news. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     void fetchNews();
   }, []);
 
@@ -77,8 +80,18 @@ export function Blog() {
         </div>
       </ImageHero>
 
-      <div className="max-w-[1200px] mx-auto px-4 md:px-8 py-24">
-        {loading ? (
+      <div className="max-w-[1200px] mx-auto px-4 md:px-8 py-24" aria-live="polite" aria-busy={loading}>
+        {error ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <p className="text-sm font-bold text-muted mb-4">{error}</p>
+            <button
+              onClick={() => { setError(null); fetchNews(); }}
+              className="btn-industrial btn-accent px-6 py-3"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : loading ? (
           <div className="space-y-16">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="flex flex-col space-y-6 animate-pulse">

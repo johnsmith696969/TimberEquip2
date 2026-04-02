@@ -52,14 +52,17 @@ service firebase.storage {
     // Private files (invoices, documents) - accessible only by owner/admins
     match /private/{userId}/documents/{fileName} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid))
+        && validateDocument(request.resource);
       allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
     }
 
     // Temporary uploads (auto-delete files)
     match /temp/{userId}/{fileName} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('text/.*'));
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 

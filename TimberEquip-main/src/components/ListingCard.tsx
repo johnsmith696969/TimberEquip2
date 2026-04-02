@@ -48,6 +48,10 @@ export function ListingCard({
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
   const amvPercent = hasAmv ? Math.abs((amvDiff / safeMarketValueEstimate) * 100).toFixed(1) : null;
   const heroImage = safeImageVariants[0]?.thumbnailUrl || safeImages[0] || 'https://picsum.photos/seed/forestryequipmentsales-placeholder/640/480';
+  const heroDetailImage = safeImageVariants[0]?.detailUrl || '';
+  const heroSrcSet = heroDetailImage
+    ? `${heroImage} 480w, ${heroDetailImage} 1600w`
+    : undefined;
   const estimatedMonthlyPayment = Math.round(calcMonthlyPayment(safePrice, 6, 60));
   const displayMake = listing.make || listing.manufacturer || 'Unknown Make';
   const displayModel = listing.model || 'Unknown Model';
@@ -63,7 +67,9 @@ export function ListingCard({
       <div className="relative aspect-[4/3] overflow-hidden bg-surface">
         <img
           src={heroImage}
-          alt={displayTitle}
+          srcSet={heroSrcSet}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          alt={listing.title || 'Equipment listing image'}
           className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-110"
           referrerPolicy="no-referrer"
           loading="lazy"
@@ -89,22 +95,24 @@ export function ListingCard({
 
         {/* Favorite & Compare Buttons */}
         <div className="absolute top-3 right-3 flex flex-col space-y-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-          <button 
+          <button
             onClick={(e) => {
               e.preventDefault();
               onToggleFavorite?.(normalizedListingId);
             }}
+            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             className={`p-2 rounded-sm backdrop-blur-md transition-colors ${
               isFavorite ? 'bg-accent text-white opacity-100' : 'bg-white/20 text-white hover:bg-white/40'
             }`}
           >
             <Bookmark size={16} fill={isFavorite ? 'currentColor' : 'none'} />
           </button>
-          <button 
+          <button
             onClick={(e) => {
               e.preventDefault();
               onToggleCompare?.(normalizedListingId);
             }}
+            aria-label={isComparing ? 'Remove from comparison' : 'Add to comparison'}
             className={`p-2 rounded-sm backdrop-blur-md transition-colors ${
               isComparing ? 'bg-secondary text-white opacity-100' : 'bg-white/20 text-white hover:bg-white/40'
             }`}

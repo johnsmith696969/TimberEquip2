@@ -35,7 +35,7 @@ export function Breadcrumbs({ items = [] }: Props) {
       '@type': 'ListItem',
       'position': idx + 1,
       'name': item.label,
-      'item': `https://www.forestryequipmentsales.com${item.path}`
+      'item': `https://timberequip.com${item.path}`
     }))
   };
 
@@ -54,7 +54,7 @@ export function Breadcrumbs({ items = [] }: Props) {
           <React.Fragment key={item.path}>
             {idx > 0 && <ChevronRight size={12} className="flex-shrink-0" />}
             {idx === breadcrumbs.length - 1 ? (
-              <span className="flex-shrink-0 text-ink">{item.label}</span>
+              <span className="flex-shrink-0 text-ink" aria-current="page">{item.label}</span>
             ) : (
               <Link
                 to={item.path}

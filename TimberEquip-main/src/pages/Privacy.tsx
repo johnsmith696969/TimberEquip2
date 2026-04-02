@@ -11,6 +11,8 @@ export function Privacy() {
         title="Privacy Policy | Forestry Equipment Sales"
         description="Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant. Data encryption, third-party processors, and your rights explained."
         canonicalPath="/privacy"
+        ogType="website"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
       />
       <div className="max-w-4xl mx-auto">
         <motion.div

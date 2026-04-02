@@ -164,8 +164,8 @@ export function Faq() {
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-                { '@type': 'ListItem', position: 2, name: 'FAQ', item: 'https://www.forestryequipmentsales.com/faq' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
+                { '@type': 'ListItem', position: 2, name: 'FAQ', item: 'https://timberequip.com/faq' },
               ],
             },
           ],
