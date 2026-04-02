@@ -2360,6 +2360,71 @@ async function startServer() {
     }
   });
 
+  app.post('/api/admin/users/:userId/verify', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      const actorDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const actorRole = normalizeRole(actorDoc.data()?.role);
+      if (!isPrivilegedAdminEmail(actorEmail) && !['super_admin', 'admin'].includes(actorRole)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const targetUid = String(req.params.userId || '').trim();
+      if (!targetUid) return res.status(400).json({ error: 'Missing userId.' });
+
+      await db.collection('users').doc(targetUid).update({ manuallyVerified: true });
+
+      const listingsSnap = await db.collection('listings').where('sellerUid', '==', targetUid).get();
+      const batch = db.batch();
+      listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified: true }));
+      if (!listingsSnap.empty) await batch.commit();
+
+      return res.json({ ok: true, listingsUpdated: listingsSnap.size });
+    } catch (error: any) {
+      console.error('Verify user failed:', error);
+      return res.status(500).json({ error: 'Unable to verify user.' });
+    }
+  });
+
+  app.post('/api/admin/users/:userId/unverify', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      const actorDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const actorRole = normalizeRole(actorDoc.data()?.role);
+      if (!isPrivilegedAdminEmail(actorEmail) && !['super_admin', 'admin'].includes(actorRole)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const targetUid = String(req.params.userId || '').trim();
+      if (!targetUid) return res.status(400).json({ error: 'Missing userId.' });
+
+      await db.collection('users').doc(targetUid).update({ manuallyVerified: false });
+
+      const targetDoc = await db.collection('users').doc(targetUid).get();
+      const targetRole = normalizeRole(targetDoc.data()?.role);
+      const autoVerifiedRoles = ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'];
+      if (!autoVerifiedRoles.includes(targetRole)) {
+        const listingsSnap = await db.collection('listings').where('sellerUid', '==', targetUid).get();
+        const batch = db.batch();
+        listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified: false }));
+        if (!listingsSnap.empty) await batch.commit();
+      }
+
+      return res.json({ ok: true });
+    } catch (error: any) {
+      console.error('Unverify user failed:', error);
+      return res.status(500).json({ error: 'Unable to unverify user.' });
+    }
+  });
+
   app.post('/api/admin/dealer-feeds/ingest', async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
@@ -2533,6 +2598,7 @@ async function startServer() {
           totalListings: Number(data.totalListings || 0),
           totalLeads: Number(data.totalLeads || 0),
           parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+          manuallyVerified: Boolean(data.manuallyVerified),
         };
       }).sort((left, right) => {
         const leftTime = Date.parse(left.lastLogin || left.memberSince || '') || 0;

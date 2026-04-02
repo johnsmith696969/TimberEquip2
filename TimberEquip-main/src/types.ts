@@ -412,6 +412,7 @@ export interface Account {
   currentPeriodEnd?: string | null;
   subscriptionStartDate?: string | null;
   entitlement?: AccountEntitlement | null;
+  manuallyVerified?: boolean;
 }
 
 export type ListingLifecycleAction =

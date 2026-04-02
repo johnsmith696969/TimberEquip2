@@ -55,8 +55,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const accountRoute = isAuthenticated ? '/account' : '/profile';
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
+  const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
   const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const footerSocialLinks = [

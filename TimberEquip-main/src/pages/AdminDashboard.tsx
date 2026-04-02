@@ -2925,6 +2925,28 @@ export function AdminDashboard() {
                       <span className={`inline-flex w-fit text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${user.emailVerified ? 'bg-data/10 text-data' : 'bg-yellow-500/10 text-yellow-600'}`}>
                         {user.emailVerified ? 'Email Verified' : 'Email Unverified'}
                       </span>
+                      <button
+                        onClick={async () => {
+                          const newVal = !user.manuallyVerified;
+                          const action = newVal ? 'verify' : 'unverify';
+                          try {
+                            const idToken = await auth.currentUser?.getIdToken();
+                            if (!idToken) return;
+                            const resp = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}/${action}`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                              body: '{}',
+                            });
+                            if (!resp.ok) throw new Error(`Failed to ${action}`);
+                            setAccounts((prev) => prev.map((u) => u.id === user.id ? { ...u, manuallyVerified: newVal } : u));
+                          } catch (err) {
+                            console.error('Verification update failed:', err);
+                          }
+                        }}
+                        className={`inline-flex w-fit text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-sm cursor-pointer hover:opacity-80 transition-opacity ${user.manuallyVerified ? 'bg-data/10 text-data' : 'bg-red-500/10 text-red-500'}`}
+                      >
+                        {user.manuallyVerified ? 'Seller Verified' : 'Verify Seller'}
+                      </button>
                     </div>
                   </td>
                   <td className="p-4">
