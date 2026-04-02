@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 
 export interface MultiSelectOption {
@@ -25,10 +26,40 @@ export function MultiSelectDropdown({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
   const showSearch = searchable ?? options.length > 10;
+
+  // Position the portal panel below the trigger button
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setPanelStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) updatePosition();
+  }, [open, updatePosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = () => updatePosition();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open, updatePosition]);
 
   useEffect(() => {
     if (open && showSearch) {
@@ -37,9 +68,14 @@ export function MultiSelectDropdown({
     if (!open) setQuery('');
   }, [open, showSearch]);
 
+  // Close on click outside (check both trigger and panel)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        panelRef.current && !panelRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -101,9 +137,88 @@ export function MultiSelectDropdown({
         ? selected.join(', ')
         : `${selected.length} selected`;
 
+  const panel = open ? createPortal(
+    <div ref={panelRef} style={panelStyle} className="border border-line bg-bg rounded-sm shadow-lg overflow-hidden">
+      {showSearch && (
+        <div className="p-2 border-b border-line">
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              ref={searchRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search..."
+              className="input-industrial w-full pl-7 py-1.5 text-[11px]"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-line">
+        <button
+          type="button"
+          onClick={selectAll}
+          className="text-[9px] font-bold uppercase tracking-widest text-accent hover:underline"
+        >
+          Select All
+        </button>
+        <button
+          type="button"
+          onClick={clearAll}
+          className="text-[9px] font-bold uppercase tracking-widest text-muted hover:text-ink"
+        >
+          Clear
+        </button>
+      </div>
+
+      <div className="overflow-y-auto" style={{ maxHeight }}>
+        {sortedOptions.length === 0 ? (
+          <div className="px-3 py-4 text-center text-[10px] font-bold uppercase tracking-widest text-muted">
+            No options found
+          </div>
+        ) : (
+          sortedOptions.map((option) => {
+            const isChecked = selectedSet.has(option.value);
+            return (
+              <label
+                key={option.value}
+                className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-surface/60 transition-colors ${isChecked ? 'bg-surface/40' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggle(option.value)}
+                  className="accent-accent flex-shrink-0"
+                />
+                <span className="text-[11px] font-medium text-ink truncate flex-1">
+                  {option.value}
+                </span>
+                <span className="text-[10px] font-bold text-muted tabular-nums flex-shrink-0">
+                  ({option.count})
+                </span>
+              </label>
+            );
+          })
+        )}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div ref={containerRef} className="relative">
+    <div>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(!open)}
         className="select-industrial w-full text-left flex items-center justify-between gap-2"
@@ -113,83 +228,7 @@ export function MultiSelectDropdown({
         </span>
         <ChevronDown size={14} className={`flex-shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-
-      {open && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-1 border border-line bg-bg rounded-sm shadow-lg overflow-hidden">
-          {showSearch && (
-            <div className="p-2 border-b border-line">
-              <div className="relative">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-                <input
-                  ref={searchRef}
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search..."
-                  className="input-industrial w-full pl-7 py-1.5 text-[11px]"
-                />
-                {query && (
-                  <button
-                    type="button"
-                    onClick={() => setQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
-                  >
-                    <X size={10} />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-line">
-            <button
-              type="button"
-              onClick={selectAll}
-              className="text-[9px] font-bold uppercase tracking-widest text-accent hover:underline"
-            >
-              Select All
-            </button>
-            <button
-              type="button"
-              onClick={clearAll}
-              className="text-[9px] font-bold uppercase tracking-widest text-muted hover:text-ink"
-            >
-              Clear
-            </button>
-          </div>
-
-          <div className="overflow-y-auto" style={{ maxHeight }}>
-            {sortedOptions.length === 0 ? (
-              <div className="px-3 py-4 text-center text-[10px] font-bold uppercase tracking-widest text-muted">
-                No options found
-              </div>
-            ) : (
-              sortedOptions.map((option) => {
-                const isChecked = selectedSet.has(option.value);
-                return (
-                  <label
-                    key={option.value}
-                    className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-surface/60 transition-colors ${isChecked ? 'bg-surface/40' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggle(option.value)}
-                      className="accent-accent flex-shrink-0"
-                    />
-                    <span className="text-[11px] font-medium text-ink truncate flex-1">
-                      {option.value}
-                    </span>
-                    <span className="text-[10px] font-bold text-muted tabular-nums flex-shrink-0">
-                      ({option.count})
-                    </span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+      {panel}
     </div>
   );
 }
