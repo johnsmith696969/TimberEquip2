@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Shield, FileWarning, AlertTriangle, Scale, Mail, FileText, Ban, Clock, CheckCircle2, XCircle, Users, Gavel } from 'lucide-react';
+import { Shield, FileWarning, AlertTriangle, Scale, Mail, Phone, FileText, Ban, Clock, CheckCircle2, XCircle, Users, Gavel } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Seo } from '../components/Seo';
 
@@ -97,13 +97,13 @@ export function Dmca() {
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Title</span>
                     <span className="text-sm text-ink font-bold">DMCA Designated Agent</span>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Email</span>
-                    <span className="text-sm text-ink font-bold">info@forestryequipmentsales.com</span>
+                    <a href="mailto:info@forestryequipmentsales.com" className="text-sm text-ink font-bold break-all hover:text-accent transition-colors">info@forestryequipmentsales.com</a>
                   </div>
                   <div className="space-y-1">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Phone</span>
-                    <span className="text-sm text-ink font-bold">+1 (218) 720-0933</span>
+                    <a href="tel:+12187200933" className="text-sm text-ink font-bold hover:text-accent transition-colors">+1 (218) 720-0933</a>
                   </div>
                   <div className="space-y-1 sm:col-span-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Mailing Address</span>
@@ -168,11 +168,11 @@ export function Dmca() {
                 ))}
               </div>
 
-              <div className="bg-surface border border-line p-6 flex items-start space-x-4 mt-4">
+              <div className="bg-surface border border-line p-6 flex min-w-0 items-start space-x-4 mt-4">
                 <Mail className="text-accent flex-shrink-0" size={20} />
-                <div>
+                <div className="min-w-0">
                   <span className="text-xs font-black uppercase tracking-widest block mb-1">Send Notices To</span>
-                  <p className="text-sm">info@forestryequipmentsales.com — Subject line: "DMCA Takedown Notice"</p>
+                  <p className="text-sm break-all"><a href="mailto:info@forestryequipmentsales.com" className="hover:text-accent transition-colors">info@forestryequipmentsales.com</a> — Subject line: "DMCA Takedown Notice"</p>
                   <p className="text-[10px] uppercase text-muted mt-2">
                     You may also send notices by mail to our Designated Agent address listed above.
                   </p>
@@ -376,17 +376,30 @@ export function Dmca() {
             </section>
 
             {/* Contact Section */}
-            <section className="bg-[#1C1917] text-white p-12 rounded-sm space-y-6">
+            <section className="bg-[#1C1917] text-white p-8 md:p-12 rounded-sm space-y-6">
+              <span className="label-micro block text-accent">Reach Us</span>
               <h2 className="text-2xl font-black uppercase tracking-tighter text-accent">DMCA Support</h2>
               <p className="text-white/60">
                 For questions about this policy, to report copyright infringement, or to submit
                 a counter-notification, contact our Designated Agent:
               </p>
-              <div className="flex flex-col space-y-2 font-black tracking-tight">
-                <span>info@forestryequipmentsales.com</span>
-                <span>+1 (218) 720-0933</span>
-                <span className="text-white/40 text-sm font-medium mt-2">Forestry Equipment Sales, LLC — Duluth, Minnesota, United States</span>
+              <div className="space-y-4">
+                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                  <Phone className="mt-0.5 text-accent" size={18} />
+                  <div>
+                    <span className="label-micro block text-white/60">Customer Support</span>
+                    <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
+                  </div>
+                </a>
+                <a href="mailto:info@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                  <Mail className="mt-0.5 text-accent" size={18} />
+                  <div className="min-w-0">
+                    <span className="label-micro block text-white/60">Email</span>
+                    <span className="block break-all text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
+                  </div>
+                </a>
               </div>
+              <span className="text-white/40 text-sm font-medium block">Forestry Equipment Sales, LLC — Duluth, Minnesota, United States</span>
             </section>
           </div>
         </motion.div>

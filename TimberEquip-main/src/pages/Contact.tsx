@@ -256,7 +256,7 @@ export function Contact() {
               <div className="space-y-10">
                 {[
                   { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
-                  { title: 'Email Support', desc: 'support@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com', valueClassName: 'block break-all text-xs font-semibold text-muted leading-relaxed normal-case tracking-normal' },
+                  { title: 'Email Support', desc: 'support@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com', valueClassName: 'block break-all text-sm font-black text-muted leading-relaxed normal-case tracking-tight' },
                   { title: 'HQ', desc: '4788 RICE LAKE RD, DULUTH, MN 55803', icon: MapPin, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
                   { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST | EMAIL 8AM-10PM CST', icon: Clock, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' }
                 ].map((item, i) => (

@@ -448,28 +448,22 @@ export function Logistics() {
               </div>
             </div>
 
-            <div className="border border-line bg-surface p-8">
-              <h3 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-accent">Need Immediate Help?</h3>
+            <div className="border border-line bg-surface p-8 md:p-10">
+              <span className="label-micro mb-4 block text-accent">Reach Us</span>
               <div className="space-y-4">
-                <a
-                  href="tel:+12187200933"
-                  className="flex items-center justify-between border border-line bg-bg px-5 py-4 text-sm font-black uppercase tracking-wider text-ink transition-colors hover:border-accent hover:text-accent"
-                >
-                  <span className="flex items-center gap-3">
-                    <Phone size={16} />
-                    (218) 720-0933
-                  </span>
-                  <ArrowRight size={16} />
+                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
+                  <Phone className="mt-0.5 text-accent" size={18} />
+                  <div>
+                    <span className="label-micro block text-muted">Customer Support</span>
+                    <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
+                  </div>
                 </a>
-                <a
-                  href="mailto:info@forestryequipmentsales.com"
-                  className="flex items-center justify-between border border-line bg-bg px-5 py-4 text-sm font-black uppercase tracking-wider text-ink transition-colors hover:border-accent hover:text-accent"
-                >
-                  <span className="flex items-center gap-3">
-                    <Mail size={16} />
-                    info@forestryequipmentsales.com
-                  </span>
-                  <ArrowRight size={16} />
+                <a href="mailto:info@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
+                  <Mail className="mt-0.5 text-accent" size={18} />
+                  <div className="min-w-0">
+                    <span className="label-micro block text-muted">Email</span>
+                    <span className="block break-all text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
+                  </div>
                 </a>
               </div>
             </div>
