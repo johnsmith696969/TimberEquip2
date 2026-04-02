@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface MultiSelectOption {
   value: string;
@@ -8,58 +9,27 @@ export interface MultiSelectOption {
 }
 
 interface Props {
+  label: string;
   placeholder: string;
   options: MultiSelectOption[];
   selected: string[];
   onChange: (selected: string[]) => void;
   searchable?: boolean;
-  maxHeight?: number;
 }
 
 export function MultiSelectDropdown({
+  label,
   placeholder,
   options,
   selected,
   onChange,
   searchable,
-  maxHeight = 280,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
-  const showSearch = searchable ?? options.length > 10;
-
-  // Position the portal panel below the trigger button
-  const updatePosition = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setPanelStyle({
-      position: 'fixed',
-      top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
-      zIndex: 9999,
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (open) updatePosition();
-  }, [open, updatePosition]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onScroll = () => updatePosition();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-    };
-  }, [open, updatePosition]);
+  const showSearch = searchable ?? options.length > 8;
 
   useEffect(() => {
     if (open && showSearch) {
@@ -68,27 +38,12 @@ export function MultiSelectDropdown({
     if (!open) setQuery('');
   }, [open, showSearch]);
 
-  // Close on click outside (check both trigger and panel)
+  // Lock body scroll when modal is open
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        triggerRef.current && !triggerRef.current.contains(target) &&
-        panelRef.current && !panelRef.current.contains(target)
-      ) {
-        setOpen(false);
-      }
-    };
-    if (open) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    if (open) document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
   }, [open]);
 
   const selectedSet = new Set(selected);
@@ -137,98 +92,142 @@ export function MultiSelectDropdown({
         ? selected.join(', ')
         : `${selected.length} selected`;
 
-  const panel = open ? createPortal(
-    <div ref={panelRef} style={panelStyle} className="border border-line bg-bg rounded-sm shadow-lg overflow-hidden">
-      {showSearch && (
-        <div className="p-2 border-b border-line">
-          <div className="relative">
-            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-            <input
-              ref={searchRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search..."
-              className="input-industrial w-full pl-7 py-1.5 text-[11px]"
-            />
-            {query && (
+  const modal = createPortal(
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-sm border border-line bg-bg shadow-2xl"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-line px-6 py-5">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest">{label}</h3>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted mt-1">
+                  {selected.length} of {options.length} selected
+                </p>
+              </div>
+              <button onClick={() => setOpen(false)} className="text-muted hover:text-ink">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Search */}
+            {showSearch && (
+              <div className="border-b border-line px-6 py-3">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={`Search ${label.toLowerCase()}...`}
+                    className="input-industrial w-full pl-9 py-2.5"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => setQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Select All / Clear row */}
+            <div className="flex items-center justify-between border-b border-line px-6 py-2.5">
               <button
                 type="button"
-                onClick={() => setQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
+                onClick={selectAll}
+                className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline"
               >
-                <X size={10} />
+                Select All{normalizedQuery ? ' Visible' : ''}
               </button>
-            )}
-          </div>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-[9px] font-black uppercase tracking-widest text-muted hover:text-ink"
+              >
+                Clear{normalizedQuery ? ' Visible' : ' All'}
+              </button>
+            </div>
+
+            {/* Option list */}
+            <div className="overflow-y-auto flex-1">
+              {sortedOptions.length === 0 ? (
+                <div className="px-6 py-10 text-center text-[10px] font-bold uppercase tracking-widest text-muted">
+                  No options match &ldquo;{query}&rdquo;
+                </div>
+              ) : (
+                sortedOptions.map((option) => {
+                  const isChecked = selectedSet.has(option.value);
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex items-center gap-3 px-6 py-3 cursor-pointer border-b border-line/50 hover:bg-surface/60 transition-colors ${isChecked ? 'bg-surface/40' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggle(option.value)}
+                        className="accent-accent flex-shrink-0 w-4 h-4"
+                      />
+                      <span className="text-xs font-medium text-ink truncate flex-1">
+                        {option.value}
+                      </span>
+                      <span className="text-[10px] font-bold text-muted tabular-nums flex-shrink-0">
+                        {option.count}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-line px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="btn-industrial btn-accent w-full py-3 text-[10px]"
+              >
+                Done{selected.length > 0 ? ` (${selected.length})` : ''}
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
-
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-line">
-        <button
-          type="button"
-          onClick={selectAll}
-          className="text-[9px] font-bold uppercase tracking-widest text-accent hover:underline"
-        >
-          Select All
-        </button>
-        <button
-          type="button"
-          onClick={clearAll}
-          className="text-[9px] font-bold uppercase tracking-widest text-muted hover:text-ink"
-        >
-          Clear
-        </button>
-      </div>
-
-      <div className="overflow-y-auto" style={{ maxHeight }}>
-        {sortedOptions.length === 0 ? (
-          <div className="px-3 py-4 text-center text-[10px] font-bold uppercase tracking-widest text-muted">
-            No options found
-          </div>
-        ) : (
-          sortedOptions.map((option) => {
-            const isChecked = selectedSet.has(option.value);
-            return (
-              <label
-                key={option.value}
-                className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-surface/60 transition-colors ${isChecked ? 'bg-surface/40' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => toggle(option.value)}
-                  className="accent-accent flex-shrink-0"
-                />
-                <span className="text-[11px] font-medium text-ink truncate flex-1">
-                  {option.value}
-                </span>
-                <span className="text-[10px] font-bold text-muted tabular-nums flex-shrink-0">
-                  ({option.count})
-                </span>
-              </label>
-            );
-          })
-        )}
-      </div>
-    </div>,
+    </AnimatePresence>,
     document.body
-  ) : null;
+  );
 
   return (
     <div>
       <button
-        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen(true)}
         className="select-industrial w-full text-left flex items-center justify-between gap-2"
       >
         <span className={`truncate ${selected.length === 0 ? 'text-muted' : 'text-ink'}`}>
           {summaryText}
         </span>
-        <ChevronDown size={14} className={`flex-shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className="flex-shrink-0 text-muted" />
       </button>
-      {panel}
+      {modal}
     </div>
   );
 }

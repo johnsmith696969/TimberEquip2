@@ -1127,6 +1127,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Subcategory</span>
                         <MultiSelectDropdown
+                          label="Subcategory"
                           placeholder="All Subcategories"
                           options={subcategoryMultiOptions}
                           selected={parseMultiValue(draftFilters.subcategory)}
@@ -1137,6 +1138,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Manufacturer / Brand</span>
                         <MultiSelectDropdown
+                          label="Manufacturers"
                           placeholder="All Manufacturers"
                           options={manufacturerMultiOptions}
                           selected={parseMultiValue(draftFilters.manufacturer)}
@@ -1147,6 +1149,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Model</span>
                         <MultiSelectDropdown
+                          label="Models"
                           placeholder="All Models"
                           options={modelMultiOptions}
                           selected={parseMultiValue(draftFilters.model)}
@@ -1261,6 +1264,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Condition</span>
                         <MultiSelectDropdown
+                          label="Condition"
                           placeholder="All Conditions"
                           options={conditionMultiOptions}
                           selected={parseMultiValue(draftFilters.condition)}
@@ -1376,6 +1380,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                         <div className="flex flex-col space-y-2">
                           <span className="label-micro">State / Province</span>
                           <MultiSelectDropdown
+                            label="States / Provinces"
                             placeholder="All States"
                             options={stateMultiOptions}
                             selected={parseMultiValue(draftFilters.state)}
@@ -1385,6 +1390,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                         <div className="flex flex-col space-y-2">
                           <span className="label-micro">Country</span>
                           <MultiSelectDropdown
+                            label="Countries"
                             placeholder="All Countries"
                             options={countryMultiOptions}
                             selected={parseMultiValue(draftFilters.country)}
