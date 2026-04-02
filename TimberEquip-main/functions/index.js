@@ -1,3 +1,4 @@
+const functions = require('firebase-functions');
 const { onObjectFinalized } = require('firebase-functions/v2/storage');
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
