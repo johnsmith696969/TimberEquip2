@@ -46,6 +46,20 @@ describe('email templates', () => {
     expect(html).toContain('Back To Login');
   });
 
+  it('renders password reset success emails with security actions', () => {
+    const { subject, html } = templates.passwordResetSuccess({
+      displayName: 'Dealer Admin',
+      changedAt: 'April 2, 2026 at 2:10 AM',
+      loginUrl: 'https://timberequip.com/login',
+      supportUrl: 'https://timberequip.com/contact',
+    });
+
+    expect(subject).toContain('password was changed');
+    expect(html).toContain('Password Changed Successfully');
+    expect(html).toContain('April 2, 2026 at 2:10 AM');
+    expect(html).toContain('Contact Support');
+  });
+
   it('renders billing recovery actions for failed payment emails', () => {
     const { subject, html } = templates.paymentFailedPastDue({
       displayName: 'Dealer Admin',

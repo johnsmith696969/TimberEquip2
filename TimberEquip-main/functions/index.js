@@ -372,6 +372,7 @@ const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMITS = Object.freeze({
   sendVerificationEmail: 3,
   passwordReset: 5,
+  passwordResetSuccess: 2,
 });
 const recentAuthEndpointRequests = new Map();
 
@@ -909,6 +910,22 @@ async function sendPasswordResetEmailMessage({ email, displayName, requestedBy, 
     intro,
     resetUrl: brandedResetUrl,
     loginUrl: `${APP_URL}/login`,
+  });
+
+  await sendEmail({
+    to: email,
+    subject: payload.subject,
+    html: payload.html,
+  });
+}
+
+async function sendPasswordResetSuccessEmailMessage({ email, displayName, changedAt, appUrl = APP_URL }) {
+  const resolvedAppUrl = normalizeNonEmptyString(appUrl, APP_URL);
+  const payload = templates.passwordResetSuccess({
+    displayName: String(displayName || 'there').trim() || 'there',
+    changedAt: String(changedAt || '').trim() || new Date().toLocaleString('en-US'),
+    loginUrl: `${resolvedAppUrl}/login`,
+    supportUrl: `${resolvedAppUrl}/contact`,
   });
 
   await sendEmail({
@@ -9930,6 +9947,13 @@ function buildTemplateTestPayload(templateKey) {
         resetUrl: `${APP_URL}/reset-password?oobCode=demo-code&mode=resetPassword&continueUrl=%2Flogin`,
         loginUrl: `${APP_URL}/login`,
       });
+    case 'passwordResetSuccess':
+      return templates.passwordResetSuccess({
+        displayName: 'Caleb',
+        changedAt: 'April 2, 2026 at 2:10 AM',
+        loginUrl: `${APP_URL}/login`,
+        supportUrl: `${APP_URL}/contact`,
+      });
     case 'subscriptionCreated':
       return templates.subscriptionCreated({
         displayName: 'Caleb',
@@ -10675,6 +10699,63 @@ exports.apiProxy = onRequest(
           logger.error('Failed to send self-service password reset email', error);
           return res.status(500).json({
             error: 'Unable to send password reset email right now.',
+            code: 'auth/internal-error',
+          });
+        }
+      }
+
+      if (req.method === 'POST' && path === '/auth/password-reset-success') {
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        if (!/.+@.+\..+/.test(email)) {
+          return res.status(400).json({
+            error: 'Please enter a valid email address.',
+            code: 'auth/invalid-email',
+          });
+        }
+
+        const passwordResetSuccessRateLimit = consumeAuthRateLimit(
+          'password-reset-success',
+          req,
+          email,
+          AUTH_RATE_LIMITS.passwordResetSuccess,
+        );
+
+        if (!passwordResetSuccessRateLimit.allowed) {
+          res.set('Retry-After', String(passwordResetSuccessRateLimit.retryAfterSeconds));
+          logger.warn('Password reset success endpoint rate limit exceeded.', {
+            email,
+            ipAddress: getRequestIp(req),
+          });
+          return res.status(429).json({
+            error: 'Too many password reset confirmation email requests. Please wait before trying again.',
+            code: 'auth/too-many-requests',
+            retryAfterSeconds: passwordResetSuccessRateLimit.retryAfterSeconds,
+          });
+        }
+
+        try {
+          let displayName = 'there';
+          try {
+            const userRecord = await admin.auth().getUserByEmail(email);
+            displayName = String(userRecord.displayName || 'there').trim() || 'there';
+          } catch (error) {
+            if (isAuthUserNotFound(error)) {
+              return res.status(200).json({ sent: true });
+            }
+            throw error;
+          }
+
+          await sendPasswordResetSuccessEmailMessage({
+            email,
+            displayName,
+            appUrl: resolveAppUrlFromRequest(req),
+          });
+
+          return res.status(200).json({ sent: true });
+        } catch (error) {
+          logger.error('Failed to send password reset success email', error);
+          return res.status(500).json({
+            error: 'Unable to send password reset confirmation email right now.',
             code: 'auth/internal-error',
           });
         }

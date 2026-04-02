@@ -41,6 +41,24 @@ function getResetErrorMessage(input: unknown): string {
   return input instanceof Error ? input.message : 'Unable to complete this password reset request.';
 }
 
+async function notifyPasswordResetSuccess(email: string) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return;
+
+  const response = await fetch('/api/auth/password-reset-success', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email: normalizedEmail }),
+    keepalive: true,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Password reset success email failed with status ${response.status}`);
+  }
+}
+
 export function ResetPassword() {
   const { theme } = useTheme();
   const [searchParams] = useSearchParams();
@@ -110,6 +128,9 @@ export function ResetPassword() {
     setSubmitting(true);
     try {
       await confirmPasswordReset(auth, oobCode, password);
+      void notifyPasswordResetSuccess(email).catch((notifyError) => {
+        console.warn('Unable to send password reset success email.', notifyError);
+      });
       setCompleted(true);
       setPassword('');
       setConfirmPassword('');

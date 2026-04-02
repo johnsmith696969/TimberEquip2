@@ -1,7 +1,7 @@
 {
-  "syncedAt": "2026-04-02T10:42:58.000Z",
+  "syncedAt": "2026-04-02T19:18:53.000Z",
   "appUrl": "https://timberequip.com",
-  "totalDynamicTemplates": 36,
+  "totalDynamicTemplates": 37,
   "templates": [
     {
       "key": "leadNotification",
@@ -37,6 +37,12 @@
       "key": "passwordReset",
       "name": "Password Reset | Forestry Equipment Sales",
       "templateId": "d-6d1f7f53ea5b43099337b9561b8ccf50",
+      "status": "created"
+    },
+    {
+      "key": "passwordResetSuccess",
+      "name": "Password Reset Success | Forestry Equipment Sales",
+      "templateId": "d-922c403c394d49e6ae217c52e458db49",
       "status": "created"
     },
     {

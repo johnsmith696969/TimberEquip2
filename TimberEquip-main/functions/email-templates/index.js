@@ -274,6 +274,25 @@ const templates = {
     return { subject, html };
   },
 
+  passwordResetSuccess({ displayName, changedAt, loginUrl, supportUrl }) {
+    const subject = 'Your Forestry Equipment Sales password was changed';
+    const html = baseLayout(subject, 'Password Changed Successfully', `
+      <p class="label">Security Confirmation</p>
+      <h2>Your password has been updated</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>This is a confirmation that the password for your Forestry Equipment Sales account was changed successfully.</p>
+      ${renderInfoPanel([
+        { label: 'Changed', value: changedAt || 'Just now' },
+        { label: 'Account Access', value: 'Your new password is now required the next time you sign in.' },
+      ])}
+      <p>If you made this change, no further action is needed.</p>
+      <p>If you did <strong>not</strong> change your password, secure your account immediately and contact Forestry Equipment Sales support so we can help lock down access.</p>
+      <a href="${loginUrl}" class="cta">Sign In</a>
+      <a href="${supportUrl || CONTACT_URL}" class="cta cta-secondary">Contact Support</a>
+    `);
+    return { subject, html };
+  },
+
   voicemailNotification({ sellerName, callerNumber, callTimestamp, dashboardUrl }) {
     const subject = 'New voicemail on Forestry Equipment Sales';
     const html = baseLayout(subject, 'Voicemail Received', `

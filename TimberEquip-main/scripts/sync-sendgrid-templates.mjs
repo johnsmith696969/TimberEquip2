@@ -40,6 +40,7 @@ function buildSharedTemplateData() {
   verificationLink: token('verificationLink'),
   intro: token('intro'),
   resetUrl: token('resetUrl'),
+  changedAt: token('changedAt'),
   planName: token('planName'),
   expiryDate: token('expiryDate'),
   renewUrl: token('renewUrl'),
@@ -136,6 +137,11 @@ function buildTemplateSpecs() {
     key: 'passwordReset',
     name: templateName('Password Reset'),
     render: () => templates.passwordReset(SHARED_TEMPLATE_DATA),
+  },
+  {
+    key: 'passwordResetSuccess',
+    name: templateName('Password Reset Success'),
+    render: () => templates.passwordResetSuccess(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'subscriptionExpiring',
