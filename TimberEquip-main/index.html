@@ -33,7 +33,21 @@
   <body>
     <script>
       // Prevent Flash of Wrong Theme (FOWT) — runs before React
-      (function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark');document.querySelector('meta[name="theme-color"]').setAttribute('content','#0C0A09')}}catch(e){}})();
+      (function () {
+        try {
+          var saved = localStorage.getItem('theme');
+          var resolved = saved === 'light' || saved === 'dark'
+            ? saved
+            : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          var root = document.documentElement;
+          root.classList.remove('light', 'dark');
+          root.classList.add(resolved);
+          root.setAttribute('data-theme', resolved);
+          root.style.colorScheme = resolved;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0C0A09' : '#FFFFFF');
+        } catch (e) {}
+      })();
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
