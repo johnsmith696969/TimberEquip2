@@ -10,7 +10,7 @@ interface SeoProps {
   imagePath?: string;
 }
 
-const BASE_URL = 'https://www.forestryequipmentsales.com';
+const BASE_URL = 'https://timberequip.com';
 const DEFAULT_ROBOTS =
   import.meta.env.VITE_ALLOW_INDEXING === 'true'
     ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'

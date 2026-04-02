@@ -153,7 +153,7 @@ export function ListingDetail() {
 
   const getListingUrl = (targetListing?: Listing | null) => {
     if (typeof window !== 'undefined') return window.location.href;
-    return targetListing ? `https://www.forestryequipmentsales.com${buildListingPath(targetListing)}` : '';
+    return targetListing ? `https://timberequip.com${buildListingPath(targetListing)}` : '';
   };
 
   const formatSpecValue = (value: unknown): string => {
@@ -921,14 +921,14 @@ export function ListingDetail() {
       '@type': 'ListItem',
       position: 1,
       name: 'Home',
-      item: 'https://www.forestryequipmentsales.com/',
+      item: 'https://timberequip.com/',
     },
     routeCategory
       ? {
           '@type': 'ListItem',
           position: 2,
           name: `${routeCategory} For Sale`,
-          item: `https://www.forestryequipmentsales.com${buildCategoryPath(routeCategory)}`,
+          item: `https://timberequip.com${buildCategoryPath(routeCategory)}`,
         }
       : null,
     routeManufacturer
@@ -936,7 +936,7 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 3 : 2,
           name: routeManufacturer,
-          item: `https://www.forestryequipmentsales.com${buildManufacturerPath(routeManufacturer)}`,
+          item: `https://timberequip.com${buildManufacturerPath(routeManufacturer)}`,
         }
       : null,
     routeManufacturer && routeModel
@@ -944,14 +944,14 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 4 : 3,
           name: `${routeManufacturer} ${routeModel}`,
-          item: `https://www.forestryequipmentsales.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
+          item: `https://timberequip.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
         }
       : null,
     {
       '@type': 'ListItem',
       position: routeManufacturer && routeModel ? (routeCategory ? 5 : 4) : routeManufacturer ? (routeCategory ? 4 : 3) : routeCategory ? 3 : 2,
       name: detailSeoHeadline,
-      item: `https://www.forestryequipmentsales.com${listingPath}`,
+      item: `https://timberequip.com${listingPath}`,
     },
   ].filter(Boolean);
   const detailJsonLd = {
@@ -970,7 +970,7 @@ export function ListingDetail() {
         sku: listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
-        url: `https://www.forestryequipmentsales.com${listingPath}`,
+        url: `https://timberequip.com${listingPath}`,
         brand: {
           '@type': 'Brand',
           name: routeManufacturer,
@@ -992,7 +992,7 @@ export function ListingDetail() {
           })),
         offers: {
           '@type': 'Offer',
-          url: `https://www.forestryequipmentsales.com${listingPath}`,
+          url: `https://timberequip.com${listingPath}`,
           priceCurrency: listing.currency || 'USD',
           availability: String(listing.status || 'active').toLowerCase() === 'sold'
             ? 'https://schema.org/SoldOut'
@@ -1002,7 +1002,7 @@ export function ListingDetail() {
           seller: {
             '@type': 'Organization',
             name: seller?.storefrontName || safeSellerName,
-            url: dealerPath ? `https://www.forestryequipmentsales.com${dealerPath}` : undefined,
+            url: dealerPath ? `https://timberequip.com${dealerPath}` : undefined,
           },
         },
       },
@@ -1679,7 +1679,7 @@ export function ListingDetail() {
                   </div>
                 </div>
 
-                <Link to={dealerPath || `/seller/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
+                <Link to={dealerPath || `/dealers/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
                   {t('listingDetail.viewFullProfile', 'View Full Profile')}
                 </Link>
               </div>

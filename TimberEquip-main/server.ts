@@ -18,6 +18,15 @@ import { captureServerException, initializeServerSentry } from './sentry.server.
 dotenv.config();
 initializeServerSentry();
 
+// Startup env var validation — warn on missing recommended vars
+{
+  const recommended = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RECAPTCHA_API_KEY'];
+  const missing = recommended.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    console.warn(`[startup] Missing recommended environment variables: ${missing.join(', ')}`);
+  }
+}
+
 process.on('uncaughtException', (error) => {
   captureServerException(error, {
     tags: { process_event: 'uncaughtException' },
@@ -973,6 +982,18 @@ async function getManagedAccountSeatContext(ownerUid: string): Promise<{
   };
 }
 
+const TRUSTED_HOSTS = new Set([
+  'timberequip.com',
+  'www.timberequip.com',
+  'www.forestryequipmentsales.com',
+  'forestryequipmentsales.com',
+  'mobile-app-equipment-sales.web.app',
+  'mobile-app-equipment-sales.firebaseapp.com',
+  'timberequip-staging.web.app',
+  'localhost:3000',
+  'localhost:5173',
+]);
+
 function getRequestBaseUrl(req: express.Request): string {
   const forwardedProtoRaw = req.headers['x-forwarded-proto'];
   const forwardedProto = Array.isArray(forwardedProtoRaw) ? forwardedProtoRaw[0] : forwardedProtoRaw;
@@ -980,13 +1001,13 @@ function getRequestBaseUrl(req: express.Request): string {
 
   const forwardedHostRaw = req.headers['x-forwarded-host'];
   const forwardedHost = Array.isArray(forwardedHostRaw) ? forwardedHostRaw[0] : forwardedHostRaw;
-  const host = String(forwardedHost || req.get('host') || '').split(',')[0].trim();
+  const host = String(forwardedHost || req.get('host') || '').split(',')[0].trim().toLowerCase();
 
-  if (host) {
+  if (host && TRUSTED_HOSTS.has(host)) {
     return `${proto}://${host}`;
   }
 
-  return process.env.PUBLIC_APP_URL || 'https://www.forestryequipmentsales.com';
+  return process.env.PUBLIC_APP_URL || 'https://timberequip.com';
 }
 
 async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<string> {
@@ -1214,8 +1235,6 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
 
-  app.get('/server-test', (req, res) => res.send('Server is alive and reachable'));
-
   // 1. Security Headers (WAF-like protection at app level)
   app.use(helmet({
     contentSecurityPolicy: {
@@ -1233,7 +1252,7 @@ async function startServer() {
       },
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginResourcePolicy: { policy: "same-site" },
     hsts: process.env.NODE_ENV === 'production'
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
@@ -1253,6 +1272,9 @@ async function startServer() {
       next();
     });
   }
+
+  // Trust first proxy (Cloud Run / Firebase Hosting) so express-rate-limit sees real client IPs
+  app.set('trust proxy', 1);
 
   // 2. Rate Limiting (DDoS protection)
   const limiter = rateLimit({
@@ -1289,7 +1311,8 @@ async function startServer() {
 
   // 3. CORS
   const ALLOWED_ORIGINS: string[] = [
-    'https://www.forestryequipmentsales.com',
+    'https://timberequip.com',
+    'https://www.timberequip.com',
     'https://forestryequipmentsales.com',
     'https://mobile-app-equipment-sales.web.app',
     'https://mobile-app-equipment-sales.firebaseapp.com',
@@ -1328,19 +1351,29 @@ async function startServer() {
       return res.status(400).json({ error: 'Invalid webhook signature.' });
     }
 
-    // Idempotency check: Check if we've already processed this event
+    // Idempotency check: atomic check-and-set via transaction to prevent race conditions
     const eventRef = db.collection('webhook_events').doc(event.id);
-    const eventDoc = await eventRef.get();
-    if (eventDoc.exists) {
+    let isDuplicate = false;
+    try {
+      await db.runTransaction(async (tx) => {
+        const eventDoc = await tx.get(eventRef);
+        if (eventDoc.exists) {
+          isDuplicate = true;
+          return;
+        }
+        tx.set(eventRef, {
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          type: event.type,
+        });
+      });
+    } catch (txErr) {
+      console.error('Webhook dedup transaction failed:', txErr);
+      return res.status(500).json({ error: 'Internal error' });
+    }
+    if (isDuplicate) {
       console.log(`Webhook event ${event.id} already processed.`);
       return res.json({ received: true, duplicate: true });
     }
-
-    // Mark event as processed
-    await eventRef.set({
-      processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      type: event.type
-    });
 
     // Handle the event
     try {
@@ -1608,6 +1641,7 @@ async function startServer() {
   if (sharedPublicPagesProxy) {
     app.get(
       [
+        '/',
         '/sitemap.xml',
         '/logging-equipment-for-sale',
         '/forestry-equipment-for-sale',
@@ -2114,7 +2148,13 @@ async function startServer() {
     }
   });
 
-  app.post('/api/recaptcha-assess', express.json(), async (req, res) => {
+  const recaptchaLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { error: 'Too many reCAPTCHA requests. Please try again in a minute.' },
+  });
+
+  app.post('/api/recaptcha-assess', recaptchaLimiter, express.json(), async (req, res) => {
     const { token, action } = req.body || {};
     if (!token || !action) return res.status(400).json({ error: 'token and action required' });
 
@@ -2130,7 +2170,7 @@ async function startServer() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: { token, siteKey: '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0', expectedAction: action } }),
+          body: JSON.stringify({ event: { token, siteKey: process.env.RECAPTCHA_SITE_KEY || '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0', expectedAction: action } }),
         }
       );
       if (!response.ok) {
@@ -2438,10 +2478,14 @@ async function startServer() {
 
     try {
       const decodedToken = await auth.verifyIdToken(idToken);
-      const user = await db.collection('users').doc(decodedToken.uid).get();
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
-        return res.status(403).json({ error: 'Forbidden' });
+      const claimRole = String(decodedToken.role || '').trim().toLowerCase();
+      const isAdminByClaim = canAdministrateAccountRole(claimRole);
+      if (!isPrivilegedAdminEmail(actorEmail) && !isAdminByClaim) {
+        const user = await db.collection('users').doc(decodedToken.uid).get();
+        if (!canAdministrateAccountRole(user.data()?.role)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
       }
 
       const authUsers: admin.auth.UserRecord[] = [];

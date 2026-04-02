@@ -17,6 +17,10 @@
     ],
     "rewrites": [
       {
+        "source": "/",
+        "function": "publicPages"
+      },
+      {
         "source": "/api/**",
         "function": "apiProxy"
       },
@@ -30,6 +34,14 @@
       },
       {
         "source": "/forestry-equipment-for-sale",
+        "function": "publicPages"
+      },
+      {
+        "source": "/categories",
+        "function": "publicPages"
+      },
+      {
+        "source": "/categories/**",
         "function": "publicPages"
       },
       {
@@ -77,6 +89,15 @@
           {
             "key": "Cache-Control",
             "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
           }
         ]
       },

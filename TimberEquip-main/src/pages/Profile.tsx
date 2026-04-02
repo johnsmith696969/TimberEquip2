@@ -29,6 +29,11 @@ import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import { Seo } from '../components/Seo';
+import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
+import { TagSelectorModal } from '../components/TagSelectorModal';
+import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
+import { SERVICE_AREA_REGION_OPTIONS, SERVICE_AREA_SCOPE_OPTIONS, STOREFRONT_COUNTRY_OPTIONS } from '../constants/storefrontRegions';
+import { buildDealerPath } from '../utils/seoRoutes';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
@@ -282,16 +287,32 @@ export function Profile() {
     storefrontSlug: '',
     storefrontTagline: '',
     storefrontDescription: '',
+    businessName: '',
+    street1: '',
+    street2: '',
+    city: '',
+    state: '',
+    county: '',
+    postalCode: '',
+    country: 'United States',
+    latitude: null as number | null,
+    longitude: null as number | null,
     location: '',
     phone: '',
     email: '',
     website: '',
     logo: '',
     coverPhotoUrl: '',
+    serviceAreaScopes: [] as string[],
+    serviceAreaStates: [] as string[],
+    serviceAreaCounties: [] as string[],
+    servicesOfferedCategories: [] as string[],
+    servicesOfferedSubcategories: [] as string[],
     seoTitle: '',
     seoDescription: '',
     seoKeywordsCsv: '',
   });
+  const [storefrontTaxonomy, setStorefrontTaxonomy] = useState<EquipmentTaxonomy>({});
   const [smsMfaFactors, setSmsMfaFactors] = useState<SmsMfaFactorSummary[]>([]);
   const [mfaPhoneNumber, setMfaPhoneNumber] = useState('');
   const [mfaDisplayName, setMfaDisplayName] = useState('');
@@ -476,17 +497,53 @@ export function Profile() {
       storefrontSlug: storefrontPreview?.storefrontSlug || user.storefrontSlug || '',
       storefrontTagline: storefrontPreview?.storefrontTagline || user.storefrontTagline || '',
       storefrontDescription: storefrontPreview?.storefrontDescription || user.storefrontDescription || user.about || '',
+      businessName: storefrontPreview?.businessName || user.businessName || user.company || sellerName,
+      street1: storefrontPreview?.street1 || user.street1 || '',
+      street2: storefrontPreview?.street2 || user.street2 || '',
+      city: storefrontPreview?.city || user.city || '',
+      state: storefrontPreview?.state || user.state || '',
+      county: storefrontPreview?.county || user.county || '',
+      postalCode: storefrontPreview?.postalCode || user.postalCode || '',
+      country: storefrontPreview?.country || user.country || 'United States',
+      latitude: typeof storefrontPreview?.latitude === 'number' ? storefrontPreview.latitude : typeof user.latitude === 'number' ? user.latitude : null,
+      longitude: typeof storefrontPreview?.longitude === 'number' ? storefrontPreview.longitude : typeof user.longitude === 'number' ? user.longitude : null,
       location: sellerLocation,
       phone: storefrontPreview?.phone || user.phoneNumber || '',
       email: storefrontPreview?.email || user.email || '',
       website: storefrontPreview?.website || user.website || '',
-      logo: storefrontPreview?.logo || user.photoURL || '',
+      logo: storefrontPreview?.logo || user.storefrontLogoUrl || user.photoURL || '',
       coverPhotoUrl: storefrontPreview?.coverPhotoUrl || user.coverPhotoUrl || '',
+      serviceAreaScopes: storefrontPreview?.serviceAreaScopes || user.serviceAreaScopes || [],
+      serviceAreaStates: storefrontPreview?.serviceAreaStates || user.serviceAreaStates || [],
+      serviceAreaCounties: storefrontPreview?.serviceAreaCounties || user.serviceAreaCounties || [],
+      servicesOfferedCategories: storefrontPreview?.servicesOfferedCategories || user.servicesOfferedCategories || [],
+      servicesOfferedSubcategories: storefrontPreview?.servicesOfferedSubcategories || user.servicesOfferedSubcategories || [],
       seoTitle: storefrontPreview?.seoTitle || user.seoTitle || defaultSeoTitle,
       seoDescription: storefrontPreview?.seoDescription || user.seoDescription || defaultSeoDescription,
       seoKeywordsCsv: keywords || defaultSeoKeywords,
     });
   }, [storefrontPreview, user]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStorefrontTaxonomy = async () => {
+      try {
+        const taxonomy = await taxonomyService.getTaxonomy();
+        if (active) {
+          setStorefrontTaxonomy(taxonomy);
+        }
+      } catch (error) {
+        console.warn('Unable to load storefront taxonomy options right now:', error);
+      }
+    };
+
+    void loadStorefrontTaxonomy();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || auth.currentUser?.uid !== user.uid) {
@@ -507,6 +564,58 @@ export function Profile() {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
     mfaRecaptchaRef.current = null;
   }, []);
+
+  const storefrontCategoryOptions = useMemo(
+    () => Object.keys(storefrontTaxonomy)
+      .sort((left, right) => left.localeCompare(right))
+      .map((value) => ({ value, count: 0 })),
+    [storefrontTaxonomy]
+  );
+
+  const storefrontSubcategoryOptions = useMemo(() => {
+    const categoryPool = storefrontForm.servicesOfferedCategories.length
+      ? storefrontForm.servicesOfferedCategories
+      : Object.keys(storefrontTaxonomy);
+    const subcategories = new Set<string>();
+
+    categoryPool.forEach((category) => {
+      Object.keys(storefrontTaxonomy[category] || {}).forEach((subcategory) => {
+        subcategories.add(subcategory);
+      });
+    });
+
+    return Array.from(subcategories)
+      .sort((left, right) => left.localeCompare(right))
+      .map((value) => ({ value, count: 0 }));
+  }, [storefrontForm.servicesOfferedCategories, storefrontTaxonomy]);
+
+  const storefrontServiceAreaScopeOptions = useMemo(
+    () => SERVICE_AREA_SCOPE_OPTIONS.map((value) => ({ value, count: 0 })),
+    []
+  );
+
+  const storefrontServiceAreaRegionOptions = useMemo(
+    () => SERVICE_AREA_REGION_OPTIONS.map((value) => ({ value, count: 0 })),
+    []
+  );
+
+  const countySuggestions = useMemo(() => {
+    const suggestions = new Set<string>();
+    if (storefrontForm.county.trim()) suggestions.add(storefrontForm.county.trim());
+    storefrontForm.serviceAreaCounties.forEach((county) => suggestions.add(county));
+    return Array.from(suggestions).sort((left, right) => left.localeCompare(right));
+  }, [storefrontForm.county, storefrontForm.serviceAreaCounties]);
+
+  useEffect(() => {
+    if (!storefrontForm.servicesOfferedSubcategories.length) return;
+    if (!Object.keys(storefrontTaxonomy).length) return;
+
+    const allowed = new Set(storefrontSubcategoryOptions.map((option) => option.value));
+    const filtered = storefrontForm.servicesOfferedSubcategories.filter((value) => allowed.has(value));
+    if (filtered.length !== storefrontForm.servicesOfferedSubcategories.length) {
+      setStorefrontForm((prev) => ({ ...prev, servicesOfferedSubcategories: filtered }));
+    }
+  }, [storefrontForm.servicesOfferedSubcategories, storefrontSubcategoryOptions, storefrontTaxonomy]);
 
   const handleSettingsInputChange = (key: keyof typeof settingsForm, value: string) => {
     setSettingsForm((prev) => ({ ...prev, [key]: value }));
@@ -1446,7 +1555,19 @@ export function Profile() {
   };
 
   const handleStorefrontInputChange = (key: keyof typeof storefrontForm, value: string) => {
-    setStorefrontForm((prev) => ({ ...prev, [key]: value }));
+    setStorefrontForm((prev) => ({ ...prev, [key]: value } as typeof prev));
+  };
+
+  const handleStorefrontArrayChange = (
+    key:
+      | 'serviceAreaScopes'
+      | 'serviceAreaStates'
+      | 'serviceAreaCounties'
+      | 'servicesOfferedCategories'
+      | 'servicesOfferedSubcategories',
+    values: string[]
+  ) => {
+    setStorefrontForm((prev) => ({ ...prev, [key]: values } as typeof prev));
   };
 
   const handleSaveStorefront = async () => {
@@ -1476,6 +1597,21 @@ export function Profile() {
           preferredSlug: storefrontForm.storefrontSlug.trim(),
           storefrontTagline: storefrontForm.storefrontTagline.trim(),
           storefrontDescription: storefrontForm.storefrontDescription.trim(),
+          businessName: storefrontForm.businessName.trim(),
+          street1: storefrontForm.street1.trim(),
+          street2: storefrontForm.street2.trim(),
+          city: storefrontForm.city.trim(),
+          state: storefrontForm.state.trim(),
+          county: storefrontForm.county.trim(),
+          postalCode: storefrontForm.postalCode.trim(),
+          country: storefrontForm.country.trim(),
+          latitude: storefrontForm.latitude,
+          longitude: storefrontForm.longitude,
+          serviceAreaScopes: storefrontForm.serviceAreaScopes,
+          serviceAreaStates: storefrontForm.serviceAreaStates,
+          serviceAreaCounties: storefrontForm.serviceAreaCounties,
+          servicesOfferedCategories: storefrontForm.servicesOfferedCategories,
+          servicesOfferedSubcategories: storefrontForm.servicesOfferedSubcategories,
           location: storefrontForm.location.trim(),
           phone: storefrontForm.phone.trim(),
           email: storefrontForm.email.trim().toLowerCase(),
@@ -2148,7 +2284,10 @@ export function Profile() {
   );
 
   const renderStorefront = () => {
-    const publicPath = `/seller/${storefrontPreview?.storefrontSlug || storefrontForm.storefrontSlug || user?.uid || ''}`;
+    const publicPath = buildDealerPath({
+      id: user?.uid || '',
+      storefrontSlug: storefrontPreview?.storefrontSlug || storefrontForm.storefrontSlug || user?.uid || '',
+    });
 
     return (
       <div className="space-y-12">
@@ -2158,8 +2297,8 @@ export function Profile() {
               <h3 className="text-sm font-black uppercase tracking-widest">{storefrontTabLabel} Settings</h3>
               <p className="text-[10px] font-bold text-muted uppercase tracking-widest mt-2 max-w-3xl">
                 {user?.role === 'individual_seller'
-                  ? 'This controls your public owner-operator profile, canonical seller URL, search metadata, and storefront presentation.'
-                  : 'This controls your storefront branding, canonical seller URL, and the metadata used by your public seller page.'}
+                  ? 'This controls your public owner-operator profile, canonical dealer URL, search metadata, and structured storefront presentation.'
+                  : 'This controls your storefront branding, canonical dealer URL, service coverage, and the metadata used by your public dealer page.'}
               </p>
             </div>
             <Link to={publicPath} className="btn-industrial btn-accent py-2 px-4 text-[10px]">
@@ -2167,18 +2306,30 @@ export function Profile() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-surface border border-line p-6">
               <span className="label-micro block mb-2">Canonical URL</span>
               <p className="text-xs font-black uppercase tracking-widest break-all">{publicPath}</p>
             </div>
             <div className="bg-surface border border-line p-6">
-              <span className="label-micro block mb-2">Logo Source</span>
-              <p className="text-xs font-black uppercase tracking-widest break-all">{storefrontForm.logo || 'Uses account profile image'}</p>
+              <span className="label-micro block mb-2">Auto Geocode</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">
+                {typeof storefrontForm.latitude === 'number' && typeof storefrontForm.longitude === 'number'
+                  ? `${storefrontForm.latitude.toFixed(5)}, ${storefrontForm.longitude.toFixed(5)}`
+                  : 'Calculated from street address when you save'}
+              </p>
             </div>
             <div className="bg-surface border border-line p-6">
-              <span className="label-micro block mb-2">Cover Source</span>
-              <p className="text-xs font-black uppercase tracking-widest break-all">{storefrontForm.coverPhotoUrl || 'Uses account cover image'}</p>
+              <span className="label-micro block mb-2">Services Offered</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">
+                {storefrontForm.servicesOfferedSubcategories.length || storefrontForm.servicesOfferedCategories.length || 0} selected
+              </p>
+            </div>
+            <div className="bg-surface border border-line p-6">
+              <span className="label-micro block mb-2">Service Area Coverage</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">
+                {storefrontForm.serviceAreaScopes.length + storefrontForm.serviceAreaStates.length + storefrontForm.serviceAreaCounties.length || 0} selectors active
+              </p>
             </div>
           </div>
 
@@ -2191,17 +2342,20 @@ export function Profile() {
               <label className="label-micro">Canonical Slug</label>
               <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontSlug} onChange={(e) => handleStorefrontInputChange('storefrontSlug', e.target.value)} placeholder="auto-generated-from-name" />
             </div>
+            <div className="space-y-2">
+              <label className="label-micro">Legal Business Name</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.businessName} onChange={(e) => handleStorefrontInputChange('businessName', e.target.value)} placeholder="Business name used on your storefront and schema" />
+            </div>
             <div className="space-y-2 md:col-span-2">
               <label className="label-micro">Tagline</label>
               <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontTagline} onChange={(e) => handleStorefrontInputChange('storefrontTagline', e.target.value)} placeholder="Short positioning line for the public page" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">Description</label>
-              <textarea rows={5} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Tell buyers what you sell, where you operate, and why they should work with you." />
-            </div>
-            <div className="space-y-2">
-              <label className="label-micro">Location</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} />
+              <label className="label-micro">Unique About Section</label>
+              <textarea rows={7} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Describe the equipment you specialize in, brands carried, service counties and states, buyer support, financing or logistics help, and what makes your business credible." />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                Write original descriptive copy. Explain what you sell, where you operate, how buyers should work with you, and why your dealership is different.
+              </p>
             </div>
             <div className="space-y-2">
               <label className="label-micro">Website</label>
@@ -2214,6 +2368,102 @@ export function Profile() {
             <div className="space-y-2">
               <label className="label-micro">Public Phone</label>
               <input type="tel" className="input-industrial w-full" value={storefrontForm.phone} onChange={(e) => handleStorefrontInputChange('phone', e.target.value)} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">Display Location Summary</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} placeholder="Optional. Leave blank to derive from city, state, and country." />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Street Address 1</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.street1} onChange={(e) => handleStorefrontInputChange('street1', e.target.value)} placeholder="Street address used for mapping and geo coordinates" />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Street Address 2</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.street2} onChange={(e) => handleStorefrontInputChange('street2', e.target.value)} placeholder="Suite, yard number, or optional secondary line" />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">City</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.city} onChange={(e) => handleStorefrontInputChange('city', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">State / Province</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.state} onChange={(e) => handleStorefrontInputChange('state', e.target.value)} placeholder="State or province for your storefront address" />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">County</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.county} onChange={(e) => handleStorefrontInputChange('county', e.target.value)} placeholder="Primary county for the physical business location" />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Postal Code</label>
+              <input type="text" className="input-industrial w-full" value={storefrontForm.postalCode} onChange={(e) => handleStorefrontInputChange('postalCode', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Country</label>
+              <select className="input-industrial w-full" value={storefrontForm.country} onChange={(e) => handleStorefrontInputChange('country', e.target.value)}>
+                {STOREFRONT_COUNTRY_OPTIONS.map((country) => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Calculated Latitude / Longitude</label>
+              <div className="input-industrial w-full min-h-[46px] flex items-center text-xs font-black uppercase tracking-widest text-muted">
+                {typeof storefrontForm.latitude === 'number' && typeof storefrontForm.longitude === 'number'
+                  ? `${storefrontForm.latitude.toFixed(6)}, ${storefrontForm.longitude.toFixed(6)}`
+                  : 'Auto-populated when the storefront address is saved'}
+              </div>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">Service Area Coverage</label>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <MultiSelectDropdown
+                  label="Service Area Scope"
+                  placeholder="Select county, state, USA, Canada, or global"
+                  options={storefrontServiceAreaScopeOptions}
+                  selected={storefrontForm.serviceAreaScopes}
+                  onChange={(values) => handleStorefrontArrayChange('serviceAreaScopes', values)}
+                />
+                <MultiSelectDropdown
+                  label="Service Area States"
+                  placeholder="Select states and provinces"
+                  options={storefrontServiceAreaRegionOptions}
+                  selected={storefrontForm.serviceAreaStates}
+                  onChange={(values) => handleStorefrontArrayChange('serviceAreaStates', values)}
+                  searchable
+                />
+              </div>
+              <div className="mt-4">
+                <TagSelectorModal
+                  label="Service Area Counties"
+                  placeholder="Select or add counties"
+                  selected={storefrontForm.serviceAreaCounties}
+                  onChange={(values) => handleStorefrontArrayChange('serviceAreaCounties', values)}
+                  suggestions={countySuggestions}
+                  searchPlaceholder="Search or add a county or region..."
+                  addButtonLabel="Add County"
+                />
+              </div>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">Services Offered</label>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <MultiSelectDropdown
+                  label="Service Categories"
+                  placeholder="Select categories you service or sell"
+                  options={storefrontCategoryOptions}
+                  selected={storefrontForm.servicesOfferedCategories}
+                  onChange={(values) => handleStorefrontArrayChange('servicesOfferedCategories', values)}
+                  searchable
+                />
+                <MultiSelectDropdown
+                  label="Service Subcategories"
+                  placeholder="Select specific machine families"
+                  options={storefrontSubcategoryOptions}
+                  selected={storefrontForm.servicesOfferedSubcategories}
+                  onChange={(values) => handleStorefrontArrayChange('servicesOfferedSubcategories', values)}
+                  searchable
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <label className="label-micro">Logo URL Override</label>

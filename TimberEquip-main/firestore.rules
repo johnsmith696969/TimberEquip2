@@ -216,7 +216,7 @@ service cloud.firestore {
     }
 
     function isValidUrl(url) {
-      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+      return url is string && url.matches("^https://.*");
     }
 
     // ===============================================================
@@ -244,20 +244,36 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
              (!('emailVerified' in data) || data.emailVerified is bool) &&
-             (!('createdAt' in existing) || data.createdAt == existing.createdAt || data.createdAt is timestamp) &&
+             (!('createdAt' in existing) || data.createdAt == existing.createdAt) &&
              (!('favorites' in data) || (data.favorites is list && data.favorites.size() < 1000)) &&
              (!('photoURL' in data) || data.photoURL == null || isValidUrl(data.photoURL)) &&
              (!('coverPhotoUrl' in data) || data.coverPhotoUrl == null || isValidUrl(data.coverPhotoUrl)) &&
+             (!('storefrontLogoUrl' in data) || data.storefrontLogoUrl == null || isValidUrl(data.storefrontLogoUrl)) &&
              (!('logo' in data) || data.logo == null || isValidUrl(data.logo)) &&
              (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 60)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
              (!('about' in data) || (data.about is string && data.about.size() <= 5000)) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
+             (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 200)) &&
+             (!('street1' in data) || (data.street1 is string && data.street1.size() <= 180)) &&
+             (!('street2' in data) || (data.street2 is string && data.street2.size() <= 180)) &&
+             (!('city' in data) || (data.city is string && data.city.size() <= 120)) &&
+             (!('state' in data) || (data.state is string && data.state.size() <= 120)) &&
+             (!('county' in data) || (data.county is string && data.county.size() <= 120)) &&
+             (!('postalCode' in data) || (data.postalCode is string && data.postalCode.size() <= 40)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 80)) &&
+             (!('latitude' in data) || data.latitude == null || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude == null || data.longitude is number) &&
              (!('company' in data) || (data.company is string && data.company.size() <= 200)) &&
              (!('website' in data) || (data.website is string && (data.website.size() == 0 || isValidUrl(data.website)))) &&
              (!('storefrontName' in data) || (data.storefrontName is string && data.storefrontName.size() <= 180)) &&
              (!('storefrontTagline' in data) || (data.storefrontTagline is string && data.storefrontTagline.size() <= 240)) &&
              (!('storefrontDescription' in data) || (data.storefrontDescription is string && data.storefrontDescription.size() <= 5000)) &&
+             (!('serviceAreaScopes' in data) || (data.serviceAreaScopes is list && data.serviceAreaScopes.size() <= 8)) &&
+             (!('serviceAreaStates' in data) || (data.serviceAreaStates is list && data.serviceAreaStates.size() <= 80)) &&
+             (!('serviceAreaCounties' in data) || (data.serviceAreaCounties is list && data.serviceAreaCounties.size() <= 120)) &&
+             (!('servicesOfferedCategories' in data) || (data.servicesOfferedCategories is list && data.servicesOfferedCategories.size() <= 40)) &&
+             (!('servicesOfferedSubcategories' in data) || (data.servicesOfferedSubcategories is list && data.servicesOfferedSubcategories.size() <= 120)) &&
              (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
              (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
              (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
@@ -439,7 +455,7 @@ service cloud.firestore {
     }
 
     function isValidStorefront(data) {
-          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
+          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'businessName', 'street1', 'street2', 'city', 'state', 'county', 'postalCode', 'country', 'latitude', 'longitude', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'serviceAreaScopes', 'serviceAreaStates', 'serviceAreaCounties', 'servicesOfferedCategories', 'servicesOfferedSubcategories', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
             data.role in ['dealer', 'pro_dealer', 'individual_seller'] &&
              data.storefrontEnabled is bool &&
@@ -449,12 +465,27 @@ service cloud.firestore {
              isNonEmptyString(data.storefrontName, 180) &&
              (!('storefrontTagline' in data) || (data.storefrontTagline is string && data.storefrontTagline.size() <= 240)) &&
              (!('storefrontDescription' in data) || (data.storefrontDescription is string && data.storefrontDescription.size() <= 5000)) &&
+             (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 200)) &&
+             (!('street1' in data) || (data.street1 is string && data.street1.size() <= 180)) &&
+             (!('street2' in data) || (data.street2 is string && data.street2.size() <= 180)) &&
+             (!('city' in data) || (data.city is string && data.city.size() <= 120)) &&
+             (!('state' in data) || (data.state is string && data.state.size() <= 120)) &&
+             (!('county' in data) || (data.county is string && data.county.size() <= 120)) &&
+             (!('postalCode' in data) || (data.postalCode is string && data.postalCode.size() <= 40)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 80)) &&
+             (!('latitude' in data) || data.latitude == null || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude == null || data.longitude is number) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 60)) &&
              (!('email' in data) || (data.email is string && (data.email.size() == 0 || isValidEmail(data.email)))) &&
              (!('website' in data) || (data.website is string && data.website.size() <= 200)) &&
              (!('logo' in data) || (data.logo is string && data.logo.size() <= 2000)) &&
              (!('coverPhotoUrl' in data) || (data.coverPhotoUrl is string && data.coverPhotoUrl.size() <= 2000)) &&
+             (!('serviceAreaScopes' in data) || (data.serviceAreaScopes is list && data.serviceAreaScopes.size() <= 8)) &&
+             (!('serviceAreaStates' in data) || (data.serviceAreaStates is list && data.serviceAreaStates.size() <= 80)) &&
+             (!('serviceAreaCounties' in data) || (data.serviceAreaCounties is list && data.serviceAreaCounties.size() <= 120)) &&
+             (!('servicesOfferedCategories' in data) || (data.servicesOfferedCategories is list && data.servicesOfferedCategories.size() <= 40)) &&
+             (!('servicesOfferedSubcategories' in data) || (data.servicesOfferedSubcategories is list && data.servicesOfferedSubcategories.size() <= 120)) &&
              (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
              (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
              (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
@@ -515,7 +546,7 @@ service cloud.firestore {
              (!('dealerEmail' in data) || (data.dealerEmail is string && (data.dealerEmail.size() == 0 || isValidEmail(data.dealerEmail)))) &&
              isNonEmptyString(data.sourceName, 120) &&
              data.sourceType in ['auto', 'json', 'xml', 'csv'] &&
-             (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 500000)) &&
+             (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 100000)) &&
              (!('feedUrl' in data) || data.feedUrl == null || (data.feedUrl is string && (data.feedUrl.size() == 0 || isValidUrl(data.feedUrl)))) &&
              (!('apiEndpoint' in data) || data.apiEndpoint == null || (data.apiEndpoint is string && (data.apiEndpoint.size() == 0 || isValidUrl(data.apiEndpoint)))) &&
              (!('status' in data) || data.status in ['active', 'paused', 'disabled']) &&

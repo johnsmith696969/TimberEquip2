@@ -154,8 +154,11 @@ function htmlToText(html) {
 
 async function sendEmail({ to, subject, html, replyTo }) {
   ensureSendGridClientConfigured();
-  const from = String(EMAIL_FROM.value() || '"Forestry Equipment Sales" <caleb@forestryequipmentsales.com>').trim();
-  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || 'caleb@forestryequipmentsales.com').trim();
+  const from = String(EMAIL_FROM.value() || '').trim();
+  if (!from) {
+    throw new Error('EMAIL_FROM secret is not configured.');
+  }
+  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || from).trim();
   const recipients = (Array.isArray(to) ? to : [to])
     .map((recipient) => String(recipient || '').trim())
     .filter(Boolean);
@@ -193,8 +196,8 @@ function getAdminRecipients() {
     return fromSecret;
   }
 
-  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || 'caleb@forestryequipmentsales.com').trim());
-  return fallback ? [fallback] : ['caleb@forestryequipmentsales.com'];
+  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || '').trim());
+  return fallback ? [fallback] : [];
 }
 
 const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://timberequip.com');
@@ -781,6 +784,39 @@ async function geocodeLocation(address) {
 
   geocodeCache.set(cacheKey, geocoded);
   return geocoded;
+}
+
+function normalizeStringArray(value, maxItems = 50, maxLength = 120) {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((entry) => normalizeNonEmptyString(entry))
+    .filter(Boolean)
+    .map((entry) => entry.slice(0, maxLength));
+
+  return [...new Set(normalized)].slice(0, maxItems);
+}
+
+function buildStorefrontLocationText(data = {}) {
+  const city = normalizeNonEmptyString(data.city);
+  const state = normalizeNonEmptyString(data.state);
+  const country = normalizeNonEmptyString(data.country);
+  const explicitLocation = normalizeNonEmptyString(data.location);
+
+  const derived = [city, state, country].filter(Boolean).join(', ');
+  return derived || explicitLocation;
+}
+
+function buildStorefrontGeocodeAddress(data = {}) {
+  return [
+    normalizeNonEmptyString(data.street1),
+    normalizeNonEmptyString(data.street2),
+    normalizeNonEmptyString(data.city),
+    normalizeNonEmptyString(data.state),
+    normalizeNonEmptyString(data.postalCode),
+    normalizeNonEmptyString(data.country),
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 
 async function buildEmailVerificationLink(email) {
@@ -1878,6 +1914,19 @@ function isPrivateIpv4Host(hostname) {
   if (octets[0] === 10 || octets[0] === 127) return true;
   if (octets[0] === 192 && octets[1] === 168) return true;
   if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+  if (octets[0] === 169 && octets[1] === 254) return true; // link-local / cloud metadata
+  if (octets[0] === 0) return true;
+  return false;
+}
+
+function isPrivateOrMetadataHost(hostname) {
+  const lower = hostname.toLowerCase();
+  if (isPrivateIpv4Host(lower)) return true;
+  // IPv6 loopback / private
+  if (lower === '::1' || lower === '::' || lower.startsWith('[::') || lower.startsWith('[fc') || lower.startsWith('[fd') || lower.startsWith('[fe80')) return true;
+  // Cloud metadata endpoints
+  if (lower === 'metadata.google.internal' || lower === 'metadata.google.com') return true;
+  if (lower === '169.254.169.254') return true;
   return false;
 }
 
@@ -1894,7 +1943,7 @@ function validateDealerFeedUrl(feedUrl) {
   }
 
   const hostname = parsedUrl.hostname.toLowerCase();
-  if (!hostname || ['localhost', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local') || isPrivateIpv4Host(hostname)) {
+  if (!hostname || ['localhost', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local') || isPrivateOrMetadataHost(hostname)) {
     throw new Error('Local and private-network feed URLs are not allowed.');
   }
 
@@ -4359,7 +4408,7 @@ exports.monthlyDealerReport = onSchedule(
           missedCalls: summary.missedCalls,
           totalViews: summary.totalViews,
           topMachines: summary.topMachines,
-          dashboardUrl: 'https://www.forestryequipmentsales.com/profile',
+          dashboardUrl: 'https://timberequip.com/profile',
           unsubscribeUrl: buildEmailUnsubscribeUrl({
             uid: summary.sellerUid,
             email: summary.email,
@@ -4387,7 +4436,7 @@ exports.monthlyDealerReport = onSchedule(
         const { subject, html } = templates.dealerMonthlyReportAdminSummary({
           monthLabel: report.periodLabel,
           sellerSummaries: adminSummaries,
-          dashboardUrl: 'https://www.forestryequipmentsales.com/admin',
+          dashboardUrl: 'https://timberequip.com/admin',
         });
         await sendEmail({ to: getAdminRecipients(), subject, html });
       } catch (adminEmailError) {
@@ -4649,7 +4698,17 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     type: isDealerRole ? 'Dealer' : 'Private',
     role: normalizeNonEmptyString(data.role, 'buyer'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    businessName: normalizeNonEmptyString(data.businessName),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
+    street1: normalizeNonEmptyString(data.street1),
+    street2: normalizeNonEmptyString(data.street2),
+    city: normalizeNonEmptyString(data.city),
+    state: normalizeNonEmptyString(data.state),
+    county: normalizeNonEmptyString(data.county),
+    postalCode: normalizeNonEmptyString(data.postalCode),
+    country: normalizeNonEmptyString(data.country),
+    latitude: toFiniteNumberOrUndefined(data.latitude),
+    longitude: toFiniteNumberOrUndefined(data.longitude),
     phone: normalizeNonEmptyString(data.phone),
     email: normalizeNonEmptyString(data.email),
     website: normalizeNonEmptyString(data.website),
@@ -4658,6 +4717,11 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     storefrontName: normalizeNonEmptyString(data.storefrontName),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
     storefrontDescription: normalizeNonEmptyString(data.storefrontDescription),
+    serviceAreaScopes: normalizeStringArray(data.serviceAreaScopes, 8, 40),
+    serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(data.servicesOfferedSubcategories, 120, 120),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
     seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
@@ -4679,15 +4743,30 @@ function serializeSellerPayloadFromUser(snapshotId, data = {}) {
     type: isDealerRole ? 'Dealer' : 'Private',
     role: normalizeNonEmptyString(data.role, 'buyer'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    businessName: normalizeNonEmptyString(data.businessName),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
+    street1: normalizeNonEmptyString(data.street1),
+    street2: normalizeNonEmptyString(data.street2),
+    city: normalizeNonEmptyString(data.city),
+    state: normalizeNonEmptyString(data.state),
+    county: normalizeNonEmptyString(data.county),
+    postalCode: normalizeNonEmptyString(data.postalCode),
+    country: normalizeNonEmptyString(data.country),
+    latitude: toFiniteNumberOrUndefined(data.latitude),
+    longitude: toFiniteNumberOrUndefined(data.longitude),
     phone: normalizeNonEmptyString(data.phoneNumber),
     email: normalizeNonEmptyString(data.email),
     website: normalizeNonEmptyString(data.website),
-    logo: normalizeNonEmptyString(data.photoURL || data.profileImage),
+    logo: normalizeNonEmptyString(data.storefrontLogoUrl || data.photoURL || data.profileImage),
     coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
     storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
     storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    serviceAreaScopes: normalizeStringArray(data.serviceAreaScopes, 8, 40),
+    serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(data.servicesOfferedSubcategories, 120, 120),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
     seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
@@ -6568,7 +6647,7 @@ function buildEnterpriseStorefrontState({ uid, role, userData = {}, authRecord =
     userData.displayName || userData.company || authRecord?.displayName,
     storefrontName
   );
-  const location = normalizeNonEmptyString(userData.location);
+  const location = buildStorefrontLocationText(userData);
   const storefrontDescription = normalizeNonEmptyString(
     userData.storefrontDescription || userData.about
   );
@@ -6578,17 +6657,32 @@ function buildEnterpriseStorefrontState({ uid, role, userData = {}, authRecord =
     role: normalizedRole,
     storefrontEnabled: true,
     storefrontSlug,
-    canonicalPath: `/seller/${storefrontSlug}`,
+    canonicalPath: `/dealers/${storefrontSlug}`,
     displayName,
     storefrontName,
     storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline),
     storefrontDescription,
+    businessName: normalizeNonEmptyString(userData.businessName || userData.company || storefrontName),
+    street1: normalizeNonEmptyString(userData.street1),
+    street2: normalizeNonEmptyString(userData.street2),
+    city: normalizeNonEmptyString(userData.city),
+    state: normalizeNonEmptyString(userData.state),
+    county: normalizeNonEmptyString(userData.county),
+    postalCode: normalizeNonEmptyString(userData.postalCode),
+    country: normalizeNonEmptyString(userData.country),
+    latitude: toFiniteNumberOrUndefined(userData.latitude) ?? null,
+    longitude: toFiniteNumberOrUndefined(userData.longitude) ?? null,
     location,
     phone: normalizeNonEmptyString(userData.phoneNumber),
     email: normalizeNonEmptyString(userData.email || authRecord?.email),
     website: normalizeNonEmptyString(userData.website),
-    logo: normalizeNonEmptyString(userData.photoURL || authRecord?.photoURL),
+    logo: normalizeNonEmptyString(userData.storefrontLogoUrl || userData.photoURL || authRecord?.photoURL),
     coverPhotoUrl: normalizeNonEmptyString(userData.coverPhotoUrl),
+    serviceAreaScopes: normalizeStringArray(userData.serviceAreaScopes, 8, 40),
+    serviceAreaStates: normalizeStringArray(userData.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(userData.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(userData.servicesOfferedSubcategories, 120, 120),
     seoTitle: normalizeNonEmptyString(userData.seoTitle) ||
       `${storefrontName} | ${normalizedRole === 'pro_dealer' ? 'Pro Dealer' : normalizedRole === 'dealer' ? 'Dealer' : 'Equipment Seller'} on Forestry Equipment Sales`,
     seoDescription: normalizeNonEmptyString(userData.seoDescription) ||
@@ -6687,6 +6781,15 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
   assignString('about', 5000);
   assignString('bio', 1200);
   assignString('location', 240);
+  assignString('storefrontLogoUrl', 2000);
+  assignString('businessName', 200);
+  assignString('street1', 180);
+  assignString('street2', 180);
+  assignString('city', 120);
+  assignString('state', 120);
+  assignString('county', 120);
+  assignString('postalCode', 40);
+  assignString('country', 80);
   assignString('photoURL', 2000);
   assignString('coverPhotoUrl', 2000);
   assignString('preferredLanguage', 16);
@@ -6724,6 +6827,34 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
         .filter(Boolean)
         .slice(0, 30)
       : [];
+  }
+
+  if ('serviceAreaScopes' in payload) {
+    sanitized.serviceAreaScopes = normalizeStringArray(payload.serviceAreaScopes, 8, 40);
+  }
+
+  if ('serviceAreaStates' in payload) {
+    sanitized.serviceAreaStates = normalizeStringArray(payload.serviceAreaStates, 80, 120);
+  }
+
+  if ('serviceAreaCounties' in payload) {
+    sanitized.serviceAreaCounties = normalizeStringArray(payload.serviceAreaCounties, 120, 120);
+  }
+
+  if ('servicesOfferedCategories' in payload) {
+    sanitized.servicesOfferedCategories = normalizeStringArray(payload.servicesOfferedCategories, 40, 120);
+  }
+
+  if ('servicesOfferedSubcategories' in payload) {
+    sanitized.servicesOfferedSubcategories = normalizeStringArray(payload.servicesOfferedSubcategories, 120, 120);
+  }
+
+  if ('latitude' in payload) {
+    sanitized.latitude = toFiniteNumberOrUndefined(payload.latitude) ?? null;
+  }
+
+  if ('longitude' in payload) {
+    sanitized.longitude = toFiniteNumberOrUndefined(payload.longitude) ?? null;
   }
 
   return sanitized;
@@ -6776,11 +6907,27 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     about: normalizeNonEmptyString(userData.about) || '',
     bio: normalizeNonEmptyString(userData.bio) || '',
     location: normalizeNonEmptyString(userData.location) || '',
+    storefrontLogoUrl: normalizeNonEmptyString(userData.storefrontLogoUrl) || '',
+    businessName: normalizeNonEmptyString(userData.businessName) || '',
+    street1: normalizeNonEmptyString(userData.street1) || '',
+    street2: normalizeNonEmptyString(userData.street2) || '',
+    city: normalizeNonEmptyString(userData.city) || '',
+    state: normalizeNonEmptyString(userData.state) || '',
+    county: normalizeNonEmptyString(userData.county) || '',
+    postalCode: normalizeNonEmptyString(userData.postalCode) || '',
+    country: normalizeNonEmptyString(userData.country) || '',
+    latitude: toFiniteNumberOrUndefined(userData.latitude) ?? null,
+    longitude: toFiniteNumberOrUndefined(userData.longitude) ?? null,
     storefrontEnabled: Boolean(userData.storefrontEnabled),
     storefrontSlug: normalizeNonEmptyString(userData.storefrontSlug) || '',
     storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
     storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline) || '',
     storefrontDescription: normalizeNonEmptyString(userData.storefrontDescription) || '',
+    serviceAreaScopes: normalizeStringArray(userData.serviceAreaScopes, 8, 40),
+    serviceAreaStates: normalizeStringArray(userData.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(userData.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(userData.servicesOfferedSubcategories, 120, 120),
     seoTitle: normalizeNonEmptyString(userData.seoTitle) || '',
     seoDescription: normalizeNonEmptyString(userData.seoDescription) || '',
     seoKeywords: Array.isArray(userData.seoKeywords)
@@ -11591,13 +11738,44 @@ exports.apiProxy = onRequest(
           });
         }
 
+        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'buyer');
         const nextUserData = {
           ...currentData,
           ...sanitizedUpdates,
           uid: actorUid,
         };
+        const derivedProfilePatch = {};
+        const derivedLocation = buildStorefrontLocationText(nextUserData);
+        if (derivedLocation && !('location' in sanitizedUpdates)) {
+          derivedProfilePatch.location = derivedLocation;
+          nextUserData.location = derivedLocation;
+        }
 
-        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'buyer');
+        const shouldResolveStorefrontGeo =
+          supportsEnterpriseStorefrontRole(nextRole) &&
+          ['street1', 'street2', 'city', 'state', 'postalCode', 'country', 'location'].some((field) => field in sanitizedUpdates);
+
+        if (shouldResolveStorefrontGeo) {
+          const geocodeQuery = buildStorefrontGeocodeAddress(nextUserData) || normalizeNonEmptyString(nextUserData.location);
+          if (geocodeQuery) {
+            try {
+              const geocoded = await geocodeLocation(geocodeQuery);
+              if (geocoded) {
+                derivedProfilePatch.latitude = geocoded.lat;
+                derivedProfilePatch.longitude = geocoded.lng;
+                nextUserData.latitude = geocoded.lat;
+                nextUserData.longitude = geocoded.lng;
+              }
+            } catch (error) {
+              logger.warn('Unable to geocode storefront address during account profile patch.', {
+                actorUid,
+                geocodeQuery,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
+
         const quotaSafeProfileFields = new Set([
           'emailNotificationsEnabled',
           'preferredLanguage',
@@ -11630,6 +11808,7 @@ exports.apiProxy = onRequest(
           {
             uid: actorUid,
             ...sanitizedUpdates,
+            ...derivedProfilePatch,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -11677,17 +11856,32 @@ exports.apiProxy = onRequest(
               role: nextRole,
               storefrontEnabled: true,
               storefrontSlug,
-              canonicalPath: `/seller/${storefrontSlug}`,
+              canonicalPath: `/dealers/${storefrontSlug}`,
               displayName: normalizeNonEmptyString(nextUserData.displayName || nextUserData.company, storefrontName),
               storefrontName,
               storefrontTagline: normalizeNonEmptyString(nextUserData.storefrontTagline),
               storefrontDescription: normalizeNonEmptyString(nextUserData.storefrontDescription || nextUserData.about),
-              location: normalizeNonEmptyString(nextUserData.location),
+              businessName: normalizeNonEmptyString(nextUserData.businessName || nextUserData.company || storefrontName),
+              street1: normalizeNonEmptyString(nextUserData.street1),
+              street2: normalizeNonEmptyString(nextUserData.street2),
+              city: normalizeNonEmptyString(nextUserData.city),
+              state: normalizeNonEmptyString(nextUserData.state),
+              county: normalizeNonEmptyString(nextUserData.county),
+              postalCode: normalizeNonEmptyString(nextUserData.postalCode),
+              country: normalizeNonEmptyString(nextUserData.country),
+              latitude: toFiniteNumberOrUndefined(nextUserData.latitude) ?? null,
+              longitude: toFiniteNumberOrUndefined(nextUserData.longitude) ?? null,
+              location: buildStorefrontLocationText(nextUserData),
               phone: normalizeNonEmptyString(nextUserData.phoneNumber),
               email: normalizeNonEmptyString(nextUserData.email || authRecord?.email),
               website: normalizeNonEmptyString(nextUserData.website),
-              logo: normalizeNonEmptyString(nextUserData.photoURL),
+              logo: normalizeNonEmptyString(nextUserData.storefrontLogoUrl || nextUserData.photoURL),
               coverPhotoUrl: normalizeNonEmptyString(nextUserData.coverPhotoUrl),
+              serviceAreaScopes: normalizeStringArray(nextUserData.serviceAreaScopes, 8, 40),
+              serviceAreaStates: normalizeStringArray(nextUserData.serviceAreaStates, 80, 120),
+              serviceAreaCounties: normalizeStringArray(nextUserData.serviceAreaCounties, 120, 120),
+              servicesOfferedCategories: normalizeStringArray(nextUserData.servicesOfferedCategories, 40, 120),
+              servicesOfferedSubcategories: normalizeStringArray(nextUserData.servicesOfferedSubcategories, 120, 120),
               seoTitle: normalizeNonEmptyString(nextUserData.seoTitle) ||
                 `${storefrontName} | ${nextRole === 'pro_dealer' ? 'Pro Dealer' : nextRole === 'dealer' ? 'Dealer' : 'Equipment Seller'} on Forestry Equipment Sales`,
               seoDescription: normalizeNonEmptyString(nextUserData.seoDescription) ||

@@ -8,7 +8,7 @@ const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c'
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const PUBLIC_PAGES_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
-const DEFAULT_BASE_URL = 'https://www.forestryequipmentsales.com';
+const DEFAULT_BASE_URL = 'https://timberequip.com';
 const MARKET_ROUTE_LABELS = Object.freeze({
   logging: 'logging-equipment-for-sale',
   forestry: 'forestry-equipment-for-sale',
@@ -383,12 +383,27 @@ async function loadSellerRecords(sellerUids) {
       storefrontName: normalizeText(merged.storefrontName || merged.displayName || merged.name, 'Dealer Storefront'),
       storefrontTagline: normalizeText(merged.storefrontTagline),
       storefrontDescription: normalizeText(merged.storefrontDescription || merged.about),
+      businessName: normalizeText(merged.businessName || merged.company),
+      street1: normalizeText(merged.street1),
+      street2: normalizeText(merged.street2),
+      city: normalizeText(merged.city),
+      state: normalizeText(merged.state),
+      county: normalizeText(merged.county),
+      postalCode: normalizeText(merged.postalCode),
+      country: normalizeText(merged.country),
+      latitude: Number.isFinite(Number(merged.latitude)) ? Number(merged.latitude) : undefined,
+      longitude: Number.isFinite(Number(merged.longitude)) ? Number(merged.longitude) : undefined,
       location: normalizeText(merged.location),
       phone: normalizeText(merged.phone || merged.phoneNumber),
       email: normalizeText(merged.email),
       website: normalizeText(merged.website),
-      logo: normalizeText(merged.logo || merged.photoURL),
+      logo: normalizeText(merged.logo || merged.storefrontLogoUrl || merged.photoURL),
       coverPhotoUrl: normalizeText(merged.coverPhotoUrl),
+      serviceAreaScopes: Array.isArray(merged.serviceAreaScopes) ? merged.serviceAreaScopes.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      serviceAreaStates: Array.isArray(merged.serviceAreaStates) ? merged.serviceAreaStates.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      serviceAreaCounties: Array.isArray(merged.serviceAreaCounties) ? merged.serviceAreaCounties.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      servicesOfferedCategories: Array.isArray(merged.servicesOfferedCategories) ? merged.servicesOfferedCategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      servicesOfferedSubcategories: Array.isArray(merged.servicesOfferedSubcategories) ? merged.servicesOfferedSubcategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
       role: normalizeText(merged.role),
       createdAtIso: timestampToIso(merged.createdAt),
       verified: Boolean(merged.verified ?? true),
@@ -1075,19 +1090,37 @@ function buildDealerJsonLd(seller, listings, canonicalUrl, breadcrumbs = []) {
     '@context': 'https://schema.org',
     '@graph': [
       {
-        '@type': 'Organization',
+        '@type': 'LocalBusiness',
         name: seller.storefrontName,
         description: seller.storefrontDescription || seller.storefrontTagline || 'Dealer storefront with live equipment inventory.',
         url: canonicalUrl,
         logo: seller.logo || undefined,
+        image: seller.coverPhotoUrl || seller.logo || undefined,
         telephone: seller.phone || undefined,
         email: seller.email || undefined,
-        address: seller.location
+        address: seller.street1 || seller.city || seller.state || seller.location
           ? {
               '@type': 'PostalAddress',
-              addressLocality: seller.location,
+              streetAddress: [seller.street1, seller.street2].filter(Boolean).join(', ') || seller.location || undefined,
+              addressLocality: seller.city || undefined,
+              addressRegion: seller.state || undefined,
+              postalCode: seller.postalCode || undefined,
+              addressCountry: seller.country || undefined,
             }
           : undefined,
+        geo:
+          typeof seller.latitude === 'number' && typeof seller.longitude === 'number'
+            ? {
+                '@type': 'GeoCoordinates',
+                latitude: seller.latitude,
+                longitude: seller.longitude,
+              }
+            : undefined,
+        areaServed: [
+          ...(Array.isArray(seller.serviceAreaScopes) ? seller.serviceAreaScopes : []),
+          ...(Array.isArray(seller.serviceAreaStates) ? seller.serviceAreaStates : []),
+          ...(Array.isArray(seller.serviceAreaCounties) ? seller.serviceAreaCounties : []),
+        ].filter(Boolean),
       },
       ...(breadcrumbs.length ? [buildBreadcrumbJsonLd(breadcrumbs, canonicalUrl)] : []),
       buildListingItemList(`${seller.storefrontName} inventory`, listings, seller.storefrontName),
@@ -1727,7 +1760,7 @@ function renderQuotaFallbackPage(req, res) {
     };
   }
 
-  const canonicalPath = /^\/(forestry-equipment-for-sale|categories|manufacturers|states|dealers)$/i.test(pathname)
+  const canonicalPath = /^\/$|^\/(forestry-equipment-for-sale|categories|manufacturers|states|dealers)$/i.test(pathname)
     ? pathname
     : '/forestry-equipment-for-sale';
 
@@ -1782,6 +1815,7 @@ function renderQuotaFallbackPage(req, res) {
 
 function isPublicSeoPath(pathname) {
   return [
+    /^\/$/i,
     /^\/sitemap\.xml$/i,
     /^\/logging-equipment-for-sale$/i,
     /^\/forestry-equipment-for-sale$/i,
@@ -1836,6 +1870,97 @@ async function renderRoute(req, res) {
   const manufacturersDirectoryDoc = routeIndex?.byPath.get('/manufacturers');
   const statesDirectoryDoc = routeIndex?.byPath.get('/states');
   const dealersDirectoryDoc = routeIndex?.byPath.get('/dealers');
+
+  if (/^\/$/i.test(pathname)) {
+    const marketListings = marketHubDoc?.listings?.length ? marketHubDoc.listings : inventory.listings;
+    const marketStats = marketHubDoc?.stats || stats;
+    const marketCategories = marketHubDoc?.topCategories?.length ? marketHubDoc.topCategories : shared.topCategories;
+    const marketManufacturers = marketHubDoc?.topManufacturers?.length ? marketHubDoc.topManufacturers : shared.topManufacturers;
+    const marketStates = marketHubDoc?.topStates?.length ? marketHubDoc.topStates : shared.topStates;
+    const marketDealers = marketHubDoc?.topDealers?.length
+      ? marketHubDoc.topDealers.map((dealer) => ({
+          seller: {
+            id: dealer.id,
+            storefrontName: dealer.label,
+            storefrontSlug: dealer.path.split('/')[2] || dealer.id,
+            location: dealer.subtext || '',
+            logo: dealer.image || '',
+          },
+          count: dealer.count,
+        }))
+      : shared.topDealers;
+
+    res.status(200).type('html').send(
+      renderInventoryPage({
+        title: 'New & Used Logging Equipment For Sale | Forestry Equipment Sales',
+        eyebrow: 'Marketplace Home',
+        description: 'Buy and sell new and used logging equipment, forestry equipment, dealer inventory, and high-intent machine categories from one crawlable marketplace.',
+        canonicalUrl: `${baseUrl}/`,
+        intro: 'The commercial homepage is built to push authority into categories, manufacturers, state routes, dealer storefronts, and live inventory instead of trapping buyers inside filters.',
+        breadcrumbs: [{ label: 'Home', path: '/' }],
+        stats: [
+          { label: 'Live Listings', value: marketStats.listingCount },
+          { label: 'Categories', value: marketCategories.length },
+          { label: 'Manufacturers', value: marketStats.manufacturerCount },
+          { label: 'Dealers', value: marketStats.dealerCount || marketDealers.length },
+        ],
+        featureCards: [
+          {
+            eyebrow: 'Commercial SEO',
+            title: 'Built for buying and selling equipment',
+            description: 'The homepage is intentionally inventory-led so search engines and buyers can move directly into the strongest commercial route families.',
+          },
+          {
+            eyebrow: 'Dealer Authority',
+            title: 'Dealer storefronts with real inventory',
+            description: 'Qualified dealers get crawlable public pages with structured business data, service coverage, and internal links back into machine categories.',
+          },
+          {
+            eyebrow: 'Route Graph',
+            title: 'Categories, brands, states, and listings connect cleanly',
+            description: 'The public graph is designed to compete with large classified marketplaces by linking every important entity family together.',
+          },
+        ],
+        sections: [
+          {
+            eyebrow: 'Categories',
+            title: 'Browse Top Equipment Categories',
+            description: 'Machine-intent route families with live listing coverage.',
+            html: renderLinkCards(marketCategories),
+          },
+          {
+            eyebrow: 'Manufacturers',
+            title: 'Browse Top Manufacturers',
+            description: 'Brand-intent landing pages backed by live inventory and related routes.',
+            html: renderLinkCards(marketManufacturers),
+          },
+          {
+            eyebrow: 'States',
+            title: 'Browse Priority States',
+            description: 'Regional inventory discovery for buyers looking near active dealer coverage.',
+            html: renderLinkCards(marketStates),
+          },
+          {
+            eyebrow: 'Dealer Storefronts',
+            title: 'Featured Dealers',
+            description: 'Inventory-backed storefronts with direct routes into public dealer pages.',
+            html: renderDealerCards(marketDealers),
+          },
+        ],
+        listings: marketListings,
+        primaryAction: { href: '/forestry-equipment-for-sale', label: 'Browse Market Hub' },
+        secondaryAction: { href: '/search', label: 'Open Search App' },
+        jsonLd: buildCollectionJsonLd(
+          'Forestry Equipment Sales',
+          'Buy and sell new and used logging equipment, forestry equipment, dealer inventory, and manufacturer routes on one crawlable marketplace.',
+          `${baseUrl}/`,
+          marketListings,
+          [{ label: 'Home', path: '/' }]
+        ),
+      })
+    );
+    return true;
+  }
 
   if (/^\/forestry-equipment-for-sale$/i.test(pathname)) {
     const title = 'Forestry Equipment For Sale';
@@ -2723,6 +2848,20 @@ async function renderRoute(req, res) {
     const feedUrl = `${baseUrl}/api/public/dealers/${encodeURIComponent(seller.storefrontSlug || seller.id)}/feed.json`;
     const embedUrl = `${baseUrl}/api/public/dealers/${encodeURIComponent(seller.storefrontSlug || seller.id)}/embed?limit=12`;
     const resolvedCategory = routeCategory ? filteredListings[0]?.subcategory || titleCaseSlug(routeCategory) : '';
+    const addressSummary = [
+      [seller.street1, seller.street2].filter(Boolean).join(', '),
+      [seller.city, seller.state, seller.postalCode].filter(Boolean).join(', '),
+      seller.country,
+    ].filter(Boolean).join(' | ') || seller.location || 'Location pending';
+    const serviceAreaSummary = [
+      ...(seller.serviceAreaScopes || []),
+      ...(seller.serviceAreaStates || []),
+      ...(seller.serviceAreaCounties || []),
+    ].filter(Boolean).slice(0, 8).join(', ') || 'Service area pending';
+    const servicesOfferedSummary = [
+      ...(seller.servicesOfferedSubcategories || []),
+      ...(seller.servicesOfferedCategories || []),
+    ].filter(Boolean).slice(0, 8).join(', ') || 'Services pending';
     const pageTitle = resolvedCategory
       ? `${seller.storefrontName} ${resolvedCategory} Inventory`
       : `${seller.storefrontName} Equipment Inventory`;
@@ -2750,7 +2889,7 @@ async function renderRoute(req, res) {
         stats: [
           { label: 'Live Listings', value: filteredListings.length },
           { label: 'Dealer Categories', value: visibleCategoryLinks.length },
-          { label: 'Location', value: seller.location || 'Pending' },
+          { label: 'Location', value: seller.city && seller.state ? `${seller.city}, ${seller.state}` : seller.location || 'Pending' },
           { label: 'Feed', value: 'Ready' },
         ],
         featureCards: [
@@ -2777,9 +2916,10 @@ async function renderRoute(req, res) {
             description: 'Use these direct paths to reach the dealer or syndicate their inventory.',
             html: `
               <div class="card-grid">
-                <article class="feature-card"><div class="feature-card-body"><span class="pill">Location</span><strong style="margin-top:14px;">${escapeHtml(seller.location || 'Location pending')}</strong></div></article>
+                <article class="feature-card"><div class="feature-card-body"><span class="pill">Address</span><strong style="margin-top:14px;">${escapeHtml(addressSummary)}</strong></div></article>
                 <article class="feature-card"><div class="feature-card-body"><span class="pill">Phone</span><strong style="margin-top:14px;">${escapeHtml(seller.phone || 'Contact via listing inquiry')}</strong></div></article>
-                <article class="feature-card"><div class="feature-card-body"><span class="pill">Email</span><strong style="margin-top:14px;">${escapeHtml(seller.email || 'Use the listing contact form')}</strong></div></article>
+                <article class="feature-card"><div class="feature-card-body"><span class="pill">Service Area</span><strong style="margin-top:14px;">${escapeHtml(serviceAreaSummary)}</strong></div></article>
+                <article class="feature-card"><div class="feature-card-body"><span class="pill">Services Offered</span><strong style="margin-top:14px;">${escapeHtml(servicesOfferedSummary)}</strong></div></article>
                 <article class="feature-card"><div class="feature-card-body"><span class="pill">Inventory Feed</span><strong style="margin-top:14px;"><a href="${escapeHtml(feedUrl)}">${escapeHtml(feedUrl)}</a></strong></div></article>
               </div>
               <div class="section-actions">

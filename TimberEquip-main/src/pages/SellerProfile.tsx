@@ -30,6 +30,7 @@ import { evaluateRouteQuality } from '../utils/seoRouteQuality';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { setPendingFavoriteIntent } from '../utils/pendingFavorite';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
@@ -365,27 +366,52 @@ export function SellerProfile() {
   })();
 
   const isDealer = isDealerRole(seller.role);
+  const postalAddress =
+    seller.street1 || seller.city || seller.state || seller.country || seller.location
+      ? {
+          '@type': 'PostalAddress',
+          streetAddress: [seller.street1, seller.street2].filter(Boolean).join(', ') || seller.location || undefined,
+          addressLocality: seller.city || undefined,
+          addressRegion: seller.state || undefined,
+          postalCode: seller.postalCode || undefined,
+          addressCountry: seller.country || undefined,
+        }
+      : undefined;
+  const areaServed = [
+    ...(seller.serviceAreaScopes || []),
+    ...(seller.serviceAreaStates || []),
+    ...(seller.serviceAreaCounties || []),
+  ].filter(Boolean);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
       {
         '@type': isDealer ? 'LocalBusiness' : 'Organization',
         name: headline,
-        url: `https://www.forestryequipmentsales.com${canonicalPath}`,
+        url: buildSiteUrl(canonicalPath),
         logo: logoImage,
         image: coverImage,
         description,
         email: seller.email || undefined,
         telephone: seller.phone || undefined,
-        ...(seller.location ? { address: { '@type': 'PostalAddress', streetAddress: seller.location } } : {}),
+        address: postalAddress,
+        geo:
+          typeof seller.latitude === 'number' && typeof seller.longitude === 'number'
+            ? {
+                '@type': 'GeoCoordinates',
+                latitude: seller.latitude,
+                longitude: seller.longitude,
+              }
+            : undefined,
+        areaServed: areaServed.length ? areaServed : undefined,
       },
       {
         '@type': 'BreadcrumbList',
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-          { '@type': 'ListItem', position: 2, name: 'Dealers', item: 'https://www.forestryequipmentsales.com/dealers' },
-          { '@type': 'ListItem', position: 3, name: headline, item: `https://www.forestryequipmentsales.com${preferredDealerPath}` },
-          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: `https://www.forestryequipmentsales.com${canonicalPath}` }] : []),
+          { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+          { '@type': 'ListItem', position: 2, name: 'Dealers', item: buildSiteUrl('/dealers') },
+          { '@type': 'ListItem', position: 3, name: headline, item: buildSiteUrl(preferredDealerPath) },
+          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: buildSiteUrl(canonicalPath) }] : []),
         ],
       },
       {
@@ -394,7 +420,7 @@ export function SellerProfile() {
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+          url: buildSiteUrl(buildListingPath(listing)),
           item: {
             '@type': 'Product',
             name: `${listing.year} ${listing.make || listing.manufacturer || listing.brand || ''} ${listing.model || ''}`.trim(),
@@ -488,7 +514,7 @@ export function SellerProfile() {
                         className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
                       />
                       <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/50 break-all">
-                        forestryequipmentsales.com/seller/{editData.storefrontSlug || 'your-storefront-slug'}
+                        timberequip.com/dealers/{editData.storefrontSlug || 'your-storefront-slug'}
                       </p>
                     </div>
                     <div>
