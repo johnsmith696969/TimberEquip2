@@ -143,13 +143,97 @@ async function writeFirestoreProfile(token, uid) {
   console.log(`Firestore profile written for ${uid}`);
 }
 
+async function setAuthClaims(token, uid) {
+  const claims = {
+    role: ROLE,
+    subscriptionPlanId: PLAN_ID,
+    subscriptionStatus: 'active',
+    listingCap: LISTING_CAP,
+    managedAccountCap: 10,
+    accountAccessSource: 'admin_override',
+    accountStatus: 'active',
+  };
+
+  const res = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:update', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      localId: uid,
+      targetProjectId: PROJECT_ID,
+      displayName: DISPLAY_NAME,
+      emailVerified: true,
+      customAttributes: JSON.stringify(claims),
+      validSince: String(Math.floor(Date.now() / 1000)),
+    }),
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error('Set auth claims failed: ' + JSON.stringify(data.error));
+  console.log(`Auth claims updated for ${uid}`);
+}
+
+async function writeStorefrontProfile(token, uid) {
+  const now = new Date().toISOString();
+  const docUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/storefronts/${uid}`;
+  const fields = {
+    uid: { stringValue: uid },
+    role: { stringValue: ROLE },
+    storefrontEnabled: { booleanValue: true },
+    storefrontSlug: { stringValue: 'red-pine-equipment' },
+    canonicalPath: { stringValue: '/seller/red-pine-equipment' },
+    displayName: { stringValue: DISPLAY_NAME },
+    storefrontName: { stringValue: DISPLAY_NAME },
+    storefrontTagline: { stringValue: 'Pro dealer storefront powered by DealerOS.' },
+    storefrontDescription: { stringValue: `Browse forestry and logging equipment from ${DISPLAY_NAME} in ${LOCATION}.` },
+    location: { stringValue: LOCATION },
+    email: { stringValue: EMAIL },
+    seoTitle: { stringValue: `${DISPLAY_NAME} | Pro Dealer on Forestry Equipment Sales` },
+    seoDescription: { stringValue: `Browse forestry and logging equipment from ${DISPLAY_NAME} in ${LOCATION}. Verified pro dealer on Forestry Equipment Sales.` },
+    seoKeywords: {
+      arrayValue: {
+        values: [
+          { stringValue: DISPLAY_NAME },
+          { stringValue: 'forestry equipment' },
+          { stringValue: 'logging equipment' },
+          { stringValue: 'used logging equipment' },
+          { stringValue: 'dealer storefront' },
+          { stringValue: 'pro dealer' },
+        ],
+      },
+    },
+    createdAt: { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  };
+
+  const allFieldPaths = Object.keys(fields).map((k) => `updateMask.fieldPaths=${k}`).join('&');
+  const patchUrl = `${docUrl}?${allFieldPaths}`;
+
+  const res = await fetch(patchUrl, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ fields }),
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error('Storefront write failed: ' + JSON.stringify(data.error));
+  console.log(`Storefront profile written for ${uid}`);
+}
+
 async function main() {
   console.log('Getting access token from Firebase CLI credentials...');
   const token = await getAccessToken();
   console.log('Access token obtained.');
 
   const uid = await createOrGetUser(token);
+  await setAuthClaims(token, uid);
   await writeFirestoreProfile(token, uid);
+  await writeStorefrontProfile(token, uid);
 
   console.log('');
   console.log('Account details:');

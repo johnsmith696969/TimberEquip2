@@ -6547,6 +6547,125 @@ function supportsEnterpriseStorefrontRole(role) {
   return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalizeUserRole(role));
 }
 
+function buildEnterpriseStorefrontState({ uid, role, userData = {}, authRecord = null }) {
+  const normalizedUid = normalizeNonEmptyString(uid);
+  const normalizedRole = normalizeUserRole(role || userData.role || authRecord?.customClaims?.role || '');
+  if (!normalizedUid || !supportsEnterpriseStorefrontRole(normalizedRole)) {
+    return null;
+  }
+
+  const storefrontName = normalizeNonEmptyString(
+    userData.storefrontName || userData.displayName || userData.company || authRecord?.displayName,
+    'Forestry Equipment Sales Storefront'
+  );
+  const storefrontSlug = buildStorefrontSlugValue(
+    userData.storefrontSlug || storefrontName,
+    normalizedUid
+  );
+  const displayName = normalizeNonEmptyString(
+    userData.displayName || userData.company || authRecord?.displayName,
+    storefrontName
+  );
+  const location = normalizeNonEmptyString(userData.location);
+  const storefrontDescription = normalizeNonEmptyString(
+    userData.storefrontDescription || userData.about
+  );
+
+  return {
+    uid: normalizedUid,
+    role: normalizedRole,
+    storefrontEnabled: true,
+    storefrontSlug,
+    canonicalPath: `/seller/${storefrontSlug}`,
+    displayName,
+    storefrontName,
+    storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline),
+    storefrontDescription,
+    location,
+    phone: normalizeNonEmptyString(userData.phoneNumber),
+    email: normalizeNonEmptyString(userData.email || authRecord?.email),
+    website: normalizeNonEmptyString(userData.website),
+    logo: normalizeNonEmptyString(userData.photoURL || authRecord?.photoURL),
+    coverPhotoUrl: normalizeNonEmptyString(userData.coverPhotoUrl),
+    seoTitle: normalizeNonEmptyString(userData.seoTitle) ||
+      `${storefrontName} | ${normalizedRole === 'pro_dealer' ? 'Pro Dealer' : normalizedRole === 'dealer' ? 'Dealer' : 'Equipment Seller'} on Forestry Equipment Sales`,
+    seoDescription: normalizeNonEmptyString(userData.seoDescription) ||
+      `Browse forestry and logging equipment from ${storefrontName}${location ? ` in ${location}` : ''}. Verified ${normalizedRole === 'pro_dealer' ? 'Pro Dealer' : normalizedRole === 'dealer' ? 'Dealer' : 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery.`,
+    seoKeywords: Array.isArray(userData.seoKeywords) && userData.seoKeywords.length > 0
+      ? userData.seoKeywords.filter((keyword) => typeof keyword === 'string').slice(0, 30)
+      : [storefrontName, 'forestry equipment', 'logging equipment', 'used forestry equipment', 'skidders', 'harvesters', 'feller bunchers', 'forwarders'].filter(Boolean),
+  };
+}
+
+async function syncEnterpriseStorefrontState({ uid, role, userData = {}, authRecord = null, force = false }) {
+  const storefrontState = buildEnterpriseStorefrontState({ uid, role, userData, authRecord });
+  if (!storefrontState) {
+    return { synced: false, storefront: null, created: false };
+  }
+
+  const normalizedUid = storefrontState.uid;
+  const storefrontRef = getDb().collection('storefronts').doc(normalizedUid);
+  const storefrontSnap = await storefrontRef.get();
+  const storefrontData = storefrontSnap.exists ? storefrontSnap.data() || {} : {};
+  const storefrontExists = storefrontSnap.exists;
+
+  const shouldSyncUserProfile =
+    force
+    || userData.storefrontEnabled !== true
+    || normalizeNonEmptyString(userData.storefrontSlug) !== storefrontState.storefrontSlug
+    || normalizeNonEmptyString(userData.storefrontName) !== storefrontState.storefrontName;
+
+  const shouldSyncStorefront =
+    force
+    || !storefrontExists
+    || storefrontData.storefrontEnabled !== true
+    || normalizeNonEmptyString(storefrontData.storefrontSlug) !== storefrontState.storefrontSlug
+    || normalizeNonEmptyString(storefrontData.storefrontName) !== storefrontState.storefrontName
+    || normalizeUserRole(storefrontData.role) !== storefrontState.role
+    || normalizeNonEmptyString(storefrontData.displayName) !== storefrontState.displayName
+    || normalizeNonEmptyString(storefrontData.email) !== storefrontState.email;
+
+  if (!shouldSyncUserProfile && !shouldSyncStorefront) {
+    return { synced: false, storefront: storefrontState, created: false };
+  }
+
+  const writes = [];
+  if (shouldSyncUserProfile) {
+    writes.push(
+      getDb().collection('users').doc(normalizedUid).set(
+        {
+          storefrontEnabled: true,
+          storefrontSlug: storefrontState.storefrontSlug,
+          storefrontName: storefrontState.storefrontName,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (shouldSyncStorefront) {
+    writes.push(
+      storefrontRef.set(
+        {
+          ...storefrontState,
+          ...(storefrontExists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  await Promise.all(writes);
+
+  return {
+    synced: true,
+    storefront: storefrontState,
+    created: !storefrontExists,
+  };
+}
+
 function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
   const payload = rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : {};
   const sanitized = {};
@@ -6783,6 +6902,40 @@ async function buildAccountBootstrapPayload(decodedToken, options = {}) {
       subscriptionOverrides.role = getSellerRoleForPlan(effectivePlanId);
       subscriptionOverrides.accountAccessSource = 'subscription';
       subscriptionOverrides.accountStatus = 'active';
+    }
+  }
+
+  const storefrontRoleForSync = normalizeNonEmptyString(subscriptionOverrides.role || baseAccountState.role);
+  if (!firestoreQuotaLimited && supportsEnterpriseStorefrontRole(storefrontRoleForSync)) {
+    try {
+      const storefrontSync = await syncEnterpriseStorefrontState({
+        uid: actorUid,
+        role: storefrontRoleForSync,
+        userData: {
+          ...userData,
+          ...subscriptionOverrides,
+          email: userData.email || actorEmail,
+          displayName: userData.displayName || authRecord?.displayName || actorDisplayName,
+        },
+        authRecord,
+      });
+
+      if (storefrontSync.storefront) {
+        userData = {
+          ...userData,
+          storefrontEnabled: true,
+          storefrontSlug: storefrontSync.storefront.storefrontSlug,
+          storefrontName: storefrontSync.storefront.storefrontName,
+        };
+      }
+    } catch (error) {
+      if (!isFirestoreQuotaExceeded(error)) {
+        throw error;
+      }
+      firestoreQuotaLimited = true;
+      logger.warn('Account bootstrap storefront sync skipped because the Firestore daily read quota is exhausted.', {
+        actorUid,
+      });
     }
   }
 
@@ -7528,6 +7681,19 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
         },
       });
     }
+  }
+
+  if (!skipFirestore && !firestoreQuotaLimited) {
+    await syncEnterpriseStorefrontState({
+      uid: normalizedUserUid,
+      role: nextRole,
+      userData: {
+        ...existingUser,
+        ...updatePayload,
+      },
+      authRecord: authUserRecord,
+      force: true,
+    });
   }
 
   if (!skipFirestore) {
@@ -12886,6 +13052,32 @@ exports.apiProxy = onRequest(
               : null,
           }),
         });
+        if (!firestoreQuotaLimited && supportsEnterpriseStorefrontRole(requestedRole)) {
+          const storefrontSync = await syncEnterpriseStorefrontState({
+            uid: targetUid,
+            role: requestedRole,
+            userData: {
+              ...currentData,
+              uid: targetUid,
+              displayName,
+              email,
+              phoneNumber,
+              company,
+              role: requestedRole,
+              accountAccessSource: nextAccessSource || null,
+            },
+            authRecord: responseAuthRecord,
+            force: true,
+          });
+          if (storefrontSync.storefront) {
+            currentData = {
+              ...currentData,
+              storefrontEnabled: true,
+              storefrontSlug: storefrontSync.storefront.storefrontSlug,
+              storefrontName: storefrontSync.storefront.storefrontName,
+            };
+          }
+        }
         return res.status(200).json({
           message: 'User updated.',
           warning,
