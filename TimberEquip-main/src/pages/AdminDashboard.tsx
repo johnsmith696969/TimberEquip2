@@ -153,6 +153,7 @@ export function AdminDashboard() {
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userDisplayCount, setUserDisplayCount] = useState(50);
   const [usersLoadError, setUsersLoadError] = useState('');
   const [usersLoading, setUsersLoading] = useState(false);
   const [adminOperationsLoaded, setAdminOperationsLoaded] = useState(false);
@@ -2046,7 +2047,7 @@ export function AdminDashboard() {
       </div>
 
       <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-surface/30 text-[10px] font-black uppercase tracking-widest text-muted border-b border-line">
@@ -2059,7 +2060,7 @@ export function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {filteredAccounts.map(account => (
+              {filteredAccounts.slice(0, userDisplayCount).map(account => (
                 <tr key={account.id} className="hover:bg-surface/20 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
@@ -2129,6 +2130,20 @@ export function AdminDashboard() {
             </tbody>
           </table>
         </div>
+        {filteredAccounts.length > userDisplayCount && (
+          <div className="border-t border-line px-6 py-3 flex items-center justify-between bg-surface/30">
+            <span className="text-[9px] font-black uppercase tracking-widest text-muted">
+              Showing {Math.min(userDisplayCount, filteredAccounts.length)} of {filteredAccounts.length} accounts
+            </span>
+            <button
+              type="button"
+              onClick={() => setUserDisplayCount((prev) => prev + 50)}
+              className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline"
+            >
+              View More
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

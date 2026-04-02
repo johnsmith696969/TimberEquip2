@@ -1751,7 +1751,7 @@ export function DealerOS() {
           </div>
 
           <div className="mt-5 overflow-hidden rounded-sm border border-line">
-            <div className="divide-y divide-line bg-surface">
+            <div className="max-h-[500px] overflow-y-auto divide-y divide-line bg-surface">
               {filteredInquiries.length === 0 ? (
                 <div className="px-4 py-10 text-center text-sm font-bold text-muted">No leads match the current filter.</div>
               ) : (
@@ -1935,7 +1935,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="mt-5 overflow-x-auto rounded-sm border border-line">
+        <div className="mt-5 max-h-[600px] overflow-y-auto overflow-x-auto rounded-sm border border-line">
           <table className="w-full min-w-[980px] text-left">
             <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
               <tr>
@@ -2016,7 +2016,7 @@ export function DealerOS() {
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-sm border border-line bg-surface p-6">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Recent Import Activity</h2>
-          <div className="mt-5 overflow-x-auto rounded-sm border border-line">
+          <div className="mt-5 max-h-[400px] overflow-y-auto overflow-x-auto rounded-sm border border-line">
             <table className="w-full min-w-[720px] text-left">
               <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
                 <tr>

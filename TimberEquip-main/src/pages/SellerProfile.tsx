@@ -84,6 +84,8 @@ export function SellerProfile() {
   const [loadError, setLoadError] = useState('');
   const [compareList, setCompareList] = useState<string[]>([]);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [storefrontSearchQuery, setStorefrontSearchQuery] = useState('');
+  const [storefrontDisplayCount, setStorefrontDisplayCount] = useState(24);
 
   const [editData, setEditData] = useState({
     storefrontName: '',
@@ -711,7 +713,14 @@ export function SellerProfile() {
               {categorySlug ? `${titleCaseSlug(categorySlug)} ` : 'Current '}<span className="text-muted">Equipment</span>
             </h2>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
+            <input
+              type="text"
+              value={storefrontSearchQuery}
+              onChange={(e) => { setStorefrontSearchQuery(e.target.value); setStorefrontDisplayCount(24); }}
+              placeholder="Search inventory..."
+              className="input-industrial w-48 px-3 text-[10px] font-bold uppercase tracking-widest"
+            />
             <span className="text-xs font-bold uppercase tracking-widest text-muted">{filteredListings.length} Results</span>
           </div>
         </div>
@@ -737,21 +746,43 @@ export function SellerProfile() {
         ) : null}
 
         <div className="industrial-grid">
-          {filteredListings.map((listing) => {
-            const nid = normalizeListingId(listing.id);
-            return (
-              <div key={listing.id}>
-                <ListingCard
-                  listing={listing}
-                  isFavorite={!!nid && favoriteIds.includes(nid)}
-                  isComparing={!!nid && compareList.includes(nid)}
-                  onToggleFavorite={handleToggleFavorite}
-                  onToggleCompare={toggleCompare}
-                />
-              </div>
-            );
-          })}
+          {(() => {
+            const sq = storefrontSearchQuery.toLowerCase();
+            const searched = sq
+              ? filteredListings.filter((l) => [l.title, l.category, l.make, l.model, l.location].some((f) => String(f || '').toLowerCase().includes(sq)))
+              : filteredListings;
+            return searched.slice(0, storefrontDisplayCount).map((listing) => {
+              const nid = normalizeListingId(listing.id);
+              return (
+                <div key={listing.id}>
+                  <ListingCard
+                    listing={listing}
+                    isFavorite={!!nid && favoriteIds.includes(nid)}
+                    isComparing={!!nid && compareList.includes(nid)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleCompare={toggleCompare}
+                  />
+                </div>
+              );
+            });
+          })()}
         </div>
+
+        {(() => {
+          const sq = storefrontSearchQuery.toLowerCase();
+          const total = sq
+            ? filteredListings.filter((l) => [l.title, l.category, l.make, l.model, l.location].some((f) => String(f || '').toLowerCase().includes(sq))).length
+            : filteredListings.length;
+          return total > storefrontDisplayCount ? (
+            <button
+              type="button"
+              onClick={() => setStorefrontDisplayCount((prev) => prev + 24)}
+              className="mt-8 w-full py-4 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+            >
+              Load More Equipment ({total - storefrontDisplayCount} remaining)
+            </button>
+          ) : null;
+        })()}
 
         {compareList.length > 0 && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-bg px-6 py-3 rounded-sm shadow-2xl flex items-center gap-4">

@@ -1083,6 +1083,9 @@ export function Profile() {
   const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [listingSearchQuery, setListingSearchQuery] = useState('');
+  const [listingDisplayCount, setListingDisplayCount] = useState(10);
+  const [financingDisplayCount, setFinancingDisplayCount] = useState(10);
   const [inquirySearchQuery, setInquirySearchQuery] = useState('');
   const [inquiryDisplayCount, setInquiryDisplayCount] = useState(10);
   const [callSearchQuery, setCallSearchQuery] = useState('');
@@ -1776,8 +1779,20 @@ export function Profile() {
           )}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4">
-        {myListings.map((listing) => (
+      <div className="flex items-center gap-2 mb-4">
+        <input
+          type="text"
+          value={listingSearchQuery}
+          onChange={(e) => { setListingSearchQuery(e.target.value); setListingDisplayCount(10); }}
+          placeholder="Search listings..."
+          className="input-industrial w-full max-w-sm px-3 text-[10px] font-bold uppercase tracking-widest"
+        />
+        <span className="text-[9px] font-black uppercase tracking-widest text-muted whitespace-nowrap">
+          {(() => { const lq = listingSearchQuery.toLowerCase(); const filtered = lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings; return `${filtered.length} listing${filtered.length !== 1 ? 's' : ''}`; })()}
+        </span>
+      </div>
+      <div className="max-h-[700px] overflow-y-auto pr-1 grid grid-cols-1 gap-4">
+        {(() => { const lq = listingSearchQuery.toLowerCase(); return (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount); })().map((listing) => (
            <div key={listing.id} className="bg-surface border border-line p-4 flex flex-col sm:flex-row gap-4 shadow-sm hover:border-accent/50 transition-colors">
              <div className="w-full sm:w-40 md:w-48 aspect-video bg-bg border border-line overflow-hidden rounded-sm flex-shrink-0">
               <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
@@ -1876,13 +1891,22 @@ export function Profile() {
           </div>
         ))}
       </div>
+      {(() => { const lq = listingSearchQuery.toLowerCase(); const total = (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).length; return total > listingDisplayCount ? (
+        <button
+          type="button"
+          onClick={() => setListingDisplayCount((prev) => prev + 10)}
+          className="mt-4 w-full py-3 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+        >
+          View More ({total - listingDisplayCount} remaining)
+        </button>
+      ) : null; })()}
     </div>
   );
 
   const renderAlerts = () => (
     <div className="space-y-8">
       <h3 className="text-sm font-black uppercase tracking-widest">Search Alerts & Notifications</h3>
-      <div className="grid grid-cols-1 gap-4">
+      <div className="max-h-[500px] overflow-y-auto pr-1 grid grid-cols-1 gap-4">
         {savedSearches.map((alert) => (
            <div key={alert.id} className="bg-surface border border-line p-4 md:p-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 shadow-sm">
             <div className="space-y-1">
@@ -1949,8 +1973,8 @@ export function Profile() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {financingRequests.map((request) => (
+        <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
+          {financingRequests.slice(0, financingDisplayCount).map((request) => (
             <div key={request.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="space-y-2 min-w-0">
@@ -1990,6 +2014,15 @@ export function Profile() {
               </div>
             </div>
           ))}
+          {financingRequests.length > financingDisplayCount && (
+            <button
+              type="button"
+              onClick={() => setFinancingDisplayCount((prev) => prev + 10)}
+              className="w-full py-3 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+            >
+              View More ({financingRequests.length - financingDisplayCount} remaining)
+            </button>
+          )}
         </div>
       )}
     </div>
