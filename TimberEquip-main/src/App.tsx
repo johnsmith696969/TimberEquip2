@@ -10,6 +10,8 @@ import { LocaleProvider } from './components/LocaleContext';
 import { AuthProvider } from './components/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MotionConfig } from 'framer-motion';
+import { useAuth } from './components/AuthContext';
+import { getDefaultAccountWorkspacePath } from './utils/sellerAccess';
 
 const Search = lazy(() => import('./pages/Search').then((module) => ({ default: module.Search })));
 const ListingDetail = lazy(() => import('./pages/ListingDetail').then((module) => ({ default: module.ListingDetail })));
@@ -50,19 +52,25 @@ const Cookies = lazy(() => import('./pages/Cookies').then((module) => ({ default
 const Bookmarks = lazy(() => import('./pages/Bookmarks').then((module) => ({ default: module.Bookmarks })));
 const Dmca = lazy(() => import('./pages/Dmca').then((module) => ({ default: module.Dmca })));
 const Unsubscribe = lazy(() => import('./pages/Unsubscribe').then((module) => ({ default: module.Unsubscribe })));
+const ResetPassword = lazy(() => import('./pages/ResetPassword').then((module) => ({ default: module.ResetPassword })));
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 
 function RouteLoadingFallback() {
   return (
     <div className="mx-auto flex min-h-[40vh] max-w-[1600px] items-center justify-center px-4 py-16 md:px-8">
-      <div className="text-[11px] font-black uppercase tracking-widest text-muted">Loading Page...</div>
+      <div className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'var(--muted, #78716C)' }}>Loading Page...</div>
     </div>
   );
 }
 
 function RedirectSellerToDealer() {
-  const { id = '' } = useParams<{ id: string }>();
-  return <Navigate replace to={`/dealers/${id}`} />;
+  const { id } = useParams<{ id: string }>();
+  return <Navigate replace to={id ? `/dealers/${id}` : '/dealers'} />;
+}
+
+function AccountWorkspaceRedirect() {
+  const { user } = useAuth();
+  return <Navigate replace to={getDefaultAccountWorkspacePath(user)} />;
 }
 
 function App() {
@@ -108,6 +116,7 @@ function App() {
                     <Route path="/register" element={<Register />} />
                     <Route path="/sell" element={<ProtectedRoute><Sell /></ProtectedRoute>} />
                     <Route path="/dealer-os" element={<ProtectedRoute requireDealerOs><DealerOS /></ProtectedRoute>} />
+                    <Route path="/account" element={<ProtectedRoute><AccountWorkspaceRedirect /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
                     <Route path="/logistics" element={<Logistics />} />
                     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
@@ -124,6 +133,7 @@ function App() {
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/cookies" element={<Cookies />} />
                     <Route path="/dmca" element={<Dmca />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/unsubscribe" element={<Unsubscribe />} />
                     <Route path="/bookmarks" element={<ProtectedRoute><Bookmarks /></ProtectedRoute>} />
                     <Route path="/404" element={<NotFound />} />

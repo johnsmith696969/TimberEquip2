@@ -32,7 +32,7 @@ import {
   startSmsMfaSignIn,
   type SmsMfaFactorSummary,
 } from '../services/mfaService';
-import { appendReturnToParam } from '../utils/sellerAccess';
+import { appendReturnToParam, getDefaultAccountWorkspacePath } from '../utils/sellerAccess';
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 import { useTheme } from '../components/ThemeContext';
@@ -74,7 +74,6 @@ export function Login() {
     ? String((location.state as { returnTo: string }).returnTo || '').trim()
     : '';
   const stateReturnTo = stateReturnToRaw.startsWith('/') && !stateReturnToRaw.startsWith('//') ? stateReturnToRaw : '';
-  const hasFirebaseSession = Boolean(auth.currentUser);
   const hasResolvedSession = Boolean(isAuthenticated);
 
   useEffect(() => {
@@ -103,10 +102,7 @@ export function Login() {
     mfaRecaptchaRef.current = null;
   }, []);
 
-  const ADMIN_ROLES = ['super_admin', 'admin', 'developer'];
-  const postSignInTarget = (authUser?.role && ADMIN_ROLES.includes(authUser.role))
-    ? '/admin'
-    : redirectTarget || '/profile';
+  const postSignInTarget = redirectTarget || getDefaultAccountWorkspacePath(authUser);
   const postSignInHref = postSignInTarget.startsWith('/sell')
     ? appendReturnToParam(postSignInTarget, stateReturnTo)
     : postSignInTarget;
@@ -120,7 +116,7 @@ export function Login() {
   const registerHref = registerParams.toString() ? `/register?${registerParams.toString()}` : '/register';
 
   useEffect(() => {
-    if ((!hasResolvedSession && !hasFirebaseSession) || mfaResolver) {
+    if (!hasResolvedSession || mfaResolver) {
       return;
     }
 
@@ -131,7 +127,7 @@ export function Login() {
     }, 750);
 
     return () => window.clearTimeout(fallbackRedirect);
-  }, [hasFirebaseSession, hasResolvedSession, mfaResolver, navigate, postSignInHref]);
+  }, [hasResolvedSession, mfaResolver, navigate, postSignInHref]);
 
   const resetMfaChallenge = (notice = '') => {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
@@ -373,7 +369,7 @@ export function Login() {
 
   const disablePrimaryAuth = loading || googleLoading || !!mfaResolver;
 
-  if ((hasResolvedSession || hasFirebaseSession) && !mfaResolver) {
+  if (hasResolvedSession && !mfaResolver) {
     return <Navigate replace to={postSignInHref} />;
   }
 
@@ -392,7 +388,7 @@ export function Login() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl bg-bg border border-line shadow-2xl relative z-10 overflow-hidden"
       >
-        <div className={`p-12 ${theme === 'dark' ? 'bg-[#0a0a0a] text-white' : 'bg-surface text-ink border-b border-line'}`}>
+        <div className={`p-12 ${theme === 'dark' ? 'bg-bg text-white' : 'bg-surface text-ink border-b border-line'}`}>
           <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2 block">Member Login</span>
           <h1 className={`text-4xl font-black tracking-tighter uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
             Forestry Equipment <br /> <span className="text-accent">Sales</span>
@@ -411,6 +407,7 @@ export function Login() {
                   required
                   type="email"
                   placeholder="EMAIL@EXAMPLE.COM"
+                  autoComplete="email"
                   className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -443,6 +440,7 @@ export function Login() {
                   required
                   type="password"
                   placeholder="************"
+                  autoComplete="current-password"
                   className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-widest"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -461,6 +459,7 @@ export function Login() {
             <button
               type="submit"
               disabled={disablePrimaryAuth}
+              aria-disabled={disablePrimaryAuth}
               className="btn-industrial btn-accent w-full py-5 text-base flex items-center justify-center"
             >
               {loading ? (
@@ -555,7 +554,7 @@ export function Login() {
           ) : null}
 
           {error ? (
-            <div className="mt-4 flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
+            <div role="alert" className="mt-4 flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
               <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
               <p className="text-xs font-medium text-red-500">{error}</p>
             </div>
@@ -572,6 +571,7 @@ export function Login() {
               type="button"
               onClick={handleGoogleLogin}
               disabled={disablePrimaryAuth}
+              aria-disabled={disablePrimaryAuth}
               className="mt-4 w-full btn-industrial py-4 flex items-center justify-center space-x-3 hover:border-accent/50 transition-colors"
             >
               {googleLoading ? (
@@ -619,7 +619,7 @@ export function Login() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0 bg-bg flex flex-col z-20"
             >
-              <div className="bg-[#1C1917] text-white p-12 flex justify-between items-center">
+              <div className="bg-ink text-white p-12 flex justify-between items-center">
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Account Recovery</span>
                   <h2 className="text-3xl font-black tracking-tighter uppercase leading-none text-white">
@@ -672,6 +672,7 @@ export function Login() {
                             required
                             type="email"
                             placeholder="EMAIL@EXAMPLE.COM"
+                            autoComplete="email"
                             className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                             value={resetEmail}
                             onChange={(e) => setResetEmail(e.target.value)}
@@ -680,7 +681,7 @@ export function Login() {
                       </div>
 
                       {resetError ? (
-                        <div className="flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
+                        <div role="alert" className="flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
                           <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
                           <p className="text-xs font-medium text-red-500">{resetError}</p>
                         </div>
@@ -689,6 +690,7 @@ export function Login() {
                       <button
                         type="submit"
                         disabled={resetLoading}
+                        aria-disabled={resetLoading}
                         className="btn-industrial btn-accent w-full py-5 text-base flex items-center justify-center"
                       >
                         {resetLoading ? (

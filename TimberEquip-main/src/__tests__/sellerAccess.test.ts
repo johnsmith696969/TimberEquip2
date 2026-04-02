@@ -6,6 +6,7 @@ import {
   hasSellerWorkspaceAccess,
   canUserPostListings,
   canAccessDealerOs,
+  getDefaultAccountWorkspacePath,
   getFeaturedListingCap,
   getManagedListingCap,
   getListEquipmentPath,
@@ -215,6 +216,27 @@ describe('canAccessDealerOs', () => {
 
   it('returns false for null', () => {
     expect(canAccessDealerOs(null)).toBe(false);
+  });
+});
+
+describe('getDefaultAccountWorkspacePath', () => {
+  it('routes admin roles to the admin workspace', () => {
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'admin' }))).toBe('/admin');
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'content_manager' }))).toBe('/admin');
+  });
+
+  it('routes active dealers to DealerOS', () => {
+    expect(getDefaultAccountWorkspacePath(makeUser({
+      role: 'dealer',
+      accountStatus: 'active',
+      accountAccessSource: 'subscription',
+      activeSubscriptionPlanId: 'dealer',
+      subscriptionStatus: 'active',
+    }))).toBe('/dealer-os');
+  });
+
+  it('falls back to the profile workspace for non-seller members', () => {
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'buyer' }))).toBe('/profile');
   });
 });
 

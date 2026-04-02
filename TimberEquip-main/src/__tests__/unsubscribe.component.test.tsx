@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Unsubscribe } from '../pages/Unsubscribe';
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
+}));
+
 describe('Unsubscribe page', () => {
   const fetchMock = vi.fn();
 

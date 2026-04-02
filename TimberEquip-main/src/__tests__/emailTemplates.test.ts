@@ -31,4 +31,18 @@ describe('email templates', () => {
     expect(html).toContain('{{unsubscribeUrl}}');
     expect(html).toContain('Unsubscribe from saved-search emails');
   });
+
+  it('uses the branded password reset workspace url in password reset emails', () => {
+    const { subject, html } = templates.passwordReset({
+      displayName: 'Dealer Admin',
+      intro: 'We received a request to reset your Forestry Equipment Sales password.',
+      resetUrl: 'https://timberequip.com/reset-password?oobCode=demo123&mode=resetPassword&continueUrl=%2Flogin',
+      loginUrl: 'https://timberequip.com/login',
+    });
+
+    expect(subject).toContain('Reset your Forestry Equipment Sales password');
+    expect(html).toContain('Open Secure Reset Page');
+    expect(html).toContain('/reset-password?oobCode=demo123');
+    expect(html).toContain('Back To Login');
+  });
 });

@@ -10,6 +10,7 @@ const ROLE_BASED_LISTING_CAPS: Record<string, number> = {
   dealer: 50,
   pro_dealer: 150,
 };
+const ADMIN_WORKSPACE_ROLES = new Set(['super_admin', 'admin', 'developer', 'content_manager', 'editor']);
 
 function normalizeRole(role?: string | null): string {
   return String(role || '').trim().toLowerCase();
@@ -102,6 +103,18 @@ export function canAccessDealerOs(user: UserProfile | null | undefined): boolean
   if (!DEALER_OS_ROLES.has(normalizedRole)) return false;
 
   return hasActiveSellerSubscription(user) || hasManagedSellerAccess(user);
+}
+
+export function getDefaultAccountWorkspacePath(user: UserProfile | null | undefined): '/admin' | '/dealer-os' | '/profile' {
+  if (user && ADMIN_WORKSPACE_ROLES.has(normalizeRole(user.role))) {
+    return '/admin';
+  }
+
+  if (canAccessDealerOs(user)) {
+    return '/dealer-os';
+  }
+
+  return '/profile';
 }
 
 export function getDealerInventoryOwnerUid(user: UserProfile | null | undefined): string {

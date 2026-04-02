@@ -13,6 +13,7 @@ const {
   assessRecaptchaMock,
   signOutMock,
   authMock,
+  authContextState,
 } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   loginMock: vi.fn(),
@@ -24,6 +25,10 @@ const {
   signOutMock: vi.fn(),
   authMock: {
     currentUser: null as null | { email?: string | null; emailVerified?: boolean },
+  },
+  authContextState: {
+    isAuthenticated: false,
+    user: null as null | { uid?: string; role?: string; displayName?: string },
   },
 }));
 
@@ -53,7 +58,8 @@ vi.mock('../components/AuthContext', () => ({
     loginWithGoogle: loginWithGoogleMock,
     sendPasswordReset: sendPasswordResetMock,
     sendVerificationEmail: sendVerificationEmailMock,
-    isAuthenticated: false,
+    isAuthenticated: authContextState.isAuthenticated,
+    user: authContextState.user,
   }),
 }));
 
@@ -96,6 +102,8 @@ function renderLogin(initialEntry = '/login') {
 describe('Login component', () => {
   beforeEach(() => {
     authMock.currentUser = null;
+    authContextState.isAuthenticated = false;
+    authContextState.user = null;
     navigateMock.mockReset();
     loginMock.mockReset();
     loginWithGoogleMock.mockReset();
@@ -144,5 +152,31 @@ describe('Login component', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in with google/i }));
 
     expect(await screen.findByText(/google sign-in is not authorized for this domain/i)).toBeInTheDocument();
+  });
+
+  it('does not redirect early when only the raw Firebase session exists', async () => {
+    authMock.currentUser = { email: 'admin@example.com', emailVerified: true };
+
+    renderLogin('/login');
+
+    expect(await screen.findByText(/member login/i)).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('redirects authenticated admins into the admin workspace', async () => {
+    authContextState.isAuthenticated = true;
+    authContextState.user = {
+      uid: 'admin-1',
+      role: 'admin',
+      displayName: 'Site Admin',
+    };
+
+    const view = renderLogin('/login');
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/admin', { replace: true });
+    });
+
+    view.unmount();
   });
 });

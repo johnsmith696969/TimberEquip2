@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Menu, X, Sun, Moon,
@@ -13,9 +13,9 @@ import { Currency, Language } from '../types';
 import { useAuth } from './AuthContext';
 import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { userService } from '../services/userService';
-import { appendReturnToParam, canAccessDealerOs, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
-const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+import { appendReturnToParam, canAccessDealerOs, getDefaultAccountWorkspacePath, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
@@ -55,9 +55,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const hasAdminAccess = !!(user && user.role && ADMIN_ROLES.includes(user.role));
+  const accountRoute = isAuthenticated ? '/account' : '/profile';
+  const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
+  const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
-  const accountRoute = hasAdminAccess ? '/admin' : hasDealerOsAccess ? '/dealer-os' : '/profile';
   const footerSocialLinks = [
     { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales' },
     { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales' },
@@ -184,9 +185,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [currDropdownOpen, setCurrDropdownOpen] = useState(false);
+  const mobileMenuTrapRef = useFocusTrap(isMenuOpen);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsMenuOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isMenuOpen]);
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:px-6 focus:py-3 focus:bg-accent focus:text-white focus:text-sm focus:font-bold focus:uppercase focus:tracking-wider">
+        Skip to main content
+      </a>
       {/* Top Bar */}
       <div className="bg-surface border-b border-line py-2.5 px-3 md:px-8 flex justify-between items-center gap-2 text-[11px] font-medium uppercase tracking-wider">
         <div className="flex items-center gap-1 sm:gap-4 min-w-0">
@@ -198,6 +210,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }}
               className={selectorButtonClass}
               aria-label={t('layout.languageLabel', 'Language')}
+              aria-expanded={langDropdownOpen}
+              aria-haspopup="listbox"
               title={selectedLanguage.label}
             >
               <span className="sm:hidden">{selectedLanguage.code}</span>
@@ -243,6 +257,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }}
               className={selectorButtonClass}
               aria-label={t('layout.currencyLabel', 'Currency')}
+              aria-expanded={currDropdownOpen}
+              aria-haspopup="listbox"
               title={selectedCurrency.label}
             >
               <span className="sm:hidden">{selectedCurrencySymbol}</span>
@@ -338,9 +354,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )}
           </Link>
           
-          <button 
+          <button
             className="lg:hidden p-2 text-ink"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isMenuOpen}
           >
             {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -373,15 +391,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Menu */}
       <AnimatePresence>
         {isMenuOpen && (
-          <motion.div 
+          <motion.div
+            ref={mobileMenuTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
             initial={{ opacity: 0, x: '100%' }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: '100%' }}
              className="fixed inset-0 bg-bg z-[100] overflow-y-auto flex flex-col shadow-2xl"
           >
-            <button 
+            <button
               className="absolute top-6 right-6 p-3 bg-surface border border-line rounded-sm text-ink hover:bg-ink hover:text-bg transition-colors"
               onClick={() => setIsMenuOpen(false)}
+              aria-label="Close menu"
             >
               <X size={24} />
             </button>
@@ -454,7 +477,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               <div className="flex items-center justify-between border-t border-line pt-6">
                 <span className="label-micro">{t('layout.theme', 'Theme')}</span>
-                <button onClick={toggleTheme} className="p-2 bg-surface rounded-full">
+                <button onClick={toggleTheme} className="p-2 bg-surface rounded-full" aria-label={theme === 'light' ? 'Switch to dusk mode' : 'Switch to light mode'}>
                   {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                 </button>
               </div>
@@ -465,7 +488,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         {children}
       </main>
 

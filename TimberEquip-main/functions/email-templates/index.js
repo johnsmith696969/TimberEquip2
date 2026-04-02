@@ -249,6 +249,30 @@ const templates = {
     return { subject, html };
   },
 
+  passwordReset({ displayName, intro, resetUrl, loginUrl }) {
+    const subject = 'Reset your Forestry Equipment Sales password';
+    const html = baseLayout(subject, 'Reset Your Password', `
+      <p class="label">Account Recovery</p>
+      <h2>Choose a new password</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>${intro}</p>
+      <p>Use the secure password reset page below to choose a new password for your Forestry Equipment Sales account.</p>
+      ${renderInfoPanel([
+        { label: 'Destination', value: 'Forestry Equipment Sales password recovery workspace' },
+        { label: 'Security', value: 'Single-use link that expires automatically' },
+      ])}
+      <a href="${resetUrl}" class="cta">Open Secure Reset Page</a>
+      <a href="${loginUrl}" class="cta cta-secondary">Back To Login</a>
+      <hr class="divider" />
+      <p style="font-size:12px; color:#6b7280 !important;">
+        If the button does not work, copy and paste this secure link into your browser:<br />
+        <a href="${resetUrl}" style="word-break:break-word;">${resetUrl}</a>
+      </p>
+      <p>If you did not request this change, you can safely ignore this email and your password will stay the same.</p>
+    `);
+    return { subject, html };
+  },
+
   /**
    * Sent 7 days before a subscription expires.
    */

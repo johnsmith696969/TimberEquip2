@@ -866,26 +866,55 @@ async function buildPasswordResetLink(email, continueUrl = `${APP_URL}/login`) {
   }
 }
 
+function buildBrandedPasswordResetUrl(resetLink, continueUrl = `${APP_URL}/login`) {
+  try {
+    const parsedLink = new URL(String(resetLink || '').trim());
+    const oobCode = String(parsedLink.searchParams.get('oobCode') || '').trim();
+    const mode = String(parsedLink.searchParams.get('mode') || 'resetPassword').trim();
+    if (!oobCode) {
+      return String(resetLink || '').trim() || continueUrl;
+    }
+
+    const params = new URLSearchParams();
+    params.set('oobCode', oobCode);
+    params.set('mode', mode || 'resetPassword');
+
+    const nextContinueUrl = String(parsedLink.searchParams.get('continueUrl') || continueUrl || '').trim();
+    if (nextContinueUrl) {
+      params.set('continueUrl', nextContinueUrl);
+    }
+
+    const lang = String(parsedLink.searchParams.get('lang') || '').trim();
+    if (lang) {
+      params.set('lang', lang);
+    }
+
+    return `${APP_URL}/reset-password?${params.toString()}`;
+  } catch (error) {
+    logger.warn(`Could not translate password reset link to branded route: ${error.message}`);
+    return String(resetLink || '').trim() || continueUrl;
+  }
+}
+
 async function sendPasswordResetEmailMessage({ email, displayName, requestedBy, continueUrl = `${APP_URL}/login` }) {
   const resetLink = await buildPasswordResetLink(email, continueUrl);
+  const brandedResetUrl = buildBrandedPasswordResetUrl(resetLink, continueUrl);
   const safeDisplayName = String(displayName || 'there').trim() || 'there';
   const safeRequestedBy = String(requestedBy || '').trim();
   const intro = safeRequestedBy
     ? `${safeRequestedBy} requested a password reset for your Forestry Equipment Sales account.`
     : 'We received a request to reset your Forestry Equipment Sales password.';
+  const payload = templates.passwordReset({
+    displayName: safeDisplayName,
+    intro,
+    resetUrl: brandedResetUrl,
+    loginUrl: `${APP_URL}/login`,
+  });
 
   await sendEmail({
     to: email,
-    subject: 'Reset your Forestry Equipment Sales password',
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-        <h2 style="margin-bottom: 16px;">Password reset requested</h2>
-        <p>Hello ${safeDisplayName},</p>
-        <p>${intro}</p>
-        <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
-        <p>If you did not expect this email, you can ignore it.</p>
-      </div>
-    `,
+    subject: payload.subject,
+    html: payload.html,
   });
 }
 
