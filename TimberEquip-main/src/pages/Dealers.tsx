@@ -30,6 +30,9 @@ function getWebsiteLabel(website?: string): string {
 
 export function Dealers() {
   const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const [dealers, setDealers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -148,11 +151,11 @@ export function Dealers() {
             <Building2 size={20} className="text-accent" />
             <span className="label-micro text-accent">Dealer Network</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Active Dealer <br />
-            <span className="text-ink/70 dark:text-white/70">Storefronts</span>
+            <span className={heroSecondaryClass}>Storefronts</span>
           </h1>
-          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
             Search every active dealer storefront on Forestry Equipment Sales. Results are ordered alphabetically and open
             directly to the seller&apos;s live storefront.
           </p>

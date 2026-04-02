@@ -17,6 +17,7 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { billingService, type ListingPlanId } from '../services/billingService';
 import { useAuth } from '../components/AuthContext';
@@ -74,6 +75,7 @@ type SellerTier = {
 };
 
 export function AdPrograms() {
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isAuthenticated } = useAuth();
@@ -106,6 +108,9 @@ export function AdPrograms() {
     };
   });
   const flowIntent = String(searchParams.get('intent') || '').trim().toLowerCase();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
   const openLeadForm = (type: 'media-kit' | 'support') => {
     setRequestType(type);
@@ -451,11 +456,11 @@ export function AdPrograms() {
             className="max-w-3xl"
           >
             <span className="label-micro text-accent mb-4 block">Seller Growth</span>
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none mb-8 text-ink dark:text-white">
+            <h1 className={`text-5xl md:text-7xl font-black tracking-tighter leading-none mb-8 ${heroHeadingClass}`}>
               SELLER TOOLS <br />
-              <span className="text-accent">AND VISIBILITY</span>
+              <span className={heroSecondaryClass}>AND VISIBILITY</span>
             </h1>
-            <p className="text-lg text-ink/70 dark:text-white/70 leading-relaxed mb-10 max-w-2xl">
+            <p className={`text-lg leading-relaxed mb-10 max-w-2xl ${heroBodyClass}`}>
               Choose your Forestry Equipment Sales seller plan, complete the on-site enrollment form,
               agree to the seller legal terms, and continue into branded Stripe checkout.
             </p>

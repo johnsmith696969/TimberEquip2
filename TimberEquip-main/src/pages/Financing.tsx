@@ -13,10 +13,15 @@ import { useAuth } from '../components/AuthContext';
 import { ImageHero } from '../components/ImageHero';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 export function Financing() {
   const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
   const { user } = useAuth();
+  const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -106,11 +111,11 @@ export function Financing() {
             <Building size={20} className="text-accent" />
             <span className="label-micro text-accent">Financing Center</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Institutional <br />
-            <span className="text-ink/70 dark:text-white/70">Financing</span>
+            <span className={heroSecondaryClass}>Financing</span>
           </h1>
-          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
             Apply for equipment financing. Submit your details and get a credit decision, typically within one business day.
           </p>
         </div>

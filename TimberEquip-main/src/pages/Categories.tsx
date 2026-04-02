@@ -93,6 +93,9 @@ export function Categories() {
     [categoryCards]
   );
   const isDuskMode = theme === 'dark';
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const marketNewsStyles = isDuskMode
     ? {
         section: 'py-24 bg-ink px-4 md:px-8',
@@ -148,11 +151,11 @@ export function Categories() {
       <ImageHero imageSrc="/page-photos/bagged-firewood.jpg" imageAlt="Bagged firewood stacks">
         <div>
           <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Equipment <br />
-            <span className="text-ink/70 dark:text-white/70">Categories</span>
+            <span className={heroSecondaryClass}>Categories</span>
           </h1>
-          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
             Find the right machine by category. Every listing includes specs, photos, and pricing.
           </p>
         </div>

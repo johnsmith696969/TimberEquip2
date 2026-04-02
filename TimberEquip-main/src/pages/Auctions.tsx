@@ -6,6 +6,7 @@ import { equipmentService } from '../services/equipmentService';
 import { Auction } from '../types';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 function formatAuctionDate(date: string) {
   const parsed = new Date(date);
@@ -33,8 +34,12 @@ function getAuctionDateParts(date: string) {
 }
 
 export function Auctions() {
+  const { theme } = useTheme();
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-secondary';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
   useEffect(() => {
     const fetchAuctions = async () => {
@@ -88,12 +93,12 @@ export function Auctions() {
             <Gavel size={20} className="text-accent" />
             <span className="label-micro text-accent">Auction Center</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none text-ink dark:text-white">
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             {hasLiveAuctions ? 'Live ' : 'Equipment '}
             <br />
-            <span className="text-ink/70 dark:text-white/70">Auctions</span>
+            <span className={heroSecondaryClass}>Auctions</span>
           </h1>
-          <p className="text-ink/70 dark:text-white/70 font-medium max-w-2xl leading-relaxed">
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
             {hasLiveAuctions
               ? 'Verified auction schedules for buyers and sellers who need a structured liquidation or bidding event.'
               : 'Timed and live auctions are not yet open for direct bidding on Forestry Equipment Sales. Use this desk for launch updates and support.'}

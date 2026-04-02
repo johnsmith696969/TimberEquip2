@@ -655,6 +655,7 @@ function baseStyles() {
       --surface-strong: #ffffff;
       --line: #d7d0bf;
       --ink: #1e2522;
+      --secondary: #334155;
       --muted: #5c685f;
       --accent: #1e6b52;
       --accent-soft: rgba(30, 107, 82, 0.12);
@@ -689,7 +690,8 @@ function baseStyles() {
     .hero-media::before { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.3); }
     .hero-media::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 34%, rgba(255, 255, 255, 0.55) 70%, rgba(255, 255, 255, 0.35) 100%); }
     .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
-    .hero h1 { margin: 18px 0 16px; font-size: clamp(2.4rem, 5vw, 4.75rem); line-height: 0.95; letter-spacing: -0.05em; text-transform: uppercase; max-width: 14ch; }
+    .hero h1 { margin: 18px 0 16px; font-size: clamp(2.4rem, 5vw, 4.75rem); line-height: 0.95; letter-spacing: -0.05em; text-transform: uppercase; max-width: 14ch; color: var(--ink); }
+    .hero h1 .hero-secondary { color: var(--secondary); }
     .hero p { margin: 0; max-width: 68ch; color: var(--muted); font-size: 1.02rem; line-height: 1.75; }
     .hero-grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 28px; }
     .stat { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.82); box-shadow: var(--shadow); }
@@ -1113,6 +1115,8 @@ function renderHeroMedia({ heroImageUrl, heroImageAlt = '', heroImagePosition = 
 
 function renderInventoryPage({
   title,
+  heroTitlePrimary,
+  heroTitleSecondary,
   eyebrow,
   description,
   canonicalUrl,
@@ -1145,7 +1149,9 @@ function renderInventoryPage({
           ${hasHeroImage ? '<div class="shell hero-content">' : ''}
           <span class="eyebrow">${escapeHtml(eyebrow)}</span>
           ${renderBreadcrumbs(breadcrumbs)}
-          <h1>${escapeHtml(title)}</h1>
+          <h1>${heroTitleSecondary
+            ? `${escapeHtml(heroTitlePrimary || title)} <br /><span class="hero-secondary">${escapeHtml(heroTitleSecondary)}</span>`
+            : escapeHtml(heroTitlePrimary || title)}</h1>
           <p>${escapeHtml(intro)}</p>
           <div class="hero-actions">
             ${primaryAction ? `<a class="button button-primary" href="${escapeHtml(primaryAction.href)}">${escapeHtml(primaryAction.label)}</a>` : ''}
@@ -1304,6 +1310,8 @@ function buildSharedSections(listings, sellerMap, options = {}) {
 
 function renderIndexPage({
   title,
+  heroTitlePrimary,
+  heroTitleSecondary,
   eyebrow,
   description,
   canonicalUrl,
@@ -1333,7 +1341,9 @@ function renderIndexPage({
           ${hasHeroImage ? '<div class="shell hero-content">' : ''}
           <span class="eyebrow">${escapeHtml(eyebrow)}</span>
           ${renderBreadcrumbs(breadcrumbs)}
-          <h1>${escapeHtml(title)}</h1>
+          <h1>${heroTitleSecondary
+            ? `${escapeHtml(heroTitlePrimary || title)} <br /><span class="hero-secondary">${escapeHtml(heroTitleSecondary)}</span>`
+            : escapeHtml(heroTitlePrimary || title)}</h1>
           <p>${escapeHtml(intro)}</p>
           <div class="hero-grid">
             <article class="stat">
@@ -1929,6 +1939,8 @@ async function renderRoute(req, res) {
     res.status(200).type('html').send(
       renderIndexPage({
         title: 'Equipment Categories',
+        heroTitlePrimary: 'Equipment',
+        heroTitleSecondary: 'Categories',
         eyebrow: 'Category Directory',
         description: 'Browse the major equipment families currently represented in live approved inventory, then drill into filtered marketplace search.',
         canonicalUrl: `${baseUrl}/categories`,
@@ -2619,6 +2631,8 @@ async function renderRoute(req, res) {
     res.status(200).type('html').send(
       renderInventoryPage({
         title: 'Equipment Dealers',
+        heroTitlePrimary: 'Equipment',
+        heroTitleSecondary: 'Dealers',
         eyebrow: 'Dealer Directory',
         description: 'Browse dealer storefronts backed by live marketplace inventory, clean public URLs, and direct paths into inventory or feeds.',
         canonicalUrl: `${baseUrl}/dealers`,
