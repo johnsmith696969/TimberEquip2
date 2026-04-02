@@ -20,7 +20,7 @@ const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO = `/Logo-Transparent.webp?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO = `/Logo-Transparent-sm.webp?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -419,7 +419,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
               <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
-              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
+              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-[#15803D] dark:text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>
             
              <div className="mt-8 pb-12 px-6 flex flex-col space-y-6">

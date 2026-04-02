@@ -58,7 +58,7 @@ export function Breadcrumbs({ items = [] }: Props) {
             ) : (
               <Link
                 to={item.path}
-                className="flex-shrink-0 text-accent hover:underline transition-colors"
+                className="flex-shrink-0 text-[#15803D] dark:text-accent hover:underline transition-colors"
               >
                 {item.label}
               </Link>
