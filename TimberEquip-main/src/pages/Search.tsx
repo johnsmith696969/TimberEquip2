@@ -30,8 +30,17 @@ import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { normalizeSeoSlug } from '../utils/seoRoutes';
+import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
+
+const MULTI_SELECT_KEYS = new Set(['manufacturer', 'model', 'subcategory', 'condition', 'state', 'country']);
+
+const parseMultiValue = (value: string): string[] =>
+  value ? value.split('|').map((v) => v.trim()).filter(Boolean) : [];
+
+const joinMultiValue = (values: string[]): string =>
+  values.filter(Boolean).join('|');
 
 export interface CategoryRouteInfo {
   categoryName: string;
@@ -239,14 +248,32 @@ const applyDependentFilterResets = (
 };
 
 const countActiveFilters = (filters: SearchFilters): number =>
-  Object.entries(filters).filter(([key, value]) => key !== 'sortBy' && Boolean(value)).length;
+  Object.entries(filters).reduce((count, [key, value]) => {
+    if (key === 'sortBy' || !value) return count;
+    if (MULTI_SELECT_KEYS.has(key)) return count + parseMultiValue(value).length;
+    return count + 1;
+  }, 0);
 
 const areFiltersEqual = (a: SearchFilters, b: SearchFilters): boolean =>
   (Object.keys(DEFAULT_FILTERS) as Array<keyof SearchFilters>).every((key) => a[key] === b[key]);
 
+const multiSummary = (value: string, singular: string, plural: string): string => {
+  const count = parseMultiValue(value).length;
+  if (count === 0) return '';
+  if (count === 1) return parseMultiValue(value)[0];
+  return `${count} ${plural}`;
+};
+
 const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey): string => {
   if (key === 'equipment') {
-    return [filters.category, filters.subcategory, filters.manufacturer, filters.model, filters.state, filters.country].filter(Boolean).join(' / ') || 'Category, make, model';
+    return [
+      filters.category,
+      multiSummary(filters.subcategory, 'subcategory', 'subcategories'),
+      multiSummary(filters.manufacturer, 'manufacturer', 'manufacturers'),
+      multiSummary(filters.model, 'model', 'models'),
+      multiSummary(filters.state, 'state', 'states'),
+      multiSummary(filters.country, 'country', 'countries'),
+    ].filter(Boolean).join(' / ') || 'Category, make, model';
   }
   if (key === 'pricing') {
     return [
@@ -256,11 +283,11 @@ const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey):
     ].filter(Boolean).join(' | ') || 'Price, year, hours';
   }
   if (key === 'specs') {
-    return [filters.condition, filters.attachment, filters.feature, filters.stockNumber || filters.serialNumber ? 'IDs set' : '']
+    return [multiSummary(filters.condition, 'condition', 'conditions'), filters.attachment, filters.feature, filters.stockNumber || filters.serialNumber ? 'IDs set' : '']
       .filter(Boolean)
       .join(' | ') || 'Condition, features, IDs';
   }
-  return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : ''].filter(Boolean).join(' | ') || 'Location and radius';
+  return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : '', multiSummary(filters.state, 'state', 'states'), multiSummary(filters.country, 'country', 'countries')].filter(Boolean).join(' | ') || 'Location and radius';
 };
 
 function FilterSectionPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
@@ -515,8 +542,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     return allListings.map((listing) => {
       const raw = listing.location || '';
       const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
-      const country = parts.length > 0 ? parts[parts.length - 1] : '';
-      const state = parts.length > 1 ? parts[parts.length - 2] : '';
+      // 2-part: "City, State" → state=parts[1], no country
+      // 3+-part: "City, State, Country" → state=parts[-2], country=parts[-1]
+      const country = parts.length >= 3 ? parts[parts.length - 1] : '';
+      const state = parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : '');
       return { state, country };
     });
   }, [allListings]);
@@ -536,7 +565,8 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     [allListings]
   );
 
-  const filteredListings = useMemo(() => {
+  // Shared filter function used by both filteredListings and faceted counts
+  const matchesFilters = useMemo(() => {
     const minPrice = parseNumber(filters.minPrice);
     const maxPrice = parseNumber(filters.maxPrice);
     const minYear = parseNumber(filters.minYear);
@@ -546,10 +576,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     const radius = parseNumber(filters.locationRadius);
     const center = parseLocationCoordinates(filters.location);
 
-    let results = allListings.filter((listing) => {
+    return (listing: Listing, excludeKey?: keyof SearchFilters): boolean => {
       if ((listing.status || 'active') === 'sold') return false;
 
-      if (filters.q) {
+      if (excludeKey !== 'q' && filters.q) {
         const q = normalize(filters.q);
         const matchesKeyword =
           normalize(listing.id).includes(q) ||
@@ -562,33 +592,41 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         if (!matchesKeyword) return false;
       }
 
-      if (filters.category) {
-        const normalizedCategory = normalize(filters.category);
-        if (normalize(listing.category) !== normalizedCategory) return false;
+      if (excludeKey !== 'category' && filters.category) {
+        if (normalize(listing.category) !== normalize(filters.category)) return false;
       }
 
-      if (filters.subcategory) {
-        const normalizedSubcategory = normalize(filters.subcategory);
-        if (normalize(listing.subcategory) !== normalizedSubcategory) return false;
+      if (excludeKey !== 'subcategory' && filters.subcategory) {
+        const selected = parseMultiValue(filters.subcategory).map(normalize);
+        if (!selected.some((s) => normalize(listing.subcategory) === s)) return false;
       }
 
-      if (filters.manufacturer) {
+      if (excludeKey !== 'manufacturer' && filters.manufacturer) {
+        const selected = parseMultiValue(filters.manufacturer).map(normalize);
         const make = normalize(listing.make || listing.manufacturer || listing.brand);
-        if (!make.includes(normalize(filters.manufacturer))) return false;
+        if (!selected.some((s) => make.includes(s))) return false;
       }
 
-      if (filters.model && !normalize(listing.model).includes(normalize(filters.model))) return false;
-
-      if (filters.state) {
-        const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
-        const listingState = locationParts.length > 1 ? locationParts[locationParts.length - 2] : '';
-        if (!normalize(listingState).includes(normalize(filters.state))) return false;
+      if (excludeKey !== 'model' && filters.model) {
+        const selected = parseMultiValue(filters.model).map(normalize);
+        const model = normalize(listing.model);
+        if (!selected.some((s) => model.includes(s))) return false;
       }
 
-      if (filters.country) {
+      if (excludeKey !== 'state' && filters.state) {
+        const selected = parseMultiValue(filters.state).map(normalize);
         const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
-        const listingCountry = locationParts.length > 0 ? locationParts[locationParts.length - 1] : '';
-        if (!normalize(listingCountry).includes(normalize(filters.country))) return false;
+        const listingState = normalize(
+          locationParts.length >= 3 ? locationParts[locationParts.length - 2] : (locationParts.length === 2 ? locationParts[1] : '')
+        );
+        if (!selected.some((s) => listingState.includes(s))) return false;
+      }
+
+      if (excludeKey !== 'country' && filters.country) {
+        const selected = parseMultiValue(filters.country).map(normalize);
+        const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
+        const listingCountry = normalize(locationParts.length >= 3 ? locationParts[locationParts.length - 1] : '');
+        if (!selected.some((s) => listingCountry.includes(s))) return false;
       }
 
       if (minPrice !== undefined && listing.price < minPrice) return false;
@@ -598,16 +636,17 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       if (minHours !== undefined && listing.hours < minHours) return false;
       if (maxHours !== undefined && listing.hours > maxHours) return false;
 
-      if (filters.condition && normalize(listing.condition) !== normalize(filters.condition)) return false;
+      if (excludeKey !== 'condition' && filters.condition) {
+        const selected = parseMultiValue(filters.condition).map(normalize);
+        if (!selected.some((s) => normalize(listing.condition) === s)) return false;
+      }
 
       if (filters.location) {
         const locationTextMatch = normalize(listing.location).includes(normalize(filters.location));
-
         if (radius !== undefined && radius > 0 && center) {
           const coords = getListingCoords(listing);
           if (coords.lat !== undefined && coords.lng !== undefined) {
-            const withinRadius = distanceMiles(center.lat, center.lng, coords.lat, coords.lng) <= radius;
-            if (!withinRadius) return false;
+            if (distanceMiles(center.lat, center.lng, coords.lat, coords.lng) > radius) return false;
           } else if (!locationTextMatch) {
             return false;
           }
@@ -618,22 +657,90 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
       if (filters.attachment) {
         const attachments = Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [];
-        const hasAttachment = attachments.some((attachment) => normalize(attachment).includes(normalize(filters.attachment)));
-        if (!hasAttachment) return false;
+        if (!attachments.some((a) => normalize(a).includes(normalize(filters.attachment)))) return false;
       }
 
       if (filters.feature) {
         const topLevel = Array.isArray(listing.features) ? listing.features : [];
         const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
-        const hasFeature = [...topLevel, ...specLevel].some((feature) => normalize(feature).includes(normalize(filters.feature)));
-        if (!hasFeature) return false;
+        if (![...topLevel, ...specLevel].some((f) => normalize(f).includes(normalize(filters.feature)))) return false;
       }
 
       if (filters.stockNumber && !normalize(listing.stockNumber).includes(normalize(filters.stockNumber))) return false;
       if (filters.serialNumber && !normalize(listing.serialNumber).includes(normalize(filters.serialNumber))) return false;
 
       return true;
-    });
+    };
+  }, [allListings, filters]);
+
+  // Faceted counts: for each multi-select field, count matches excluding that field
+  const facetedCounts = useMemo(() => {
+    const countField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const listing of allListings) {
+        if (!matchesFilters(listing, excludeKey)) continue;
+        const val = accessor(listing);
+        if (val) map.set(val, (map.get(val) || 0) + 1);
+      }
+      return map;
+    };
+
+    const countLocationField = (excludeKey: keyof SearchFilters, partIndex: 'state' | 'country'): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const listing of allListings) {
+        if (!matchesFilters(listing, excludeKey)) continue;
+        const parts = (listing.location || '').split(',').map((p) => p.trim()).filter(Boolean);
+        const val = partIndex === 'state'
+          ? (parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : ''))
+          : (parts.length >= 3 ? parts[parts.length - 1] : '');
+        if (val) map.set(val, (map.get(val) || 0) + 1);
+      }
+      return map;
+    };
+
+    return {
+      subcategory: countField('subcategory', (l) => l.subcategory || l.category),
+      manufacturer: countField('manufacturer', (l) => l.make || l.manufacturer || l.brand),
+      model: countField('model', (l) => l.model),
+      condition: countField('condition', (l) => l.condition),
+      state: countLocationField('state', 'state'),
+      country: countLocationField('country', 'country'),
+    };
+  }, [allListings, matchesFilters]);
+
+  // Build MultiSelectOption arrays from options + faceted counts
+  const subcategoryMultiOptions: MultiSelectOption[] = useMemo(
+    () => uniqueSorted([...taxonomySubcategories, ...listingSubcategories]).map((v) => ({ value: v, count: facetedCounts.subcategory.get(v) || 0 })),
+    [taxonomySubcategories, listingSubcategories, facetedCounts.subcategory]
+  );
+
+  const manufacturerMultiOptions: MultiSelectOption[] = useMemo(
+    () => manufacturerOptions.map((v) => ({ value: v, count: facetedCounts.manufacturer.get(v) || 0 })),
+    [manufacturerOptions, facetedCounts.manufacturer]
+  );
+
+  const modelMultiOptions: MultiSelectOption[] = useMemo(
+    () => modelOptions.map((v) => ({ value: v, count: facetedCounts.model.get(v) || 0 })),
+    [modelOptions, facetedCounts.model]
+  );
+
+  const conditionMultiOptions: MultiSelectOption[] = useMemo(
+    () => ['New', 'Used', 'Rebuilt'].map((v) => ({ value: v, count: facetedCounts.condition.get(v) || 0 })),
+    [facetedCounts.condition]
+  );
+
+  const stateMultiOptions: MultiSelectOption[] = useMemo(
+    () => stateOptions.map((v) => ({ value: v, count: facetedCounts.state.get(v) || 0 })),
+    [stateOptions, facetedCounts.state]
+  );
+
+  const countryMultiOptions: MultiSelectOption[] = useMemo(
+    () => countryOptions.map((v) => ({ value: v, count: facetedCounts.country.get(v) || 0 })),
+    [countryOptions, facetedCounts.country]
+  );
+
+  const filteredListings = useMemo(() => {
+    let results = allListings.filter((listing) => matchesFilters(listing));
 
     const featuredFirst = (a: Listing, b: Listing) => Number(!!b.featured) - Number(!!a.featured);
     if (filters.sortBy === 'price_asc') {
@@ -655,7 +762,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     }
 
     return results;
-  }, [allListings, filters]);
+  }, [allListings, matchesFilters, filters.sortBy, filters.q]);
 
   // Reset pagination whenever the result set changes (new filters applied)
   useEffect(() => {
@@ -679,6 +786,18 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
   const clearDraftFilters = () => {
     setDraftFilters(DEFAULT_FILTERS);
+  };
+
+  const handleDraftMultiSelect = (key: keyof SearchFilters, selected: string[]) => {
+    handleDraftFilterChange(key, joinMultiValue(selected));
+  };
+
+  const removeMultiValue = (key: keyof SearchFilters, valueToRemove: string) => {
+    const current = parseMultiValue(filters[key]);
+    const updated = joinMultiValue(current.filter((v) => v !== valueToRemove));
+    const next = { ...filters, [key]: updated };
+    setFilters(next);
+    setDraftFilters(next);
   };
 
   const resetFilters = () => {
@@ -882,7 +1001,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 if (!categoryRoute?.isTopLevel && categoryRoute && key === 'subcategory') return false;
                 return true;
               })
-              .map(([key, value]) => {
+              .flatMap(([key, value]) => {
                 const labels: Record<string, string> = {
                   q: 'Search', category: 'Category', subcategory: 'Subcategory', manufacturer: 'Manufacturer',
                   model: 'Model', state: 'State', country: 'Country', minPrice: 'Min Price', maxPrice: 'Max Price',
@@ -890,7 +1009,24 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   condition: 'Condition', location: 'Location', locationRadius: 'Radius', attachment: 'Attachment',
                   feature: 'Feature', stockNumber: 'Stock #', serialNumber: 'Serial #',
                 };
-                return (
+                const label = labels[key] || key;
+
+                // Multi-select fields: render one pill per value
+                if (MULTI_SELECT_KEYS.has(key) && value.includes('|')) {
+                  return parseMultiValue(value).map((v) => (
+                    <button
+                      key={`${key}-${v}`}
+                      onClick={() => removeMultiValue(key, v)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-line text-[10px] font-bold uppercase tracking-wider hover:border-accent transition-colors rounded-sm flex-shrink-0"
+                    >
+                      <span className="text-muted">{label}:</span>
+                      <span className="text-ink">{v}</span>
+                      <X size={10} className="text-muted hover:text-ink ml-0.5" />
+                    </button>
+                  ));
+                }
+
+                return [(
                   <button
                     key={key}
                     onClick={() => {
@@ -900,11 +1036,11 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-line text-[10px] font-bold uppercase tracking-wider hover:border-accent transition-colors rounded-sm flex-shrink-0"
                   >
-                    <span className="text-muted">{labels[key] || key}:</span>
+                    <span className="text-muted">{label}:</span>
                     <span className="text-ink">{value}</span>
                     <X size={10} className="text-muted hover:text-ink ml-0.5" />
                   </button>
-                );
+                )];
               })}
             <button
               onClick={resetFilters}
@@ -990,51 +1126,33 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Subcategory</span>
-                        <select
-                          value={draftFilters.subcategory}
-                          onChange={(e) => handleDraftFilterChange('subcategory', e.target.value)}
-                          className="select-industrial w-full"
-                        >
-                          <option value="">All Subcategories</option>
-                          {uniqueSorted([...taxonomySubcategories, ...listingSubcategories]).map((subcategory) => (
-                            <option key={subcategory} value={subcategory}>
-                              {subcategory}
-                            </option>
-                          ))}
-                        </select>
+                        <MultiSelectDropdown
+                          placeholder="All Subcategories"
+                          options={subcategoryMultiOptions}
+                          selected={parseMultiValue(draftFilters.subcategory)}
+                          onChange={(sel) => handleDraftMultiSelect('subcategory', sel)}
+                        />
                       </div>
 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Manufacturer / Brand</span>
-                        <select
-                          value={draftFilters.manufacturer}
-                          onChange={(e) => handleDraftFilterChange('manufacturer', e.target.value)}
-                          className="select-industrial w-full"
-                        >
-                          <option value="">All Manufacturers</option>
-                          {manufacturerOptions.map((manufacturer) => (
-                            <option key={manufacturer} value={manufacturer}>
-                              {manufacturer}
-                            </option>
-                          ))}
-                        </select>
+                        <MultiSelectDropdown
+                          placeholder="All Manufacturers"
+                          options={manufacturerMultiOptions}
+                          selected={parseMultiValue(draftFilters.manufacturer)}
+                          onChange={(sel) => handleDraftMultiSelect('manufacturer', sel)}
+                        />
                       </div>
 
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Model</span>
-                        <input
-                          type="text"
-                          list="model-suggestions"
-                          placeholder="e.g. 855E"
-                          className="input-industrial w-full"
-                          value={draftFilters.model}
-                          onChange={(e) => handleDraftFilterChange('model', e.target.value)}
+                        <MultiSelectDropdown
+                          placeholder="All Models"
+                          options={modelMultiOptions}
+                          selected={parseMultiValue(draftFilters.model)}
+                          onChange={(sel) => handleDraftMultiSelect('model', sel)}
+                          searchable
                         />
-                        <datalist id="model-suggestions">
-                          {modelOptions.slice(0, 150).map((model) => (
-                            <option key={model} value={model} />
-                          ))}
-                        </datalist>
                       </div>
                   </FilterSectionPanel>
                 </div>
@@ -1142,16 +1260,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <FilterSectionPanel open={openSections.specs}>
                       <div className="flex flex-col space-y-2">
                         <span className="label-micro">Condition</span>
-                        <select
-                          value={draftFilters.condition}
-                          onChange={(e) => handleDraftFilterChange('condition', e.target.value)}
-                          className="select-industrial w-full"
-                        >
-                          <option value="">All Conditions</option>
-                          <option value="New">New</option>
-                          <option value="Used">Used</option>
-                          <option value="Rebuilt">Rebuilt</option>
-                        </select>
+                        <MultiSelectDropdown
+                          placeholder="All Conditions"
+                          options={conditionMultiOptions}
+                          selected={parseMultiValue(draftFilters.condition)}
+                          onChange={(sel) => handleDraftMultiSelect('condition', sel)}
+                          searchable={false}
+                        />
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
@@ -1247,7 +1362,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                             onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
                             className="select-industrial w-full"
                           >
-                            <option value="">Any radius</option>
+                            <option value="">Select</option>
                             {LOCATION_RADIUS_OPTIONS.map((radius) => (
                               <option key={radius} value={radius}>
                                 {radius}
@@ -1260,33 +1375,21 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
                           <span className="label-micro">State / Province</span>
-                          <select
-                            value={draftFilters.state}
-                            onChange={(e) => handleDraftFilterChange('state', e.target.value)}
-                            className="select-industrial w-full"
-                          >
-                            <option value="">All States</option>
-                            {stateOptions.map((state) => (
-                              <option key={state} value={state}>
-                                {state}
-                              </option>
-                            ))}
-                          </select>
+                          <MultiSelectDropdown
+                            placeholder="All States"
+                            options={stateMultiOptions}
+                            selected={parseMultiValue(draftFilters.state)}
+                            onChange={(sel) => handleDraftMultiSelect('state', sel)}
+                          />
                         </div>
                         <div className="flex flex-col space-y-2">
                           <span className="label-micro">Country</span>
-                          <select
-                            value={draftFilters.country}
-                            onChange={(e) => handleDraftFilterChange('country', e.target.value)}
-                            className="select-industrial w-full"
-                          >
-                            <option value="">All Countries</option>
-                            {countryOptions.map((country) => (
-                              <option key={country} value={country}>
-                                {country}
-                              </option>
-                            ))}
-                          </select>
+                          <MultiSelectDropdown
+                            placeholder="All Countries"
+                            options={countryMultiOptions}
+                            selected={parseMultiValue(draftFilters.country)}
+                            onChange={(sel) => handleDraftMultiSelect('country', sel)}
+                          />
                         </div>
                       </div>
                   </FilterSectionPanel>
