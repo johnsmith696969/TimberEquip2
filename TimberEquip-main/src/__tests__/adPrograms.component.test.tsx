@@ -29,6 +29,10 @@ vi.mock('../components/Seo', () => ({
   Seo: () => null,
 }));
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
 vi.mock('../components/AuthContext', () => ({
   useAuth: useAuthMock,
 }));

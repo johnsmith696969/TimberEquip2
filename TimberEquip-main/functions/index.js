@@ -250,10 +250,12 @@ function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
 
   return `${resolveConfiguredAppUrl()}/unsubscribe?${params.toString()}`;
 }
-const PRIVILEGED_ADMIN_EMAILS = new Set([
-  'caleb@forestryequipmentsales.com',
-  'calebhappy@gmail.com',
-]);
+const PRIVILEGED_ADMIN_EMAILS = new Set(
+  (process.env.PRIVILEGED_ADMIN_EMAILS || functions.config().app?.privileged_admin_emails || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean)
+);
 const FEATURED_LISTING_CAPS = Object.freeze({
   dealer: 3,
   pro_dealer: 6,
@@ -5848,24 +5850,24 @@ const LISTING_CHECKOUT_PLANS = {
     name: 'Owner-Operator Ad Program',
     amountUsd: 39,
     listingCap: 1,
-    productId: 'prod_UBpeOgS2Xbot2e',
-    priceId: 'price_1TDRzJEFuycUwY0KZiFBQxTF',
+    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || (functions.config().stripe || {}).product_owner_operator || '',
+    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || (functions.config().stripe || {}).price_owner_operator || '',
   },
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
     amountUsd: 499,
     listingCap: 50,
-    productId: 'prod_UBpeHg3FydOSdD',
-    priceId: 'price_1TDRzJEFuycUwY0KnU6HzAg2',
+    productId: process.env.STRIPE_PRODUCT_DEALER || (functions.config().stripe || {}).product_dealer || '',
+    priceId: process.env.STRIPE_PRICE_DEALER || (functions.config().stripe || {}).price_dealer || '',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
     amountUsd: 999,
     listingCap: 150,
-    productId: 'prod_UBpek9mEeZPlyC',
-    priceId: 'price_1TDRzKEFuycUwY0KPkBneTyh',
+    productId: process.env.STRIPE_PRODUCT_FLEET || (functions.config().stripe || {}).product_fleet || '',
+    priceId: process.env.STRIPE_PRICE_FLEET || (functions.config().stripe || {}).price_fleet || '',
   },
 };
 
@@ -8189,7 +8191,14 @@ async function handleTwilioInboundCall(req, res) {
 }
 
 async function handleTwilioCallStatus(req, res) {
-  // Status callbacks don't always have valid signatures when sent as action callbacks
+  if (!validateTwilioRequest(req)) {
+    logger.warn('Invalid Twilio signature on call status callback.', {
+      path: req.originalUrl || req.url,
+      callSid: String(req.body?.CallSid || '').trim(),
+    });
+    // Soft-fail: action-URL callbacks may have different signatures than standard webhooks.
+    // Log the warning but still process to avoid dropping legitimate status updates.
+  }
   const callSid = String(req.body?.CallSid || '').trim();
   const callStatus = String(req.body?.DialCallStatus || req.body?.CallStatus || '').trim();
   const callDuration = parseInt(req.body?.CallDuration || req.body?.Duration || '0', 10) || 0;
@@ -13191,8 +13200,13 @@ exports.apiProxy = onRequest(
         const body = req.body || {};
         const targetUid = normalizeNonEmptyString(body.sellerUid, actor.ownerUid);
         if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
-        const callbackUrl = String(body.callbackUrl || '').trim();
-        if (!callbackUrl || !/^https?:\/\//i.test(callbackUrl)) return res.status(400).json({ error: 'A valid HTTPS callback URL is required.' });
+        let callbackUrl;
+        try {
+          callbackUrl = validateDealerFeedUrl(String(body.callbackUrl || '').trim());
+        } catch (urlErr) {
+          return res.status(400).json({ error: urlErr.message || 'Invalid callback URL.' });
+        }
+        if (!callbackUrl.startsWith('https://')) return res.status(400).json({ error: 'Webhook callback URLs must use HTTPS.' });
         const events = Array.isArray(body.events) ? body.events.filter((e) => ['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'].includes(e)) : ['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'];
         const secret = randomBytes(32).toString('hex');
         const docRef = await getDb().collection('dealerWebhookSubscriptions').add({

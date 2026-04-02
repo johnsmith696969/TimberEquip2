@@ -170,7 +170,7 @@ service cloud.firestore {
     }
 
     function isPrivilegedAdminEmail() {
-      return isAuthenticated() && request.auth.token.email == "caleb@forestryequipmentsales.com" && request.auth.token.email_verified == true;
+      return isAuthenticated() && request.auth.token.role == 'super_admin' && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
@@ -237,6 +237,10 @@ service cloud.firestore {
       return data.uid == existing.uid &&
              data.role == existing.role &&
              (!('parentAccountUid' in existing) || (('parentAccountUid' in data) && data.parentAccountUid == existing.parentAccountUid)) &&
+             (!('accountAccessSource' in existing) || data.accountAccessSource == existing.accountAccessSource) &&
+             (!('accountStatus' in existing) || data.accountStatus == existing.accountStatus) &&
+             (!('activeSubscriptionPlanId' in existing) || data.activeSubscriptionPlanId == existing.activeSubscriptionPlanId) &&
+             (!('subscriptionStatus' in existing) || data.subscriptionStatus == existing.subscriptionStatus) &&
              data.displayName is string && data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
              (!('emailVerified' in data) || data.emailVerified is bool) &&
@@ -297,6 +301,32 @@ service cloud.firestore {
              data.authorUid is string && data.authorUid.size() > 0 &&
              data.status in ['draft', 'published'] &&
              (!('reviewStatus' in data) || data.reviewStatus in ['draft', 'published', 'in_review', 'scheduled']);
+    }
+
+    function isValidNews(data) {
+      return data.keys().hasAll(['title', 'content']) &&
+             data.keys().hasOnly(['title', 'summary', 'content', 'author', 'date', 'image', 'category', 'seoTitle', 'seoDescription', 'seoKeywords', 'seoSlug', 'status', 'createdAt', 'updatedAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 500 &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 500000 &&
+             (!('summary' in data) || (data.summary is string && data.summary.size() <= 1000)) &&
+             (!('author' in data) || (data.author is string && data.author.size() <= 200)) &&
+             (!('image' in data) || (data.image is string && data.image.size() <= 2000)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
+             (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
+             (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
+             (!('seoSlug' in data) || (data.seoSlug is string && data.seoSlug.size() <= 200)) &&
+             (!('status' in data) || data.status in ['draft', 'published']);
+    }
+
+    function isValidConsentLog(data) {
+      return data.keys().hasOnly(['userUid', 'type', 'decision', 'version', 'userAgent', 'timestamp']) &&
+             data.userUid is string && data.userUid.size() > 0 && data.userUid.size() <= 128 &&
+             data.type is string && data.type.size() > 0 && data.type.size() <= 100 &&
+             data.decision is string && data.decision in ['accepted', 'declined'] &&
+             data.version is string && data.version.size() > 0 && data.version.size() <= 100 &&
+             (!('userAgent' in data) || (data.userAgent is string && data.userAgent.size() <= 500)) &&
+             data.timestamp is timestamp;
     }
 
     function isValidInquiryCreate(data) {
@@ -409,9 +439,9 @@ service cloud.firestore {
     }
 
     function isValidStorefront(data) {
-          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'twilioPhoneNumber', 'createdAt', 'updatedAt']) &&
+          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
-            data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller'] &&
+            data.role in ['dealer', 'pro_dealer', 'individual_seller'] &&
              data.storefrontEnabled is bool &&
             (!('storefrontSlug' in data) || (data.storefrontSlug is string && data.storefrontSlug.size() <= 200)) &&
             (!('canonicalPath' in data) || (data.canonicalPath is string && data.canonicalPath.size() <= 255)) &&
@@ -660,7 +690,7 @@ service cloud.firestore {
           request.auth.uid == storefrontId &&
           hasSellerPostingAccess() &&
           request.resource.data.uid == request.auth.uid &&
-          request.resource.data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller']
+          request.resource.data.role in ['dealer', 'pro_dealer', 'individual_seller']
         )
       );
       allow delete: if isAdmin();
@@ -682,7 +712,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isAdmin() || 
         (isEditor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvedBy'])) ||
-        (request.auth.uid == resource.data.sellerUid && isValidListing(request.resource.data) && request.resource.data.approvalStatus == resource.data.approvalStatus)
+        (request.auth.uid == resource.data.sellerUid && isValidListing(request.resource.data) && request.resource.data.approvalStatus == resource.data.approvalStatus && (!('paymentStatus' in resource.data) || request.resource.data.paymentStatus == resource.data.paymentStatus))
       );
       allow delete: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.sellerUid);
     }
@@ -695,7 +725,7 @@ service cloud.firestore {
 
     match /news/{postId} {
       allow read: if true;
-      allow create, update: if isEditor();
+      allow create, update: if isEditor() && isValidNews(request.resource.data);
       allow delete: if isAdmin();
     }
 
@@ -705,13 +735,13 @@ service cloud.firestore {
 
     match /inquiries/{inquiryId} {
       allow read: if isAuthenticated() && (isAdmin() || isEditor() || request.auth.uid == resource.data.sellerUid || request.auth.uid == resource.data.buyerUid);
-      allow create: if isValidInquiryCreate(request.resource.data);
+      allow create: if isAuthenticated() && isValidInquiryCreate(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
     match /financingRequests/{requestId} {
       allow read: if isAdmin() || isEditor();
-      allow create: if isValidFinancingRequest(request.resource.data);
+      allow create: if isAuthenticated() && isValidFinancingRequest(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
@@ -726,7 +756,7 @@ service cloud.firestore {
 
     match /consentLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid && isValidConsentLog(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
@@ -757,7 +787,7 @@ service cloud.firestore {
         request.auth.uid == resource.data.sellerUid ||
         request.auth.uid == resource.data.sellerId
       );
-      allow create: if isValidCallLogCreate(request.resource.data);
+      allow create: if isAuthenticated() && isValidCallLogCreate(request.resource.data);
       allow update, delete: if isAdmin();
     }
 

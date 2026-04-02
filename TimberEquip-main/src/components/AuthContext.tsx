@@ -15,7 +15,7 @@ import { AccountBootstrapResponse, UserProfile } from '../types';
 import { userService } from '../services/userService';
 import { billingService, type ListingPlanId, type RefreshedAccountAccessSummary } from '../services/billingService';
 import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../utils/accountEntitlement';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
+// isPrivilegedAdminEmail removed: admin detection is now server-side only via Firebase custom claims
 import { clearPendingFavoriteIntent, getPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { setSentryUserContext } from '../services/sentry';
@@ -50,6 +50,8 @@ function getCachedProfileStorageKey(uid: string): string {
 }
 
 function readCachedProfile(uid: string): Partial<UserProfile> | null {
+  // SECURITY: Cache is for UX display only (faster initial render).
+  // Security-sensitive fields are stripped — role/status come from Firebase custom claims.
   if (typeof window === 'undefined' || !uid) return null;
 
   try {
@@ -57,7 +59,11 @@ function readCachedProfile(uid: string): Partial<UserProfile> | null {
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<UserProfile>;
-    return parsed && typeof parsed === 'object' ? parsed : null;
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    // Strip fields that must come from server-side claims, not localStorage
+    const { role, accountStatus, accountAccessSource, activeSubscriptionPlanId, subscriptionStatus, ...safeFields } = parsed;
+    return safeFields;
   } catch {
     return null;
   }
@@ -223,12 +229,6 @@ async function resolveAuthAccessSnapshot(
     console.error('Unable to resolve auth role claims during profile fallback:', error);
   }
 
-  const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-  if (isPrivilegedAdminEmail(normalizedEmail)) {
-    resolvedRole = 'super_admin';
-    accountAccessSource = accountAccessSource || 'admin_override';
-  }
-
   if (!accountAccessSource) {
     if (activeSubscriptionPlanId) {
       accountAccessSource = 'subscription';
@@ -320,8 +320,7 @@ async function buildFallbackProfile(
 
 async function bootstrapPrivilegedAdminProfile(firebaseUser: FirebaseUser | null | undefined): Promise<boolean> {
   const currentUser = firebaseUser || auth.currentUser;
-  const normalizedEmail = (currentUser?.email || '').trim().toLowerCase();
-  if (!currentUser || !isPrivilegedAdminEmail(normalizedEmail)) {
+  if (!currentUser) {
     return false;
   }
 
@@ -359,13 +358,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     favorites: normalizeListingIdList(profile.favorites),
   });
 
+  const PROTECTED_PATCH_FIELDS = ['role', 'accountAccessSource', 'accountStatus', 'activeSubscriptionPlanId', 'subscriptionStatus', 'parentAccountUid'] as const;
+
   const applyPatchedCurrentUserProfile = (updates: Partial<UserProfile>) => {
+    const safeUpdates = { ...updates };
+    for (const key of PROTECTED_PATCH_FIELDS) delete (safeUpdates as Record<string, unknown>)[key];
+
     let nextUserSnapshot: UserProfile | null = null;
     setUser((currentUser) => {
       if (!currentUser) return currentUser;
       nextUserSnapshot = normalizeProfile({
         ...currentUser,
-        ...updates,
+        ...safeUpdates,
       });
       return nextUserSnapshot;
     });
@@ -585,22 +589,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               ),
             });
 
-            const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-            if (isPrivilegedAdminEmail(normalizedEmail) && resolvedProfile.role !== 'super_admin') {
+            // Server-side bootstrap: if no role claim is set, ask the server to assign one.
+            // The server will promote admin emails and reject non-admins gracefully.
+            if (!resolvedProfile.role || resolvedProfile.role === 'member') {
               try {
-                const promoted = await bootstrapPrivilegedAdminProfile(firebaseUser);
-                if (!promoted) {
-                  await userService.updateProfile(firebaseUser.uid, { role: 'super_admin' });
+                const tokenResult = await firebaseUser.getIdTokenResult();
+                if (!tokenResult.claims.role) {
+                  await bootstrapPrivilegedAdminProfile(firebaseUser);
                 }
               } catch (_) {
-                // Ignore update failure; still use email-based admin access.
+                // Non-critical; server decides admin status.
               }
 
               if (isStaleSession()) {
                 return;
               }
-
-              resolvedProfile = normalizeProfile({ ...resolvedProfile, role: 'super_admin' });
             }
 
             persistResolvedProfile(resolvedProfile, profileResponse);
@@ -696,14 +699,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Display name update warning after registration:', error);
     }
 
-    const isAdmin = isPrivilegedAdminEmail(email);
-    const nextRole = isAdmin ? 'super_admin' : onboardingIntent === 'free_member' ? 'member' : 'buyer';
-    const nextAccountStatus = isAdmin || onboardingIntent === 'free_member' ? 'active' : 'pending';
-    const nextAccessSource: UserProfile['accountAccessSource'] = isAdmin
-      ? 'admin_override'
-      : onboardingIntent === 'free_member'
-        ? 'free_member'
-        : 'pending_checkout';
+    // Admin status is determined server-side via custom claims bootstrap, not client-side email matching
+    const nextRole = onboardingIntent === 'free_member' ? 'member' : 'buyer';
+    const nextAccountStatus = onboardingIntent === 'free_member' ? 'active' : 'pending';
+    const nextAccessSource: UserProfile['accountAccessSource'] = onboardingIntent === 'free_member'
+      ? 'free_member'
+      : 'pending_checkout';
 
     const profile: UserProfile = {
       uid: credential.user.uid,
@@ -797,8 +798,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    const uid = user?.uid || auth.currentUser?.uid;
     setUser(null);
     setAccountBootstrap(null);
+    // Clear cached profile from localStorage to prevent stale role data
+    if (uid) {
+      try { window.localStorage.removeItem(getCachedProfileStorageKey(uid)); } catch { /* best-effort */ }
+    }
     await signOut(auth);
     window.location.href = '/login';
   };

@@ -1,17 +1,12 @@
-const PRIVILEGED_ADMIN_EMAILS = [
-  'caleb@forestryequipmentsales.com',
-  'calebhappy@gmail.com',
-] as const;
+/**
+ * @deprecated Admin detection is now server-side only via Firebase custom claims.
+ * Do not add client-side email checks. All callers should use user.role from AuthContext.
+ */
+export const PRIVILEGED_ADMIN_EMAILS = [] as const;
 
-const PRIVILEGED_ADMIN_EMAIL_SET = new Set(
-  PRIVILEGED_ADMIN_EMAILS.map((email) => email.trim().toLowerCase())
-);
+export const SUPERADMIN_EMAIL: string = 'caleb@forestryequipmentsales.com';
 
-export { PRIVILEGED_ADMIN_EMAILS };
-
-export const SUPERADMIN_EMAIL: string = PRIVILEGED_ADMIN_EMAILS[0];
-
-export function isPrivilegedAdminEmail(email?: string | null): boolean {
-  const normalized = String(email || '').trim().toLowerCase();
-  return normalized.length > 0 && PRIVILEGED_ADMIN_EMAIL_SET.has(normalized);
+/** @deprecated Always returns false. Admin status comes from server-side custom claims. */
+export function isPrivilegedAdminEmail(_email?: string | null): boolean {
+  return false;
 }

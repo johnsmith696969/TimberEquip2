@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const DEFAULT_TOKEN_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
-const FIREBASE_CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com';
-const FIREBASE_CLIENT_SECRET = 'j9iVZfS8kkCEFUPaAeJV0sAi';
+const FIREBASE_CLIENT_ID = process.env.FIREBASE_CLIENT_ID || '';
+const FIREBASE_CLIENT_SECRET = process.env.FIREBASE_CLIENT_SECRET || '';
 
 function encodeBase64Url(value) {
   return Buffer.from(value)

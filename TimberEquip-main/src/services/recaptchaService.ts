@@ -96,7 +96,7 @@ export async function getRecaptchaToken(action: string): Promise<string | null> 
   }
 }
 
-/** Returns true if the submission should be allowed. Fails open on any error. */
+/** Returns true if the submission should be allowed. Fails closed in production. */
 export async function assessRecaptcha(token: string, action: string): Promise<boolean> {
   if (!shouldUseEnterpriseRecaptcha()) {
     return true;
@@ -108,10 +108,10 @@ export async function assessRecaptcha(token: string, action: string): Promise<bo
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, action }),
     });
-    if (!res.ok) return true;
+    if (!res.ok) return false;
     const data = await res.json();
-    return data.pass !== false;
+    return data.pass === true;
   } catch {
-    return true;
+    return false;
   }
 }

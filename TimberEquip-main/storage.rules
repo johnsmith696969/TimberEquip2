@@ -71,9 +71,9 @@ service firebase.storage {
 
     // Helper functions
     function isAdmin(uid) {
-      // First check token email (works without Firestore lookup)
-      return (request.auth.token.email in ['calebhappy@gmail.com'] && request.auth.token.email_verified == true) ||
-        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+      // Check custom claims first (fast, no Firestore lookup), then fall back to profile doc
+      return (request.auth.token.role in ['super_admin', 'admin', 'developer'] && request.auth.token.email_verified == true) ||
+        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer'];
     }
 
     function isOwner(uid, listingId) {

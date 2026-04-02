@@ -13,6 +13,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
 import {
   signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   type MultiFactorResolver,
   type RecaptchaVerifier,
 } from 'firebase/auth';
@@ -29,7 +32,6 @@ import {
   startSmsMfaSignIn,
   type SmsMfaFactorSummary,
 } from '../services/mfaService';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 import { appendReturnToParam } from '../utils/sellerAccess';
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
@@ -56,21 +58,22 @@ export function Login() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaVerifying, setMfaVerifying] = useState(false);
+  const [stayLoggedIn, setStayLoggedIn] = useState(true);
   const mfaRecaptchaRef = useRef<RecaptchaVerifier | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail, isAuthenticated } = useAuth();
+  const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail, isAuthenticated, user: authUser } = useAuth();
   const stateReason = (location.state as { reason?: string; email?: string } | null)?.reason || '';
   const stateEmail = (location.state as { reason?: string; email?: string } | null)?.email || '';
   const queryRedirectTargetRaw = new URLSearchParams(location.search).get('redirect') || '';
-  const queryRedirectTarget = queryRedirectTargetRaw.startsWith('/') ? queryRedirectTargetRaw : '';
+  const queryRedirectTarget = queryRedirectTargetRaw.startsWith('/') && !queryRedirectTargetRaw.startsWith('//') ? queryRedirectTargetRaw : '';
   const redirectTarget = typeof (location.state as { from?: unknown } | null)?.from === 'string'
     ? ((location.state as { from: string }).from || '')
     : queryRedirectTarget;
   const stateReturnToRaw = typeof (location.state as { returnTo?: unknown } | null)?.returnTo === 'string'
     ? String((location.state as { returnTo: string }).returnTo || '').trim()
     : '';
-  const stateReturnTo = stateReturnToRaw.startsWith('/') ? stateReturnToRaw : '';
+  const stateReturnTo = stateReturnToRaw.startsWith('/') && !stateReturnToRaw.startsWith('//') ? stateReturnToRaw : '';
   const hasFirebaseSession = Boolean(auth.currentUser);
   const hasResolvedSession = Boolean(isAuthenticated);
 
@@ -100,8 +103,8 @@ export function Login() {
     mfaRecaptchaRef.current = null;
   }, []);
 
-  const signedInEmail = auth.currentUser?.email?.trim().toLowerCase() || email.trim().toLowerCase();
-  const postSignInTarget = isPrivilegedAdminEmail(signedInEmail)
+  const ADMIN_ROLES = ['super_admin', 'admin', 'developer'];
+  const postSignInTarget = (authUser?.role && ADMIN_ROLES.includes(authUser.role))
     ? '/admin'
     : redirectTarget || '/profile';
   const postSignInHref = postSignInTarget.startsWith('/sell')
@@ -256,7 +259,9 @@ export function Login() {
     } catch (resetFailure: any) {
       const code = resetFailure?.code || '';
       if (code === 'auth/user-not-found') {
-        setResetError('No account found with that email address.');
+        // Show success to prevent user enumeration
+        setResetSent(true);
+        return;
       } else if (code === 'auth/invalid-email') {
         setResetError('Please enter a valid email address.');
       } else if (code === 'auth/too-many-requests') {
@@ -288,6 +293,7 @@ export function Login() {
         }
       }
 
+      await setPersistence(auth, stayLoggedIn ? browserLocalPersistence : browserSessionPersistence);
       await login(email, password);
       const currentUser = auth.currentUser;
       if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
@@ -330,6 +336,7 @@ export function Login() {
         return;
       }
 
+      await setPersistence(auth, stayLoggedIn ? browserLocalPersistence : browserSessionPersistence);
       await loginWithGoogle();
       const currentUser = auth.currentUser;
       if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
@@ -445,7 +452,7 @@ export function Login() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <input type="checkbox" className="w-4 h-4 border-line rounded-sm accent-accent" id="remember" />
+              <input type="checkbox" className="w-4 h-4 border-line rounded-sm accent-accent" id="remember" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
               <label htmlFor="remember" className="text-[10px] font-bold text-muted uppercase tracking-widest cursor-pointer">
                 Stay Logged In
               </label>

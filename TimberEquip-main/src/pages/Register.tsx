@@ -12,7 +12,6 @@ import { Seo } from '../components/Seo';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { type AccountOnboardingChoice } from '../services/billingService';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 import { appendReturnToParam } from '../utils/sellerAccess';
 
 const ACCOUNT_OPTIONS: Array<{
@@ -101,11 +100,6 @@ export function Register() {
           `/login?verifyEmailSent=${registrationResult.verificationEmailSent ? '1' : '0'}&email=${encodeURIComponent(formData.email.trim())}&redirect=${encodeURIComponent(postRegistrationHref)}`,
           { replace: true }
         );
-        return;
-      }
-
-      if (isPrivilegedAdminEmail(formData.email)) {
-        navigate('/admin', { replace: true });
         return;
       }
 

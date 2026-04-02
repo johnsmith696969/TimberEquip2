@@ -229,8 +229,16 @@ function canCreateManagedRole(parentRole: ManagedAccountRole, childRole: Managed
   return false;
 }
 
+const PRIVILEGED_ADMIN_EMAILS: ReadonlySet<string> = new Set(
+  (process.env.PRIVILEGED_ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
 function isPrivilegedAdminEmail(email: unknown): boolean {
-  return String(email || '').trim().toLowerCase() === 'caleb@forestryequipmentsales.com';
+  const normalized = String(email || '').trim().toLowerCase();
+  return normalized.length > 0 && PRIVILEGED_ADMIN_EMAILS.has(normalized);
 }
 
 function canAdministrateAccountRole(role: unknown): boolean {
@@ -837,24 +845,24 @@ const LISTING_CHECKOUT_PLANS: Record<ListingCheckoutPlanId, ListingCheckoutPlan>
     name: 'Owner Operator Ad Program',
     amountUsd: 39,
     listingCap: 1,
-    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || process.env.STRIPE_PRODUCT_INDIVIDUAL || 'prod_UBpeOgS2Xbot2e',
-    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || process.env.STRIPE_PRICE_INDIVIDUAL || 'price_1TDRzJEFuycUwY0KZiFBQxTF',
+    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || process.env.STRIPE_PRODUCT_INDIVIDUAL || '',
+    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || process.env.STRIPE_PRICE_INDIVIDUAL || '',
   },
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
     amountUsd: 499,
     listingCap: 50,
-    productId: process.env.STRIPE_PRODUCT_DEALER || 'prod_UBpeHg3FydOSdD',
-    priceId: process.env.STRIPE_PRICE_DEALER || 'price_1TDRzJEFuycUwY0KnU6HzAg2',
+    productId: process.env.STRIPE_PRODUCT_DEALER || '',
+    priceId: process.env.STRIPE_PRICE_DEALER || '',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
     amountUsd: 999,
     listingCap: 150,
-    productId: process.env.STRIPE_PRODUCT_FLEET || 'prod_UBpek9mEeZPlyC',
-    priceId: process.env.STRIPE_PRICE_FLEET || 'price_1TDRzKEFuycUwY0KPkBneTyh',
+    productId: process.env.STRIPE_PRODUCT_FLEET || '',
+    priceId: process.env.STRIPE_PRICE_FLEET || '',
   },
 };
 
@@ -1213,7 +1221,7 @@ async function startServer() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "https://*.googleapis.com", "https://*.firebaseio.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "https://*.googleapis.com", "https://*.firebaseio.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
         connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app"],
@@ -1226,8 +1234,10 @@ async function startServer() {
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    hsts: false, // Disable HSTS for dev environment to avoid redirect loops
-    referrerPolicy: { policy: 'no-referrer-when-downgrade' },
+    hsts: process.env.NODE_ENV === 'production'
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     frameguard: false, // Allow iframe rendering for AI Studio preview
   }));
 
@@ -1278,17 +1288,19 @@ async function startServer() {
   app.use('/api/billing/create-portal-session', portalLimiter);
 
   // 3. CORS
-  const ALLOWED_ORIGINS = [
+  const ALLOWED_ORIGINS: string[] = [
     'https://www.forestryequipmentsales.com',
-    'https://www.forestryequipmentsales.com',
-    'http://localhost:3000',
-    'http://localhost:5173',
+    'https://forestryequipmentsales.com',
+    'https://mobile-app-equipment-sales.web.app',
+    'https://mobile-app-equipment-sales.firebaseapp.com',
+    'https://timberequip-staging.web.app',
   ];
+  if (process.env.NODE_ENV !== 'production') {
+    ALLOWED_ORIGINS.push('http://localhost:3000', 'http://localhost:5173');
+  }
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-        callback(null, true);
-      } else if (origin.endsWith('.run.app') || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
         callback(null, true);
       } else {
         callback(null, false);
@@ -1312,8 +1324,8 @@ async function startServer() {
       if (!sig || !webhookSecret) throw new Error('Missing signature or secret');
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err: any) {
-      console.error(`Webhook Error: ${err.message}`);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      console.error('Stripe webhook signature verification failed:', err);
+      return res.status(400).json({ error: 'Invalid webhook signature.' });
     }
 
     // Idempotency check: Check if we've already processed this event
@@ -1569,14 +1581,14 @@ async function startServer() {
       }
     } catch (dbErr) {
       console.error('Error updating database from webhook:', dbErr);
-      // Still return 200 to Stripe to avoid retries if the error is persistent but not critical
+      return res.status(500).json({ error: 'Webhook processing failed.' });
     }
 
     res.json({ received: true });
   });
 
   // 5. Standard Middleware
-  app.use(express.json());
+  app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
   if (sharedDealerApiProxy) {
@@ -1761,7 +1773,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Failed to create Stripe checkout session:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to create checkout session.' });
+      return res.status(500).json({ error: 'Failed to create checkout session.' });
     }
   });
 
@@ -1825,7 +1837,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Failed to confirm Stripe checkout session:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to confirm checkout session.' });
+      return res.status(500).json({ error: 'Failed to confirm checkout session.' });
     }
   });
 
@@ -1887,7 +1899,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Failed to create billing portal session:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to create billing portal session.' });
+      return res.status(500).json({ error: 'Failed to create billing portal session.' });
     }
   });
 
@@ -1932,7 +1944,7 @@ async function startServer() {
       return res.json({ success: true, message: 'Subscription will be canceled at the end of the current billing period.' });
     } catch (error: any) {
       console.error('Failed to cancel subscription:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to cancel subscription.' });
+      return res.status(500).json({ error: 'Failed to cancel subscription.' });
     }
   });
 
@@ -1994,7 +2006,7 @@ async function startServer() {
       res.json(payload);
     } catch (error: any) {
       console.error('Failed to compute marketplace stats:', error);
-      res.status(500).json({ error: error?.message || 'Failed to load marketplace stats' });
+      res.status(500).json({ error: 'Failed to load marketplace stats.' });
     }
   });
 
@@ -2042,7 +2054,7 @@ async function startServer() {
       return res.json({ seller: null });
     } catch (error: any) {
       console.error('Failed to resolve public seller:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load seller.' });
+      return res.status(500).json({ error: 'Failed to load seller.' });
     }
   });
 
@@ -2073,7 +2085,7 @@ async function startServer() {
       return res.json({ dealers });
     } catch (error: any) {
       console.error('Failed to load public dealer directory:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load dealers.' });
+      return res.status(500).json({ error: 'Failed to load dealers.' });
     }
   });
 
@@ -2087,7 +2099,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Failed to load public news feed:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load equipment news.' });
+      return res.status(500).json({ error: 'Failed to load equipment news.' });
     }
   });
 
@@ -2098,7 +2110,7 @@ async function startServer() {
       return res.json({ post });
     } catch (error: any) {
       console.error('Failed to load public news article:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load the equipment news article.' });
+      return res.status(500).json({ error: 'Failed to load the equipment news article.' });
     }
   });
 
@@ -2121,14 +2133,18 @@ async function startServer() {
           body: JSON.stringify({ event: { token, siteKey: '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0', expectedAction: action } }),
         }
       );
-      if (!response.ok) return res.json({ pass: true, score: null });
+      if (!response.ok) {
+        console.error('reCAPTCHA API error:', response.status);
+        return res.json({ pass: false, score: null });
+      }
       const data: any = await response.json();
-      const valid = data?.tokenProperties?.valid ?? true;
+      const valid = data?.tokenProperties?.valid === true;
       const score: number | null = data?.riskAnalysis?.score ?? null;
       const pass = valid && (score === null || score >= 0.5);
       return res.json({ pass, score });
-    } catch {
-      return res.json({ pass: true, score: null }); // graceful degradation
+    } catch (err) {
+      console.error('reCAPTCHA assessment error:', err);
+      return res.json({ pass: false, score: null });
     }
   });
 
@@ -2175,7 +2191,7 @@ async function startServer() {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error deleting user account:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 
@@ -2300,7 +2316,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Managed account creation failed:', error);
-      return res.status(500).json({ error: error?.message || 'Unable to create managed account.' });
+      return res.status(500).json({ error: 'Unable to create managed account.' });
     }
   });
 
@@ -2411,7 +2427,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Dealer feed ingest failed:', error);
-      return res.status(500).json({ error: error?.message || 'Dealer feed ingest failed.' });
+      return res.status(500).json({ error: 'Dealer feed ingest failed.' });
     }
   });
 
@@ -2480,15 +2496,24 @@ async function startServer() {
         return rightTime - leftTime;
       });
 
+      const userLimit = Math.min(Math.max(Number(req.query?.limit) || 200, 1), 1000);
+      const userOffset = Math.max(Number(req.query?.offset) || 0, 0);
+      const totalUsers = users.length;
+      const paginatedUsers = users.slice(userOffset, userOffset + userLimit);
+
+      const inquiryLimit = Math.min(Math.max(Number(req.query?.inquiryLimit) || 500, 1), 2000);
+      const callLimit = Math.min(Math.max(Number(req.query?.callLimit) || 500, 1), 2000);
+
       const [inquiriesSnapshot, callsSnapshot] = await Promise.all([
-        db.collection('inquiries').orderBy('createdAt', 'desc').get(),
-        db.collection('calls').orderBy('createdAt', 'desc').get(),
+        db.collection('inquiries').orderBy('createdAt', 'desc').limit(inquiryLimit).get(),
+        db.collection('calls').orderBy('createdAt', 'desc').limit(callLimit).get(),
       ]);
       const includeOverview = ['1', 'true', 'yes'].includes(String(req.query?.includeOverview || '').trim().toLowerCase());
       const overview = includeOverview ? await buildAdminOverviewBootstrapPayload() : null;
 
       res.json({
-        users,
+        users: paginatedUsers,
+        pagination: { total: totalUsers, offset: userOffset, limit: userLimit, hasMore: userOffset + userLimit < totalUsers },
         inquiries: inquiriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
         calls: callsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
         overview,
@@ -2499,7 +2524,7 @@ async function startServer() {
         fetchedAt: new Date().toISOString(),
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 
@@ -2520,7 +2545,7 @@ async function startServer() {
       const invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(invoices);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 
@@ -2540,7 +2565,7 @@ async function startServer() {
       const subscriptions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(subscriptions);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 
@@ -2560,7 +2585,7 @@ async function startServer() {
       const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(logs);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 
@@ -2585,7 +2610,7 @@ async function startServer() {
       res.json(posts);
     } catch (error: any) {
       console.error('Failed to fetch blog posts:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 
@@ -2610,17 +2635,17 @@ async function startServer() {
       try {
         const postsSnap = await db.collection('blogPosts').orderBy('updatedAt', 'desc').get();
         posts = postsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { errors.posts = e.message; }
+      } catch (e: any) { console.error('Content bootstrap: posts fetch failed:', e); errors.posts = 'Failed to load posts.'; }
 
       try {
         const mediaSnap = await db.collection('media').orderBy('uploadedAt', 'desc').get();
         media = mediaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { errors.media = e.message; }
+      } catch (e: any) { console.error('Content bootstrap: media fetch failed:', e); errors.media = 'Failed to load media.'; }
 
       try {
         const blocksSnap = await db.collection('contentBlocks').get();
         contentBlocks = blocksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { errors.contentBlocks = e.message; }
+      } catch (e: any) { console.error('Content bootstrap: blocks fetch failed:', e); errors.contentBlocks = 'Failed to load content blocks.'; }
 
       res.json({
         posts,
@@ -2634,7 +2659,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error('Failed to fetch content bootstrap:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
 

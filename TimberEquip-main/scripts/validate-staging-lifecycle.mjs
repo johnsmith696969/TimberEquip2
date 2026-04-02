@@ -7,7 +7,6 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
 const DEFAULT_BASE_URL = 'https://timberequip-staging.web.app';
-const DEFAULT_PASSWORD = 'Forestry Equipment Sales!QA2026';
 
 function parseArgs(argv) {
   const result = {};
@@ -166,7 +165,8 @@ async function run() {
   const apiBaseUrl = resolveApiBaseUrl(baseUrl);
   const allowedOrigin = new URL(baseUrl).origin;
   const apiKey = await loadStagingApiKey(args['api-key'] || '');
-  const password = String(args.password || process.env.STAGING_QA_PASSWORD || DEFAULT_PASSWORD).trim();
+  const password = String(args.password || process.env.STAGING_QA_PASSWORD || '').trim();
+  if (!password) { console.error('Set STAGING_QA_PASSWORD env var or pass --password'); process.exit(1); }
   const ownerOperatorEmail = String(args['owner-operator-email'] || 'staging.matrix.owneroperator.20260329@example.com').trim().toLowerCase();
   const adminEmail = String(args['admin-email'] || 'staging.matrix.admin.20260329@example.com').trim().toLowerCase();
   const listingId = String(args['listing-id'] || `staging-lifecycle-${Date.now()}`).trim();

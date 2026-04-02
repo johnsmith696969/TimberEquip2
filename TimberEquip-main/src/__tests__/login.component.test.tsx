@@ -78,6 +78,9 @@ vi.mock('../firebase', () => ({
 
 vi.mock('firebase/auth', () => ({
   signOut: signOutMock,
+  setPersistence: vi.fn().mockResolvedValue(undefined),
+  browserLocalPersistence: { type: 'LOCAL' },
+  browserSessionPersistence: { type: 'SESSION' },
 }));
 
 import { Login } from '../pages/Login';

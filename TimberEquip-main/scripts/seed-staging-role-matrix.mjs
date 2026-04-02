@@ -7,7 +7,6 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
 const DEFAULT_BASE_URL = 'https://timberequip-staging.web.app';
-const DEFAULT_PASSWORD = 'Forestry Equipment Sales!QA2026';
 const DEFAULT_SUPER_ADMIN_EMAIL = 'staging.qa.superadmin.20260328@example.com';
 
 function parseArgs(argv) {
@@ -303,7 +302,8 @@ async function run() {
   const apiBaseUrl = resolveApiBaseUrl(baseUrl);
   const allowedOrigin = new URL(baseUrl).origin;
   const apiKey = await loadStagingApiKey(args['api-key'] || '');
-  const password = String(args.password || process.env.STAGING_ROLE_MATRIX_PASSWORD || DEFAULT_PASSWORD).trim();
+  const password = String(args.password || process.env.STAGING_QA_PASSWORD || '').trim();
+  if (!password) { console.error('Set STAGING_QA_PASSWORD env var or pass --password'); process.exit(1); }
   const superAdminEmail = String(args['super-admin-email'] || process.env.STAGING_ROLE_MATRIX_SUPER_ADMIN_EMAIL || DEFAULT_SUPER_ADMIN_EMAIL).trim().toLowerCase();
   const adminTokenOverride = String(args['admin-token'] || process.env.STAGING_ROLE_MATRIX_ADMIN_TOKEN || '').trim();
 

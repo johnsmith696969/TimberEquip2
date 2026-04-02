@@ -1,5 +1,5 @@
 import { db, auth } from '../firebase';
-import { onAuthStateChanged, type User as FirebaseAuthUser } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, type User as FirebaseAuthUser } from 'firebase/auth';
 import { 
   collection, 
   doc, 
@@ -27,7 +27,7 @@ import {
   AMV_MIN_COMPARABLES,
   isWithinPercentRange,
 } from '../utils/amvMatching';
-import { isPrivilegedAdminEmail, SUPERADMIN_EMAIL } from '../utils/privilegedAdmin';
+import { SUPERADMIN_EMAIL } from '../utils/privilegedAdmin';
 import { taxonomyService } from './taxonomyService';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
@@ -484,10 +484,6 @@ async function resolveAuthSellerAccessSnapshot(): Promise<{ role: string; ownerU
     console.error('Unable to resolve auth seller access snapshot:', error);
   }
 
-  if (!role && isPrivilegedAdminEmail(email)) {
-    role = 'super_admin';
-  }
-
   return {
     role,
     ownerUid,
@@ -713,17 +709,11 @@ enum OperationType {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-    },
-    operationType,
-    path
+  if (error instanceof Error && !/firestore|permission|quota/i.test(error.message)) {
+    throw error;
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.error(`Firestore ${operationType} error on ${path || 'unknown'}`);
+  throw new Error(`Firestore ${operationType} failed`);
 }
 
 function getApiRequestUrls(input: RequestInfo | URL): string[] {
@@ -1039,6 +1029,13 @@ function buildListingFilterSearchParams(filters?: ListingFilters): URLSearchPara
   });
 
   return params;
+}
+
+/** Ensure a Firebase auth session exists (anonymous if needed) for Firestore writes. */
+async function ensureAuthForWrite(): Promise<void> {
+  if (!auth.currentUser) {
+    await signInAnonymously(auth);
+  }
 }
 
 export const equipmentService = {
@@ -2004,6 +2001,7 @@ export const equipmentService = {
   async createCallLog(payload: Omit<CallLog, 'id' | 'createdAt'>): Promise<string> {
     const path = 'calls';
     try {
+      await ensureAuthForWrite();
       const docRef = doc(collection(db, path));
       await setDoc(docRef, {
         ...payload,
@@ -2348,6 +2346,7 @@ export const equipmentService = {
   async createInquiry(inquiry: Omit<Inquiry, 'id' | 'createdAt' | 'status'>): Promise<string> {
     const path = 'inquiries';
     try {
+      await ensureAuthForWrite();
       const docRef = doc(collection(db, path));
       const sellerUid = inquiry.sellerUid || inquiry.sellerId || '';
       const spamSignal = calculateInquirySpamSignal({
@@ -2439,6 +2438,7 @@ export const equipmentService = {
   }): Promise<string> {
     const path = 'financingRequests';
     try {
+      await ensureAuthForWrite();
       const docRef = doc(collection(db, path));
       await setDoc(docRef, {
         ...payload,

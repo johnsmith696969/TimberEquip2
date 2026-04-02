@@ -1,7 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
 import { canAccessDealerOs } from '../utils/sellerAccess';
 import { auth } from '../firebase';
 
@@ -25,12 +24,7 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
   const hasResolvedProfile = Boolean(user);
   const hasSession = Boolean(isAuthenticated || hasFirebaseSession);
 
-  const hasAdminAccess = !!(
-    user && (
-      (user.role && ADMIN_ROLES.includes(user.role)) ||
-      isPrivilegedAdminEmail(user.email)
-    )
-  );
+  const hasAdminAccess = !!(user && user.role && ADMIN_ROLES.includes(user.role));
 
   const hasDealerOsAccess = canAccessDealerOs(user);
 

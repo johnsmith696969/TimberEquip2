@@ -14,7 +14,11 @@ import { homedir } from 'os';
 // ---------- config ----------
 const PROJECT_ID = 'mobile-app-equipment-sales';
 const EMAIL = 'info@redpineequipment.com';
-const PASSWORD = 'Ripper123!@#';
+const PASSWORD = process.env.PROVISION_PASSWORD || '';
+if (!PASSWORD || PASSWORD.length < 8) {
+  console.error('ERROR: Set PROVISION_PASSWORD environment variable (min 8 characters).');
+  process.exit(1);
+}
 const DISPLAY_NAME = 'Red Pine Equipment';
 const COMPANY = 'Red Pine Equipment';
 const LOCATION = '4335 Kingston Rd, Duluth, MN 55803';
@@ -27,8 +31,12 @@ const PERIOD_END = '2200-01-01T00:00:00.000Z';
 // Read Firebase CLI credentials
 const configPath = join(homedir(), '.config', 'configstore', 'firebase-tools.json');
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
-const clientId = config.tokens.client_id || '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com';
-const clientSecret = config.tokens.client_secret || 'j9iVZfS8kkCEFUPaAeJV0sAi';
+const clientId = config.tokens.client_id || process.env.FIREBASE_CLIENT_ID || '';
+const clientSecret = config.tokens.client_secret || process.env.FIREBASE_CLIENT_SECRET || '';
+if (!clientId || !clientSecret) {
+  console.error('ERROR: OAuth credentials not found. Set FIREBASE_CLIENT_ID and FIREBASE_CLIENT_SECRET env vars or ensure Firebase CLI is logged in.');
+  process.exit(1);
+}
 const refreshToken = config.tokens.refresh_token;
 
 // Exchange refresh token for an access token
@@ -238,7 +246,7 @@ async function main() {
   console.log('');
   console.log('Account details:');
   console.log(`  Email:    ${EMAIL}`);
-  console.log(`  Password: ${PASSWORD}`);
+  console.log(`  Password: [set via PROVISION_PASSWORD env var]`);
   console.log(`  Role:     ${ROLE} (Pro Dealer)`);
   console.log(`  Cap:      ${LISTING_CAP} listings`);
   console.log(`  Expires:  ${PERIOD_END}`);

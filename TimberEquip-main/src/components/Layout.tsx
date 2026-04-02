@@ -15,8 +15,6 @@ import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { userService } from '../services/userService';
 import { appendReturnToParam, canAccessDealerOs, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
-
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
 const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
@@ -57,12 +55,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const hasAdminAccess = !!(
-    user && (
-      (user.role && ADMIN_ROLES.includes(user.role)) ||
-      isPrivilegedAdminEmail(user.email)
-    )
-  );
+  const hasAdminAccess = !!(user && user.role && ADMIN_ROLES.includes(user.role));
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const accountRoute = hasAdminAccess ? '/admin' : hasDealerOsAccess ? '/dealer-os' : '/profile';
   const footerSocialLinks = [
