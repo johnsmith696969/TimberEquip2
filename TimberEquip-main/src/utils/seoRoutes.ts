@@ -53,8 +53,12 @@ export function getStateFromLocation(location?: string): string {
     .map((segment) => segment.trim())
     .filter(Boolean);
 
-  if (parts.length > 1) {
+  if (parts.length >= 3) {
     return parts[parts.length - 2];
+  }
+
+  if (parts.length === 2) {
+    return parts[1];
   }
 
   return parts[0] || '';

@@ -130,6 +130,10 @@ describe('getStateFromLocation', () => {
     expect(getStateFromLocation('Madison, Wisconsin, USA')).toBe('Wisconsin');
   });
 
+  it('extracts state from city, state format', () => {
+    expect(getStateFromLocation('Macon, Georgia')).toBe('Georgia');
+  });
+
   it('extracts state from state-only', () => {
     expect(getStateFromLocation('Wisconsin')).toBe('Wisconsin');
   });
