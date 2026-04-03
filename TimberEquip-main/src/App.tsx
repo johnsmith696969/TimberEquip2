@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { ThemeProvider } from './components/ThemeContext';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -11,7 +11,7 @@ import { AuthProvider } from './components/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from './components/AuthContext';
-import { getDefaultAccountWorkspacePath } from './utils/sellerAccess';
+import { getDefaultAccountWorkspacePath, getPrivilegedProfileRedirectPath } from './utils/sellerAccess';
 
 const Search = lazy(() => import('./pages/Search').then((module) => ({ default: module.Search })));
 const ListingDetail = lazy(() => import('./pages/ListingDetail').then((module) => ({ default: module.ListingDetail })));
@@ -73,6 +73,19 @@ function AccountWorkspaceRedirect() {
   return <Navigate replace to={getDefaultAccountWorkspacePath(user)} />;
 }
 
+function ProfileWorkspaceRoute() {
+  const { user } = useAuth();
+  const location = useLocation();
+  const requestedTab = new URLSearchParams(location.search).get('tab');
+  const privilegedRedirectPath = getPrivilegedProfileRedirectPath(user, requestedTab);
+
+  if (privilegedRedirectPath) {
+    return <Navigate replace to={privilegedRedirectPath} />;
+  }
+
+  return <Profile />;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -119,7 +132,7 @@ function App() {
                     <Route path="/account" element={<ProtectedRoute><AccountWorkspaceRedirect /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
                     <Route path="/logistics" element={<Logistics />} />
-                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                    <Route path="/profile" element={<ProtectedRoute><ProfileWorkspaceRoute /></ProtectedRoute>} />
                     <Route path="/about" element={<About />} />
                     <Route path="/about-us" element={<About />} />
                     <Route path="/faq" element={<Faq />} />
