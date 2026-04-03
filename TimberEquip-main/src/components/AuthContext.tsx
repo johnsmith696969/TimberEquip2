@@ -19,6 +19,7 @@ import { resolveAccountEntitlement, withResolvedAccountEntitlement } from '../ut
 import { clearPendingFavoriteIntent, getPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { setSentryUserContext } from '../services/sentry';
+import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
 
 type AccountAccessSource = NonNullable<UserProfile['accountAccessSource']>;
 
@@ -310,7 +311,7 @@ async function buildFallbackProfile(
     country: mergedCurrent.country,
     latitude: typeof mergedCurrent.latitude === 'number' ? mergedCurrent.latitude : undefined,
     longitude: typeof mergedCurrent.longitude === 'number' ? mergedCurrent.longitude : undefined,
-    serviceAreaScopes: Array.isArray(mergedCurrent.serviceAreaScopes) ? mergedCurrent.serviceAreaScopes : [],
+    serviceAreaScopes: sanitizeServiceAreaScopes(mergedCurrent.serviceAreaScopes, 8),
     serviceAreaStates: Array.isArray(mergedCurrent.serviceAreaStates) ? mergedCurrent.serviceAreaStates : [],
     serviceAreaCounties: Array.isArray(mergedCurrent.serviceAreaCounties) ? mergedCurrent.serviceAreaCounties : [],
     servicesOfferedCategories: Array.isArray(mergedCurrent.servicesOfferedCategories) ? mergedCurrent.servicesOfferedCategories : [],

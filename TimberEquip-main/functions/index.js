@@ -808,6 +808,20 @@ function normalizeStringArray(value, maxItems = 50, maxLength = 120) {
   return [...new Set(normalized)].slice(0, maxItems);
 }
 
+const SERVICE_AREA_SCOPE_OPTIONS = ['State', 'USA', 'Canada', 'Global'];
+const SERVICE_AREA_SCOPE_LOOKUP = new Map(
+  SERVICE_AREA_SCOPE_OPTIONS.map((value) => [String(value).toLowerCase(), value])
+);
+
+function normalizeServiceAreaScopes(value, maxItems = 8) {
+  const normalized = normalizeStringArray(value, maxItems, 40);
+  const canonical = normalized
+    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(String(entry || '').trim().toLowerCase()) || null)
+    .filter(Boolean);
+
+  return [...new Set(canonical)].slice(0, maxItems);
+}
+
 function buildStorefrontLocationText(data = {}) {
   const city = normalizeNonEmptyString(data.city);
   const state = normalizeNonEmptyString(data.state);
@@ -4850,7 +4864,7 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     storefrontName: normalizeNonEmptyString(data.storefrontName),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
     storefrontDescription: normalizeNonEmptyString(data.storefrontDescription),
-    serviceAreaScopes: normalizeStringArray(data.serviceAreaScopes, 8, 40),
+    serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
     serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
     serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
     servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
@@ -4895,7 +4909,7 @@ function serializeSellerPayloadFromUser(snapshotId, data = {}) {
     storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
     storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
-    serviceAreaScopes: normalizeStringArray(data.serviceAreaScopes, 8, 40),
+    serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
     serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
     serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
     servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
@@ -6811,7 +6825,7 @@ function buildEnterpriseStorefrontState({ uid, role, userData = {}, authRecord =
     website: normalizeNonEmptyString(userData.website),
     logo: normalizeNonEmptyString(userData.storefrontLogoUrl || userData.photoURL || authRecord?.photoURL),
     coverPhotoUrl: normalizeNonEmptyString(userData.coverPhotoUrl),
-    serviceAreaScopes: normalizeStringArray(userData.serviceAreaScopes, 8, 40),
+    serviceAreaScopes: normalizeServiceAreaScopes(userData.serviceAreaScopes, 8),
     serviceAreaStates: normalizeStringArray(userData.serviceAreaStates, 80, 120),
     serviceAreaCounties: normalizeStringArray(userData.serviceAreaCounties, 120, 120),
     servicesOfferedCategories: normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
@@ -6963,7 +6977,7 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
   }
 
   if ('serviceAreaScopes' in payload) {
-    sanitized.serviceAreaScopes = normalizeStringArray(payload.serviceAreaScopes, 8, 40);
+    sanitized.serviceAreaScopes = normalizeServiceAreaScopes(payload.serviceAreaScopes, 8);
   }
 
   if ('serviceAreaStates' in payload) {
@@ -7056,7 +7070,7 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
     storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline) || '',
     storefrontDescription: normalizeNonEmptyString(userData.storefrontDescription) || '',
-    serviceAreaScopes: normalizeStringArray(userData.serviceAreaScopes, 8, 40),
+    serviceAreaScopes: normalizeServiceAreaScopes(userData.serviceAreaScopes, 8),
     serviceAreaStates: normalizeStringArray(userData.serviceAreaStates, 80, 120),
     serviceAreaCounties: normalizeStringArray(userData.serviceAreaCounties, 120, 120),
     servicesOfferedCategories: normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
@@ -12220,7 +12234,7 @@ exports.apiProxy = onRequest(
               website: normalizeNonEmptyString(nextUserData.website),
               logo: normalizeNonEmptyString(nextUserData.storefrontLogoUrl || nextUserData.photoURL),
               coverPhotoUrl: normalizeNonEmptyString(nextUserData.coverPhotoUrl),
-              serviceAreaScopes: normalizeStringArray(nextUserData.serviceAreaScopes, 8, 40),
+              serviceAreaScopes: normalizeServiceAreaScopes(nextUserData.serviceAreaScopes, 8),
               serviceAreaStates: normalizeStringArray(nextUserData.serviceAreaStates, 80, 120),
               serviceAreaCounties: normalizeStringArray(nextUserData.serviceAreaCounties, 120, 120),
               servicesOfferedCategories: normalizeStringArray(nextUserData.servicesOfferedCategories, 40, 120),

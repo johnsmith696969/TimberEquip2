@@ -30,6 +30,7 @@ import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { buildSiteUrl } from '../utils/siteUrl';
+import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
 
 const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
 const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
@@ -379,7 +380,7 @@ export function SellerProfile() {
         }
       : undefined;
   const areaServed = [
-    ...(seller.serviceAreaScopes || []),
+    ...sanitizeServiceAreaScopes(seller.serviceAreaScopes, 8),
     ...(seller.serviceAreaStates || []),
     ...(seller.serviceAreaCounties || []),
   ].filter(Boolean);

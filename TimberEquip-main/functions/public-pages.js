@@ -111,6 +111,10 @@ const MARKETPLACE_CATEGORY_FAMILIES = Object.freeze({
     ],
   },
 });
+const SERVICE_AREA_SCOPE_OPTIONS = Object.freeze(['State', 'USA', 'Canada', 'Global']);
+const SERVICE_AREA_SCOPE_LOOKUP = new Map(
+  SERVICE_AREA_SCOPE_OPTIONS.map((value) => [String(value).toLowerCase(), value])
+);
 
 function normalizeNonEmptyString(value, fallback = '') {
   const normalized = String(value || '').trim();
@@ -150,6 +154,18 @@ function getDb() {
 function normalizeText(value, fallback = '') {
   const normalized = String(value || '').trim();
   return normalized || fallback;
+}
+
+function normalizeServiceAreaScopes(value, maxItems = 8) {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean)
+    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(entry.toLowerCase()) || null)
+    .filter(Boolean);
+
+  return [...new Set(normalized)].slice(0, maxItems);
 }
 
 function normalizeSeoSlug(value, fallback = '') {
@@ -399,7 +415,7 @@ async function loadSellerRecords(sellerUids) {
       website: normalizeText(merged.website),
       logo: normalizeText(merged.logo || merged.storefrontLogoUrl || merged.photoURL),
       coverPhotoUrl: normalizeText(merged.coverPhotoUrl),
-      serviceAreaScopes: Array.isArray(merged.serviceAreaScopes) ? merged.serviceAreaScopes.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      serviceAreaScopes: normalizeServiceAreaScopes(merged.serviceAreaScopes, 8),
       serviceAreaStates: Array.isArray(merged.serviceAreaStates) ? merged.serviceAreaStates.map((entry) => normalizeText(entry)).filter(Boolean) : [],
       serviceAreaCounties: Array.isArray(merged.serviceAreaCounties) ? merged.serviceAreaCounties.map((entry) => normalizeText(entry)).filter(Boolean) : [],
       servicesOfferedCategories: Array.isArray(merged.servicesOfferedCategories) ? merged.servicesOfferedCategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
@@ -492,6 +508,7 @@ async function loadPublicInventoryFromReadModel() {
           ...data,
           storefrontSlug: normalizeText(data.storefrontSlug, docSnap.id),
           storefrontName: normalizeText(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+          serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
         },
       ];
     })

@@ -29,6 +29,7 @@ import {
 } from '../utils/amvMatching';
 import { SUPERADMIN_EMAIL } from '../utils/privilegedAdmin';
 import { taxonomyService } from './taxonomyService';
+import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
   'Logging Equipment': ['Wisconsin, USA', 'Georgia, USA', 'Ontario, Canada'],
@@ -2158,7 +2159,7 @@ export const equipmentService = {
           storefrontName: String(data.storefrontName || ''),
           storefrontTagline: String(data.storefrontTagline || ''),
           storefrontDescription: String(data.storefrontDescription || ''),
-          serviceAreaScopes: Array.isArray(data.serviceAreaScopes) ? data.serviceAreaScopes.filter((value: unknown) => typeof value === 'string') : [],
+          serviceAreaScopes: sanitizeServiceAreaScopes(data.serviceAreaScopes, 8),
           serviceAreaStates: Array.isArray(data.serviceAreaStates) ? data.serviceAreaStates.filter((value: unknown) => typeof value === 'string') : [],
           serviceAreaCounties: Array.isArray(data.serviceAreaCounties) ? data.serviceAreaCounties.filter((value: unknown) => typeof value === 'string') : [],
           servicesOfferedCategories: Array.isArray(data.servicesOfferedCategories) ? data.servicesOfferedCategories.filter((value: unknown) => typeof value === 'string') : [],
@@ -2208,7 +2209,7 @@ export const equipmentService = {
           storefrontName: data.storefrontName || data.displayName || '',
           storefrontTagline: data.storefrontTagline || '',
           storefrontDescription: data.storefrontDescription || data.about || '',
-          serviceAreaScopes: Array.isArray(data.serviceAreaScopes) ? data.serviceAreaScopes.filter((value: unknown) => typeof value === 'string') : [],
+          serviceAreaScopes: sanitizeServiceAreaScopes(data.serviceAreaScopes, 8),
           serviceAreaStates: Array.isArray(data.serviceAreaStates) ? data.serviceAreaStates.filter((value: unknown) => typeof value === 'string') : [],
           serviceAreaCounties: Array.isArray(data.serviceAreaCounties) ? data.serviceAreaCounties.filter((value: unknown) => typeof value === 'string') : [],
           servicesOfferedCategories: Array.isArray(data.servicesOfferedCategories) ? data.servicesOfferedCategories.filter((value: unknown) => typeof value === 'string') : [],

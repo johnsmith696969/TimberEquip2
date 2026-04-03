@@ -19,6 +19,7 @@ import {
 } from 'firebase/firestore';
 import { AccountBootstrapResponse, UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
 import { getListingIdRemovalCandidates, normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
 
 function slugifyStorefrontValue(value: string): string {
   return String(value || '')
@@ -177,7 +178,7 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('storefrontSlug' in payload) sanitized.storefrontSlug = sanitizeOptionalString(payload.storefrontSlug, 200) || '';
   if ('storefrontTagline' in payload) sanitized.storefrontTagline = sanitizeOptionalString(payload.storefrontTagline, 240) || '';
   if ('storefrontDescription' in payload) sanitized.storefrontDescription = sanitizeOptionalString(payload.storefrontDescription, 5000) || '';
-  if ('serviceAreaScopes' in payload) sanitized.serviceAreaScopes = sanitizeOptionalStringArray(payload.serviceAreaScopes, 8, 40) || [];
+  if ('serviceAreaScopes' in payload) sanitized.serviceAreaScopes = sanitizeServiceAreaScopes(payload.serviceAreaScopes, 8);
   if ('serviceAreaStates' in payload) sanitized.serviceAreaStates = sanitizeOptionalStringArray(payload.serviceAreaStates, 80, 120) || [];
   if ('serviceAreaCounties' in payload) sanitized.serviceAreaCounties = sanitizeOptionalStringArray(payload.serviceAreaCounties, 120, 120) || [];
   if ('servicesOfferedCategories' in payload) sanitized.servicesOfferedCategories = sanitizeOptionalStringArray(payload.servicesOfferedCategories, 40, 120) || [];
@@ -437,7 +438,7 @@ export const userService = {
     const county = String(input.county || '').trim();
     const postalCode = String(input.postalCode || '').trim();
     const country = String(input.country || '').trim();
-    const serviceAreaScopes = Array.from(new Set((input.serviceAreaScopes || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 8);
+    const serviceAreaScopes = sanitizeServiceAreaScopes(input.serviceAreaScopes, 8);
     const serviceAreaStates = Array.from(new Set((input.serviceAreaStates || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 80);
     const serviceAreaCounties = Array.from(new Set((input.serviceAreaCounties || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 120);
     const servicesOfferedCategories = Array.from(new Set((input.servicesOfferedCategories || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 40);
@@ -609,7 +610,7 @@ export const userService = {
         website: String((profile as any).website || '').trim(),
         logo: String((profile as any).storefrontLogoUrl || profile.photoURL || '').trim(),
         coverPhotoUrl: String((profile as any).coverPhotoUrl || '').trim(),
-        serviceAreaScopes: sanitizeOptionalStringArray((profile as any).serviceAreaScopes, 8, 40) || [],
+        serviceAreaScopes: sanitizeServiceAreaScopes((profile as any).serviceAreaScopes, 8),
         serviceAreaStates: sanitizeOptionalStringArray((profile as any).serviceAreaStates, 80, 120) || [],
         serviceAreaCounties: sanitizeOptionalStringArray((profile as any).serviceAreaCounties, 120, 120) || [],
         servicesOfferedCategories: sanitizeOptionalStringArray((profile as any).servicesOfferedCategories, 40, 120) || [],

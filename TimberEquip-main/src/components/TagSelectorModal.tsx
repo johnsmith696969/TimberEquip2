@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, Plus, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface TagSelectorModalProps {
@@ -113,29 +113,39 @@ export function TagSelectorModal({
             </div>
 
             <div className="border-b border-line px-6 py-4">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      addTag(query);
-                    }
-                  }}
-                  placeholder={searchPlaceholder || `Search or add ${label.toLowerCase()}...`}
-                  className="input-industrial w-full pl-9 pr-28 py-2.5"
-                />
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="relative min-w-0 flex-1">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addTag(query);
+                      }
+                    }}
+                    placeholder={searchPlaceholder || `Search or add ${label.toLowerCase()}...`}
+                    className="input-industrial w-full py-2.5 pr-10"
+                  />
+                  {query ? (
+                    <button
+                      type="button"
+                      onClick={() => setQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
+                    >
+                      <X size={14} />
+                    </button>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onClick={() => addTag(query)}
                   disabled={!normalizedQuery}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 btn-industrial btn-accent px-3 py-2 text-[9px] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="btn-industrial btn-accent inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap px-4 py-2.5 text-[9px] disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[152px]"
                 >
-                  <Plus size={12} className="mr-1" />
+                  <Plus size={12} />
                   {addButtonLabel}
                 </button>
               </div>
@@ -165,7 +175,7 @@ export function TagSelectorModal({
                           onClick={() => removeTag(value)}
                           className="inline-flex items-center gap-2 rounded-sm border border-line bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-widest text-ink hover:border-accent hover:text-accent"
                         >
-                          <span className="normal-case tracking-normal font-semibold">{value}</span>
+                          <span className="normal-case font-semibold tracking-normal">{value}</span>
                           <X size={12} />
                         </button>
                       ))}
@@ -184,7 +194,7 @@ export function TagSelectorModal({
                         onClick={() => addTag(normalizedQuery)}
                         className="flex w-full items-center justify-between rounded-sm border border-dashed border-accent/60 bg-accent/5 px-4 py-3 text-left hover:bg-accent/10"
                       >
-                        <span className="text-sm font-semibold text-ink">Add “{normalizedQuery}”</span>
+                        <span className="text-sm font-semibold text-ink">{`Add "${normalizedQuery}"`}</span>
                         <span className="text-[9px] font-black uppercase tracking-widest text-accent">Custom</span>
                       </button>
                     ) : null}
@@ -210,7 +220,7 @@ export function TagSelectorModal({
                         );
                       })
                     ) : (
-                      <p className="text-sm text-muted">No suggestions match your search. Add a custom county or region above.</p>
+                      <p className="text-sm text-muted">No suggestions match your search. Add a custom county above.</p>
                     )}
                   </div>
                 </section>

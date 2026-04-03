@@ -1,6 +1,21 @@
 export const STOREFRONT_COUNTRY_OPTIONS = ['United States', 'Canada'] as const;
 
-export const SERVICE_AREA_SCOPE_OPTIONS = ['County', 'State', 'USA', 'Canada', 'Global'] as const;
+export const SERVICE_AREA_SCOPE_OPTIONS = ['State', 'USA', 'Canada', 'Global'] as const;
+const SERVICE_AREA_SCOPE_LOOKUP = new Map(
+  SERVICE_AREA_SCOPE_OPTIONS.map((value) => [value.toLowerCase(), value] as const)
+);
+
+export function sanitizeServiceAreaScopes(value: unknown, maxItems = 8): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)
+    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(entry.toLowerCase()) || null)
+    .filter((entry): entry is (typeof SERVICE_AREA_SCOPE_OPTIONS)[number] => Boolean(entry));
+
+  return Array.from(new Set(normalized)).slice(0, maxItems);
+}
 
 /** Maps state/province abbreviations to full names for search-by-abbreviation support. */
 export const REGION_ABBREVIATIONS: Record<string, string> = {

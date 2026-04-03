@@ -32,7 +32,13 @@ import { Seo } from '../components/Seo';
 import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
 import { TagSelectorModal } from '../components/TagSelectorModal';
 import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
-import { SERVICE_AREA_REGION_OPTIONS, SERVICE_AREA_SCOPE_OPTIONS, STOREFRONT_COUNTRY_OPTIONS, matchesRegionQuery } from '../constants/storefrontRegions';
+import {
+  SERVICE_AREA_REGION_OPTIONS,
+  SERVICE_AREA_SCOPE_OPTIONS,
+  STOREFRONT_COUNTRY_OPTIONS,
+  matchesRegionQuery,
+  sanitizeServiceAreaScopes,
+} from '../constants/storefrontRegions';
 import { getCountiesForStates } from '../constants/usCounties';
 import { buildDealerPath } from '../utils/seoRoutes';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
@@ -515,7 +521,7 @@ export function Profile() {
       website: storefrontPreview?.website || user.website || '',
       logo: storefrontPreview?.logo || user.storefrontLogoUrl || user.photoURL || '',
       coverPhotoUrl: storefrontPreview?.coverPhotoUrl || user.coverPhotoUrl || '',
-      serviceAreaScopes: storefrontPreview?.serviceAreaScopes || user.serviceAreaScopes || [],
+      serviceAreaScopes: sanitizeServiceAreaScopes(storefrontPreview?.serviceAreaScopes || user.serviceAreaScopes || [], 8),
       serviceAreaStates: storefrontPreview?.serviceAreaStates || user.serviceAreaStates || [],
       serviceAreaCounties: storefrontPreview?.serviceAreaCounties || user.serviceAreaCounties || [],
       servicesOfferedCategories: storefrontPreview?.servicesOfferedCategories || user.servicesOfferedCategories || [],
@@ -1628,7 +1634,10 @@ export function Profile() {
       | 'servicesOfferedSubcategories',
     values: string[]
   ) => {
-    setStorefrontForm((prev) => ({ ...prev, [key]: values } as typeof prev));
+    setStorefrontForm((prev) => ({
+      ...prev,
+      [key]: key === 'serviceAreaScopes' ? sanitizeServiceAreaScopes(values, 8) : values,
+    } as typeof prev));
   };
 
   const handleSaveStorefront = async () => {
@@ -2487,7 +2496,7 @@ export function Profile() {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label htmlFor="profile-storefront-description" className="label-micro">Unique About Section</label>
-              <textarea id="profile-storefront-description" rows={7} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Describe the equipment you specialize in, brands carried, service counties and states, buyer support, financing or logistics help, and what makes your business credible." />
+              <textarea id="profile-storefront-description" rows={7} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Describe the equipment you specialize in, brands carried, service territory, buyer support, financing or logistics help, and what makes your business credible." />
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
                 Write original descriptive copy. Explain what you sell, where you operate, how buyers should work with you, and why your dealership is different.
               </p>
@@ -2553,7 +2562,7 @@ export function Profile() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <MultiSelectDropdown
                   label="Service Area Scope"
-                  placeholder="Select county, state, USA, Canada, or global"
+                  placeholder="Select state, USA, Canada, or global"
                   options={storefrontServiceAreaScopeOptions}
                   selected={storefrontForm.serviceAreaScopes}
                   onChange={(values) => handleStorefrontArrayChange('serviceAreaScopes', values)}
