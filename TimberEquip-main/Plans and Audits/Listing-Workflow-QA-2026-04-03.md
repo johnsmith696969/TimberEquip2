@@ -88,8 +88,8 @@
   - `paid`
 - `12001`
   - dealer
-  - `pending`
-  - `pending`
+  - `active`
+  - `approved`
   - `paid`
 - `12002`
   - pro dealer
@@ -97,14 +97,27 @@
   - `approved`
   - `paid`
 
+## Second Pass Verification
+- Dealer listing `12001` was approved from the live admin UI during the second pass.
+- All three QA listings were verified to resolve publicly by direct listing URL:
+  - `/listing/12000`
+  - `/listing/12001`
+  - `/listing/12002`
+- Each listing redirected to its canonical public equipment path and rendered the expected title and `h1`.
+
+## Media Note
+- The first synthetic image host used for QA (`picsum.photos`) was blocked by the site's current Content Security Policy on public listing pages.
+- QA media was updated to `https://placehold.co`, which is already allowed by the current CSP.
+- After that image update and a final approval pass, the public listing pages loaded without the CSP image errors from the first pass.
+
 ## Conclusion
 - Seller posting flow is working for owner-operator, dealer, and pro dealer accounts.
 - Admin visibility is working after the backend fix.
 - Admin approval is working from the live UI.
 - Admin edit screen and update submission are working.
+- Public listing resolution is working for the approved QA listings.
 
 ## Follow-up Recommendation
 - Keep the three QA listings for short-term workflow inspection from the admin view.
 - If you want a cleaner final state after review:
-  - approve `12001` as well, or
   - delete/archive the QA listings after validation is complete.
