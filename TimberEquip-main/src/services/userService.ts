@@ -924,7 +924,7 @@ export const userService = {
     if (creatorRole === 'dealer' || creatorRole === 'pro_dealer') {
       const seatContext = await this.getManagedAccountSeatContext(ownerUid);
       if (seatContext.seatLimit < 1) {
-        throw new Error('An active Dealer or Fleet Dealer subscription is required before adding managed accounts.');
+        throw new Error('An active Dealer or Pro Dealer subscription is required before adding managed accounts.');
       }
       if (seatContext.seatCount >= seatContext.seatLimit) {
         throw new Error(`Your current subscription includes up to ${seatContext.seatLimit} managed accounts. Remove one before adding another.`);

@@ -39,15 +39,15 @@ const ACCOUNT_OPTIONS: Array<{
   {
     id: 'dealer',
     title: 'Dealer Ad Package',
-    price: '$499/MO',
-    summary: 'Run a dealer storefront with up to 50 active listings and managed seats.',
+    price: '$250/MO',
+    summary: 'Run a dealer storefront with up to 50 active listings, managed seats, and 6 months free.',
     icon: Building,
   },
   {
     id: 'fleet_dealer',
     title: 'Pro Dealer Ad Package',
-    price: '$999/MO',
-    summary: 'Support high-volume inventory with 150 listings and team access.',
+    price: '$500/MO',
+    summary: 'Support unlimited active inventory, team access, and a 3-month free launch period.',
     icon: Crown,
   },
 ];

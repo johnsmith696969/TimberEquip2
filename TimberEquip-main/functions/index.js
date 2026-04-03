@@ -34,6 +34,11 @@ const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-pu
 const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
 const { renderDealerWidgetScript } = require('./dealer-widget.js');
 const {
+  UNLIMITED_LISTING_CAP,
+  isUnlimitedListingCap,
+  getActiveListingCapMessage,
+} = require('./listing-cap.js');
+const {
   normalizeScopedUserRole,
   isOperatorOnlyRole,
   isDealerSellerRole,
@@ -380,7 +385,7 @@ const FEATURED_LISTING_CAPS = Object.freeze({
 function getRoleDefaultListingCap(role) {
   const normalizedRole = normalizeUserRole(role);
   if (normalizedRole === 'dealer') return 50;
-  if (normalizedRole === 'pro_dealer') return 150;
+  if (normalizedRole === 'pro_dealer') return UNLIMITED_LISTING_CAP;
   return 0;
 }
 
@@ -6258,7 +6263,7 @@ const LISTING_CHECKOUT_PLANS = {
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    amountUsd: 499,
+    amountUsd: 250,
     listingCap: 50,
     productId: process.env.STRIPE_PRODUCT_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_dealer || '',
     priceId: process.env.STRIPE_PRICE_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_dealer || '',
@@ -6266,8 +6271,8 @@ const LISTING_CHECKOUT_PLANS = {
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    amountUsd: 999,
-    listingCap: 150,
+    amountUsd: 500,
+    listingCap: UNLIMITED_LISTING_CAP,
     productId: process.env.STRIPE_PRODUCT_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_fleet || '',
     priceId: process.env.STRIPE_PRICE_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_fleet || '',
   },
@@ -6290,6 +6295,21 @@ function getPlanInvoiceDisplayName(planId) {
   if (planId === 'dealer') return 'FES-DealerOS Dealer Subscription';
   if (planId === 'fleet_dealer') return 'FES-DealerOS Pro Dealer Subscription';
   return 'Owner-Operator Ad Program';
+}
+
+function getTrialMonthsForPlan(planId) {
+  if (planId === 'dealer') return 6;
+  if (planId === 'fleet_dealer') return 3;
+  return 0;
+}
+
+function buildTrialEndForPlan(planId) {
+  const trialMonths = getTrialMonthsForPlan(planId);
+  if (!trialMonths) return null;
+
+  const nextDate = new Date();
+  nextDate.setMonth(nextDate.getMonth() + trialMonths);
+  return Math.floor(nextDate.getTime() / 1000);
 }
 
 function getCheckoutStatementDescriptorSuffix(planId) {
@@ -9080,35 +9100,77 @@ async function getListingLifecycleActorContext(req, listing = null) {
 }
 
 async function resolveStripePriceIdForPlan(stripe, plan) {
-  if (plan.priceId) {
-    return plan.priceId;
-  }
+  const expectedUnitAmount = Math.round(Number(plan.amountUsd || 0) * 100);
+  let preferredPriceId = '';
+  let defaultPrice = null;
 
-  const product = await stripe.products.retrieve(plan.productId, {
+  const product = plan.productId ? await stripe.products.retrieve(plan.productId, {
     expand: ['default_price'],
-  });
+  }) : null;
 
-  let priceId = '';
-  if (typeof product.default_price === 'string') {
-    priceId = product.default_price;
-  } else if (product.default_price?.id) {
-    priceId = product.default_price.id;
+  if (product?.default_price && typeof product.default_price !== 'string') {
+    defaultPrice = product.default_price;
   }
 
-  if (!priceId) {
+  const candidatePriceId = String(plan.priceId || '').trim();
+  if (candidatePriceId) {
+    try {
+      const candidatePrice = await stripe.prices.retrieve(candidatePriceId);
+      if (
+        candidatePrice?.active
+        && candidatePrice.type === 'recurring'
+        && candidatePrice.recurring?.interval === 'month'
+        && (!expectedUnitAmount || candidatePrice.unit_amount === expectedUnitAmount)
+      ) {
+        return candidatePrice.id;
+      }
+    } catch (error) {
+      logger.warn('Configured Stripe price id could not be used for plan; falling back to product price discovery.', {
+        planId: plan.id,
+        candidatePriceId,
+        message: error instanceof Error ? error.message : String(error || ''),
+      });
+    }
+  }
+
+  if (
+    defaultPrice?.id
+    && defaultPrice.active
+    && defaultPrice.type === 'recurring'
+    && defaultPrice.recurring?.interval === 'month'
+    && (!expectedUnitAmount || defaultPrice.unit_amount === expectedUnitAmount)
+  ) {
+    preferredPriceId = defaultPrice.id;
+  }
+
+  if (!preferredPriceId && plan.productId) {
     const prices = await stripe.prices.list({
       product: plan.productId,
       active: true,
       limit: 20,
     });
-    const preferred = prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month') || prices.data[0];
+
+    const exactAmountPrice = prices.data.find((p) =>
+      p.type === 'recurring'
+      && p.recurring?.interval === 'month'
+      && (!expectedUnitAmount || p.unit_amount === expectedUnitAmount)
+    );
+    const preferred = exactAmountPrice
+      || prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month')
+      || prices.data[0];
+
     if (!preferred?.id) {
       throw new Error(`No active Stripe price found for product ${plan.productId}.`);
     }
-    priceId = preferred.id;
+
+    preferredPriceId = preferred.id;
   }
 
-  return priceId;
+  if (!preferredPriceId) {
+    throw new Error(`No Stripe price could be resolved for plan ${plan.id}.`);
+  }
+
+  return preferredPriceId;
 }
 
 async function findExistingStripeCustomerId(stripe, userUid, email) {
@@ -10915,15 +10977,16 @@ exports.apiProxy = onRequest(
           return String(listingData.status || 'active').toLowerCase() !== 'sold';
         }).length;
 
-        if (activePaidListingsCount >= plan.listingCap) {
+        if (!isUnlimitedListingCap(plan.listingCap) && activePaidListingsCount >= plan.listingCap) {
           return res.status(409).json({
-            error: `Your ${plan.name} includes up to ${plan.listingCap} active ${plan.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+            error: getActiveListingCapMessage(plan.name, plan.listingCap),
           });
         }
 
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
         const priceId = await resolveStripePriceIdForPlan(stripe, plan);
         const baseUrl = getRequestBaseUrl(req);
+        const trialEnd = buildTrialEndForPlan(plan.id);
 
         const session = await stripe.checkout.sessions.create({
           mode: 'subscription',
@@ -10943,6 +11006,7 @@ exports.apiProxy = onRequest(
             listingCap: String(plan.listingCap),
           },
           subscription_data: {
+            ...(trialEnd ? { trial_end: trialEnd } : {}),
             metadata: {
               userUid: uid,
               listingId,
@@ -11420,6 +11484,8 @@ exports.apiProxy = onRequest(
         }
 
         const priceId = await resolveStripePriceIdForPlan(stripe, plan);
+        const shouldApplyTrial = !accountIsActive && !summary.planId;
+        const trialEnd = shouldApplyTrial ? buildTrialEndForPlan(plan.id) : null;
 
         logger.info('create-account-checkout-session: creating Stripe checkout session', {
           uid,
@@ -11460,6 +11526,7 @@ exports.apiProxy = onRequest(
           },
           subscription_data: {
             description: getPlanInvoiceDisplayName(plan.id),
+            ...(trialEnd ? { trial_end: trialEnd } : {}),
             metadata: {
               userUid: uid,
               planId: plan.id,
@@ -12146,9 +12213,9 @@ exports.apiProxy = onRequest(
 
         if (!isAdminActor && sellerEntitlement.listingCap > 0) {
           const activeListingCount = await countSellerListingsForCapacity(requestedSellerUid);
-          if (activeListingCount >= sellerEntitlement.listingCap) {
+          if (!isUnlimitedListingCap(sellerEntitlement.listingCap) && activeListingCount >= sellerEntitlement.listingCap) {
             return res.status(409).json({
-              error: `This account includes up to ${sellerEntitlement.listingCap} active ${sellerEntitlement.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+              error: getActiveListingCapMessage('This account', sellerEntitlement.listingCap),
             });
           }
         }
@@ -13179,7 +13246,7 @@ exports.apiProxy = onRequest(
           const seatContext = await getManagedAccountSeatContext(ownerUid);
           if (seatContext.seatLimit < 1) {
             return res.status(403).json({
-              error: 'An active Dealer or Fleet Dealer subscription is required before adding managed accounts.',
+              error: 'An active Dealer or Pro Dealer subscription is required before adding managed accounts.',
             });
           }
           if (seatContext.seatCount >= seatContext.seatLimit) {

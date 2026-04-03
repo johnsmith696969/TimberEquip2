@@ -1,6 +1,7 @@
 import { auth } from '../firebase';
 import { withPerformanceTrace } from './performance';
 import type { AccountEntitlement } from '../types';
+import { UNLIMITED_LISTING_CAP } from '../utils/listingCaps';
 
 export type ListingPlanId = 'individual_seller' | 'dealer' | 'fleet_dealer';
 export type AccountOnboardingChoice = 'free_member' | ListingPlanId;
@@ -31,7 +32,9 @@ export interface SellerPlanDefinition {
   period: string;
   summary: string;
   listingCap: number;
+  listingCapLabel?: string;
   managedAccountCap?: number;
+  trialMonths?: number;
 }
 
 export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
@@ -46,20 +49,24 @@ export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
   {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    price: 499,
+    price: 250,
     period: 'month',
-    summary: 'For dealer teams with full monthly inventory management.',
+    summary: 'For dealer teams that need a branded storefront, 50 active listings, and a 6-month free launch period.',
     listingCap: 50,
+    listingCapLabel: '50 listings',
     managedAccountCap: 3,
+    trialMonths: 6,
   },
   {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    price: 999,
+    price: 500,
     period: 'month',
-    summary: 'For high-volume dealer groups with expanded inventory and visibility.',
-    listingCap: 150,
+    summary: 'For high-volume dealer groups that need unlimited active inventory and a 3-month free launch period.',
+    listingCap: UNLIMITED_LISTING_CAP,
+    listingCapLabel: 'Unlimited listings',
     managedAccountCap: 3,
+    trialMonths: 3,
   },
 ];
 

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
+import { getListingCapDisplayLabel, isUnlimitedListingCap } from '../utils/listingCaps';
 import { useAuth } from '../components/AuthContext';
 import { ListingModal } from '../components/admin/ListingModal';
 import { equipmentService } from '../services/equipmentService';
@@ -386,7 +387,9 @@ export function Profile() {
             const listingCap = matchedPlan?.listingCap || user?.listingCap || 0;
             setCheckoutNotice(
               listingCap > 0
-                ? `Subscription activated. Your account can post up to ${listingCap} active ${listingCap === 1 ? 'machine' : 'machines'}.`
+                ? isUnlimitedListingCap(listingCap)
+                  ? 'Subscription activated. Your account can now post unlimited active machines.'
+                  : `Subscription activated. Your account can post up to ${getListingCapDisplayLabel(listingCap, 'active machine', 'active machines')}.`
                 : 'Subscription activated. Your account can now post listings.'
             );
           } else {
