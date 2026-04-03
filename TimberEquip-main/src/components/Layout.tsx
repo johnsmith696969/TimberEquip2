@@ -15,7 +15,7 @@ import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { userService } from '../services/userService';
-import { appendReturnToParam, canAccessDealerOs, getDefaultAccountWorkspacePath, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
+import { appendReturnToParam, canAccessDealerOs, getAccountEntryPath, getDefaultAccountWorkspacePath, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 const BRAND_ASSET_VERSION = '20260327c';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
@@ -56,7 +56,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
-  const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
+  const accountRoute = isAuthenticated ? getAccountEntryPath(user) : '/login';
   const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const footerSocialLinks = [
