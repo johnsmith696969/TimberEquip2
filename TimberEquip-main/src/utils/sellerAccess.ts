@@ -117,48 +117,6 @@ export function getDefaultAccountWorkspacePath(user: UserProfile | null | undefi
   return '/profile';
 }
 
-export function getPrivilegedProfileRedirectPath(
-  user: UserProfile | null | undefined,
-  requestedTab?: string | null
-): string | null {
-  if (getDefaultAccountWorkspacePath(user) !== '/admin') {
-    return null;
-  }
-
-  const normalizedRequestedTab = String(requestedTab || '').trim().toLowerCase();
-
-  if (!normalizedRequestedTab || normalizedRequestedTab === 'overview' || normalizedRequestedTab === 'profile') {
-    return '/admin';
-  }
-
-  if (
-    normalizedRequestedTab === 'account settings' ||
-    normalizedRequestedTab === 'settings' ||
-    normalizedRequestedTab === 'privacy & data' ||
-    normalizedRequestedTab === 'privacy'
-  ) {
-    return '/admin?tab=settings';
-  }
-
-  if (normalizedRequestedTab === 'my listings') {
-    return '/admin?tab=listings';
-  }
-
-  if (normalizedRequestedTab === 'inquiries') {
-    return '/admin?tab=inquiries';
-  }
-
-  if (normalizedRequestedTab === 'calls') {
-    return '/admin?tab=calls';
-  }
-
-  if (normalizedRequestedTab === 'financing') {
-    return '/admin?tab=billing';
-  }
-
-  return '/admin';
-}
-
 export function getDealerInventoryOwnerUid(user: UserProfile | null | undefined): string {
   if (!user) return '';
   return String(user.parentAccountUid || user.uid || '').trim();

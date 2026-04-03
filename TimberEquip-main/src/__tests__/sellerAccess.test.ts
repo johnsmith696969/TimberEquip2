@@ -7,7 +7,6 @@ import {
   canUserPostListings,
   canAccessDealerOs,
   getDefaultAccountWorkspacePath,
-  getPrivilegedProfileRedirectPath,
   getFeaturedListingCap,
   getManagedListingCap,
   getListEquipmentPath,
@@ -238,36 +237,6 @@ describe('getDefaultAccountWorkspacePath', () => {
 
   it('falls back to the profile workspace for non-seller members', () => {
     expect(getDefaultAccountWorkspacePath(makeUser({ role: 'member' }))).toBe('/profile');
-  });
-});
-
-describe('getPrivilegedProfileRedirectPath', () => {
-  it('returns null for non-admin account workspaces', () => {
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'member' }))).toBeNull();
-    expect(getPrivilegedProfileRedirectPath(makeUser({
-      role: 'dealer',
-      accountStatus: 'active',
-      accountAccessSource: 'subscription',
-      activeSubscriptionPlanId: 'dealer',
-      subscriptionStatus: 'active',
-    }), 'Account Settings')).toBeNull();
-  });
-
-  it('routes privileged users from overview/profile into admin overview', () => {
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }))).toBe('/admin');
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'super_admin' }), 'Profile')).toBe('/admin');
-  });
-
-  it('routes privileged settings and privacy tabs into admin settings', () => {
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }), 'Account Settings')).toBe('/admin?tab=settings');
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }), 'Privacy & Data')).toBe('/admin?tab=settings');
-  });
-
-  it('maps privileged profile tabs to the closest admin workspace tab', () => {
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }), 'My Listings')).toBe('/admin?tab=listings');
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }), 'Inquiries')).toBe('/admin?tab=inquiries');
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }), 'Calls')).toBe('/admin?tab=calls');
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }), 'Financing')).toBe('/admin?tab=billing');
   });
 });
 

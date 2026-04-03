@@ -27,7 +27,6 @@ import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { TaxonomyManager } from '../components/admin/TaxonomyManager';
-import { AccountMfaSettingsCard } from '../components/AccountMfaSettingsCard';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
@@ -3984,8 +3983,25 @@ export function AdminDashboard() {
             </button>
           </div>
 
-          <div className="py-4 border-b border-line">
-            <AccountMfaSettingsCard user={authUser} onProfilePatch={patchCurrentUserProfile} />
+          <div className="flex items-center justify-between py-4 border-b border-line">
+            <div className="flex items-center space-x-4">
+              <div className="p-2 bg-bg border border-line rounded-sm text-muted">
+                <Shield size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Two-Factor Authentication</h4>
+                <p className="text-[10px] font-bold text-muted uppercase">
+                  {authUser?.mfaEnabled ? 'SMS multi-factor authentication is active.' : 'Add an extra layer of security to your account.'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.assign('/profile?tab=Account%20Settings')}
+              className="btn-industrial py-2 px-4 text-[10px]"
+            >
+              Manage
+            </button>
           </div>
 
           <div className="flex items-center justify-between py-4">
