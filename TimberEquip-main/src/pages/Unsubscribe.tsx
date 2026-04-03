@@ -7,6 +7,7 @@ import { useTheme } from '../components/ThemeContext';
 
 type UnsubscribeState = {
   email: string;
+  uid?: string;
   displayName?: string;
   scope?: string;
   emailNotificationsEnabled: boolean;
@@ -36,7 +37,7 @@ export function Unsubscribe() {
     let isActive = true;
 
     const loadState = async () => {
-      if (!requestPayload.uid || !requestPayload.email || !requestPayload.token) {
+      if (!requestPayload.email || !requestPayload.token) {
         setError('This unsubscribe link is incomplete. Please use the link from your email.');
         setLoading(false);
         return;
@@ -53,6 +54,7 @@ export function Unsubscribe() {
 
         if (!isActive) return;
         setState({
+          uid: String(payload.uid || requestPayload.uid || ''),
           email: String(payload.email || requestPayload.email),
           displayName: String(payload.displayName || ''),
           scope: String(payload.scope || requestPayload.scope),

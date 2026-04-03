@@ -24,6 +24,8 @@ const TERMS_URL = `${MARKETPLACE_URL}/terms`;
 const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260401a`;
 const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=20260401a`;
 
+const EMAIL_PREFERENCE_FOOTER_MARKER = '<!--EMAIL_PREFERENCE_FOOTER-->';
+
 const BASE_STYLES = `
   :root { color-scheme: light only; supported-color-schemes: light only; }
   body { margin: 0; padding: 0; background: #f3f4f6 !important; font-family: 'Avenir Next', 'Segoe UI', sans-serif; color: #111827 !important; }
@@ -111,6 +113,7 @@ function baseLayout(title, headerSubtitle, content) {
           <p class="footer-title">Built For Forestry Equipment</p>
           <p>Forestry Equipment Sales connects buyers, sellers, and partners across used and new logging equipment, financing workflows, and industrial inventory marketing.</p>
         </div>
+        ${EMAIL_PREFERENCE_FOOTER_MARKER}
         <p>
           &copy; ${new Date().getFullYear()} Forestry Equipment Sales &mdash; The Forestry Equipment Marketplace<br />
           <a href="${MARKETPLACE_URL}">Forestry Equipment Sales</a> &middot;
@@ -124,16 +127,21 @@ function baseLayout(title, headerSubtitle, content) {
 </html>`;
 }
 
-function renderOptionalEmailFooter(unsubscribeUrl, label = 'Unsubscribe from optional Forestry Equipment Sales emails') {
+function renderEmailPreferenceFooter(unsubscribeUrl, label = 'Manage email preferences or unsubscribe from optional automated emails') {
   if (!unsubscribeUrl) return '';
 
   return `
     <hr class="divider" />
     <p style="font-size:11px; color:#6b7280 !important;">
       Prefer fewer emails? <a href="${unsubscribeUrl}">${label}</a>.<br />
-      You will still receive required account, billing, listing, and security emails.
+      This link turns off optional automated marketplace emails for this address. Required security, billing, listing, and account-service emails may still be sent.
     </p>
   `;
+}
+
+function withEmailPreferenceFooter(html, options = {}) {
+  const footerHtml = renderEmailPreferenceFooter(options.unsubscribeUrl, options.label);
+  return String(html || '').replace(EMAIL_PREFERENCE_FOOTER_MARKER, footerHtml);
 }
 
 function renderInfoPanel(rows) {
@@ -598,7 +606,7 @@ const templates = {
     return { subject, html };
   },
 
-  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
+  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
     const subject = `New Forestry Equipment Sales Match: ${listingTitle}`;
     const html = baseLayout(subject, 'New Matching Equipment', `
       <p class="label">Saved Search Match</p>
@@ -611,12 +619,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Matching Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location, unsubscribeUrl }) {
+  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location }) {
     const subject = `Price Drop Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Price Drop Alert', `
       <p class="label">Saved Search Match</p>
@@ -630,12 +637,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">Review Price Drop</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location, unsubscribeUrl }) {
+  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location }) {
     const subject = `Sold Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Listing Sold Alert', `
       <p class="label">Saved Search Match</p>
@@ -647,12 +653,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
+  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
     const subject = `Similar Equipment Back In Stock: ${listingTitle}`;
     const html = baseLayout(subject, 'Similar Equipment Restocked', `
       <p class="label">Saved Search Match</p>
@@ -665,7 +670,6 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Similar Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
@@ -749,7 +753,7 @@ const templates = {
     return { subject, html };
   },
 
-  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, totalViews, topMachines, dashboardUrl, unsubscribeUrl }) {
+  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, totalViews, topMachines, dashboardUrl }) {
     const subject = `Your ${monthLabel} Forestry Equipment Sales Performance Report`;
     const topMachinesHtml = Array.isArray(topMachines) && topMachines.length > 0
       ? `<table style="width:100%; border-collapse:collapse; margin:16px 0;">
@@ -785,7 +789,6 @@ const templates = {
       <hr class="divider" />
       <p>These rolling 30-day totals combine listing views, inquiry submissions, and tracked calls. For questions about your report, contact the Forestry Equipment Sales team.</p>
       <a href="${dashboardUrl || PROFILE_URL}" class="cta">Open Seller Dashboard</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from monthly performance emails')}
     `);
     return { subject, html };
   },
@@ -826,4 +829,9 @@ const templates = {
   },
 };
 
-module.exports = { templates };
+module.exports = {
+  EMAIL_PREFERENCE_FOOTER_MARKER,
+  renderEmailPreferenceFooter,
+  templates,
+  withEmailPreferenceFooter,
+};

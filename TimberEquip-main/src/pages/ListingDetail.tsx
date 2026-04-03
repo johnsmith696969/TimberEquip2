@@ -863,6 +863,7 @@ export function ListingDetail() {
   const safeSellerLogo = typeof seller?.logo === 'string' ? seller.logo : '';
   const safeSellerId = formatSpecValue(seller?.id) || '';
   const safeSellerTotalListings = toFiniteNumber(seller?.totalListings) ?? 0;
+  const sellerIsVerified = Boolean(listing.sellerVerified || seller?.manuallyVerified || isDealerRole(seller?.role || ''));
 
   const hasAmv = typeof safeMarketValueEstimate === 'number' && safeMarketValueEstimate > 0;
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
@@ -1686,7 +1687,7 @@ export function ListingDetail() {
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex flex-col">
                     <span className="label-micro mb-2">
-                      {listing.sellerVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
+                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
                     </span>
                     <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
                     <a 
@@ -1716,10 +1717,10 @@ export function ListingDetail() {
                 </div>
 
                 <div className="flex flex-col space-y-3">
-                  <div className={`flex items-center space-x-3 text-xs font-bold ${listing.sellerVerified || seller?.manuallyVerified ? 'text-data' : 'text-muted'}`}>
+                  <div className={`flex items-center space-x-3 text-xs font-bold ${sellerIsVerified ? 'text-data' : 'text-muted'}`}>
                     <ShieldCheck size={16} />
                     <span className="uppercase tracking-widest">
-                      {listing.sellerVerified || seller?.manuallyVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
+                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
                     </span>
                   </div>
                   {['super_admin', 'admin'].includes(user?.role || '') && seller?.id && (

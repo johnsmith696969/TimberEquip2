@@ -3,7 +3,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { THIN_ROUTE_ROBOTS, evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { PUBLIC_SEO_COLLECTIONS } = require('./public-seo-read-model.js');
 const { buildListingPublicPath } = require('./listing-public-paths.js');
-const { isOperatorOnlyRole } = require('./role-scopes.js');
+const { isDealerSellerRole, isOperatorOnlyRole } = require('./role-scopes.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -426,7 +426,7 @@ async function loadSellerRecords(sellerUids) {
       servicesOfferedSubcategories: Array.isArray(merged.servicesOfferedSubcategories) ? merged.servicesOfferedSubcategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
       role: normalizeText(merged.role),
       createdAtIso: timestampToIso(merged.createdAt),
-      verified: Boolean(merged.verified ?? true),
+      verified: Boolean(merged.manuallyVerified === true || isDealerSellerRole(normalizeText(merged.role)) || merged.verified === true),
     });
   });
 

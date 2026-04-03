@@ -44,6 +44,29 @@ describe('Unsubscribe page', () => {
     expect(screen.getByRole('button', { name: 'Stop Optional Emails' })).toBeInTheDocument();
   });
 
+  it('loads correctly for an email-only unsubscribe link', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        email: 'outside@example.com',
+        displayName: 'outside@example.com',
+        scope: 'optional',
+        emailNotificationsEnabled: true,
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/unsubscribe?email=outside@example.com&scope=optional&token=test-token']}>
+        <Routes>
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect((await screen.findAllByText('outside@example.com')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Stop Optional Emails' })).toBeInTheDocument();
+  });
+
   it('submits the unsubscribe request and shows the success notice', async () => {
     fetchMock
       .mockResolvedValueOnce({

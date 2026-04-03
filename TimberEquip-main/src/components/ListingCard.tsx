@@ -94,7 +94,7 @@ export function ListingCard({
         </div>
 
         {/* Favorite & Compare Buttons */}
-        <div className="absolute top-3 right-3 flex flex-col space-y-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-3 right-3 flex flex-col space-y-2 opacity-100 transition-opacity">
           <button
             onClick={(e) => {
               e.preventDefault();

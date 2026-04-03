@@ -2170,7 +2170,7 @@ export const equipmentService = {
           rating: 5.0,
           totalListings: 0,
           memberSince: data.createdAt || new Date().toISOString(),
-          verified: Boolean(data.storefrontEnabled),
+          verified: isDealerSellerRole(rawRole) || Boolean(data.manuallyVerified),
           manuallyVerified: Boolean(data.manuallyVerified),
           twilioPhoneNumber: String(data.twilioPhoneNumber || ''),
         } as Seller;
@@ -2223,7 +2223,7 @@ export const equipmentService = {
           rating: 5.0,
           totalListings: 0,
           memberSince: data.createdAt || new Date().toISOString(),
-          verified: true,
+          verified: isDealerSellerRole(rawRole) || Boolean(data.manuallyVerified),
           manuallyVerified: Boolean(data.manuallyVerified),
           twilioPhoneNumber: String(data.twilioPhoneNumber || ''),
         } as Seller;
