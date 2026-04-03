@@ -9,12 +9,12 @@ const teamMembers = [
   {
     name: 'Aaron Blake',
     role: 'Co-Owner & Sales',
-    bio: 'With more than 22 years of experience in logging and equipment sales, Aaron has built a reputation as someone you can trust and who knows how to get deals done. He manages risk, supports all sales, and helps clients secure financing to close deals.',
+    bio: 'With nineteen years of experience in logging and equipment sales, Aaron has built a reputation as someone you can trust and who knows how to get deals done. He manages risk, supports all sales, and helps clients secure financing to close deals.',
   },
   {
     name: 'Erik Madsen',
     role: 'Co-Owner & Sales',
-    bio: 'Erik brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
+    bio: 'Erik has 14 years of experience in the industry. He brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
   },
   {
     name: 'Caleb Happy',
