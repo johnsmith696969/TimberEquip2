@@ -5348,6 +5348,16 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
   };
 }
 
+function isDemoListing(listing) {
+  if (!listing || typeof listing !== 'object') {
+    return false;
+  }
+
+  const id = normalizeNonEmptyString(listing.id).toLowerCase();
+  const seller = normalizeNonEmptyString(listing.sellerUid || listing.sellerId).toLowerCase();
+  return id.startsWith('demo-') || id.startsWith('catalog-') || seller.includes('demo');
+}
+
 function toMarketplaceNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -5637,10 +5647,10 @@ function sortMarketplaceListings(listings, sortBy = 'newest', keyword = '') {
   };
 
   if (sortBy === 'price_asc') {
-    return [...listings].sort((left, right) => left.price - right.price);
+    return withFeaturedPriority((left, right) => left.price - right.price);
   }
   if (sortBy === 'price_desc') {
-    return [...listings].sort((left, right) => right.price - left.price);
+    return withFeaturedPriority((left, right) => right.price - left.price);
   }
   if (sortBy === 'popular') {
     return withFeaturedPriority((left, right) => (right.views + right.leads * 3) - (left.views + left.leads * 3));
