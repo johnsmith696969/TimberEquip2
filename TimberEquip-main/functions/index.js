@@ -798,6 +798,65 @@ async function geocodeLocation(address) {
   return geocoded;
 }
 
+function getGoogleAddressComponent(components, wantedTypes, format = 'long_name') {
+  if (!Array.isArray(components) || !Array.isArray(wantedTypes)) {
+    return '';
+  }
+
+  const match = components.find((component) =>
+    Array.isArray(component?.types) && wantedTypes.some((type) => component.types.includes(type))
+  );
+
+  if (!match) {
+    return '';
+  }
+
+  if (format === 'short_name') {
+    return normalizeNonEmptyString(match.short_name || match.long_name);
+  }
+
+  return normalizeNonEmptyString(match.long_name || match.short_name);
+}
+
+function normalizeCountyName(value) {
+  return normalizeNonEmptyString(value).replace(
+    /\s+(County|Parish|Borough|Census Area|Municipality|Regional Municipality)$/i,
+    '',
+  );
+}
+
+function parseGooglePlaceDetails(result, placeId = '') {
+  const components = Array.isArray(result?.address_components) ? result.address_components : [];
+  const streetNumber = getGoogleAddressComponent(components, ['street_number'], 'short_name');
+  const route = getGoogleAddressComponent(components, ['route']);
+  const street1 = [streetNumber, route].filter(Boolean).join(' ')
+    || getGoogleAddressComponent(components, ['premise', 'subpremise', 'establishment'])
+    || normalizeNonEmptyString(result?.name);
+  const city = getGoogleAddressComponent(components, ['locality'])
+    || getGoogleAddressComponent(components, ['postal_town'])
+    || getGoogleAddressComponent(components, ['sublocality_level_1'])
+    || getGoogleAddressComponent(components, ['administrative_area_level_3']);
+  const state = getGoogleAddressComponent(components, ['administrative_area_level_1'], 'short_name');
+  const county = normalizeCountyName(getGoogleAddressComponent(components, ['administrative_area_level_2']));
+  const postalCode = getGoogleAddressComponent(components, ['postal_code'], 'short_name');
+  const country = getGoogleAddressComponent(components, ['country']);
+  const latitude = Number.isFinite(Number(result?.geometry?.location?.lat)) ? Number(result.geometry.location.lat) : null;
+  const longitude = Number.isFinite(Number(result?.geometry?.location?.lng)) ? Number(result.geometry.location.lng) : null;
+
+  return {
+    placeId: normalizeNonEmptyString(placeId),
+    formattedAddress: normalizeNonEmptyString(result?.formatted_address || result?.name),
+    street1,
+    city,
+    state,
+    county,
+    postalCode,
+    country,
+    latitude,
+    longitude,
+  };
+}
+
 function normalizeStringArray(value, maxItems = 50, maxLength = 120) {
   if (!Array.isArray(value)) return [];
   const normalized = value
@@ -11653,22 +11712,52 @@ exports.apiProxy = onRequest(
 
       if (req.method === 'GET' && path === '/public/places-autocomplete') {
         const input = normalizeNonEmptyString(req.query.input || '');
+        const mode = normalizeNonEmptyString(req.query.mode || 'city', 'city').toLowerCase();
         if (!input) return res.status(400).json({ predictions: [] });
         const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
         if (!apiKey) return res.status(200).json({ predictions: [] });
         try {
+          const typeFilter = mode === 'address' ? 'address' : '(cities)';
           const placesRes = await fetch(
-            `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=(cities)&key=${encodeURIComponent(apiKey)}`
+            `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
           );
           const placesData = await placesRes.json();
           const predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
             description: p.description,
             placeId: p.place_id,
+            mainText: normalizeNonEmptyString(p?.structured_formatting?.main_text),
+            secondaryText: normalizeNonEmptyString(p?.structured_formatting?.secondary_text),
           }));
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ predictions });
         } catch {
           return res.status(200).json({ predictions: [] });
+        }
+      }
+
+      if (req.method === 'GET' && path === '/public/place-details') {
+        const placeId = normalizeNonEmptyString(req.query.placeId || '');
+        if (!placeId) return res.status(400).json({ place: null });
+        const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
+        if (!apiKey) return res.status(200).json({ place: null });
+        try {
+          const placeDetailsRes = await fetch(
+            `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
+          );
+          if (!placeDetailsRes.ok) {
+            return res.status(200).json({ place: null });
+          }
+
+          const placeDetailsData = await placeDetailsRes.json();
+          if (placeDetailsData.status !== 'OK' || !placeDetailsData.result) {
+            return res.status(200).json({ place: null });
+          }
+
+          const place = parseGooglePlaceDetails(placeDetailsData.result, placeId);
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ place });
+        } catch {
+          return res.status(200).json({ place: null });
         }
       }
 

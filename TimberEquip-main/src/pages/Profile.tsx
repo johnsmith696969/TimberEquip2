@@ -31,7 +31,9 @@ import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import { Seo } from '../components/Seo';
 import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
 import { TagSelectorModal } from '../components/TagSelectorModal';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
+import { type GooglePlaceSelection } from '../services/placesService';
 import {
   SERVICE_AREA_REGION_OPTIONS,
   SERVICE_AREA_SCOPE_OPTIONS,
@@ -56,6 +58,7 @@ import {
 
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
 const CONTENT_STUDIO_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer', 'content_manager', 'editor']);
+const ACCOUNT_OVERVIEW_TAB_LABEL = 'Account Overview';
 const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
 const CURRENCY_OPTIONS: Currency[] = ['USD', 'CAD', 'EUR', 'GBP', 'NOK', 'SEK', 'CHF', 'PLN', 'CZK', 'RON', 'DKK', 'HUF'];
 const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
@@ -144,7 +147,7 @@ export function Profile() {
         ? 'hidden until billing is restored'
         : 'not applicable';
   const profileTabs = useMemo(() => {
-    const tabs = ['Overview'];
+    const tabs = [ACCOUNT_OVERVIEW_TAB_LABEL];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
     if (canViewSearchAlerts) tabs.push('Search Alerts');
     if (canViewMyListings) tabs.push('My Listings');
@@ -165,7 +168,7 @@ export function Profile() {
     storefrontTabLabel,
   ]);
   const profileTabItems = useMemo(() => {
-    const items: Array<{ label: string; icon: React.ComponentType<{ className?: string; size?: number }>; href?: string }> = [{ label: 'Overview', icon: User }];
+    const items: Array<{ label: string; icon: React.ComponentType<{ className?: string; size?: number }>; href?: string }> = [{ label: ACCOUNT_OVERVIEW_TAB_LABEL, icon: User }];
     if (canViewSavedEquipment) items.push({ label: 'Saved Equipment', icon: Bookmark });
     if (canViewSearchAlerts) items.push({ label: 'Search Alerts', icon: Bell });
     if (canViewMyListings) items.push({ label: 'My Listings', icon: Package });
@@ -207,7 +210,7 @@ export function Profile() {
     }
 
     const items = [
-      { label: 'Admin Overview', icon: LayoutDashboard, href: '/admin' },
+      { label: ACCOUNT_OVERVIEW_TAB_LABEL, icon: LayoutDashboard, href: '/admin' },
       { label: 'Performance', icon: Activity, href: '/admin?tab=tracking' },
       { label: 'Accounts', icon: Building2, href: '/admin?tab=accounts' },
       { label: 'Billing', icon: CreditCard, href: '/admin?tab=billing' },
@@ -237,18 +240,22 @@ export function Profile() {
       return null;
     }
 
+    if (tabAlias === 'overview') {
+      return ACCOUNT_OVERVIEW_TAB_LABEL;
+    }
+
     return profileTabs.find((tab) => tab.toLowerCase() === tabAlias) || null;
   }, [profileTabs]);
   const resolvedRequestedProfileTab = useMemo(
-    () => resolveRequestedProfileTab(searchParams.get('tab')) || 'Profile',
+    () => resolveRequestedProfileTab(searchParams.get('tab')) || ACCOUNT_OVERVIEW_TAB_LABEL,
     [resolveRequestedProfileTab, searchParams]
   );
   const activeTab = resolvedRequestedProfileTab;
   const profileSeoTitle = `${activeTab} | Forestry Equipment Sales`;
-  const profileSeoDescription = activeTab === 'Profile'
+  const profileSeoDescription = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL
     ? 'Manage your Forestry Equipment Sales account, listings, saved equipment, and subscription settings.'
     : `Manage ${activeTab.toLowerCase()} from your Forestry Equipment Sales account workspace.`;
-  const profileCanonicalPath = activeTab === 'Profile' ? '/profile' : `/profile?tab=${encodeURIComponent(activeTab)}`;
+  const profileCanonicalPath = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL ? '/profile' : `/profile?tab=${encodeURIComponent(activeTab)}`;
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -272,6 +279,7 @@ export function Profile() {
   const [isSavingStorefront, setIsSavingStorefront] = useState(false);
   const [storefrontError, setStorefrontError] = useState('');
   const [storefrontNotice, setStorefrontNotice] = useState('');
+  const [storefrontAddressQuery, setStorefrontAddressQuery] = useState('');
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const mfaRecaptchaRef = useRef<RecaptchaVerifier | null>(null);
@@ -533,6 +541,25 @@ export function Profile() {
   }, [storefrontPreview, user]);
 
   useEffect(() => {
+    const nextAddressQuery = [
+      storefrontForm.street1,
+      storefrontForm.city,
+      storefrontForm.state,
+      storefrontForm.postalCode,
+      storefrontForm.country,
+    ].filter(Boolean).join(', ') || storefrontForm.location || '';
+
+    setStorefrontAddressQuery((current) => (current === nextAddressQuery ? current : nextAddressQuery));
+  }, [
+    storefrontForm.city,
+    storefrontForm.country,
+    storefrontForm.location,
+    storefrontForm.postalCode,
+    storefrontForm.state,
+    storefrontForm.street1,
+  ]);
+
+  useEffect(() => {
     let active = true;
 
     const loadStorefrontTaxonomy = async () => {
@@ -614,6 +641,10 @@ export function Profile() {
     storefrontForm.serviceAreaCounties.forEach((county) => suggestions.add(county));
     return Array.from(suggestions).sort((left, right) => left.localeCompare(right));
   }, [storefrontForm.county, storefrontForm.serviceAreaCounties, storefrontForm.serviceAreaStates]);
+  const hasStorefrontGeoCoordinates =
+    typeof storefrontForm.latitude === 'number' &&
+    typeof storefrontForm.longitude === 'number' &&
+    !(Math.abs(storefrontForm.latitude) < 0.000001 && Math.abs(storefrontForm.longitude) < 0.000001);
 
   useEffect(() => {
     if (!storefrontForm.servicesOfferedSubcategories.length) return;
@@ -1108,7 +1139,7 @@ export function Profile() {
     }
 
     replaceProfileSearchParams((nextParams) => {
-      if (nextTab === 'Overview') {
+      if (nextTab === ACCOUNT_OVERVIEW_TAB_LABEL) {
         nextParams.delete('tab');
       } else {
         nextParams.set('tab', nextTab);
@@ -1169,7 +1200,7 @@ export function Profile() {
   const getProfileSectionsForTab = useCallback((tab: string) => {
     const sections = new Set<string>();
 
-    if (tab === 'Overview') {
+    if (tab === ACCOUNT_OVERVIEW_TAB_LABEL) {
       if (canViewSavedEquipment) sections.add('savedAssets');
       if (canViewSearchAlerts) sections.add('savedSearches');
       if (canViewMyListings) sections.add('myListings');
@@ -1268,7 +1299,7 @@ export function Profile() {
   const isCurrentProfileTabReady = currentProfileSections.every((section) => loadedProfileSections[section]);
   const shouldShowProfileLoadingShell =
     profileDataLoading &&
-    activeTab === 'Overview' &&
+    activeTab === ACCOUNT_OVERVIEW_TAB_LABEL &&
     currentProfileSections.length > 0 &&
     !isCurrentProfileTabReady &&
     Object.keys(loadedProfileSections).length === 0;
@@ -1625,6 +1656,27 @@ export function Profile() {
     setStorefrontForm((prev) => ({ ...prev, [key]: value } as typeof prev));
   };
 
+  const handleStorefrontPlaceSelect = (place: GooglePlaceSelection) => {
+    setStorefrontForm((prev) => {
+      const resolvedCity = place.city || prev.city;
+      const resolvedState = place.state || prev.state;
+      const resolvedCountry = place.country || prev.country || 'United States';
+
+      return {
+        ...prev,
+        street1: place.street1 || prev.street1,
+        city: resolvedCity,
+        state: resolvedState,
+        county: place.county || prev.county,
+        postalCode: place.postalCode || prev.postalCode,
+        country: resolvedCountry,
+        location: [resolvedCity, resolvedState, resolvedCountry].filter(Boolean).join(', ') || place.formattedAddress || prev.location,
+        latitude: typeof place.latitude === 'number' ? place.latitude : prev.latitude,
+        longitude: typeof place.longitude === 'number' ? place.longitude : prev.longitude,
+      };
+    });
+  };
+
   const handleStorefrontArrayChange = (
     key:
       | 'serviceAreaScopes'
@@ -1709,6 +1761,16 @@ export function Profile() {
 
   const renderOverview = () => (
     <div className="space-y-12">
+      <div className="space-y-4">
+        <div>
+          <span className="label-micro text-accent block mb-2">Account Dashboard</span>
+          <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">{ACCOUNT_OVERVIEW_TAB_LABEL}</h3>
+        </div>
+        <p className="max-w-3xl text-xs font-medium uppercase tracking-widest leading-relaxed text-muted">
+          Review your latest account activity, saved equipment, live listings, lead flow, and financing activity from one workspace.
+        </p>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
@@ -2458,9 +2520,9 @@ export function Profile() {
             <div className="bg-surface border border-line p-6">
               <span className="label-micro block mb-2">Auto Geocode</span>
               <p className="text-xs font-black uppercase tracking-widest break-all">
-                {typeof storefrontForm.latitude === 'number' && typeof storefrontForm.longitude === 'number'
-                  ? `${storefrontForm.latitude.toFixed(5)}, ${storefrontForm.longitude.toFixed(5)}`
-                  : 'Calculated from street address when you save'}
+                {hasStorefrontGeoCoordinates
+                  ? `${storefrontForm.latitude!.toFixed(5)}, ${storefrontForm.longitude!.toFixed(5)}`
+                  : 'Select a Google address or save a valid storefront address'}
               </p>
             </div>
             <div className="bg-surface border border-line p-6">
@@ -2517,6 +2579,18 @@ export function Profile() {
               <label htmlFor="profile-storefront-location" className="label-micro">Display Location Summary</label>
               <input id="profile-storefront-location" type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} placeholder="Optional. Leave blank to derive from city, state, and country." />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="profile-storefront-google-address" className="label-micro">Google Address Lookup</label>
+              <GooglePlacesInput
+                id="profile-storefront-google-address"
+                mode="address"
+                value={storefrontAddressQuery}
+                onChange={setStorefrontAddressQuery}
+                onSelect={handleStorefrontPlaceSelect}
+                placeholder="Search business address with Google"
+                helperText="Select a verified Google address to autofill street, city, state, postal code, country, and map coordinates."
+              />
+            </div>
             <div className="space-y-2">
               <label htmlFor="profile-storefront-street1" className="label-micro">Street Address 1</label>
               <input id="profile-storefront-street1" type="text" className="input-industrial w-full" value={storefrontForm.street1} onChange={(e) => handleStorefrontInputChange('street1', e.target.value)} placeholder="Street address used for mapping and geo coordinates" />
@@ -2552,9 +2626,9 @@ export function Profile() {
             <div className="space-y-2">
               <label className="label-micro">Calculated Latitude / Longitude</label>
               <div className="input-industrial w-full min-h-[46px] flex items-center text-xs font-black uppercase tracking-widest text-muted">
-                {typeof storefrontForm.latitude === 'number' && typeof storefrontForm.longitude === 'number'
-                  ? `${storefrontForm.latitude.toFixed(6)}, ${storefrontForm.longitude.toFixed(6)}`
-                  : 'Auto-populated when the storefront address is saved'}
+                {hasStorefrontGeoCoordinates
+                  ? `${storefrontForm.latitude!.toFixed(6)}, ${storefrontForm.longitude!.toFixed(6)}`
+                  : 'Auto-populated after Google address selection or when the storefront address is saved'}
               </div>
             </div>
             <div className="space-y-2 md:col-span-2">
@@ -2804,13 +2878,14 @@ export function Profile() {
           </div>
           <div className="space-y-2 md:col-span-2">
             <label htmlFor="profile-settings-address" className="label-micro">Address</label>
-            <input
+            <GooglePlacesInput
               id="profile-settings-address"
-              type="text"
-              className="input-industrial w-full"
+              mode="address"
               placeholder="Street, City, State/Province, Country"
               value={settingsForm.location}
-              onChange={(e) => handleSettingsInputChange('location', e.target.value)}
+              onChange={(value) => handleSettingsInputChange('location', value)}
+              onSelect={(place) => handleSettingsInputChange('location', place.formattedAddress)}
+              helperText="Use a Google-verified address for cleaner profile linking and location consistency."
             />
           </div>
           <div className="space-y-2 md:col-span-2">
@@ -3296,7 +3371,7 @@ export function Profile() {
                 </div>
               ) : (
                 <>
-              {activeTab === 'Overview' && renderOverview()}
+              {activeTab === ACCOUNT_OVERVIEW_TAB_LABEL && renderOverview()}
               {activeTab === 'My Listings' && renderMyListings()}
               {activeTab === 'Search Alerts' && renderAlerts()}
               {activeTab === 'Inquiries' && renderInquiries()}

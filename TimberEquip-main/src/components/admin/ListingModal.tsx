@@ -5,6 +5,7 @@ import { Listing, ListingConditionChecklist } from '../../types';
 import { getSchemaForListing } from '../../constants/categorySpecs';
 import { EQUIPMENT_TAXONOMY } from '../../constants/equipmentData';
 import { storageService } from '../../services/storageService';
+import { getPlacePredictions, type GooglePlacePrediction } from '../../services/placesService';
 import { taxonomyService, FullEquipmentTaxonomy } from '../../services/taxonomyService';
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -214,7 +215,7 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
   const [imageUploadProgress, setImageUploadProgress] = useState<number>(0);
   const [videoUploadProgress, setVideoUploadProgress] = useState<number>(0);
   const [imageDragIdx, setImageDragIdx] = useState<number | null>(null);
-  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ description: string; placeId: string }>>([]);
+  const [locationSuggestions, setLocationSuggestions] = useState<GooglePlacePrediction[]>([]);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [listingStorageId, setListingStorageId] = useState<string>(createDraftListingId());
@@ -319,11 +320,9 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
     if (input.length < 3) { setLocationSuggestions([]); setShowLocationSuggestions(false); return; }
     locationDebounceRef.current = setTimeout(async () => {
       try {
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        const res = await fetch(`${origin}/api/public/places-autocomplete?input=${encodeURIComponent(input)}`);
-        const data = await res.json();
-        setLocationSuggestions(data.predictions || []);
-        setShowLocationSuggestions((data.predictions || []).length > 0);
+        const predictions = await getPlacePredictions(input, 'city');
+        setLocationSuggestions(predictions);
+        setShowLocationSuggestions(predictions.length > 0);
       } catch { setLocationSuggestions([]); }
     }, 300);
   };

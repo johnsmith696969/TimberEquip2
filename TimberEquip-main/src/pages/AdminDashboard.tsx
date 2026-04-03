@@ -4871,7 +4871,7 @@ export function AdminDashboard() {
     );
   };
 
-  const dashboardHeading = activeTab === 'overview'  ? 'System Overview'
+  const dashboardHeading = activeTab === 'overview'  ? 'Account Overview'
     : activeTab === 'listings'  ? 'Machine Inventory'
     : activeTab === 'inquiries' ? 'Lead Monitoring'
     : activeTab === 'calls'     ? 'Call Logs'
@@ -4890,7 +4890,7 @@ export function AdminDashboard() {
   const dashboardCanonicalPath = activeTab === 'overview' ? '/admin' : `/admin?tab=${activeTab}`;
 
   const dashboardTabs = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'overview', label: 'Account Overview', icon: LayoutDashboard },
     { id: 'listings', label: 'Machines', icon: Package },
     { id: 'inquiries', label: 'Leads', icon: MessageSquare },
     { id: 'calls', label: 'Calls', icon: Phone },
