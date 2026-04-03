@@ -7967,6 +7967,23 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
         source,
       }
     );
+
+    // Auto-verify dealers and pro dealers when their subscription becomes active
+    const autoVerifyRoles = ['dealer', 'pro_dealer'];
+    const activeStatuses = ['active', 'trialing'];
+    if (autoVerifyRoles.includes(nextRole) && activeStatuses.includes(effectiveSubscriptionStatus)) {
+      try {
+        await userRef.set({ manuallyVerified: true, storefrontEnabled: true }, { merge: true });
+        const listingsSnap = await getDb().collection('listings').where('sellerUid', '==', normalizedUserUid).get();
+        if (!listingsSnap.empty) {
+          const batch = getDb().batch();
+          listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified: true }));
+          await batch.commit();
+        }
+      } catch (verifyErr) {
+        console.warn('Auto-verify on subscription failed (non-blocking):', verifyErr);
+      }
+    }
   }
 
   if (authUserRecord) {
