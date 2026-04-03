@@ -22,6 +22,7 @@ const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSE
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO = `/Logo-Transparent-sm.webp?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
+const SERVER_OWNED_PUBLIC_PATHS = new Set(['/', '/categories', '/dealers', '/manufacturers', '/states', '/logging-equipment-for-sale', '/forestry-equipment-for-sale']);
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -37,6 +38,32 @@ const CURRENCY_SYMBOLS: Record<Currency, string> = {
   DKK: 'DKK',
   HUF: 'HUF',
 };
+
+function PublicNavLink({
+  to,
+  className,
+  children,
+  onClick,
+}: {
+  to: string;
+  className?: string;
+  children: React.ReactNode;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+}) {
+  if (SERVER_OWNED_PUBLIC_PATHS.has(to)) {
+    return (
+      <a href={to} className={className} onClick={onClick}>
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link to={to} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
@@ -325,7 +352,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main Header */}
       <header className="bg-bg border-b border-line py-4 px-4 md:px-8 flex justify-between items-center">
-        <Link to="/" className="flex items-center">
+        <PublicNavLink to="/" className="flex items-center">
           <img
             src={headerLogoSrc}
             alt={headerLogoAlt}
@@ -336,16 +363,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
               setHeaderLogoSrc((current) => current === HEADER_LOGO_FALLBACK ? current : HEADER_LOGO_FALLBACK);
             }}
           />
-        </Link>
+        </PublicNavLink>
 
         {/* Desktop Nav */}
         <nav className="hidden lg:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
           <Link to="/search" className="hover:text-accent transition-colors">{t('layout.inventory', 'Inventory')}</Link>
-          <Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link>
+          <PublicNavLink to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</PublicNavLink>
           <Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
           <Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.auctions', 'Auctions')}</Link>
           <Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financing', 'Financing')}</Link>
-          <Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealers')}</Link>
+          <PublicNavLink to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealers')}</PublicNavLink>
           <Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link>
         </nav>
         <div className="flex items-center space-x-4">
@@ -413,11 +440,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             
              <div className="flex flex-col space-y-8 text-2xl font-black tracking-tighter uppercase pt-20 px-6">
               <Link to="/search" onClick={() => setIsMenuOpen(false)}>{t('layout.inventory', 'Inventory')}</Link>
-              <Link to="/categories" onClick={() => setIsMenuOpen(false)}>{t('layout.categories', 'Categories')}</Link>
+              <PublicNavLink to="/categories" onClick={() => setIsMenuOpen(false)}>{t('layout.categories', 'Categories')}</PublicNavLink>
               <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
-              <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
+              <PublicNavLink to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</PublicNavLink>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
               <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent-link">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>
@@ -501,7 +528,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-[1600px] mx-auto">
           <div className="grid grid-cols-1 gap-16 md:grid-cols-2 lg:grid-cols-6">
             <div className="lg:col-span-2 flex flex-col space-y-8">
-              <Link to="/" className="flex items-center">
+              <PublicNavLink to="/" className="flex items-center">
                 <img
                   src={FOOTER_LOGO}
                   alt="Forestry Equipment Sales"
@@ -514,7 +541,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     target.src = FOOTER_LOGO_FALLBACK;
                   }}
                 />
-              </Link>
+              </PublicNavLink>
               <p className="text-sm text-muted leading-relaxed max-w-md">
                 {t('layout.footerBlurb', 'The premier industrial marketplace for professional logging equipment. Connecting global forestry operations with verified assets, institutional financing, and precision logistics.')}
               </p>
@@ -537,7 +564,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="text-[11px] font-black uppercase tracking-[0.2em] mb-8 text-ink">{t('layout.marketplace', 'Marketplace')}</h4>
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
                 <li><Link to="/search" className="hover:text-accent transition-colors">{t('layout.browseInventory', 'Browse Inventory')}</Link></li>
-                <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
+                <li><PublicNavLink to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</PublicNavLink></li>
                 <li><Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.liveAuctions', 'Live Auctions')}</Link></li>
                 <li><Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>
@@ -548,7 +575,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="text-[11px] font-black uppercase tracking-[0.2em] mb-8 text-ink">{t('layout.partnership', 'Partnership')}</h4>
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
                 <li><Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link></li>
-                <li><Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealer Network')}</Link></li>
+                <li><PublicNavLink to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealer Network')}</PublicNavLink></li>
                 <li><Link to="/logistics" className="hover:text-accent transition-colors">{t('layout.globalLogistics', 'Global Logistics')}</Link></li>
                 <li><Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link></li>
               </ul>
