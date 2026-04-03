@@ -84,6 +84,31 @@ export function Auctions() {
         description="Browse upcoming and live forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers."
         canonicalPath="/auctions"
         imagePath="/page-photos/john-deere-harvester.webp"
+        preloadImage="/page-photos/john-deere-harvester.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'CollectionPage',
+              name: 'Forestry Equipment Auctions',
+              description: 'Browse upcoming and live forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers.',
+              url: 'https://timberequip.com/auctions',
+            },
+            {
+              '@type': 'ItemList',
+              name: 'Auction Listings',
+              url: 'https://timberequip.com/auctions',
+              numberOfItems: sortedAuctions.length,
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Auctions', item: 'https://timberequip.com/auctions' },
+              ],
+            },
+          ],
+        }}
       />
 
       {/* Hero */}
@@ -123,6 +148,8 @@ export function Auctions() {
                     <img
                       src={featuredAuction.image}
                       alt={featuredAuction.title}
+                      width={800}
+                      height={300}
                       className="absolute inset-0 w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                     />
@@ -204,8 +231,11 @@ export function Auctions() {
                             <img
                               src={auction.image}
                               alt={auction.title}
+                              width={400}
+                              height={192}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                               referrerPolicy="no-referrer"
+                              loading="lazy"
                             />
                             <div className="absolute top-3 right-3 bg-bg/90 backdrop-blur-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest border border-line">
                               {auction.type || 'Auction'}

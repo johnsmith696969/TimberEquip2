@@ -445,6 +445,32 @@ export function AdPrograms() {
         title="Seller Ad Programs | List Equipment | Forestry Equipment Sales"
         description="Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace."
         canonicalPath="/ad-programs"
+        preloadImage="/page-photos/winter-log-road.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Service',
+              name: 'Seller Ad Programs',
+              description: 'Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace.',
+              url: 'https://timberequip.com/ad-programs',
+              provider: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: 'https://timberequip.com',
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Seller Ad Programs', item: 'https://timberequip.com/ad-programs' },
+              ],
+            },
+          ],
+        }}
       />
       {/* Hero Section */}
       <ImageHero

@@ -40,8 +40,7 @@ export type UserRole =
   | 'dealer'
   | 'pro_dealer'
   | 'individual_seller'
-  | 'member'
-  | 'buyer';
+  | 'member';
 
 export interface Seller {
   id: string;

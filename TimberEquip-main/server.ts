@@ -96,8 +96,7 @@ type ManagedAccountRole =
   | 'dealer_manager'
   | 'dealer_staff'
   | 'individual_seller'
-  | 'member'
-  | 'buyer';
+  | 'member';
 
 type DealerFeedItem = {
   externalId?: string;
@@ -224,13 +223,13 @@ function normalizeRole(value: unknown): ManagedAccountRole {
   if (normalized === 'dealer_manager') return 'dealer_manager';
   if (normalized === 'dealer_staff') return 'dealer_staff';
   if (normalized === 'individual_seller') return 'individual_seller';
-  if (normalized === 'member') return 'member';
-  return 'buyer';
+  if (normalized === 'member' || normalized === 'buyer') return 'member';
+  return 'member';
 }
 
 function canCreateManagedRole(parentRole: ManagedAccountRole, childRole: ManagedAccountRole): boolean {
-  const adminManagedRoles: ManagedAccountRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'member', 'buyer'];
-  const dealerManagedRoles: ManagedAccountRole[] = ['dealer_manager', 'dealer_staff', 'member', 'buyer'];
+  const adminManagedRoles: ManagedAccountRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'member'];
+  const dealerManagedRoles: ManagedAccountRole[] = ['dealer_manager', 'dealer_staff', 'member'];
 
   if (parentRole === 'super_admin') return true;
   if (parentRole === 'admin' || parentRole === 'developer') return adminManagedRoles.includes(childRole);
@@ -446,14 +445,14 @@ function serializeCallDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot):
 }
 
 function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
     phone: normalizeNonEmptyString(data.phone),
@@ -476,14 +475,14 @@ function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<s
 }
 
 function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
     phone: normalizeNonEmptyString(data.phoneNumber),
@@ -515,11 +514,17 @@ function hasActiveDealerDirectorySubscription(data: Record<string, unknown> = {}
     return false;
   }
 
+  // If a subscription record exists, verify it is active/trialing.
+  // If no subscription is set yet, allow the dealer through so the
+  // directory populates while Firestore data is bootstrapped.
   const activeSubscriptionPlanId = normalizeNonEmptyString(data.activeSubscriptionPlanId).toLowerCase();
   const subscriptionStatus = normalizeNonEmptyString(data.subscriptionStatus).toLowerCase();
+  if (activeSubscriptionPlanId && subscriptionStatus) {
+    return ['dealer', 'fleet_dealer'].includes(activeSubscriptionPlanId)
+      && ['active', 'trialing'].includes(subscriptionStatus);
+  }
 
-  return ['dealer', 'fleet_dealer'].includes(activeSubscriptionPlanId)
-    && ['active', 'trialing'].includes(subscriptionStatus);
+  return true;
 }
 
 function buildMarketplaceListingPayload(listingId: string, rawListing: Record<string, unknown>): Record<string, unknown> {
@@ -919,7 +924,7 @@ function parseLocalBillingStubSessionId(sessionId: string): {
 }
 
 function buildLocalBillingStubSummary(decodedToken: admin.auth.DecodedIdToken): Record<string, unknown> {
-  const claimedRole = String(decodedToken.role || '').trim() || 'buyer';
+  const claimedRole = String(decodedToken.role || '').trim() || 'member';
   return {
     stripeCustomerId: 'cus_local_stub',
     planId: null,
@@ -930,7 +935,7 @@ function buildLocalBillingStubSummary(decodedToken: admin.auth.DecodedIdToken): 
     currentPeriodEnd: null,
     subscriptionStartDate: null,
     role: claimedRole,
-    accountAccessSource: claimedRole === 'buyer' ? 'free_member' : 'admin_override',
+    accountAccessSource: claimedRole === 'member' ? 'free_member' : 'admin_override',
     accountStatus: 'active',
     entitlement: null,
     localBillingStub: true,
@@ -1638,20 +1643,18 @@ async function startServer() {
     });
   }
 
+  // Redirect /manufacturers and /states index routes to SPA equivalents
+  app.get('/manufacturers', (_req, res) => res.redirect(302, '/dealers'));
+  app.get('/states', (_req, res) => res.redirect(302, '/search'));
+  app.get('/logging-equipment-for-sale', (_req, res) => res.redirect(301, '/forestry-equipment-for-sale'));
+
   if (sharedPublicPagesProxy) {
+    // SSR only for deep parametric SEO routes (crawlers) + sitemap — NOT user-facing index pages
     app.get(
       [
-        '/',
         '/sitemap.xml',
-        '/logging-equipment-for-sale',
-        '/forestry-equipment-for-sale',
-        '/categories',
-        '/categories/:categorySlug',
-        '/manufacturers',
         '/manufacturers/:manufacturerSlug',
         '/manufacturers/:manufacturerSlug/:categorySaleSlug',
-        '/states',
-        '/states/:stateSlug/logging-equipment-for-sale',
         '/states/:stateSlug/forestry-equipment-for-sale',
         '/states/:stateSlug/:categorySaleSlug',
         '/dealers/:id',
@@ -2299,7 +2302,7 @@ async function startServer() {
       const company = String(req.body?.company || '').trim();
       const phoneNumber = String(req.body?.phoneNumber || '').trim();
       const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-      const parentRole = actorCanAdminister && actorRole === 'buyer' ? 'super_admin' : actorRole;
+      const parentRole = actorCanAdminister && actorRole === 'member' ? 'super_admin' : actorRole;
 
       if (!displayName || !email) {
         return res.status(400).json({ error: 'Display name and email are required.' });
@@ -2585,7 +2588,7 @@ async function startServer() {
           phone: String(data.phoneNumber || '').trim(),
           phoneNumber: String(data.phoneNumber || '').trim(),
           company: String(data.company || '').trim(),
-          role: String(data.role || authUserRecord.customClaims?.role || 'buyer'),
+          role: String(data.role || authUserRecord.customClaims?.role || 'member'),
           status: authDisabled ? 'Suspended' : (accountStatus === 'pending' ? 'Pending' : 'Active'),
           accountStatus,
           authDisabled,

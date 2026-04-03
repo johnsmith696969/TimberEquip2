@@ -128,7 +128,7 @@ function deriveOnboardingIntent(
   if (currentOnboardingIntent) return currentOnboardingIntent;
   if (activeSubscriptionPlanId) return activeSubscriptionPlanId;
   if (accessSource === 'pending_checkout' && role !== 'member') {
-    return role === 'buyer' ? 'individual_seller' : 'free_member';
+    return 'free_member';
   }
   return role === 'member' ? 'free_member' : 'free_member';
 }
@@ -232,7 +232,7 @@ async function resolveAuthAccessSnapshot(
   if (!accountAccessSource) {
     if (activeSubscriptionPlanId) {
       accountAccessSource = 'subscription';
-    } else if (current?.parentAccountUid && ['member', 'buyer'].includes(resolvedRole)) {
+    } else if (current?.parentAccountUid && resolvedRole === 'member') {
       accountAccessSource = 'managed_account';
     } else if (resolvedRole === 'member') {
       accountAccessSource = 'free_member';
@@ -720,7 +720,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Admin status is determined server-side via custom claims bootstrap, not client-side email matching
-    const nextRole = onboardingIntent === 'free_member' ? 'member' : 'buyer';
+    const nextRole = 'member';
     const nextAccountStatus = onboardingIntent === 'free_member' ? 'active' : 'pending';
     const nextAccessSource: UserProfile['accountAccessSource'] = onboardingIntent === 'free_member'
       ? 'free_member'

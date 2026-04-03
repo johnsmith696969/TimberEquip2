@@ -468,6 +468,7 @@ function normalizeUserRole(role) {
   const normalized = normalize(role);
   if (normalized === 'dealer_staff') return 'dealer';
   if (normalized === 'dealer_manager') return 'pro_dealer';
+  if (normalized === 'buyer') return 'member';
   return normalized;
 }
 
@@ -582,13 +583,12 @@ function deriveManualAccountAccessSource(actorRole, requestedRole, existingSourc
   const normalizedRequestedRole = normalizeUserRole(requestedRole);
 
   if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer') {
-    return normalizedRequestedRole === 'member' || normalizedRequestedRole === 'buyer'
+    return normalizedRequestedRole === 'member'
       ? 'managed_account'
       : 'admin_override';
   }
 
   if (normalizedRequestedRole === 'member') return 'free_member';
-  if (normalizedRequestedRole === 'buyer') return '';
   return 'admin_override';
 }
 
@@ -4822,14 +4822,14 @@ function getStateFromMarketplaceLocation(location) {
 }
 
 function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     businessName: normalizeNonEmptyString(data.businessName),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
@@ -4867,14 +4867,14 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
 }
 
 function serializeSellerPayloadFromUser(snapshotId, data = {}) {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     businessName: normalizeNonEmptyString(data.businessName),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
@@ -6665,7 +6665,7 @@ function buildAccountStateFromSources(userData = {}, authRecord = null, override
     overrides.role
     ?? userData.role
     ?? authClaims.role
-    ?? 'buyer'
+    ?? 'member'
   );
   const accountStatus = normalizeAccountStatus(
     overrides.accountStatus
@@ -7027,7 +7027,7 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
       || authRecord?.displayName,
       'Forestry Equipment Sales User'
     ),
-    role: accountState.role || 'buyer',
+    role: accountState.role || 'member',
     emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
     preferredLanguage: normalizeNonEmptyString(userData.preferredLanguage) || undefined,
     preferredCurrency: normalizeNonEmptyString(userData.preferredCurrency) || undefined,
@@ -7333,7 +7333,7 @@ async function listAdminDirectoryUsersPayload() {
       createdAt;
     const fallbackRole = isPrivilegedAdminEmail(email)
       ? 'super_admin'
-      : normalizeUserRole(String(authRecord.customClaims?.role || 'buyer'));
+      : normalizeUserRole(String(authRecord.customClaims?.role || 'member'));
     const role = firestoreProfilesAvailable && isSupportedUserRole(String(data.role || ''))
       ? String(data.role)
       : fallbackRole;
@@ -7361,6 +7361,7 @@ async function listAdminDirectoryUsersPayload() {
       totalListings: Number(data.totalListings || 0),
       totalLeads: Number(data.totalLeads || 0),
       parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+      manuallyVerified: Boolean(data.manuallyVerified),
     };
   });
 
@@ -7393,6 +7394,29 @@ async function getFirestoreQueryCount(query) {
   return snapshot.size;
 }
 
+async function getFirestoreQuerySum(query, field) {
+  if (query && typeof query.aggregate === 'function') {
+    try {
+      const aggregateSnapshot = await query.aggregate({ total: admin.firestore.AggregateField.sum(field) }).get();
+      const aggregateData = typeof aggregateSnapshot?.data === 'function' ? aggregateSnapshot.data() : {};
+      return Number(aggregateData?.total || 0);
+    } catch {
+      // Fallback: aggregate API not available or field not indexed
+    }
+  }
+
+  // Manual fallback: scan all documents
+  const snapshot = await query.select(field).get();
+  let total = 0;
+  for (const doc of snapshot.docs) {
+    const value = doc.data()?.[field];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      total += value;
+    }
+  }
+  return total;
+}
+
 function computeAdminOverviewMarketSentiment({ conversionRate, inventoryTurnoverRate, liveListings }) {
   if (liveListings <= 0) {
     return 'Idle';
@@ -7422,6 +7446,8 @@ async function buildAdminOverviewBootstrapPayload() {
     recentCallsResult,
     callCountResult,
     activeUsersResult,
+    totalViewsResult,
+    activeSubscriptionsResult,
   ] = await Promise.allSettled([
     getFirestoreQueryCount(db.collection('listings')),
     getFirestoreQueryCount(
@@ -7438,6 +7464,8 @@ async function buildAdminOverviewBootstrapPayload() {
     db.collection('calls').orderBy('createdAt', 'desc').limit(5).get(),
     getFirestoreQueryCount(db.collection('calls')),
     getFirestoreQueryCount(db.collection('users').where('accountStatus', '==', 'active')),
+    getFirestoreQuerySum(db.collection('listings'), 'views'),
+    db.collection('subscriptions').where('status', '==', 'active').get(),
   ]);
 
   const errors = {};
@@ -7466,6 +7494,32 @@ async function buildAdminOverviewBootstrapPayload() {
   const soldListings = resolveCount('listings_sold', soldListingsResult);
   const callVolume = resolveCount('calls_total', callCountResult);
   const activeUsers = resolveCount('users_active', activeUsersResult);
+  const totalViews = resolveCount('total_views', totalViewsResult);
+
+  // Active subscriptions: only count subs whose currentPeriodEnd is still in the future
+  let activeSubscriptions = 0;
+  if (activeSubscriptionsResult.status === 'fulfilled') {
+    const nowMs = Date.now();
+    for (const doc of activeSubscriptionsResult.value.docs) {
+      const data = doc.data() || {};
+      const periodEnd = data.currentPeriodEnd;
+      let periodEndMs = 0;
+      if (periodEnd && typeof periodEnd.toMillis === 'function') {
+        periodEndMs = periodEnd.toMillis();
+      } else if (typeof periodEnd === 'number') {
+        periodEndMs = periodEnd > 1e12 ? periodEnd : periodEnd * 1000;
+      }
+      if (periodEndMs > nowMs) {
+        activeSubscriptions += 1;
+      }
+    }
+  } else if (isFirestoreQuotaExceeded(activeSubscriptionsResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('active_subscriptions');
+    errors.active_subscriptions = 'Active subscription count is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  } else {
+    throw activeSubscriptionsResult.reason;
+  }
 
   let recentListings = [];
   if (recentListingsResult.status === 'fulfilled') {
@@ -7518,6 +7572,8 @@ async function buildAdminOverviewBootstrapPayload() {
       totalLeads: totalInquiries,
       callVolume,
       activeUsers,
+      totalViews,
+      activeSubscriptions,
       conversionRate,
       marketSentiment: computeAdminOverviewMarketSentiment({
         conversionRate,
@@ -7831,7 +7887,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
 
   const userRef = getDb().collection('users').doc(normalizedUserUid);
   let existingUser = {};
-  let existingRole = 'buyer';
+  let existingRole = 'member';
   let existingAccessSource = '';
   let resolvedStripeCustomerId = String(stripeCustomerId || '').trim();
   let firestoreQuotaLimited = false;
@@ -7917,7 +7973,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
     const existingClaims = authUserRecord.customClaims || {};
     const nextClaims = buildAccessClaims(existingClaims, {
       role: isSubscriptionExemptRole(existingRole)
-        ? normalizeUserRole(String(existingClaims.role || existingRole || 'buyer'))
+        ? normalizeUserRole(String(existingClaims.role || existingRole || 'member'))
         : nextRole,
       subscriptionPlanId: summary.planId,
       listingCap: summary.listingCap,
@@ -9315,7 +9371,7 @@ function buildSerializableAuthRecord(authRecord, overrides = {}) {
 }
 
 function isSupportedUserRole(role) {
-  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'].includes(normalizeUserRole(role));
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'].includes(normalizeUserRole(role));
 }
 
 function isAuthUserNotFound(error) {
@@ -9878,7 +9934,7 @@ function serializeAdminUserData(uid, data = {}, authRecord = null) {
     phone,
     phoneNumber: phone,
     company: String(data.company || '').trim(),
-    role: isSupportedUserRole(String(data.role || '')) ? normalizeUserRole(String(data.role || '')) : 'buyer',
+    role: isSupportedUserRole(String(data.role || '')) ? normalizeUserRole(String(data.role || '')) : 'member',
     status: toAccountStatusLabel(accountStatus, authDisabled),
     accountStatus,
     authDisabled,
@@ -9911,8 +9967,8 @@ async function serializeAdminUser(userDoc) {
 function canCreateManagedRole(parentRole, childRole) {
   const normalizedParentRole = normalizeUserRole(parentRole);
   const normalizedChildRole = normalizeUserRole(childRole);
-  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
-  const dealerManagedRoles = ['member', 'buyer'];
+  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'];
+  const dealerManagedRoles = ['member'];
 
   if (normalizedParentRole === 'super_admin') return true;
   if (normalizedParentRole === 'admin' || normalizedParentRole === 'developer') return adminManagedRoles.includes(normalizedChildRole);
@@ -11629,7 +11685,7 @@ exports.apiProxy = onRequest(
         }
 
         const sellerEntitlement = buildAccountEntitlementSnapshot(sellerAccountState);
-        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'buyer');
+        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'member');
 
         if (!isAdminActor && !sellerEntitlement.canPostListings) {
           return res.status(403).json({ error: 'An active seller subscription is required before creating listings.' });
@@ -11807,7 +11863,7 @@ exports.apiProxy = onRequest(
           }
         }
 
-        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'buyer');
+        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'member');
 
         if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'featured') && sanitizedUpdates.featured) {
           const featuredCap = getFeaturedListingCapForRole(sellerRole);
@@ -12008,7 +12064,7 @@ exports.apiProxy = onRequest(
           });
         }
 
-        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'buyer');
+        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'member');
         const nextUserData = {
           ...currentData,
           ...sanitizedUpdates,
@@ -12548,7 +12604,7 @@ exports.apiProxy = onRequest(
         let actorDoc = buildSyntheticUserDoc(actorUid, {
           uid: actorUid,
           email: actorEmail,
-          role: actorRole || 'buyer',
+          role: actorRole || 'member',
           displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
           parentAccountUid: actorUid,
           company: '',
@@ -12582,13 +12638,13 @@ exports.apiProxy = onRequest(
         const company = String(req.body?.company || '').trim();
         const phoneNumber = String(req.body?.phoneNumber || '').trim();
         const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-        const parentRole = actorCanAdminister && actorRole === 'buyer' ? 'super_admin' : actorRole;
+        const parentRole = actorCanAdminister && actorRole === 'member' ? 'super_admin' : actorRole;
 
         if (!displayName || !email) {
           return res.status(400).json({ error: 'Display name and email are required.' });
         }
 
-        const normalizedRole = role || 'buyer';
+        const normalizedRole = role || 'member';
 
         if (!canCreateManagedRole(parentRole, normalizedRole)) {
           return res.status(403).json({ error: 'You do not have permission to create this account role.' });
@@ -13211,9 +13267,21 @@ exports.apiProxy = onRequest(
               },
               { merge: true }
             );
+
+            // Propagate sellerVerified to all of this seller's listings
+            const targetRole = normalizeUserRole(String(targetData.role || ''));
+            const sellerVerified = isVerifiedSellerRole(targetRole, newVal);
+            const listingsSnap = await db.collection('listings').where('sellerUid', '==', targetUid).get();
+            if (!listingsSnap.empty) {
+              const batch = db.batch();
+              listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified }));
+              await batch.commit();
+            }
+
             return res.status(200).json({
               message: newVal ? 'Seller verified.' : 'Seller verification removed.',
               manuallyVerified: newVal,
+              listingsUpdated: listingsSnap.size,
             });
           } catch (error) {
             logger.error(`Failed to ${action} seller ${targetUid}`, error);
@@ -13392,7 +13460,7 @@ exports.apiProxy = onRequest(
         const email = String(req.body?.email ?? currentData.email ?? authUserRecord?.email ?? '').trim().toLowerCase();
         const phoneNumber = String(req.body?.phoneNumber ?? currentData.phoneNumber ?? '').trim();
         const company = String(req.body?.company ?? currentData.company ?? '').trim();
-        const requestedRole = normalizeUserRole(String(req.body?.role ?? currentData.role ?? 'buyer'));
+        const requestedRole = normalizeUserRole(String(req.body?.role ?? currentData.role ?? 'member'));
 
         if (!displayName || !email) {
           return res.status(400).json({ error: 'Display name and email are required.' });
@@ -13402,7 +13470,7 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'A valid role is required.' });
         }
 
-        if (!canCreateManagedRole(actor.actorRole === 'buyer' && isPrivilegedAdminEmail(actor.actorEmail) ? 'super_admin' : actor.actorRole, requestedRole)) {
+        if (!canCreateManagedRole(actor.actorRole === 'member' && isPrivilegedAdminEmail(actor.actorEmail) ? 'super_admin' : actor.actorRole, requestedRole)) {
           return res.status(403).json({ error: 'You do not have permission to assign that role.' });
         }
 
@@ -13435,7 +13503,7 @@ exports.apiProxy = onRequest(
         const currentAuthDisplayName = String(authUserRecord?.displayName || '').trim();
         const authEmailChanged = !authUserRecord || currentAuthEmail !== email;
         const authDisplayNameChanged = !authUserRecord || currentAuthDisplayName !== displayName;
-        const currentRole = normalizeUserRole(String(currentData.role || authUserRecord?.customClaims?.role || 'buyer'));
+        const currentRole = normalizeUserRole(String(currentData.role || authUserRecord?.customClaims?.role || 'member'));
         const currentAccessSource = normalizeAccountAccessSource(
           currentData.accountAccessSource || authUserRecord?.customClaims?.accountAccessSource
         );

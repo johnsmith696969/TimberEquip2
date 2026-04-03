@@ -17,7 +17,7 @@ import { userService } from '../services/userService';
 import { adminUserService, type AdminOperationsBootstrapResponse } from '../services/adminUserService';
 import { cmsService, type AdminContentBootstrapResponse } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
-import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, type AdminBillingBootstrapResponse, type AdminDealerPerformanceReportResponse } from '../services/billingService';
+import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, isSubscriptionTrulyActive, type AdminBillingBootstrapResponse, type AdminDealerPerformanceReportResponse } from '../services/billingService';
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../services/dealerFeedService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { BulkImportToolkit } from '../components/BulkImportToolkit';
@@ -1591,7 +1591,7 @@ export function AdminDashboard() {
     const totalInventoryValue = listings.reduce((sum, listing) => sum + (listing.price || 0), 0);
     const totalViews = listings.reduce((sum, listing) => sum + (listing.views || 0), 0);
     const totalRevenue = invoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + invoice.amount, 0);
-    const activeSubscriptions = subscriptions.filter((subscription) => subscription.status === 'active').length;
+    const activeSubscriptions = subscriptions.filter(isSubscriptionTrulyActive).length;
 
     const headers = ['Section', 'Metric', 'Value', 'Notes'];
     const rows = [
@@ -2821,6 +2821,8 @@ export function AdminDashboard() {
         accounts={accounts}
         invoices={invoices}
         subscriptions={subscriptions}
+        overviewTotalViews={overview?.metrics?.totalViews}
+        overviewActiveSubscriptions={overview?.metrics?.activeSubscriptions}
       />
     </div>
   );
@@ -3098,7 +3100,7 @@ export function AdminDashboard() {
     const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
     const pendingCount = invoices.filter(i => i.status === 'pending').length;
     const failedCount = invoices.filter(i => i.status === 'failed').length;
-    const activeSubs = subscriptions.filter(s => s.status === 'active').length;
+    const activeSubs = subscriptions.filter(isSubscriptionTrulyActive).length;
     const uniqueAccountEventTypes = Array.from(new Set(accountAuditLogs.map((log) => log.eventType).filter(Boolean))).sort();
     const uniqueAccountActors = Array.from(new Set(accountAuditLogs.map((log) => log.actorUid).filter((uid): uid is string => Boolean(uid)))).sort();
     const accountAuditQ = accountAuditSearchQuery.toLowerCase();
@@ -3246,7 +3248,7 @@ export function AdminDashboard() {
                       <td className="p-4 text-xs font-black uppercase">{sub.planId}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-sm ${
-                          sub.status === 'active' ? 'bg-data/10 text-data' : 'bg-accent/10 text-accent'
+                          isSubscriptionTrulyActive(sub) ? 'bg-data/10 text-data' : 'bg-accent/10 text-accent'
                         }`}>
                           {sub.status}
                         </span>

@@ -5,7 +5,6 @@ import {
   Phone,
   Globe,
   ShieldCheck,
-  Star,
   Clock,
   Package,
   MessageSquare,
@@ -631,19 +630,12 @@ export function SellerProfile() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
                 <div className="flex flex-col">
                   <span className="label-micro text-white/40 mb-1">Location</span>
                   <div className="flex items-center text-sm font-bold">
                     <MapPin size={14} className="mr-2 text-accent" />
                     {seller.location || 'Unknown'}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="label-micro text-white/40 mb-1">Rating</span>
-                  <div className="flex items-center text-sm font-bold">
-                    <Star size={14} className="mr-2 text-accent" fill="currentColor" />
-                    {seller.rating} / 5.0
                   </div>
                 </div>
                 <div className="flex flex-col">

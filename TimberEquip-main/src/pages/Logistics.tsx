@@ -158,6 +158,35 @@ export function Logistics() {
         title="Global Logistics | Trucking Request Form | Forestry Equipment Sales"
         description="Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team."
         canonicalPath="/logistics"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Service',
+              name: 'Forestry Equipment Logistics & Trucking',
+              description: 'Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team.',
+              url: 'https://timberequip.com/logistics',
+              provider: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: 'https://timberequip.com',
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
+              },
+              areaServed: {
+                '@type': 'Place',
+                name: 'Worldwide',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Global Logistics', item: 'https://timberequip.com/logistics' },
+              ],
+            },
+          ],
+        }}
       />
 
       <Breadcrumbs
@@ -171,7 +200,11 @@ export function Logistics() {
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Forestry equipment transport route"
+            width={1920}
+            height={1080}
             className={`h-full w-full object-cover transition-opacity ${heroClasses.image}`}
+            loading="eager"
+            fetchPriority="high"
           />
           <div className={`absolute inset-0 transition-colors ${heroClasses.gradient}`} />
           <div className={`absolute top-0 right-0 h-full w-1/3 translate-x-1/2 skew-x-12 transition-colors ${heroClasses.accentBand}`} />

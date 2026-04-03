@@ -8,6 +8,8 @@ interface ImageHeroProps {
   sectionClassName?: string;
   contentClassName?: string;
   imageClassName?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export function ImageHero({
@@ -17,6 +19,8 @@ export function ImageHero({
   sectionClassName = '',
   contentClassName = '',
   imageClassName = '',
+  imageWidth = 1920,
+  imageHeight = 1080,
 }: ImageHeroProps) {
   const { theme } = useTheme();
   const shadowOverlay = theme === 'light' ? 'bg-black/30' : 'bg-black/58';
@@ -31,6 +35,8 @@ export function ImageHero({
         <img
           src={imageSrc}
           alt={imageAlt}
+          width={imageWidth}
+          height={imageHeight}
           className={`absolute inset-0 h-full w-full object-cover ${imageClassName}`.trim()}
           loading="eager"
           decoding="async"

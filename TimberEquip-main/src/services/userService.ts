@@ -276,13 +276,13 @@ export const userService = {
     if (normalized === 'dealer') return 'dealer';
     if (normalized === 'dealer_manager' || normalized === 'pro_dealer') return 'pro_dealer';
     if (normalized === 'individual_seller') return 'individual_seller';
-    if (normalized === 'member') return 'member';
-    return 'buyer';
+    if (normalized === 'member' || normalized === 'buyer') return 'member';
+    return 'member';
   },
 
   canCreateManagedRole(parentRole: UserRole, childRole: UserRole): boolean {
-    const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
-    const dealerManagedRoles: UserRole[] = ['member', 'buyer'];
+    const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'];
+    const dealerManagedRoles: UserRole[] = ['member'];
 
     if (parentRole === 'super_admin') return true;
     if (parentRole === 'admin') return adminManagedRoles.includes(childRole);
@@ -346,7 +346,7 @@ export const userService = {
         photoURL: currentUser?.photoURL || null,
         emailVerified: currentUser?.emailVerified || false,
         accountStatus: 'active',
-        role: 'buyer',
+        role: 'member',
         createdAt: serverTimestamp(),
         ...sanitizedSeed,
         updatedAt: serverTimestamp(),

@@ -13,6 +13,25 @@ export function Terms() {
         canonicalPath="/terms"
         ogType="website"
         imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'WebPage',
+              name: 'Terms of Service',
+              description: 'Terms of service governing the use of the Forestry Equipment Sales marketplace, including listing rules, billing, dispute resolution, and governing law.',
+              url: 'https://timberequip.com/terms',
+              lastReviewed: '2026-03-29',
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Terms of Service', item: 'https://timberequip.com/terms' },
+              ],
+            },
+          ],
+        }}
       />
       <div className="max-w-4xl mx-auto">
         <motion.div

@@ -7,8 +7,8 @@ import {
 } from '../utils/userRoles';
 
 describe('normalizeEditableUserRole', () => {
-  it('returns buyer for buyer', () => {
-    expect(normalizeEditableUserRole('buyer')).toBe('buyer');
+  it('maps buyer to member', () => {
+    expect(normalizeEditableUserRole('buyer')).toBe('member');
   });
 
   it('maps dealer_staff to dealer', () => {
@@ -19,16 +19,16 @@ describe('normalizeEditableUserRole', () => {
     expect(normalizeEditableUserRole('dealer_manager')).toBe('pro_dealer');
   });
 
-  it('returns buyer for unknown input', () => {
-    expect(normalizeEditableUserRole('unknown_role' as any)).toBe('buyer');
+  it('returns member for unknown input', () => {
+    expect(normalizeEditableUserRole('unknown_role' as any)).toBe('member');
   });
 
-  it('returns buyer for null', () => {
-    expect(normalizeEditableUserRole(null)).toBe('buyer');
+  it('returns member for null', () => {
+    expect(normalizeEditableUserRole(null)).toBe('member');
   });
 
-  it('returns buyer for undefined', () => {
-    expect(normalizeEditableUserRole(undefined)).toBe('buyer');
+  it('returns member for undefined', () => {
+    expect(normalizeEditableUserRole(undefined)).toBe('member');
   });
 
   it('passes through valid roles unchanged', () => {
@@ -61,14 +61,14 @@ describe('getAssignableUserRoleOptions', () => {
     expect(options.find((o) => o.value === 'super_admin')).toBeUndefined();
   });
 
-  it('returns only member and buyer for dealer actor', () => {
+  it('returns only member for dealer actor', () => {
     const options = getAssignableUserRoleOptions('dealer');
-    expect(options.every((o) => ['member', 'buyer'].includes(o.value))).toBe(true);
-    expect(options.length).toBe(2);
+    expect(options.every((o) => o.value === 'member')).toBe(true);
+    expect(options.length).toBe(1);
   });
 
-  it('returns empty array for buyer actor', () => {
-    const options = getAssignableUserRoleOptions('buyer');
+  it('returns empty array for member actor', () => {
+    const options = getAssignableUserRoleOptions('member');
     expect(options).toEqual([]);
   });
 
@@ -80,7 +80,7 @@ describe('getAssignableUserRoleOptions', () => {
 
 describe('getUserRoleDisplayLabel', () => {
   it('returns correct labels', () => {
-    expect(getUserRoleDisplayLabel('buyer')).toBe('Buyer');
+    expect(getUserRoleDisplayLabel('buyer')).toBe('Member');
     expect(getUserRoleDisplayLabel('member')).toBe('Member');
     expect(getUserRoleDisplayLabel('individual_seller')).toBe('Owner-Operator');
     expect(getUserRoleDisplayLabel('dealer')).toBe('Dealer');
@@ -92,11 +92,11 @@ describe('getUserRoleDisplayLabel', () => {
     expect(getUserRoleDisplayLabel('editor')).toBe('Editor');
   });
 
-  it('returns Buyer for unknown role', () => {
-    expect(getUserRoleDisplayLabel('garbage' as any)).toBe('Buyer');
+  it('returns Member for unknown role', () => {
+    expect(getUserRoleDisplayLabel('garbage' as any)).toBe('Member');
   });
 
-  it('returns Buyer for null', () => {
-    expect(getUserRoleDisplayLabel(null)).toBe('Buyer');
+  it('returns Member for null', () => {
+    expect(getUserRoleDisplayLabel(null)).toBe('Member');
   });
 });

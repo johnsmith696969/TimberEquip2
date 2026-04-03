@@ -94,14 +94,6 @@ describe('resolveAccountEntitlement', () => {
     expect(result.publicListingVisibility).toBe('admin_override');
   });
 
-  it('returns no seller access for buyer role', () => {
-    const result = resolveAccountEntitlement({ role: 'buyer' });
-    expect(result.sellerWorkspaceAccess).toBe(false);
-    expect(result.canPostListings).toBe(false);
-    expect(result.dealerOsAccess).toBe(false);
-    expect(result.publicListingVisibility).toBe('not_applicable');
-  });
-
   it('returns no seller access for member role', () => {
     const result = resolveAccountEntitlement({ role: 'member' });
     expect(result.sellerWorkspaceAccess).toBe(false);

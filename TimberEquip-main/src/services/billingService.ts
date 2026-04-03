@@ -85,6 +85,24 @@ export interface Subscription {
   cancelAtPeriodEnd: boolean;
 }
 
+/** Returns true only if the subscription status is 'active' AND currentPeriodEnd is in the future. */
+export function isSubscriptionTrulyActive(sub: Subscription): boolean {
+  if (sub.status !== 'active') return false;
+  const periodEnd = sub.currentPeriodEnd;
+  if (!periodEnd) return false;
+  let periodEndMs = 0;
+  if (typeof periodEnd === 'object' && periodEnd !== null && typeof periodEnd.toMillis === 'function') {
+    periodEndMs = periodEnd.toMillis();
+  } else if (typeof periodEnd === 'object' && periodEnd !== null && typeof periodEnd.seconds === 'number') {
+    periodEndMs = periodEnd.seconds * 1000;
+  } else if (typeof periodEnd === 'number') {
+    periodEndMs = periodEnd > 1e12 ? periodEnd : periodEnd * 1000;
+  } else if (typeof periodEnd === 'string') {
+    periodEndMs = new Date(periodEnd).getTime();
+  }
+  return periodEndMs > Date.now();
+}
+
 export interface BillingAuditLog {
   id: string;
   action: string;

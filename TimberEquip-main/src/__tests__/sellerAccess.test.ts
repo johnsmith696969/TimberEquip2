@@ -22,7 +22,7 @@ function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
   return {
     uid: 'test-uid',
     email: 'test@example.com',
-    role: 'buyer',
+    role: 'member',
     displayName: 'Test User',
     ...overrides,
   } as UserProfile;
@@ -49,8 +49,8 @@ describe('hasAdminPublishingAccess', () => {
     expect(hasAdminPublishingAccess(makeUser({ role: 'dealer' }))).toBe(false);
   });
 
-  it('returns false for buyer', () => {
-    expect(hasAdminPublishingAccess(makeUser({ role: 'buyer' }))).toBe(false);
+  it('returns false for member', () => {
+    expect(hasAdminPublishingAccess(makeUser({ role: 'member' }))).toBe(false);
   });
 
   it('returns false for null', () => {
@@ -149,15 +149,15 @@ describe('hasSellerWorkspaceAccess', () => {
     }))).toBe(true);
   });
 
-  it('returns false for plain buyer', () => {
-    expect(hasSellerWorkspaceAccess(makeUser({ role: 'buyer' }))).toBe(false);
+  it('returns false for plain member', () => {
+    expect(hasSellerWorkspaceAccess(makeUser({ role: 'member' }))).toBe(false);
   });
 });
 
 describe('canUserPostListings', () => {
   it('delegates to hasSellerWorkspaceAccess', () => {
     expect(canUserPostListings(makeUser({ role: 'super_admin' }))).toBe(true);
-    expect(canUserPostListings(makeUser({ role: 'buyer' }))).toBe(false);
+    expect(canUserPostListings(makeUser({ role: 'member' }))).toBe(false);
   });
 });
 
@@ -236,7 +236,7 @@ describe('getDefaultAccountWorkspacePath', () => {
   });
 
   it('falls back to the profile workspace for non-seller members', () => {
-    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'buyer' }))).toBe('/profile');
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'member' }))).toBe('/profile');
   });
 });
 
@@ -253,8 +253,8 @@ describe('getFeaturedListingCap', () => {
     expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(1);
   });
 
-  it('returns 0 for buyer', () => {
-    expect(getFeaturedListingCap(makeUser({ role: 'buyer' }))).toBe(0);
+  it('returns 0 for member', () => {
+    expect(getFeaturedListingCap(makeUser({ role: 'member' }))).toBe(0);
   });
 });
 
@@ -282,7 +282,7 @@ describe('getListEquipmentPath', () => {
   });
 
   it('returns /ad-programs for user without posting access', () => {
-    expect(getListEquipmentPath(makeUser({ role: 'buyer' }), true)).toBe('/ad-programs?intent=list-equipment');
+    expect(getListEquipmentPath(makeUser({ role: 'member' }), true)).toBe('/ad-programs?intent=list-equipment');
   });
 
   it('returns /sell for user with posting access', () => {

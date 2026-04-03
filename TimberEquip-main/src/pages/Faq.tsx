@@ -150,6 +150,7 @@ export function Faq() {
         description="Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on Forestry Equipment Sales."
         canonicalPath="/faq"
         imagePath="/page-photos/winter-log-road.webp"
+        preloadImage="/page-photos/faq.webp"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [

@@ -12,6 +12,8 @@ interface Props {
   accounts: Account[];
   invoices: Invoice[];
   subscriptions: Subscription[];
+  overviewTotalViews?: number;
+  overviewActiveSubscriptions?: number;
 }
 
 function pct(part: number, total: number): number {
@@ -27,7 +29,7 @@ function daysAgo(dateStr: string | { toDate?: () => Date } | undefined, days: nu
   return d.getTime() >= cutoff;
 }
 
-export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, subscriptions }: Props) {
+export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, subscriptions, overviewTotalViews, overviewActiveSubscriptions }: Props) {
   // ── Listing metrics ─────────────────────────────────────────────
   const totalListings     = listings.length;
   const activeListings    = listings.filter(l => l.status === 'active' || !l.status).length;
@@ -35,7 +37,7 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
   const pendingListings   = listings.filter(l => l.approvalStatus === 'pending').length;
   const newListings30d    = listings.filter(l => daysAgo(l.createdAt, 30)).length;
   const newListings7d     = listings.filter(l => daysAgo(l.createdAt, 7)).length;
-  const totalViews        = listings.reduce((s, l) => s + (l.views || 0), 0);
+  const totalViews        = overviewTotalViews ?? listings.reduce((s, l) => s + (l.views || 0), 0);
   const activeOnly        = listings.filter(l => l.status === 'active' || !l.status);
   const totalValue        = activeOnly.reduce((s, l) => s + (l.price || 0), 0);
   const avgPrice          = activeOnly.length > 0 ? Math.round(totalValue / activeOnly.length) : 0;
@@ -77,8 +79,7 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
   const proDealerAccounts = accounts.filter(a => a.role === 'pro_dealer').length;
   const dealerAccounts  = accounts.filter(a => ['dealer', 'dealer_manager', 'dealer_staff'].includes(a.role)).length;
   const sellerAccounts  = accounts.filter(a => a.role === 'individual_seller').length;
-  const buyerAccounts   = accounts.filter(a => a.role === 'buyer').length;
-  const memberAccounts  = accounts.filter(a => a.role === 'member').length;
+  const memberAccounts  = accounts.filter(a => a.role === 'member' || a.role === 'buyer').length;
   const adminAccounts   = accounts.filter(a => ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(a.role)).length;
 
   // Top sellers by listing count
@@ -89,7 +90,7 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
 
   // ── Billing metrics ─────────────────────────────────────────────
   const totalRevenue    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
-  const activeSubs      = subscriptions.filter(s => s.status === 'active').length;
+  const activeSubs      = overviewActiveSubscriptions ?? subscriptions.filter(s => s.status === 'active').length;
   const failedInvoices  = invoices.filter(i => i.status === 'failed').length;
 
   // ── Helper: mini bar ────────────────────────────────────────────
@@ -286,7 +287,6 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
               { label: 'Pro Dealers',     count: proDealerAccounts, color: 'bg-emerald-500' },
               { label: 'Dealers',         count: dealerAccounts,    color: 'bg-accent' },
               { label: 'Owner-Operators', count: sellerAccounts,    color: 'bg-data' },
-              { label: 'Buyers',          count: buyerAccounts,     color: 'bg-blue-500' },
               { label: 'Members',         count: memberAccounts,    color: 'bg-cyan-500' },
               { label: 'Admin / Staff',   count: adminAccounts,     color: 'bg-secondary' },
             ].filter(s => s.count > 0).map(s => (

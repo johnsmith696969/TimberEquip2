@@ -153,7 +153,7 @@ export function Categories() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={seoTitle} description={seoDescription} canonicalPath="/categories" jsonLd={categoriesSchemaData} />
+      <Seo title={seoTitle} description={seoDescription} canonicalPath="/categories" jsonLd={categoriesSchemaData} preloadImage="/page-photos/bagged-firewood.webp" />
       <Breadcrumbs />
       {/* Header */}
       <ImageHero imageSrc="/page-photos/bagged-firewood.webp" imageAlt="Bagged firewood stacks">

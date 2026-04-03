@@ -61,6 +61,30 @@ export function Blog() {
         title="Equipment News | Market Reports & Industry Updates | Forestry Equipment Sales"
         description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales."
         canonicalPath="/blog"
+        preloadImage="/page-photos/pine-dirt-road.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Blog',
+              name: 'Forestry Equipment Sales Blog',
+              description: 'Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales.',
+              url: 'https://timberequip.com/blog',
+              publisher: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: 'https://timberequip.com',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://timberequip.com/blog' },
+              ],
+            },
+          ],
+        }}
       />
 
       <ImageHero imageSrc="/page-photos/pine-dirt-road.webp" imageAlt="Pine dirt road through the forest">
@@ -133,8 +157,11 @@ export function Blog() {
                   <img
                     src={post.image}
                     alt={post.title}
+                    width={1050}
+                    height={450}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                   <div className="absolute top-6 left-6">
                     <span className="bg-accent text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-sm shadow-lg">

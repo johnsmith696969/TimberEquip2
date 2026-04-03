@@ -41,6 +41,49 @@ export function OurTeam() {
         description="Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development."
         canonicalPath="/our-team"
         imagePath="/page-photos/john-deere-harvester.webp"
+        preloadImage="/page-photos/our-team.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'AboutPage',
+              name: 'Our Team | Forestry Equipment Sales',
+              description: 'Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development.',
+              url: 'https://timberequip.com/our-team',
+            },
+            {
+              '@type': 'Organization',
+              name: 'Forestry Equipment Sales',
+              url: 'https://timberequip.com',
+              telephone: '(218) 720-0933',
+              email: 'support@forestryequipmentsales.com',
+              member: [
+                {
+                  '@type': 'Person',
+                  name: 'Aaron Blake',
+                  jobTitle: 'Co-Owner & Sales',
+                },
+                {
+                  '@type': 'Person',
+                  name: 'Erik Madsen',
+                  jobTitle: 'Co-Owner & Sales',
+                },
+                {
+                  '@type': 'Person',
+                  name: 'Caleb Happy',
+                  jobTitle: 'Marketing & Platform Development',
+                },
+              ],
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Our Team', item: 'https://timberequip.com/our-team' },
+              ],
+            },
+          ],
+        }}
       />
 
       <ImageHero imageSrc="/page-photos/our-team.webp" imageAlt="The Forestry Equipment Sales team">

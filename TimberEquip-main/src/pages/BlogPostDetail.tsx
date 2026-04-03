@@ -248,7 +248,7 @@ export function BlogPostDetail() {
 
       <div className="mx-auto max-w-5xl px-4 py-16 md:px-8">
         <div className="overflow-hidden border border-line bg-surface mb-10">
-          <img src={post.image} alt={post.title} className="aspect-[21/9] w-full object-cover" referrerPolicy="no-referrer" />
+          <img src={post.image} alt={post.title} width={1050} height={450} className="aspect-[21/9] w-full object-cover" referrerPolicy="no-referrer" loading="eager" />
         </div>
 
         <article className="space-y-6">

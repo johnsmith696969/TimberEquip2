@@ -116,7 +116,6 @@ describe('isDealerRole', () => {
   });
 
   it('returns false for non-dealer roles', () => {
-    expect(isDealerRole('buyer')).toBe(false);
     expect(isDealerRole('member')).toBe(false);
     expect(isDealerRole('individual_seller')).toBe(false);
   });

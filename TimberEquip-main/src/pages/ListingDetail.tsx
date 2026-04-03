@@ -1220,6 +1220,8 @@ export function ListingDetail() {
                     transition={{ duration: 0.15 }}
                     src={galleryImages[activeImage]}
                     alt={activeImageTitle || listing.title}
+                    width={1280}
+                    height={720}
                     className="w-full h-full object-cover object-center cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
@@ -1269,6 +1271,8 @@ export function ListingDetail() {
                     <img
                       src={img}
                       alt={galleryImageTitles[i] || `${listing.title} photo ${i + 1}`}
+                      width={200}
+                      height={200}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                       loading="lazy"
@@ -1551,6 +1555,8 @@ export function ListingDetail() {
                           <img
                             src={matchImage}
                             alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
+                            width={400}
+                            height={300}
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                             referrerPolicy="no-referrer"
                             loading="lazy"
@@ -1625,6 +1631,8 @@ export function ListingDetail() {
                             <img
                               src={simImage}
                               alt={sim.title || `${sim.year} ${sim.make || sim.manufacturer || ''} ${sim.model}`}
+                              width={400}
+                              height={300}
                               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                               referrerPolicy="no-referrer"
                               loading="lazy"

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   TrendingUp,
@@ -252,6 +252,7 @@ export function Home() {
   ];
 
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const swipeRef = useRef<{ startX: number; swiping: boolean }>({ startX: 0, swiping: false });
 
   const visibleCards = marketCards.length <= 3
     ? marketCards
@@ -310,6 +311,7 @@ export function Home() {
         canonicalPath="/"
         jsonLd={homeJsonLd}
         imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
+        preloadImage={HERO_IMAGE_PATH}
       />
 
       {/* Hero Section */}
@@ -319,6 +321,8 @@ export function Home() {
             src={HERO_IMAGE_PATH}
             alt=""
             aria-hidden="true"
+            width={1920}
+            height={1080}
             className="absolute inset-0 h-full w-full object-cover object-center"
             loading="eager"
             decoding="async"
@@ -589,6 +593,30 @@ export function Home() {
                 exit={{ opacity: 0 }}
                 transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25 }}
                 className="grid grid-cols-1 md:grid-cols-3 gap-1"
+                style={{ touchAction: 'pan-y' }}
+                onPointerDown={(e) => {
+                  swipeRef.current = { startX: e.clientX, swiping: true };
+                }}
+                onPointerMove={(e) => {
+                  // Intentionally empty — tracking is handled via startX on pointer up.
+                  // Presence of handler ensures pointer events are captured during swipe.
+                  void e;
+                }}
+                onPointerUp={(e) => {
+                  if (!swipeRef.current.swiping) return;
+                  const delta = e.clientX - swipeRef.current.startX;
+                  swipeRef.current.swiping = false;
+                  if (delta < -50) {
+                    // Swiped left → next
+                    setCarouselIndex((prev) => (prev + 1) % marketCards.length);
+                  } else if (delta > 50) {
+                    // Swiped right → prev
+                    setCarouselIndex((prev) => (prev - 1 + marketCards.length) % marketCards.length);
+                  }
+                }}
+                onPointerCancel={() => {
+                  swipeRef.current.swiping = false;
+                }}
               >
               {visibleCards.map((card) => (
                 <div

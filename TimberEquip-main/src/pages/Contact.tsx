@@ -80,6 +80,7 @@ export function Contact() {
         description="Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
         canonicalPath="/contact"
         imagePath="/page-photos/grapple-hero-image.webp"
+        preloadImage="/page-photos/contact-us.webp"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [

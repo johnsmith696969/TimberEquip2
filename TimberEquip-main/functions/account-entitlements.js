@@ -150,7 +150,7 @@ function buildAccountEntitlementSnapshot(rawState = {}) {
     visibilityReason,
     billingLabel: resolveBillingLabel(activeSubscriptionPlanId, role),
     overrideSource: adminOverrideAccess ? 'admin_override' : (adminAccess ? 'admin_role' : null),
-    role: role || 'buyer',
+    role: role || 'member',
     accountStatus,
     accountAccessSource: accountAccessSource || null,
     activeSubscriptionPlanId: activeSubscriptionPlanId || null,

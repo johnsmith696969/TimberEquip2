@@ -258,7 +258,7 @@ function validateSummary(summary) {
     issues.push('Missing resolved role.');
   }
 
-  if (['buyer', 'member'].includes(role) && entitlement.sellerWorkspaceAccess) {
+  if (role === 'member' && entitlement.sellerWorkspaceAccess) {
     issues.push(`Expected non-seller role ${role} to have sellerWorkspaceAccess=false.`);
   }
 
@@ -358,10 +358,10 @@ async function run() {
       phoneNumber: '541-555-0106',
     },
     {
-      label: 'buyer',
-      email: 'staging.matrix.buyer.20260329@example.com',
-      role: 'buyer',
-      displayName: 'Staging QA Buyer',
+      label: 'member',
+      email: 'staging.matrix.member.20260329@example.com',
+      role: 'member',
+      displayName: 'Staging QA Member',
       company: '',
       phoneNumber: '541-555-0107',
     },

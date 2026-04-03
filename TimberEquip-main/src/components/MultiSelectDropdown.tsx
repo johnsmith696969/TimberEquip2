@@ -16,6 +16,8 @@ interface Props {
   selected: string[];
   onChange: (selected: string[]) => void;
   searchable?: boolean;
+  /** Custom match function for search. Receives (optionValue, rawQuery). Defaults to case-insensitive includes. */
+  matchFn?: (optionValue: string, query: string) => boolean;
 }
 
 export function MultiSelectDropdown({
@@ -25,6 +27,7 @@ export function MultiSelectDropdown({
   selected,
   onChange,
   searchable,
+  matchFn,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -59,7 +62,7 @@ export function MultiSelectDropdown({
   const normalizedQuery = query.trim().toLowerCase();
 
   const filteredOptions = normalizedQuery
-    ? options.filter((o) => o.value.toLowerCase().includes(normalizedQuery))
+    ? options.filter((o) => matchFn ? matchFn(o.value, query) : o.value.toLowerCase().includes(normalizedQuery))
     : options;
 
   // Sort: selected first, then by count desc, then alpha

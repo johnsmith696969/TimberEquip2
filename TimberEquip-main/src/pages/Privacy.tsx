@@ -13,6 +13,25 @@ export function Privacy() {
         canonicalPath="/privacy"
         ogType="website"
         imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'WebPage',
+              name: 'Privacy Policy',
+              description: 'Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant.',
+              url: 'https://timberequip.com/privacy',
+              lastReviewed: '2026-03-29',
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Privacy Policy', item: 'https://timberequip.com/privacy' },
+              ],
+            },
+          ],
+        }}
       />
       <div className="max-w-4xl mx-auto">
         <motion.div

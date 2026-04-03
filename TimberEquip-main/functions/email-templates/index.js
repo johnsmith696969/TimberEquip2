@@ -22,7 +22,7 @@ const CONTACT_URL = `${MARKETPLACE_URL}/contact`;
 const PRIVACY_URL = `${MARKETPLACE_URL}/privacy`;
 const TERMS_URL = `${MARKETPLACE_URL}/terms`;
 const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260401a`;
-const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260401a`;
+const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=20260401a`;
 
 const BASE_STYLES = `
   :root { color-scheme: light only; supported-color-schemes: light only; }

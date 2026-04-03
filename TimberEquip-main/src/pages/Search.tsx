@@ -9,7 +9,8 @@ import {
   Save,
   Bell,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
@@ -35,9 +36,9 @@ import { normalizeSeoSlug } from '../utils/seoRoutes';
 import { AlertMessage } from '../components/AlertMessage';
 import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
 
-type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
+type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
 
-const MULTI_SELECT_KEYS = new Set(['manufacturer', 'model', 'subcategory', 'condition', 'state', 'country']);
+const MULTI_SELECT_KEYS = new Set(['manufacturer', 'model', 'subcategory', 'condition', 'state', 'country', 'attachment', 'feature']);
 
 const parseMultiValue = (value: string): string[] =>
   value ? value.split('|').map((v) => v.trim()).filter(Boolean) : [];
@@ -383,6 +384,8 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const [savingSearch, setSavingSearch] = useState(false);
   const [alertPreferences, setAlertPreferences] = useState<AlertPreferences>(DEFAULT_ALERT_PREFERENCES);
   const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoLocating, setGeoLocating] = useState(false);
   const favoriteIds = normalizeListingIdList(user?.favorites);
 
   useEffect(() => {
@@ -537,18 +540,25 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     return uniqueSorted(narrowed.map((listing) => listing.model));
   }, [allListings, filters.manufacturer]);
 
-  const attachmentOptions = useMemo(
-    () => uniqueSorted(allListings.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : []))),
-    [allListings]
-  );
+  const attachmentOptions = useMemo(() => {
+    const narrowed = allListings.filter((listing) => {
+      if (filters.category && normalize(listing.category) !== normalize(filters.category)) return false;
+      if (filters.subcategory) {
+        const selected = parseMultiValue(filters.subcategory).map(normalize);
+        if (!selected.some((s) => normalize(listing.subcategory) === s)) return false;
+      }
+      return true;
+    });
+    return uniqueSorted(narrowed.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [])));
+  }, [allListings, filters.category, filters.subcategory]);
 
   const locationParts = useMemo(() => {
     return allListings.map((listing) => {
       const raw = listing.location || '';
       const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
-      // 2-part: "City, State" → state=parts[1], no country
+      // 2-part: "City, State" → state=parts[1], country defaults to "United States"
       // 3+-part: "City, State, Country" → state=parts[-2], country=parts[-1]
-      const country = parts.length >= 3 ? parts[parts.length - 1] : '';
+      const country = parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : '');
       const state = parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : '');
       return { state, country };
     });
@@ -557,17 +567,23 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const stateOptions = useMemo(() => uniqueSorted(locationParts.map((part) => part.state)), [locationParts]);
   const countryOptions = useMemo(() => uniqueSorted(locationParts.map((part) => part.country)), [locationParts]);
 
-  const featureOptions = useMemo(
-    () =>
-      uniqueSorted(
-        allListings.flatMap((listing) => {
-          const topLevel = Array.isArray(listing.features) ? listing.features : [];
-          const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
-          return [...topLevel, ...specLevel];
-        })
-      ),
-    [allListings]
-  );
+  const featureOptions = useMemo(() => {
+    const narrowed = allListings.filter((listing) => {
+      if (filters.category && normalize(listing.category) !== normalize(filters.category)) return false;
+      if (filters.subcategory) {
+        const selected = parseMultiValue(filters.subcategory).map(normalize);
+        if (!selected.some((s) => normalize(listing.subcategory) === s)) return false;
+      }
+      return true;
+    });
+    return uniqueSorted(
+      narrowed.flatMap((listing) => {
+        const topLevel = Array.isArray(listing.features) ? listing.features : [];
+        const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
+        return [...topLevel, ...specLevel];
+      })
+    );
+  }, [allListings, filters.category, filters.subcategory]);
 
   // Shared filter function used by both filteredListings and faceted counts
   const matchesFilters = useMemo(() => {
@@ -629,7 +645,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       if (excludeKey !== 'country' && filters.country) {
         const selected = parseMultiValue(filters.country).map(normalize);
         const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
-        const listingCountry = normalize(locationParts.length >= 3 ? locationParts[locationParts.length - 1] : '');
+        const listingCountry = normalize(locationParts.length >= 3 ? locationParts[locationParts.length - 1] : (locationParts.length >= 1 ? 'United States' : ''));
         if (!selected.some((s) => listingCountry.includes(s))) return false;
       }
 
@@ -659,15 +675,18 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         }
       }
 
-      if (filters.attachment) {
-        const attachments = Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [];
-        if (!attachments.some((a) => normalize(a).includes(normalize(filters.attachment)))) return false;
+      if (excludeKey !== 'attachment' && filters.attachment) {
+        const selectedAttachments = parseMultiValue(filters.attachment).map(normalize);
+        const attachments = Array.isArray(listing.specs?.attachments) ? listing.specs.attachments.map(normalize) : [];
+        if (!selectedAttachments.some((s) => attachments.some((a) => a.includes(s)))) return false;
       }
 
-      if (filters.feature) {
-        const topLevel = Array.isArray(listing.features) ? listing.features : [];
-        const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
-        if (![...topLevel, ...specLevel].some((f) => normalize(f).includes(normalize(filters.feature)))) return false;
+      if (excludeKey !== 'feature' && filters.feature) {
+        const selectedFeatures = parseMultiValue(filters.feature).map(normalize);
+        const topLevel = Array.isArray(listing.features) ? listing.features.map(normalize) : [];
+        const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features.map(normalize) : [];
+        const allFeatures = [...topLevel, ...specLevel];
+        if (!selectedFeatures.some((s) => allFeatures.some((f) => f.includes(s)))) return false;
       }
 
       if (filters.stockNumber && !normalize(listing.stockNumber).includes(normalize(filters.stockNumber))) return false;
@@ -696,8 +715,19 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         const parts = (listing.location || '').split(',').map((p) => p.trim()).filter(Boolean);
         const val = partIndex === 'state'
           ? (parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : ''))
-          : (parts.length >= 3 ? parts[parts.length - 1] : '');
+          : (parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : ''));
         if (val) map.set(val, (map.get(val) || 0) + 1);
+      }
+      return map;
+    };
+
+    const countArrayField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string[]): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const listing of allListings) {
+        if (!matchesFilters(listing, excludeKey)) continue;
+        for (const val of accessor(listing)) {
+          if (val) map.set(val, (map.get(val) || 0) + 1);
+        }
       }
       return map;
     };
@@ -709,6 +739,8 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       condition: countField('condition', (l) => l.condition),
       state: countLocationField('state', 'state'),
       country: countLocationField('country', 'country'),
+      attachment: countArrayField('attachment', (l) => Array.isArray(l.specs?.attachments) ? l.specs.attachments : []),
+      feature: countArrayField('feature', (l) => [...(Array.isArray(l.features) ? l.features : []), ...(Array.isArray(l.specs?.features) ? l.specs.features : [])]),
     };
   }, [allListings, matchesFilters]);
 
@@ -738,6 +770,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     [countryOptions, facetedCounts.country]
   );
 
+  const attachmentMultiOptions: MultiSelectOption[] = useMemo(
+    () => attachmentOptions.map((v) => ({ value: v, count: facetedCounts.attachment.get(v) || 0 })),
+    [attachmentOptions, facetedCounts.attachment]
+  );
+
+  const featureMultiOptions: MultiSelectOption[] = useMemo(
+    () => featureOptions.map((v) => ({ value: v, count: facetedCounts.feature.get(v) || 0 })),
+    [featureOptions, facetedCounts.feature]
+  );
+
   const filteredListings = useMemo(() => {
     let results = allListings.filter((listing) => matchesFilters(listing));
 
@@ -750,6 +792,20 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       results = [...results].sort((a, b) => featuredFirst(a, b) || (b.views + b.leads * 3 - (a.views + a.leads * 3)));
     } else if (filters.sortBy === 'relevance') {
       results = [...results].sort((a, b) => featuredFirst(a, b) || (getRelevanceScore(b, filters.q) - getRelevanceScore(a, filters.q)));
+    } else if (filters.sortBy === 'nearest' && userCoords) {
+      results = [...results].sort((a, b) => {
+        const fd = featuredFirst(a, b);
+        if (fd !== 0) return fd;
+        const aCoords = getListingCoords(a);
+        const bCoords = getListingCoords(b);
+        const aDist = (aCoords.lat != null && aCoords.lng != null)
+          ? distanceMiles(userCoords.lat, userCoords.lng, aCoords.lat, aCoords.lng)
+          : Infinity;
+        const bDist = (bCoords.lat != null && bCoords.lng != null)
+          ? distanceMiles(userCoords.lat, userCoords.lng, bCoords.lat, bCoords.lng)
+          : Infinity;
+        return aDist - bDist;
+      });
     } else {
       results = [...results].sort((a, b) => {
         const fd = featuredFirst(a, b);
@@ -761,7 +817,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     }
 
     return results;
-  }, [allListings, matchesFilters, filters.sortBy, filters.q]);
+  }, [allListings, matchesFilters, filters.sortBy, filters.q, userCoords]);
 
   // Reset pagination whenever the result set changes (new filters applied)
   useEffect(() => {
@@ -797,6 +853,47 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     const next = { ...filters, [key]: updated };
     setFilters(next);
     setDraftFilters(next);
+  };
+
+  const handleUseMyLocation = () => {
+    setGeoLocating(true);
+    if (!navigator.geolocation) {
+      const fallback = user?.location;
+      if (fallback) {
+        handleDraftFilterChange('location', fallback);
+        handleFilterChange('location', fallback);
+      } else {
+        alert('Geolocation is not supported by your browser.');
+      }
+      setGeoLocating(false);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const coords = { lat: latitude, lng: longitude };
+        setUserCoords(coords);
+        const locStr = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+        handleDraftFilterChange('location', locStr);
+        handleDraftFilterChange('locationRadius', '500');
+        handleDraftFilterChange('sortBy', 'nearest');
+        handleFilterChange('location', locStr);
+        handleFilterChange('locationRadius', '500');
+        handleFilterChange('sortBy', 'nearest');
+        setGeoLocating(false);
+      },
+      () => {
+        const fallback = user?.location;
+        if (fallback) {
+          handleDraftFilterChange('location', fallback);
+          handleFilterChange('location', fallback);
+        } else {
+          alert('Unable to retrieve your location. Please enter it manually.');
+        }
+        setGeoLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
   };
 
   const resetFilters = () => {
@@ -1151,6 +1248,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           options={manufacturerMultiOptions}
                           selected={parseMultiValue(draftFilters.manufacturer)}
                           onChange={(sel) => handleDraftMultiSelect('manufacturer', sel)}
+                          searchable
                         />
                       </div>
 
@@ -1287,41 +1385,28 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-attachment" className="label-micro">Attachment</label>
-                          <input
-                            id="search-attachment"
-                            type="text"
-                            list="attachment-suggestions"
-                            placeholder="e.g. Grapple"
-                            className="input-industrial w-full"
-                            value={draftFilters.attachment}
-                            onChange={(e) => handleDraftFilterChange('attachment', e.target.value)}
-                          />
-                          <datalist id="attachment-suggestions">
-                            {attachmentOptions.slice(0, 150).map((attachment) => (
-                              <option key={attachment} value={attachment} />
-                            ))}
-                          </datalist>
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-feature" className="label-micro">Feature</label>
-                          <input
-                            id="search-feature"
-                            type="text"
-                            list="feature-suggestions"
-                            placeholder="e.g. Winch"
-                            className="input-industrial w-full"
-                            value={draftFilters.feature}
-                            onChange={(e) => handleDraftFilterChange('feature', e.target.value)}
-                          />
-                          <datalist id="feature-suggestions">
-                            {featureOptions.slice(0, 150).map((feature) => (
-                              <option key={feature} value={feature} />
-                            ))}
-                          </datalist>
-                        </div>
+                      <div className="flex flex-col space-y-2">
+                        <label className="label-micro">Attachments</label>
+                        <MultiSelectDropdown
+                          label="Attachments"
+                          placeholder="All Attachments"
+                          options={attachmentMultiOptions}
+                          selected={parseMultiValue(draftFilters.attachment)}
+                          onChange={(sel) => handleDraftMultiSelect('attachment', sel)}
+                          searchable
+                        />
+                      </div>
+
+                      <div className="flex flex-col space-y-2">
+                        <label className="label-micro">Features</label>
+                        <MultiSelectDropdown
+                          label="Features"
+                          placeholder="All Features"
+                          options={featureMultiOptions}
+                          selected={parseMultiValue(draftFilters.feature)}
+                          onChange={(sel) => handleDraftMultiSelect('feature', sel)}
+                          searchable
+                        />
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
@@ -1396,6 +1481,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                         </div>
                       </div>
 
+                      <button
+                        type="button"
+                        onClick={handleUseMyLocation}
+                        disabled={geoLocating}
+                        className="btn-industrial w-full py-2 text-[10px] mt-2"
+                      >
+                        <MapPin size={12} className="mr-2" />
+                        {geoLocating ? 'Locating...' : 'Use My Location'}
+                      </button>
+
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
                           <label className="label-micro">State / Province</label>
@@ -1432,12 +1527,12 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
               </div>
             </div>
 
-            <div className="bg-ink p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
+            <div className="bg-surface p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Bell size={48} className="text-accent" />
               </div>
               <div className="relative z-10 space-y-4">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-white">Enable Alerts</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-ink">Enable Alerts</h4>
                 <p className="text-[9px] font-bold text-muted uppercase tracking-widest leading-relaxed">
                   {t('search.alertsDescription', 'Get notified the moment in-stock assets matching your filters hit the platform.')}
                 </p>
@@ -1596,6 +1691,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <option value="price_desc">{t('search.sortPriceHighLow', 'Price: High to Low')}</option>
                   <option value="relevance">{t('search.sortRelevance', 'Relevance')}</option>
                   <option value="popular">{t('search.sortPopular', 'Popular')}</option>
+                  <option value="nearest">{t('search.sortNearest', 'Nearest First')}</option>
                 </select>
               </div>
             </div>

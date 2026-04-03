@@ -44,6 +44,32 @@ export function About() {
         description="Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster."
         canonicalPath="/about"
         imagePath="/page-photos/pine-forest.webp"
+        preloadImage="/page-photos/about-us.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'AboutPage',
+              name: 'About Forestry Equipment Sales',
+              description: 'Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster.',
+              url: 'https://timberequip.com/about',
+            },
+            {
+              '@type': 'Organization',
+              name: 'Forestry Equipment Sales',
+              url: 'https://timberequip.com',
+              telephone: '(218) 720-0933',
+              email: 'support@forestryequipmentsales.com',
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'About', item: 'https://timberequip.com/about' },
+              ],
+            },
+          ],
+        }}
       />
 
       <ImageHero imageSrc="/page-photos/about-us.webp" imageAlt="Forestry equipment in the field">

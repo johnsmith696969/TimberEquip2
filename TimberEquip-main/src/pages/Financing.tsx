@@ -103,6 +103,32 @@ export function Financing() {
         description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales."
         canonicalPath="/financing"
         imagePath="/page-photos/ponsse-buffalo-loading.webp"
+        preloadImage="/page-photos/ponsse-buffalo-loading.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Service',
+              name: 'Forestry Equipment Financing',
+              description: 'Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months.',
+              url: 'https://timberequip.com/financing',
+              provider: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: 'https://timberequip.com',
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
+                { '@type': 'ListItem', position: 2, name: 'Financing', item: 'https://timberequip.com/financing' },
+              ],
+            },
+          ],
+        }}
       />
       {/* Header */}
       <ImageHero imageSrc="/page-photos/ponsse-buffalo-loading.webp" imageAlt="Ponsse Buffalo loading timber">

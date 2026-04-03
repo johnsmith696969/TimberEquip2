@@ -1684,6 +1684,7 @@ const SUBCATEGORY_SCHEMA_ALIASES: Record<string, string> = {
   // Logging variants
   'Bogie Skidders': 'Skidders',
   'Combo Harvester/Forwarder': 'Forwarders',
+  'Processors / Harvesters': 'Harvesters',
   'Wood Chippers': 'Chippers',
   'Slasher Saws': 'Delimbers',
   Yarders: 'Dozers With Winch',

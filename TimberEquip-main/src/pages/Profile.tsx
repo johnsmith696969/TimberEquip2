@@ -32,7 +32,8 @@ import { Seo } from '../components/Seo';
 import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
 import { TagSelectorModal } from '../components/TagSelectorModal';
 import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
-import { SERVICE_AREA_REGION_OPTIONS, SERVICE_AREA_SCOPE_OPTIONS, STOREFRONT_COUNTRY_OPTIONS } from '../constants/storefrontRegions';
+import { SERVICE_AREA_REGION_OPTIONS, SERVICE_AREA_SCOPE_OPTIONS, STOREFRONT_COUNTRY_OPTIONS, matchesRegionQuery } from '../constants/storefrontRegions';
+import { getCountiesForStates } from '../constants/usCounties';
 import { buildDealerPath } from '../utils/seoRoutes';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -91,12 +92,12 @@ export function Profile() {
   );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
   const hasContentStudioProfileScope = Boolean(normalizedRole && CONTENT_STUDIO_PROFILE_ROLES.has(normalizedRole));
-  const canViewSavedEquipment = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
-  const canViewSearchAlerts = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewSavedEquipment = hasUser && ['member', 'individual_seller'].includes(normalizedRole);
+  const canViewSearchAlerts = hasUser && ['member', 'individual_seller'].includes(normalizedRole);
   const canViewMyListings = hasSellerWorkspaceAccess;
   const canViewSellerInquiries = hasSellerWorkspaceAccess;
   const canViewSellerCalls = canViewMyListings;
-  const canViewBuyerFinancing = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewBuyerFinancing = hasUser && ['member', 'individual_seller'].includes(normalizedRole);
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
   const profilePageTitle = user?.role === 'pro_dealer'
     ? 'Pro Dealer Storefront'
@@ -109,9 +110,7 @@ export function Profile() {
     ? getSellerPlanMarketingLabel(user?.activeSubscriptionPlanId)
     : normalizedRole === 'member'
       ? 'Member'
-      : normalizedRole === 'buyer'
-        ? 'Buyer'
-        : 'No active seller plan';
+      : 'No active seller plan';
   const subscriptionStatusLabel = String(
     entitlement.subscriptionState !== 'none'
       ? entitlement.subscriptionState
@@ -603,11 +602,12 @@ export function Profile() {
   );
 
   const countySuggestions = useMemo(() => {
-    const suggestions = new Set<string>();
+    const stateCounties = getCountiesForStates(storefrontForm.serviceAreaStates);
+    const suggestions = new Set<string>(stateCounties);
     if (storefrontForm.county.trim()) suggestions.add(storefrontForm.county.trim());
     storefrontForm.serviceAreaCounties.forEach((county) => suggestions.add(county));
     return Array.from(suggestions).sort((left, right) => left.localeCompare(right));
-  }, [storefrontForm.county, storefrontForm.serviceAreaCounties]);
+  }, [storefrontForm.county, storefrontForm.serviceAreaCounties, storefrontForm.serviceAreaStates]);
 
   useEffect(() => {
     if (!storefrontForm.servicesOfferedSubcategories.length) return;
@@ -1085,6 +1085,7 @@ export function Profile() {
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [listingSearchQuery, setListingSearchQuery] = useState('');
   const [listingDisplayCount, setListingDisplayCount] = useState(10);
+  const [selectedListingIds, setSelectedListingIds] = useState<Set<string>>(new Set());
   const [financingDisplayCount, setFinancingDisplayCount] = useState(10);
   const [inquirySearchQuery, setInquirySearchQuery] = useState('');
   const [inquiryDisplayCount, setInquiryDisplayCount] = useState(10);
@@ -1199,8 +1200,21 @@ export function Profile() {
 
     switch (section) {
       case 'myListings': {
-        const nextListings = await equipmentService.getMyListings();
-        setMyListings(nextListings);
+        if (hasAdminProfileScope) {
+          const allListings: Listing[] = [];
+          let cursor: string | null = null;
+          let hasMore = true;
+          while (hasMore) {
+            const page = await equipmentService.getAdminListingsPage({ pageSize: 100, cursor: cursor ?? undefined });
+            allListings.push(...page.listings);
+            cursor = page.nextCursor;
+            hasMore = page.hasMore;
+          }
+          setMyListings(allListings);
+        } else {
+          const nextListings = await equipmentService.getMyListings();
+          setMyListings(nextListings);
+        }
         break;
       }
       case 'financingRequests': {
@@ -1326,6 +1340,7 @@ export function Profile() {
     ? Math.max(featuredListingCap - featuredListingCount, 0)
     : null;
   const isOwnerOperatorAccount = normalizedRole === 'individual_seller';
+  const canBulkDeleteListings = Boolean(normalizedRole && ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer'].includes(normalizedRole));
   const featuredSlotsHelperText = remainingFeaturedSlots === null
     ? 'Unlimited featured control'
     : isOwnerOperatorAccount
@@ -1514,6 +1529,45 @@ export function Profile() {
       console.error('Failed to delete listing:', error);
       await showAlert({ title: 'Error', message: 'Unable to delete listing right now. Please try again.', variant: 'warning' });
     }
+  };
+
+  const handleBulkDeleteListings = async () => {
+    const count = selectedListingIds.size;
+    if (count === 0) return;
+    const message = count === 1
+      ? 'Are you sure you want to delete this listing?'
+      : `Are you sure you want to delete these ${count} listings?`;
+    const ok = await showConfirm({ title: 'Confirm Delete', message, variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) return;
+
+    const ids = [...selectedListingIds];
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        await equipmentService.deleteListing(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    setMyListings((prev) => prev.filter((listing) => !ids.includes(listing.id) || failed.includes(listing.id)));
+    setSelectedListingIds(new Set());
+    if (failed.length > 0) {
+      setListingActionError(`${failed.length} listing${failed.length !== 1 ? 's' : ''} could not be deleted.`);
+    } else {
+      setListingActionNotice(`${count} listing${count !== 1 ? 's' : ''} deleted.`);
+    }
+  };
+
+  const toggleListingSelection = (id: string) => {
+    setSelectedListingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleSaveListing = async (listingData: any) => {
@@ -1719,7 +1773,7 @@ export function Profile() {
   const renderMyListings = () => (
     <div className="space-y-8">
       <div className="flex justify-between items-center gap-3 flex-wrap">
-        <h3 className="text-sm font-black uppercase tracking-widest">My Inventory</h3>
+        <h3 className="text-sm font-black uppercase tracking-widest">{hasAdminProfileScope ? 'All Listings' : 'My Inventory'}</h3>
         <div className="flex items-center gap-2 flex-wrap">
           {myListings.length > 0 && (
             <button onClick={exportMyListingsCSV} className="btn-industrial py-2 px-4 flex items-center text-[10px]">
@@ -1779,7 +1833,7 @@ export function Profile() {
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <input
           type="text"
           value={listingSearchQuery}
@@ -1791,9 +1845,51 @@ export function Profile() {
           {(() => { const lq = listingSearchQuery.toLowerCase(); const filtered = lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings; return `${filtered.length} listing${filtered.length !== 1 ? 's' : ''}`; })()}
         </span>
       </div>
+      {canBulkDeleteListings && myListings.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-2 cursor-pointer text-[10px] font-black uppercase tracking-widest text-muted">
+            <input
+              type="checkbox"
+              className="accent-accent w-4 h-4"
+              checked={(() => { const lq = listingSearchQuery.toLowerCase(); const visible = (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount); return visible.length > 0 && visible.every(l => selectedListingIds.has(l.id)); })()}
+              onChange={(e) => {
+                const lq = listingSearchQuery.toLowerCase();
+                const visible = (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount);
+                if (e.target.checked) {
+                  setSelectedListingIds((prev) => { const next = new Set(prev); visible.forEach(l => next.add(l.id)); return next; });
+                } else {
+                  setSelectedListingIds((prev) => { const next = new Set(prev); visible.forEach(l => next.delete(l.id)); return next; });
+                }
+              }}
+            />
+            Select All
+          </label>
+          {selectedListingIds.size > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleBulkDeleteListings()}
+              className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
+            >
+              <Trash2 size={14} className="mr-2" />
+              Delete Selected ({selectedListingIds.size})
+            </button>
+          )}
+        </div>
+      )}
       <div className="max-h-[700px] overflow-y-auto pr-1 grid grid-cols-1 gap-4">
         {(() => { const lq = listingSearchQuery.toLowerCase(); return (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount); })().map((listing) => (
-           <div key={listing.id} className="bg-surface border border-line p-4 flex flex-col sm:flex-row gap-4 shadow-sm hover:border-accent/50 transition-colors">
+           <div key={listing.id} className={`bg-surface border p-4 flex flex-col sm:flex-row gap-4 shadow-sm transition-colors ${selectedListingIds.has(listing.id) ? 'border-accent' : 'border-line hover:border-accent/50'}`}>
+             {canBulkDeleteListings && (
+               <div className="flex items-start pt-1 flex-shrink-0">
+                 <input
+                   type="checkbox"
+                   className="accent-accent w-4 h-4 cursor-pointer"
+                   checked={selectedListingIds.has(listing.id)}
+                   onChange={() => toggleListingSelection(listing.id)}
+                   aria-label={`Select ${listing.title}`}
+                 />
+               </div>
+             )}
              <div className="w-full sm:w-40 md:w-48 aspect-video bg-bg border border-line overflow-hidden rounded-sm flex-shrink-0">
               <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
             </div>
@@ -2464,21 +2560,22 @@ export function Profile() {
                 />
                 <MultiSelectDropdown
                   label="Service Area States"
-                  placeholder="Select states and provinces"
+                  placeholder="Search by name or abbreviation (e.g. MN)"
                   options={storefrontServiceAreaRegionOptions}
                   selected={storefrontForm.serviceAreaStates}
                   onChange={(values) => handleStorefrontArrayChange('serviceAreaStates', values)}
                   searchable
+                  matchFn={matchesRegionQuery}
                 />
               </div>
               <div className="mt-4">
                 <TagSelectorModal
                   label="Service Area Counties"
-                  placeholder="Select or add counties"
+                  placeholder={storefrontForm.serviceAreaStates.length ? 'Search counties in your selected states' : 'Select states first to see counties'}
                   selected={storefrontForm.serviceAreaCounties}
                   onChange={(values) => handleStorefrontArrayChange('serviceAreaCounties', values)}
                   suggestions={countySuggestions}
-                  searchPlaceholder="Search or add a county or region..."
+                  searchPlaceholder="Search counties..."
                   addButtonLabel="Add County"
                 />
               </div>
@@ -3253,23 +3350,23 @@ export function Profile() {
                     </div>
                   </div>
 
-                  <div className="bg-[#1C1917] text-white p-12 rounded-sm space-y-8">
+                  <div className="bg-surface border border-line p-12 rounded-sm space-y-8">
                     <div className="flex items-center space-x-4">
                       <ClipboardList className="text-accent" size={32} />
                       <h3 className="text-xl font-black uppercase tracking-tighter">Account Status</h3>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
                       <div className="flex flex-col space-y-2">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Profile Setup</span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Profile Setup</span>
                         <span className="text-xs font-black uppercase tracking-widest text-data">Complete</span>
                       </div>
                       <div className="flex flex-col space-y-2">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Billing Setup</span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Billing Setup</span>
                         <span className="text-xs font-black uppercase tracking-widest text-data">Active</span>
                       </div>
                       <div className="flex flex-col space-y-2">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Last Account Update</span>
-                        <span className="text-xs font-black uppercase tracking-widest text-white">March 15, 2026</span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Last Account Update</span>
+                        <span className="text-xs font-black uppercase tracking-widest">March 15, 2026</span>
                       </div>
                     </div>
                   </div>

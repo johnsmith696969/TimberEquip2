@@ -8,6 +8,7 @@ interface SeoProps {
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
   ogType?: 'website' | 'article' | 'product';
   imagePath?: string;
+  preloadImage?: string;
 }
 
 const BASE_URL = 'https://timberequip.com';
@@ -38,6 +39,7 @@ export function Seo({
   jsonLd,
   ogType = 'website',
   imagePath = '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+  preloadImage,
 }: SeoProps) {
   useEffect(() => {
     document.title = title;
@@ -67,6 +69,19 @@ export function Seo({
     }
     canonical.setAttribute('href', canonicalHref);
 
+    // Preload LCP hero image
+    const existingPreload = document.head.querySelector('#seo-preload-hero') as HTMLLinkElement | null;
+    if (preloadImage) {
+      const preloadLink = existingPreload || document.createElement('link');
+      preloadLink.id = 'seo-preload-hero';
+      preloadLink.rel = 'preload';
+      preloadLink.as = 'image';
+      preloadLink.href = preloadImage;
+      if (!existingPreload) document.head.appendChild(preloadLink);
+    } else if (existingPreload) {
+      existingPreload.remove();
+    }
+
     const existingScript = document.head.querySelector('#seo-json-ld');
     if (existingScript) {
       existingScript.remove();
@@ -85,8 +100,12 @@ export function Seo({
       if (currentScript) {
         currentScript.remove();
       }
+      const currentPreload = document.head.querySelector('#seo-preload-hero');
+      if (currentPreload) {
+        currentPreload.remove();
+      }
     };
-  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath]);
+  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath, preloadImage]);
 
   return null;
 }
