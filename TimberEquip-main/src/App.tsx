@@ -11,7 +11,7 @@ import { AuthProvider } from './components/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from './components/AuthContext';
-import { getAccountEntryPath, getDefaultAccountWorkspacePath, getPrivilegedProfileRedirectPath } from './utils/sellerAccess';
+import { getDefaultAccountWorkspacePath, getPrivilegedProfileRedirectPath } from './utils/sellerAccess';
 
 const Search = lazy(() => import('./pages/Search').then((module) => ({ default: module.Search })));
 const ListingDetail = lazy(() => import('./pages/ListingDetail').then((module) => ({ default: module.ListingDetail })));
@@ -70,7 +70,7 @@ function RedirectSellerToDealer() {
 
 function AccountWorkspaceRedirect() {
   const { user } = useAuth();
-  return <Navigate replace to={getAccountEntryPath(user)} />;
+  return <Navigate replace to={getDefaultAccountWorkspacePath(user)} />;
 }
 
 function ProfileWorkspaceRoute() {

@@ -117,16 +117,6 @@ export function getDefaultAccountWorkspacePath(user: UserProfile | null | undefi
   return '/profile';
 }
 
-export function getAccountEntryPath(user: UserProfile | null | undefined): string {
-  const defaultWorkspace = getDefaultAccountWorkspacePath(user);
-
-  if (defaultWorkspace === '/admin') {
-    return '/admin?tab=settings';
-  }
-
-  return defaultWorkspace;
-}
-
 export function getPrivilegedProfileRedirectPath(
   user: UserProfile | null | undefined,
   requestedTab?: string | null
@@ -138,7 +128,7 @@ export function getPrivilegedProfileRedirectPath(
   const normalizedRequestedTab = String(requestedTab || '').trim().toLowerCase();
 
   if (!normalizedRequestedTab || normalizedRequestedTab === 'overview' || normalizedRequestedTab === 'profile') {
-    return '/admin?tab=settings';
+    return '/admin';
   }
 
   if (

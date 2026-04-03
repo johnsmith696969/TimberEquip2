@@ -7,7 +7,6 @@ import {
   canUserPostListings,
   canAccessDealerOs,
   getDefaultAccountWorkspacePath,
-  getAccountEntryPath,
   getPrivilegedProfileRedirectPath,
   getFeaturedListingCap,
   getManagedListingCap,
@@ -242,24 +241,6 @@ describe('getDefaultAccountWorkspacePath', () => {
   });
 });
 
-describe('getAccountEntryPath', () => {
-  it('routes admin roles into admin settings as the account entry point', () => {
-    expect(getAccountEntryPath(makeUser({ role: 'admin' }))).toBe('/admin?tab=settings');
-    expect(getAccountEntryPath(makeUser({ role: 'super_admin' }))).toBe('/admin?tab=settings');
-  });
-
-  it('keeps dealer and member account entry points unchanged', () => {
-    expect(getAccountEntryPath(makeUser({
-      role: 'dealer',
-      accountStatus: 'active',
-      accountAccessSource: 'subscription',
-      activeSubscriptionPlanId: 'dealer',
-      subscriptionStatus: 'active',
-    }))).toBe('/dealer-os');
-    expect(getAccountEntryPath(makeUser({ role: 'member' }))).toBe('/profile');
-  });
-});
-
 describe('getPrivilegedProfileRedirectPath', () => {
   it('returns null for non-admin account workspaces', () => {
     expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'member' }))).toBeNull();
@@ -272,9 +253,9 @@ describe('getPrivilegedProfileRedirectPath', () => {
     }), 'Account Settings')).toBeNull();
   });
 
-  it('routes privileged users from overview/profile into admin settings', () => {
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }))).toBe('/admin?tab=settings');
-    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'super_admin' }), 'Profile')).toBe('/admin?tab=settings');
+  it('routes privileged users from overview/profile into admin overview', () => {
+    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'admin' }))).toBe('/admin');
+    expect(getPrivilegedProfileRedirectPath(makeUser({ role: 'super_admin' }), 'Profile')).toBe('/admin');
   });
 
   it('routes privileged settings and privacy tabs into admin settings', () => {

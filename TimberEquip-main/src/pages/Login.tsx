@@ -33,7 +33,7 @@ import {
   startSmsMfaSignIn,
   type SmsMfaFactorSummary,
 } from '../services/mfaService';
-import { appendReturnToParam, getAccountEntryPath } from '../utils/sellerAccess';
+import { appendReturnToParam, getDefaultAccountWorkspacePath } from '../utils/sellerAccess';
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 import { useTheme } from '../components/ThemeContext';
@@ -103,7 +103,7 @@ export function Login() {
     mfaRecaptchaRef.current = null;
   }, []);
 
-  const postSignInTarget = redirectTarget || getAccountEntryPath(authUser);
+  const postSignInTarget = redirectTarget || getDefaultAccountWorkspacePath(authUser);
   const postSignInHref = postSignInTarget.startsWith('/sell')
     ? appendReturnToParam(postSignInTarget, stateReturnTo)
     : postSignInTarget;

@@ -163,7 +163,7 @@ describe('Login component', () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it('redirects authenticated admins into admin settings as their account entry point', async () => {
+  it('redirects authenticated admins into the admin workspace', async () => {
     authContextState.isAuthenticated = true;
     authContextState.user = {
       uid: 'admin-1',
@@ -174,7 +174,7 @@ describe('Login component', () => {
     const view = renderLogin('/login');
 
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith('/admin?tab=settings', { replace: true });
+      expect(navigateMock).toHaveBeenCalledWith('/admin', { replace: true });
     });
 
     view.unmount();
