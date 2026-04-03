@@ -1,4 +1,5 @@
 import { Listing, Seller } from '../types';
+import { isDealerSellerRole } from './roleScopes';
 
 export const MARKET_ROUTE_LABELS = {
   logging: 'logging-equipment-for-sale',
@@ -92,5 +93,5 @@ export function buildDealerPath(seller: Pick<Seller, 'id' | 'storefrontSlug'>): 
 }
 
 export function isDealerRole(role?: string): boolean {
-  return ['dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(String(role || '').toLowerCase());
+  return isDealerSellerRole(role);
 }

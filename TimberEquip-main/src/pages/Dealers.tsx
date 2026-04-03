@@ -1,6 +1,6 @@
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Globe, Mail, MapPin, Navigation, Search, X } from 'lucide-react';
+import { ArrowRight, Building2, ChevronDown, Globe, Mail, MapPin, Navigation, Search, X } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -9,6 +9,7 @@ import { useAuth } from '../components/AuthContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seller } from '../types';
 import { buildDealerPath } from '../utils/seoRoutes';
+import { DealerMap } from '../components/DealerMap';
 
 /* ── helpers ───────────────────────────────────────────────── */
 
@@ -47,6 +48,107 @@ type Segment = 'all' | 'equipment' | 'parts';
 
 const SELLER_ROLES = new Set(['dealer', 'pro_dealer']);
 
+/* ── Filter Dropdown ───────────────────────────────────────── */
+
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && searchRef.current) searchRef.current.focus();
+  }, [open]);
+
+  const filtered = search
+    ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`flex items-center justify-between gap-2 bg-bg border border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-colors rounded-sm min-w-[160px] w-full hover:border-accent ${
+          value ? 'text-ink' : 'text-muted'
+        } ${open ? 'border-accent' : ''}`}
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-80 bg-bg border border-line shadow-2xl z-50 flex flex-col rounded-sm overflow-hidden">
+          {options.length > 8 && (
+            <div className="p-2 border-b border-line">
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${label.toLowerCase()}...`}
+                className="w-full bg-surface border border-line px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-ink placeholder:text-muted/50 outline-none focus:border-accent rounded-sm"
+              />
+            </div>
+          )}
+          <div className="overflow-y-auto flex-1">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); setSearch(''); }}
+              className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface ${
+                !value ? 'text-accent bg-accent/5' : 'text-muted'
+              }`}
+            >
+              All {label}s
+            </button>
+            {filtered.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { onChange(opt); setOpen(false); setSearch(''); }}
+                className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface border-t border-line/50 ${
+                  value === opt ? 'text-accent bg-accent/5' : 'text-ink'
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-muted text-center">
+                No matches
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── component ─────────────────────────────────────────────── */
 
 export function Dealers() {
@@ -69,6 +171,7 @@ export function Dealers() {
   const [locationRequested, setLocationRequested] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [displayCount, setDisplayCount] = useState(20);
+  const [showMap, setShowMap] = useState(true);
 
   /* ── data fetch ──────────────────────────────────────────── */
   useEffect(() => {
@@ -150,7 +253,6 @@ export function Dealers() {
   const filteredDealers = useMemo(() => {
     let result = dealers.filter((d) => SELLER_ROLES.has(norm(d.role)));
 
-    // Segment filter
     if (segment === 'equipment') {
       result = result.filter((d) =>
         (d.servicesOfferedCategories || []).some((c) => !norm(c).includes('parts') && !norm(c).includes('attachment'))
@@ -161,7 +263,6 @@ export function Dealers() {
       );
     }
 
-    // State filter
     if (stateFilter) {
       result = result.filter((d) => {
         if (norm(d.state) === norm(stateFilter)) return true;
@@ -171,7 +272,6 @@ export function Dealers() {
       });
     }
 
-    // Country filter
     if (countryFilter) {
       result = result.filter((d) => {
         if (norm(d.country) === norm(countryFilter)) return true;
@@ -181,14 +281,12 @@ export function Dealers() {
       });
     }
 
-    // Category filter
     if (categoryFilter) {
       result = result.filter((d) =>
         (d.servicesOfferedCategories || []).some((c) => norm(c) === norm(categoryFilter))
       );
     }
 
-    // Text search
     if (normalizedQuery) {
       result = result.filter((d) => {
         const haystack = [
@@ -205,7 +303,6 @@ export function Dealers() {
       });
     }
 
-    // Sorting
     if (sortMode === 'nearest' && userCoords) {
       result = [...result].sort((a, b) => {
         const aDist = (a.latitude && a.longitude) ? distanceMiles(userCoords.lat, userCoords.lng, a.latitude, a.longitude) : Infinity;
@@ -218,6 +315,12 @@ export function Dealers() {
 
     return result;
   }, [dealers, normalizedQuery, stateFilter, countryFilter, categoryFilter, segment, sortMode, userCoords]);
+
+  /* ── map-visible dealers (those with coordinates) ────────── */
+  const mappableDealers = useMemo(
+    () => filteredDealers.filter((d) => d.latitude && d.longitude),
+    [filteredDealers]
+  );
 
   /* ── stats ───────────────────────────────────────────────── */
   const stats = useMemo(() => {
@@ -309,8 +412,7 @@ export function Dealers() {
             <span className={heroSecondaryClass}>Dealers & Manufacturers</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            Search by name, state, country, or category served. Segment by equipment or parts &amp; attachments.
-            Sort by nearest location to find dealers close to you.
+            Search by name, state, country, or category served. Sort by nearest location to find dealers close to you.
           </p>
 
           <div className="grid grid-cols-1 gap-4 mt-12 max-w-lg sm:grid-cols-3">
@@ -342,74 +444,60 @@ export function Dealers() {
             <div>
               <h2 className="text-2xl font-black uppercase tracking-tight text-ink md:text-3xl">Search The Directory</h2>
               <p className="mt-2 text-sm font-medium text-muted">
-                Search by dealer name, state, country, category served, or sort by nearest.
+                Find dealers by name, location, or category. Use the map to explore nearby.
               </p>
             </div>
 
-            {/* Search bar row */}
-            <div className="flex items-center gap-2 w-full">
-              <div className="relative flex-1">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(e) => { setQuery(e.target.value); setDisplayCount(20); }}
-                  placeholder="Search by name, location, category..."
-                  className="input-industrial w-full pl-9 pr-3 text-[10px] font-bold uppercase tracking-widest"
-                />
-              </div>
+            {/* Search bar */}
+            <div className="relative w-full">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setDisplayCount(20); }}
+                placeholder="Search by name, location, category..."
+                className="w-full bg-bg border border-line pl-11 pr-4 py-3.5 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted/50 outline-none rounded-sm transition-all focus:border-accent focus:shadow-[inset_0_0_0_1px_var(--accent),0_0_0_3px_rgba(22,163,74,0.18)]"
+              />
             </div>
 
-            {/* Filters row */}
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest text-muted">State</label>
-                <select
-                  value={stateFilter}
-                  onChange={(e) => { setStateFilter(e.target.value); setDisplayCount(20); }}
-                  className="input-industrial px-3 py-2 text-[10px] font-bold uppercase tracking-widest min-w-[140px]"
-                >
-                  <option value="">All States</option>
-                  {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
+            {/* Filter row */}
+            <div className="flex flex-wrap items-end gap-4">
+              <FilterDropdown
+                label="State"
+                value={stateFilter}
+                options={stateOptions}
+                onChange={(v) => { setStateFilter(v); setDisplayCount(20); }}
+                placeholder="All States"
+              />
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest text-muted">Country</label>
-                <select
-                  value={countryFilter}
-                  onChange={(e) => { setCountryFilter(e.target.value); setDisplayCount(20); }}
-                  className="input-industrial px-3 py-2 text-[10px] font-bold uppercase tracking-widest min-w-[140px]"
-                >
-                  <option value="">All Countries</option>
-                  {countryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              <FilterDropdown
+                label="Country"
+                value={countryFilter}
+                options={countryOptions}
+                onChange={(v) => { setCountryFilter(v); setDisplayCount(20); }}
+                placeholder="All Countries"
+              />
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest text-muted">Category Served</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => { setCategoryFilter(e.target.value); setDisplayCount(20); }}
-                  className="input-industrial px-3 py-2 text-[10px] font-bold uppercase tracking-widest min-w-[160px]"
-                >
-                  <option value="">All Categories</option>
-                  {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              <FilterDropdown
+                label="Category Served"
+                value={categoryFilter}
+                options={categoryOptions}
+                onChange={(v) => { setCategoryFilter(v); setDisplayCount(20); }}
+                placeholder="All Categories"
+              />
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest text-muted">Segment</label>
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Segment</label>
                 <div className="flex">
-                  {([['all', 'All'], ['equipment', 'Equipment'], ['parts', 'Parts & Attachments']] as const).map(([key, label]) => (
+                  {([['all', 'All'], ['equipment', 'Equipment'], ['parts', 'Parts']] as const).map(([key, label]) => (
                     <button
                       key={key}
                       type="button"
                       onClick={() => { setSegment(key); setDisplayCount(20); }}
-                      className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest border transition-colors first:rounded-l-sm last:rounded-r-sm ${
+                      className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border transition-colors first:rounded-l-sm last:rounded-r-sm ${
                         segment === key
                           ? 'bg-accent text-white border-accent'
-                          : 'bg-surface border-line text-muted hover:text-ink'
+                          : 'bg-bg border-line text-muted hover:text-ink'
                       }`}
                     >
                       {label}
@@ -418,14 +506,14 @@ export function Dealers() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-widest text-muted">Sort</label>
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Sort</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setSortMode('alpha')}
-                    className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors ${
-                      sortMode === 'alpha' ? 'bg-accent text-white border-accent' : 'bg-surface border-line text-muted hover:text-ink'
+                    className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors ${
+                      sortMode === 'alpha' ? 'bg-accent text-white border-accent' : 'bg-bg border-line text-muted hover:text-ink'
                     }`}
                   >
                     A-Z
@@ -440,8 +528,8 @@ export function Dealers() {
                       }
                     }}
                     disabled={locationRequested}
-                    className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 ${
-                      sortMode === 'nearest' ? 'bg-accent text-white border-accent' : 'bg-surface border-line text-muted hover:text-ink'
+                    className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 ${
+                      sortMode === 'nearest' ? 'bg-accent text-white border-accent' : 'bg-bg border-line text-muted hover:text-ink'
                     }`}
                   >
                     <Navigation size={12} />
@@ -451,19 +539,64 @@ export function Dealers() {
               </div>
 
               {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearAllFilters}
-                  className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-accent border border-accent/30 rounded-sm hover:bg-accent/5 transition-colors flex items-center gap-1.5"
-                >
-                  <X size={12} />
-                  Clear
-                </button>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-transparent block mb-1.5">&nbsp;</label>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent border border-accent/30 rounded-sm hover:bg-accent/5 transition-colors flex items-center gap-1.5"
+                  >
+                    <X size={12} />
+                    Clear All
+                  </button>
+                </div>
               )}
             </div>
 
             {locationError && (
               <p className="text-[10px] font-bold uppercase tracking-widest text-accent">{locationError}</p>
+            )}
+          </div>
+
+          {/* ── Map Section ────────────────────────────────────── */}
+          <div className="mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <MapPin size={16} className="text-accent" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-ink">
+                  Dealer Locations
+                </span>
+                {mappableDealers.length > 0 && (
+                  <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                    {mappableDealers.length} on map
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMap(!showMap)}
+                className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline"
+              >
+                {showMap ? 'Hide Map' : 'Show Map'}
+              </button>
+            </div>
+            {showMap && !loading && mappableDealers.length > 0 && (
+              <DealerMap dealers={mappableDealers} />
+            )}
+            {showMap && !loading && mappableDealers.length === 0 && (
+              <div className="border border-dashed border-line bg-surface px-8 py-12 text-center rounded-sm">
+                <MapPin size={24} className="mx-auto text-muted mb-3" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                  No dealers with map coordinates match your filters.
+                </p>
+              </div>
+            )}
+            {showMap && loading && (
+              <div className="h-[350px] md:h-[450px] border border-line bg-surface rounded-sm flex items-center justify-center">
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted animate-pulse">
+                  Loading map data...
+                </span>
+              </div>
             )}
           </div>
 
@@ -477,11 +610,11 @@ export function Dealers() {
 
           {/* ── Dealer cards ─────────────────────────────────── */}
           {loading ? (
-            <div className="border border-line bg-surface px-8 py-16 text-center">
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-muted">Loading Dealer Directory...</div>
+            <div className="border border-line bg-surface px-8 py-16 text-center rounded-sm">
+              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-muted animate-pulse">Loading Dealer Directory...</div>
             </div>
           ) : filteredDealers.length === 0 ? (
-            <div className="border border-dashed border-line bg-surface px-8 py-16 text-center">
+            <div className="border border-dashed border-line bg-surface px-8 py-16 text-center rounded-sm">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-line bg-bg text-accent">
                 <Building2 size={24} />
               </div>
@@ -503,11 +636,11 @@ export function Dealers() {
                     <Link
                       key={dealer.id}
                       to={dealerPath}
-                      className="group border border-line bg-surface p-6 transition-all duration-200 hover:-translate-y-1 hover:border-accent/35 hover:shadow-xl"
+                      className="group border border-line bg-bg p-6 transition-all duration-200 hover:-translate-y-1 hover:border-accent/35 hover:shadow-xl rounded-sm"
                     >
                       <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                         <div className="flex min-w-0 items-start gap-4">
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-bg text-accent">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-surface text-accent">
                             {dealer.logo ? (
                               <img src={dealer.logo} alt={dealerName} width={56} height={56} className="h-full w-full object-cover" loading="lazy" />
                             ) : (
@@ -530,12 +663,12 @@ export function Dealers() {
                             {(dealer.servicesOfferedCategories?.length ?? 0) > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1.5">
                                 {dealer.servicesOfferedCategories!.slice(0, 4).map((cat) => (
-                                  <span key={cat} className="rounded-sm bg-bg border border-line px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-muted">
+                                  <span key={cat} className="rounded-sm bg-surface border border-line px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-muted">
                                     {cat}
                                   </span>
                                 ))}
                                 {(dealer.servicesOfferedCategories!.length > 4) && (
-                                  <span className="rounded-sm bg-bg border border-line px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-muted">
+                                  <span className="rounded-sm bg-surface border border-line px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-muted">
                                     +{dealer.servicesOfferedCategories!.length - 4}
                                   </span>
                                 )}

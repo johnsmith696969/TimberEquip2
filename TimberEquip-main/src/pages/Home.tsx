@@ -15,7 +15,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Package,
-  Calculator
+  Calculator,
+  Search as SearchIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -31,7 +32,8 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { normalizeSeoSlug } from '../utils/seoRoutes';
+import { normalizeSeoSlug, buildManufacturerPath } from '../utils/seoRoutes';
+import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   LoggingEquipmentIcon,
   LandClearingEquipmentIcon,
@@ -259,6 +261,25 @@ export function Home() {
 
   const [carouselIndex, setCarouselIndex] = useState(0);
   const swipeRef = useRef<{ startX: number; swiping: boolean }>({ startX: 0, swiping: false });
+  const [mfgSearch, setMfgSearch] = useState('');
+
+  const allManufacturers = useMemo(() => {
+    const set = new Set<string>();
+    for (const category of Object.values(EQUIPMENT_TAXONOMY)) {
+      for (const manufacturers of Object.values(category)) {
+        for (const mfg of manufacturers) {
+          if (mfg) set.add(mfg);
+        }
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, []);
+
+  const filteredManufacturers = useMemo(() => {
+    if (!mfgSearch.trim()) return allManufacturers;
+    const q = mfgSearch.trim().toLowerCase();
+    return allManufacturers.filter((m) => m.toLowerCase().includes(q));
+  }, [allManufacturers, mfgSearch]);
 
   const visibleCards = marketCards.length <= 3
     ? marketCards
@@ -312,8 +333,8 @@ export function Home() {
   return (
     <div className="flex flex-col">
       <Seo
-        title="Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales"
-        description="Browse in-stock new and used logging equipment listings on Forestry Equipment Sales. Shop by category, make, model, year, hours, and price."
+        title="Logging Equipment For Sale | Forestry Equipment Sales"
+        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment at forestryequipmentsales.com"
         canonicalPath="/"
         jsonLd={homeJsonLd}
         imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
@@ -470,12 +491,6 @@ export function Home() {
               </p>
             </div>
 
-            <div className="mb-10">
-              <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">
-                {selectedCategoryFamily}
-              </h3>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {categoryCards.map((cat, i) => (
                 <Link
@@ -483,8 +498,8 @@ export function Home() {
                   to={cat.searchPath}
                   className="group bg-bg border border-line p-8 flex flex-col text-left hover:border-ink transition-all duration-300"
                 >
-                  <div className={`w-16 h-16 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
-                    <cat.icon size={32} />
+                  <div className={`w-28 h-28 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
+                    <cat.icon size={56} />
                   </div>
                   <h4 className="text-sm font-black uppercase tracking-widest mb-3">{cat.name}</h4>
                   <p className="text-xs text-muted font-medium leading-relaxed mb-6 flex-1">{cat.description}</p>
@@ -658,9 +673,18 @@ export function Home() {
               </motion.div>
             </AnimatePresence>
 
+            {/* Swipe hint — mobile only */}
+            {marketCards.length > 3 && (
+              <div className="flex md:hidden items-center justify-center space-x-2 mt-4 text-muted animate-pulse">
+                <ChevronLeft size={12} />
+                <span className="text-[9px] font-bold uppercase tracking-widest">Swipe to explore</span>
+                <ChevronRight size={12} />
+              </div>
+            )}
+
             {/* Dot indicators */}
             {marketCards.length > 3 && (
-              <div className="flex justify-center space-x-1.5 mt-6">
+              <div className="flex justify-center space-x-1.5 mt-4">
                 {marketCards.map((_, i) => (
                   <button
                     key={i}
@@ -703,25 +727,66 @@ export function Home() {
         </div>
       </section>
 
+      {/* Browse by Manufacturer */}
+      <section className="py-24 bg-surface px-4 md:px-8 border-y border-line">
+        <div className="max-w-[1600px] mx-auto">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-12 gap-6">
+            <div>
+              <span className="label-micro text-accent mb-4 block">Browse by Manufacturer</span>
+              <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">
+                Browse by <span className="text-muted">Manufacturer</span>
+              </h2>
+            </div>
+            <div className="relative w-full md:w-80">
+              <SearchIcon size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                value={mfgSearch}
+                onChange={(e) => setMfgSearch(e.target.value)}
+                placeholder="Search manufacturers..."
+                className="w-full pl-10 pr-4 py-3 bg-bg border border-line text-ink text-xs font-bold uppercase tracking-widest placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            {filteredManufacturers.slice(0, 48).map((mfg) => (
+              <Link
+                key={mfg}
+                to={buildManufacturerPath(mfg)}
+                className="bg-bg border border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest text-ink text-center hover:border-accent hover:text-accent transition-colors truncate"
+              >
+                {mfg}
+              </Link>
+            ))}
+          </div>
+          {filteredManufacturers.length > 48 && (
+            <div className="flex justify-center mt-8">
+              <Link to="/search" className="btn-industrial">
+                View All {filteredManufacturers.length} Manufacturers
+                <ArrowRight className="ml-2" size={14} />
+              </Link>
+            </div>
+          )}
+          {filteredManufacturers.length === 0 && (
+            <p className="text-center text-muted text-xs font-bold uppercase tracking-widest py-12">
+              No manufacturers match &ldquo;{mfgSearch}&rdquo;
+            </p>
+          )}
+        </div>
+      </section>
+
       {/* Financing CTA */}
-      <section
-        className={`py-24 px-4 md:px-8 relative overflow-hidden ${
-          theme === 'dark'
-            ? 'bg-ink'
-            : 'bg-gradient-to-br from-[#f7f4ec] via-white to-[#eef6f0] border-y border-line'
-        }`}
-      >
-        <div className={`absolute top-0 right-0 w-1/2 h-full skew-x-12 translate-x-1/2 ${theme === 'dark' ? 'bg-accent/10' : 'bg-accent/8'}`}></div>
-        <div className={`absolute inset-y-0 left-0 w-1/3 ${theme === 'dark' ? 'bg-transparent' : 'bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.08),transparent_65%)]'}`}></div>
+      <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">
+        <div className="absolute top-0 right-0 w-1/2 h-full skew-x-12 translate-x-1/2 bg-accent/10"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div>
               <span className="label-micro text-accent mb-4 block">Equipment Financing</span>
-              <h2 className={`text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
+              <h2 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 text-ink">
                 Flexible <br />
                 <span className="text-accent">Financing</span>
               </h2>
-              <p className={`text-lg font-medium mb-12 max-w-lg ${theme === 'dark' ? 'text-white/60' : 'text-muted'}`}>
+              <p className="text-lg font-medium mb-12 max-w-lg text-muted">
                 Apply for equipment financing and get a credit decision, typically within one business day.
               </p>
               <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
@@ -739,15 +804,11 @@ export function Home() {
               ].map((item, i) => (
                 <div
                   key={i}
-                  className={`p-8 ${
-                    theme === 'dark'
-                      ? 'bg-white/5 border border-white/10'
-                      : 'bg-white/90 border border-line shadow-sm'
-                  }`}
+                  className="p-8 bg-bg border border-line"
                 >
                   <item.icon className="text-accent mb-4" size={24} />
-                  <span className={`label-micro block mb-1 ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>{item.label}</span>
-                  <span className={`text-2xl font-black tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>{item.value}</span>
+                  <span className="label-micro block mb-1 text-muted">{item.label}</span>
+                  <span className="text-2xl font-black tracking-tighter text-ink">{item.value}</span>
                 </div>
               ))}
             </div>

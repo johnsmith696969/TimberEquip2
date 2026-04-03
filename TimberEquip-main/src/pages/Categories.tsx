@@ -207,8 +207,8 @@ export function Categories() {
               key={i}
               className="bg-bg border border-line p-10 flex flex-col group hover:border-accent hover:-translate-y-1 transition-all duration-300"
             >
-              <div className={`w-20 h-20 ${cat.color} flex items-center justify-center rounded-sm mb-8 group-hover:scale-110 transition-transform`}>
-                <cat.icon size={40} />
+              <div className={`w-32 h-32 ${cat.color} flex items-center justify-center rounded-sm mb-8 group-hover:scale-110 transition-transform`}>
+                <cat.icon size={64} />
               </div>
               
               <div className="flex justify-between items-start mb-4">
