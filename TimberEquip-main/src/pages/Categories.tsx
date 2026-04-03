@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Truck, Hammer, Settings, Activity,
-  Zap, ArrowRight
+  Truck, Settings, Activity,
+  ArrowRight
 } from 'lucide-react';
 import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
@@ -13,12 +13,18 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
 import { buildMarketplaceCategoryFamilies } from '../utils/marketplaceCategoryFamilies';
 import { normalizeSeoSlug } from '../utils/seoRoutes';
+import {
+  LoggingEquipmentIcon,
+  LandClearingEquipmentIcon,
+  FirewoodEquipmentIcon,
+  TreeServiceEquipmentIcon,
+} from '../components/CategoryIcons';
 
 const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
-  'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
-  'Land Clearing Equipment': { icon: Hammer, color: 'bg-orange-500/10 text-orange-500' },
-  'Firewood Equipment': { icon: Zap, color: 'bg-amber-500/10 text-amber-500' },
-  'Tree Service Equipment': { icon: Activity, color: 'bg-lime-500/10 text-lime-500' },
+  'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-emerald-500/10 text-emerald-500' },
+  'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
+  'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-amber-500/10 text-amber-500' },
+  'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-lime-500/10 text-lime-500' },
   'Sawmill Equipment': { icon: Settings, color: 'bg-sky-500/10 text-sky-500' },
   Trailers: { icon: Truck, color: 'bg-cyan-500/10 text-cyan-500' },
   Trucks: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },

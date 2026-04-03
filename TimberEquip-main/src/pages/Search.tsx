@@ -194,9 +194,20 @@ const getRelevanceScore = (listing: Listing, query: string): number => {
 };
 
 const uniqueSorted = (values: Array<string | undefined>): string[] =>
-  Array.from(new Set(values.filter((value): value is string => !!value && value.trim().length > 0))).sort((a, b) =>
+  Array.from(new Set(values.filter((value): value is string => !!value && value.trim().length > 0).map((v) => v.trim()))).sort((a, b) =>
     a.localeCompare(b)
   );
+
+/** Case-insensitive dedup that normalizes to UPPERCASE — use for manufacturer, model, attachments, features */
+const uniqueSortedUpper = (values: Array<string | undefined>): string[] => {
+  const seen = new Map<string, string>();
+  for (const v of values) {
+    if (!v || !v.trim()) continue;
+    const key = v.trim().toUpperCase();
+    if (!seen.has(key)) seen.set(key, key);
+  }
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+};
 
 const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   ...DEFAULT_FILTERS,
@@ -526,10 +537,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   );
 
   const manufacturerOptions = useMemo(() => {
-    const listingManufacturers = uniqueSorted(
+    const listingManufacturers = uniqueSortedUpper(
       allListings.map((listing) => listing.make || listing.manufacturer || listing.brand)
     );
-    return uniqueSorted([...taxonomyManufacturers, ...listingManufacturers]);
+    return uniqueSortedUpper([...taxonomyManufacturers, ...listingManufacturers]);
   }, [allListings, taxonomyManufacturers]);
 
   const modelOptions = useMemo(() => {
@@ -537,7 +548,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       if (!filters.manufacturer) return true;
       return normalize(listing.make || listing.manufacturer || listing.brand).includes(normalize(filters.manufacturer));
     });
-    return uniqueSorted(narrowed.map((listing) => listing.model));
+    return uniqueSortedUpper(narrowed.map((listing) => listing.model));
   }, [allListings, filters.manufacturer]);
 
   const attachmentOptions = useMemo(() => {
@@ -549,7 +560,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       }
       return true;
     });
-    return uniqueSorted(narrowed.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [])));
+    return uniqueSortedUpper(narrowed.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [])));
   }, [allListings, filters.category, filters.subcategory]);
 
   const locationParts = useMemo(() => {
@@ -576,7 +587,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       }
       return true;
     });
-    return uniqueSorted(
+    return uniqueSortedUpper(
       narrowed.flatMap((listing) => {
         const topLevel = Array.isArray(listing.features) ? listing.features : [];
         const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
@@ -698,12 +709,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
   // Faceted counts: for each multi-select field, count matches excluding that field
   const facetedCounts = useMemo(() => {
-    const countField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string): Map<string, number> => {
+    const countField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string, upper = false): Map<string, number> => {
       const map = new Map<string, number>();
       for (const listing of allListings) {
         if (!matchesFilters(listing, excludeKey)) continue;
-        const val = accessor(listing);
-        if (val) map.set(val, (map.get(val) || 0) + 1);
+        const raw = accessor(listing);
+        if (!raw) continue;
+        const key = upper ? raw.trim().toUpperCase() : raw.trim();
+        if (key) map.set(key, (map.get(key) || 0) + 1);
       }
       return map;
     };
@@ -721,12 +734,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       return map;
     };
 
-    const countArrayField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string[]): Map<string, number> => {
+    const countArrayField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string[], upper = false): Map<string, number> => {
       const map = new Map<string, number>();
       for (const listing of allListings) {
         if (!matchesFilters(listing, excludeKey)) continue;
-        for (const val of accessor(listing)) {
-          if (val) map.set(val, (map.get(val) || 0) + 1);
+        for (const raw of accessor(listing)) {
+          if (!raw) continue;
+          const key = upper ? raw.trim().toUpperCase() : raw.trim();
+          if (key) map.set(key, (map.get(key) || 0) + 1);
         }
       }
       return map;
@@ -734,13 +749,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
     return {
       subcategory: countField('subcategory', (l) => l.subcategory || l.category),
-      manufacturer: countField('manufacturer', (l) => l.make || l.manufacturer || l.brand),
-      model: countField('model', (l) => l.model),
+      manufacturer: countField('manufacturer', (l) => l.make || l.manufacturer || l.brand, true),
+      model: countField('model', (l) => l.model, true),
       condition: countField('condition', (l) => l.condition),
       state: countLocationField('state', 'state'),
       country: countLocationField('country', 'country'),
-      attachment: countArrayField('attachment', (l) => Array.isArray(l.specs?.attachments) ? l.specs.attachments : []),
-      feature: countArrayField('feature', (l) => [...(Array.isArray(l.features) ? l.features : []), ...(Array.isArray(l.specs?.features) ? l.specs.features : [])]),
+      attachment: countArrayField('attachment', (l) => Array.isArray(l.specs?.attachments) ? l.specs.attachments : [], true),
+      feature: countArrayField('feature', (l) => [...(Array.isArray(l.features) ? l.features : []), ...(Array.isArray(l.specs?.features) ? l.specs.features : [])], true),
     };
   }, [allListings, matchesFilters]);
 

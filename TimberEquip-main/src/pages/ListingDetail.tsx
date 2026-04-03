@@ -36,6 +36,7 @@ import {
   buildManufacturerModelPath,
   buildManufacturerPath,
   buildStateCategoryPath,
+  getCityFromLocation,
   getListingCategoryLabel,
   getListingManufacturer,
   getStateFromLocation,
@@ -890,6 +891,7 @@ export function ListingDetail() {
   const routeCategory = getListingCategoryLabel(listing) || safeCategory;
   const routeManufacturer = getListingManufacturer(listing) || safeMake;
   const routeModel = formatSpecValue(listing.model).trim();
+  const routeCity = getCityFromLocation(listing.location) || safeLocationParts[0] || '';
   const routeState = getStateFromLocation(listing.location) || safeLocationParts[safeLocationParts.length - 2] || safeLocation;
   const dealerPath = seller?.id && (seller.storefrontSlug || isDealerRole(seller.role))
     ? buildDealerPath({ id: seller.id, storefrontSlug: seller.storefrontSlug || seller.id })
@@ -975,10 +977,11 @@ export function ListingDetail() {
     routeCategory ? { label: routeCategory, path: buildCategoryPath(routeCategory) } : null,
     routeManufacturer ? { label: routeManufacturer, path: buildManufacturerCategoryPath(routeManufacturer, routeCategory || '') } : null,
     routeManufacturer && routeModel ? { label: routeModel, path: buildManufacturerModelPath(routeManufacturer, routeModel) } : null,
-    routeState ? { label: `${routeState}`, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
+    routeCity ? { label: routeCity, path: `/search?location=${encodeURIComponent(routeCity)}` } : null,
+    routeState ? { label: routeState, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
     dealerPath ? { label: seller?.storefrontName || safeSellerName, path: dealerPath } : null,
   ].filter((entry): entry is { label: string; path: string } => Boolean(entry) && Boolean(entry.path));
-  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 5);
+  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 6);
   const breadcrumbItems = [
     {
       '@type': 'ListItem',

@@ -37,6 +37,15 @@ export function getListingCategoryLabel(listing: Listing): string {
   return String(listing.subcategory || listing.category || '').trim();
 }
 
+export function getCityFromLocation(location?: string): string {
+  const parts = String(location || '')
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  return parts.length >= 2 ? parts[0] : '';
+}
+
 export function getStateFromLocation(location?: string): string {
   const parts = String(location || '')
     .split(',')
