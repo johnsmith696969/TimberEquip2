@@ -21,18 +21,19 @@ const ADMIN_URL = `${MARKETPLACE_URL}/admin`;
 const CONTACT_URL = `${MARKETPLACE_URL}/contact`;
 const PRIVACY_URL = `${MARKETPLACE_URL}/privacy`;
 const TERMS_URL = `${MARKETPLACE_URL}/terms`;
-const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260401a`;
-const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=20260401a`;
+const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Twilio_Email_Header.png?v=20260403a`;
+const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=20260403a`;
 
 const EMAIL_PREFERENCE_FOOTER_MARKER = '<!--EMAIL_PREFERENCE_FOOTER-->';
 
 const BASE_STYLES = `
   :root { color-scheme: light only; supported-color-schemes: light only; }
+  .brand-green { color: #16A34A !important; }
   body { margin: 0; padding: 0; background: #f3f4f6 !important; font-family: 'Avenir Next', 'Segoe UI', sans-serif; color: #111827 !important; }
   .shell { background: linear-gradient(180deg, #111827 0%, #111827 180px, #f3f4f6 180px, #f3f4f6 100%); padding: 28px 14px; }
-  .wrapper { max-width: 640px; margin: 0 auto; background: #ffffff !important; border: 1px solid #d1d5db; box-shadow: 0 18px 48px rgba(17, 24, 39, 0.12); }
-  .header { background: #111827 !important; padding: 28px 40px 24px; }
-  .eyebrow { color: #4f8f3a; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; text-transform: uppercase; margin: 0 0 14px; }
+  .wrapper { max-width: 640px; margin: 0 auto; background: #ffffff !important; border: 1px solid #d1d5db; box-shadow: 0 26px 60px rgba(17, 24, 39, 0.16), 0 10px 22px rgba(17, 24, 39, 0.10); }
+  .header { background: linear-gradient(180deg, #0f172a 0%, #111827 100%) !important; padding: 28px 40px 24px; box-shadow: inset 0 -1px 0 rgba(255,255,255,0.06); }
+  .eyebrow { color: #4ADE80; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; text-transform: uppercase; margin: 0 0 14px; text-shadow: 0 0 18px rgba(34, 197, 94, 0.18); }
   .header-logo-wrap { text-align: left; }
   .header-logo-img { display: block; width: 220px; max-width: 100%; height: auto; }
   .hero-title { color: #ffffff !important; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; margin: 20px 0 8px; }
@@ -40,29 +41,30 @@ const BASE_STYLES = `
   .header-divider { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 22px 0 0; }
   .body { padding: 40px; }
   .context-title { color: #111827 !important; font-size: 24px; font-weight: 900; margin: 0 0 20px; text-transform: uppercase; letter-spacing: -0.02em; }
-  .label { color: #2f6f2d; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 6px; }
+  .label { color: #15803D; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 6px; }
   .body h2 { color: #111827 !important; font-size: 20px; font-weight: 900; margin: 0 0 16px; text-transform: uppercase; letter-spacing: -0.02em; }
   .body p { color: #4b5563 !important; font-size: 14px; line-height: 1.65; margin: 0 0 16px; }
   .body p strong { color: #111827 !important; }
-  .panel { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important; border: 1px solid #e5e7eb; border-radius: 3px; padding: 20px; margin: 20px 0; }
-  .message-box { background: #eef6ed !important; border-left: 3px solid #4f8f3a; padding: 16px 20px; margin: 20px 0; border-radius: 2px; }
+  .panel { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important; border: 1px solid #e5e7eb; border-radius: 3px; padding: 20px; margin: 20px 0; box-shadow: 0 12px 28px rgba(17, 24, 39, 0.08); }
+  .message-box { background: #eefbf2 !important; border-left: 3px solid #16A34A; padding: 16px 20px; margin: 20px 0; border-radius: 2px; box-shadow: 0 8px 18px rgba(22, 163, 74, 0.10); }
   .message-box p { color: #224b22 !important; font-size: 14px; margin: 0; font-style: italic; }
-  .cta { display: inline-block; background: #4f8f3a; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; }
-  .cta-secondary { background: #ffffff !important; border: 1px solid #4f8f3a; color: #2f6f2d !important; }
+  .cta { display: inline-block; background: #16A34A; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; box-shadow: 0 10px 22px rgba(22, 163, 74, 0.22); }
+  .cta-secondary { background: #ffffff !important; border: 1px solid #15803D; color: #15803D !important; box-shadow: 0 8px 18px rgba(21, 128, 61, 0.10); }
   .info-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .info-label { color: #6b7280 !important; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; min-width: 120px; }
   .info-value { color: #111827 !important; font-size: 11px; font-weight: 600; }
   .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
   .footer { background: #ffffff !important; padding: 24px 40px 32px; border-top: 1px solid #e5e7eb; }
   .footer-logo-wrap { margin: 0 0 18px; }
-  .footer-logo-img { display: block; width: 88px; max-width: 100%; height: auto; }
-  .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; }
+  .footer-logo-frame { display: inline-flex; align-items: center; justify-content: center; width: 88px; height: 88px; border-radius: 999px; background: linear-gradient(180deg, #ecfdf5 0%, #dcfce7 100%); border: 1px solid rgba(22, 163, 74, 0.18); box-shadow: 0 12px 24px rgba(22, 163, 74, 0.14); }
+  .footer-logo-img { display: block; width: 58px; max-width: 100%; height: auto; }
+  .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06); }
   .footer-title { color: #111827; font-size: 11px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 8px; }
   .footer p { color: #6b7280 !important; font-size: 11px; margin: 0; line-height: 1.5; }
-  .footer a { color: #2f6f2d; text-decoration: none; }
-  .badge { display: inline-block; background: rgba(79,143,58,0.12); border: 1px solid rgba(79,143,58,0.3); color: #2f6f2d; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; }
-  .success-badge { background: rgba(79,143,58,0.12); border-color: rgba(79,143,58,0.3); color: #2f6f2d; }
-  .warning-badge { background: rgba(79,143,58,0.12); border-color: rgba(79,143,58,0.3); color: #2f6f2d; }
+  .footer a { color: #15803D; text-decoration: none; font-weight: 700; }
+  .badge { display: inline-block; background: rgba(22, 163, 74, 0.12); border: 1px solid rgba(22, 163, 74, 0.28); color: #15803D; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; }
+  .success-badge { background: rgba(22, 163, 74, 0.12); border-color: rgba(22, 163, 74, 0.28); color: #15803D; }
+  .warning-badge { background: rgba(22, 163, 74, 0.12); border-color: rgba(22, 163, 74, 0.28); color: #15803D; }
   @media (max-width: 640px) {
     .shell { padding: 0; background: #111827; }
     .wrapper { border-left: none; border-right: none; }
@@ -107,7 +109,9 @@ function baseLayout(title, headerSubtitle, content) {
       </div>
       <div class="footer">
         <div class="footer-logo-wrap">
-          <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales tree mark" />
+          <div class="footer-logo-frame">
+            <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales tree mark" />
+          </div>
         </div>
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>

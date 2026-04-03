@@ -62,7 +62,7 @@ export function ListingCard({
   const normalizedListingId = normalizeListingId(listing.id);
 
   return (
-    <div className={`bg-bg border group relative flex flex-col h-full hover:-translate-y-1 transition-transform duration-200 ease-out ${listing.featured ? 'border-accent' : 'border-line'}`}>
+    <div className={`bg-bg border rounded-sm group relative flex flex-col h-full shadow-[var(--shadow-card)] hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] transition-all duration-200 ease-out ${listing.featured ? 'border-accent' : 'border-line'}`}>
       {/* Image Section */}
       <div className="relative aspect-[4/3] overflow-hidden bg-surface">
         <img

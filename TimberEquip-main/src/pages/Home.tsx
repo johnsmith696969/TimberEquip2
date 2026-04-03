@@ -496,7 +496,7 @@ export function Home() {
                 <Link
                   key={i}
                   to={cat.searchPath}
-                  className="group bg-bg border border-line p-8 flex flex-col text-left hover:border-ink transition-all duration-300"
+                  className="group bg-bg border border-line rounded-sm p-8 flex flex-col text-left shadow-[var(--shadow-card)] hover:border-ink hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] transition-all duration-300"
                 >
                   <div className={`w-24 h-24 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
                     <cat.icon size={48} />
@@ -517,7 +517,7 @@ export function Home() {
               ))}
             </div>
 
-            <div className="mt-10 bg-bg border border-line p-6 md:p-8">
+            <div className="mt-10 bg-bg border border-line rounded-sm p-6 md:p-8 shadow-[var(--shadow-card)]">
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
                 <div>
                   <span className="label-micro text-accent mb-2 block">Category Selector</span>
@@ -642,7 +642,7 @@ export function Home() {
               {visibleCards.map((card) => (
                 <div
                   key={card.key}
-                  className="bg-surface p-8 border border-line flex flex-col"
+                  className="bg-surface p-8 border border-line rounded-sm flex flex-col shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-lift)] transition-shadow duration-300"
                 >
                   <div className="flex justify-between items-start mb-12">
                     <div className={`p-3 rounded-sm ${card.iconClass}`}>

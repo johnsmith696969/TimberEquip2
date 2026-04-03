@@ -49,6 +49,11 @@
   --secondary: #334155; /* Slate */
   --data: #10B981; /* Success Green */
   --muted: #78716C;
+  --shadow-card: 0 16px 34px rgba(28, 25, 23, 0.08), 0 4px 12px rgba(28, 25, 23, 0.05);
+  --shadow-lift: 0 24px 52px rgba(28, 25, 23, 0.14), 0 10px 26px rgba(28, 25, 23, 0.08);
+  --shadow-button: 0 8px 18px rgba(28, 25, 23, 0.10), 0 2px 6px rgba(28, 25, 23, 0.05);
+  --shadow-button-hover: 0 12px 24px rgba(22, 163, 74, 0.16), 0 4px 12px rgba(28, 25, 23, 0.07);
+  --shadow-input: 0 4px 10px rgba(28, 25, 23, 0.04);
 }
 
 :root.dark {
@@ -63,6 +68,11 @@
   --secondary: #94A3B8;
   --data: #34D399;
   --muted: #A8A29E;
+  --shadow-card: 0 18px 40px rgba(0, 0, 0, 0.42), 0 6px 18px rgba(0, 0, 0, 0.28);
+  --shadow-lift: 0 26px 56px rgba(0, 0, 0, 0.52), 0 10px 28px rgba(0, 0, 0, 0.32);
+  --shadow-button: 0 10px 22px rgba(0, 0, 0, 0.32), 0 3px 10px rgba(0, 0, 0, 0.24);
+  --shadow-button-hover: 0 14px 28px rgba(34, 197, 94, 0.18), 0 6px 18px rgba(0, 0, 0, 0.28);
+  --shadow-input: 0 6px 14px rgba(0, 0, 0, 0.20);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -158,6 +168,12 @@ body {
   min-height: 34px;
   padding-top: 7px;
   padding-bottom: 7px;
+  box-shadow: var(--shadow-button);
+}
+
+.btn-industrial:hover {
+  box-shadow: var(--shadow-button-hover);
+  transform: translateY(-1px);
 }
 
 .btn-accent {
@@ -174,18 +190,31 @@ body {
 .input-industrial {
   @apply bg-surface border px-2 py-1 text-[10px] font-bold text-ink outline-none transition-all rounded-sm placeholder:text-muted/50;
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
 }
 
 .select-industrial {
   @apply bg-surface border px-3 py-1.5 pr-8 text-[10px] font-bold text-ink outline-none transition-all rounded-sm appearance-none cursor-pointer;
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
 }
 
 .input-industrial:focus,
 .select-industrial:focus {
-  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18), var(--shadow-input);
+}
+
+.surface-elevated {
+  box-shadow: var(--shadow-card);
+}
+
+.surface-elevated:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+:where(div, section, article, aside, form)[class*="rounded"][class*="border-line"][class*="bg-bg"],
+:where(div, section, article, aside, form)[class*="rounded"][class*="border-line"][class*="bg-surface"] {
+  box-shadow: var(--shadow-card);
 }
 
 /* Override browser autofill blue/yellow backgrounds */
