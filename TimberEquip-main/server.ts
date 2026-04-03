@@ -1643,24 +1643,11 @@ async function startServer() {
     });
   }
 
-  // Redirect /manufacturers and /states index routes to SPA equivalents
-  app.get('/manufacturers', (_req, res) => res.redirect(302, '/dealers'));
-  app.get('/states', (_req, res) => res.redirect(302, '/search'));
-  app.get('/logging-equipment-for-sale', (_req, res) => res.redirect(301, '/forestry-equipment-for-sale'));
-
   if (sharedPublicPagesProxy) {
-    // SSR only for deep parametric SEO routes (crawlers) + sitemap — NOT user-facing index pages
+    // Keep the sitemap on the shared public-pages handler, but let the SPA own
+    // the public route families so we do not have two conflicting page owners.
     app.get(
-      [
-        '/sitemap.xml',
-        '/manufacturers/:manufacturerSlug',
-        '/manufacturers/:manufacturerSlug/:categorySaleSlug',
-        '/states/:stateSlug/forestry-equipment-for-sale',
-        '/states/:stateSlug/:categorySaleSlug',
-        '/dealers/:id',
-        '/dealers/:id/inventory',
-        '/dealers/:id/:categorySlug',
-      ],
+      ['/sitemap.xml'],
       async (req, res, next) => {
         try {
           await sharedPublicPagesProxy?.(req, res, next);
