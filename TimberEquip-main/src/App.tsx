@@ -12,6 +12,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from './components/AuthContext';
 import { getDefaultAccountWorkspacePath } from './utils/sellerAccess';
+import { isOperatorOnlyRole } from './utils/roleScopes';
 
 const Search = lazy(() => import('./pages/Search').then((module) => ({ default: module.Search })));
 const ListingDetail = lazy(() => import('./pages/ListingDetail').then((module) => ({ default: module.ListingDetail })));
@@ -73,6 +74,26 @@ function AccountWorkspaceRedirect() {
   return <Navigate replace to={getDefaultAccountWorkspacePath(user)} />;
 }
 
+function SellWorkspaceRoute() {
+  const { user } = useAuth();
+
+  if (user && isOperatorOnlyRole(user.role)) {
+    return <Navigate replace to="/admin?tab=listings" />;
+  }
+
+  return <Sell />;
+}
+
+function ProfileWorkspaceRoute() {
+  const { user } = useAuth();
+
+  if (user && isOperatorOnlyRole(user.role)) {
+    return <Navigate replace to="/admin" />;
+  }
+
+  return <Profile />;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -114,12 +135,12 @@ function App() {
                     <Route path="/dealers/:id" element={<SellerProfile />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
-                    <Route path="/sell" element={<ProtectedRoute><Sell /></ProtectedRoute>} />
+                    <Route path="/sell" element={<ProtectedRoute><SellWorkspaceRoute /></ProtectedRoute>} />
                     <Route path="/dealer-os" element={<ProtectedRoute requireDealerOs><DealerOS /></ProtectedRoute>} />
                     <Route path="/account" element={<ProtectedRoute><AccountWorkspaceRedirect /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
                     <Route path="/logistics" element={<Logistics />} />
-                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                    <Route path="/profile" element={<ProtectedRoute><ProfileWorkspaceRoute /></ProtectedRoute>} />
                     <Route path="/about" element={<About />} />
                     <Route path="/about-us" element={<About />} />
                     <Route path="/faq" element={<Faq />} />

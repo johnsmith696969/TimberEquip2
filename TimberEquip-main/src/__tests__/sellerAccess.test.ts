@@ -115,8 +115,8 @@ describe('hasActiveSellerSubscription', () => {
 });
 
 describe('hasSellerWorkspaceAccess', () => {
-  it('returns true for admin', () => {
-    expect(hasSellerWorkspaceAccess(makeUser({ role: 'super_admin' }))).toBe(true);
+  it('returns false for admin operator accounts', () => {
+    expect(hasSellerWorkspaceAccess(makeUser({ role: 'super_admin' }))).toBe(false);
   });
 
   it('returns true for active role-backed dealer access when entitlement is lagging', () => {
@@ -129,6 +129,7 @@ describe('hasSellerWorkspaceAccess', () => {
         effectiveSellerCapability: 'none',
         sellerAccessMode: 'none',
         sellerWorkspaceAccess: false,
+        adminWorkspaceAccess: false,
         canPostListings: false,
         dealerOsAccess: false,
         publicListingVisibility: 'hidden_due_to_billing',
@@ -156,14 +157,14 @@ describe('hasSellerWorkspaceAccess', () => {
 
 describe('canUserPostListings', () => {
   it('delegates to hasSellerWorkspaceAccess', () => {
-    expect(canUserPostListings(makeUser({ role: 'super_admin' }))).toBe(true);
+    expect(canUserPostListings(makeUser({ role: 'super_admin' }))).toBe(false);
     expect(canUserPostListings(makeUser({ role: 'member' }))).toBe(false);
   });
 });
 
 describe('canAccessDealerOs', () => {
-  it('returns true for admin', () => {
-    expect(canAccessDealerOs(makeUser({ role: 'admin' }))).toBe(true);
+  it('returns false for admin operators', () => {
+    expect(canAccessDealerOs(makeUser({ role: 'admin' }))).toBe(false);
   });
 
   it('returns false for dealer with active status but no subscription', () => {
@@ -176,6 +177,7 @@ describe('canAccessDealerOs', () => {
         effectiveSellerCapability: 'none',
         sellerAccessMode: 'none',
         sellerWorkspaceAccess: false,
+        adminWorkspaceAccess: false,
         canPostListings: false,
         dealerOsAccess: false,
         publicListingVisibility: 'hidden_due_to_billing',
@@ -285,8 +287,8 @@ describe('getListEquipmentPath', () => {
     expect(getListEquipmentPath(makeUser({ role: 'member' }), true)).toBe('/ad-programs?intent=list-equipment');
   });
 
-  it('returns /sell for user with posting access', () => {
-    expect(getListEquipmentPath(makeUser({ role: 'super_admin' }), true)).toBe('/sell');
+  it('routes admin operators into admin inventory', () => {
+    expect(getListEquipmentPath(makeUser({ role: 'super_admin' }), true)).toBe('/admin?tab=listings');
   });
 });
 

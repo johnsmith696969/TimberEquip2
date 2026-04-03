@@ -3,6 +3,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { buildListingPublicPath, encodeListingPublicKey } = require('./listing-public-paths.js');
+const { isOperatorOnlyRole } = require('./role-scopes.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -326,6 +327,10 @@ async function syncPublicDealerSummary(sellerUid) {
   ]);
 
   const merged = { ...userData, ...storefrontData };
+  if (isOperatorOnlyRole(merged.role)) {
+    await db.collection(PUBLIC_SEO_COLLECTIONS.dealers).doc(normalizedSellerUid).delete().catch(() => undefined);
+    return null;
+  }
   const sellerPath = buildDealerPath({
     storefrontSlug: normalizeText(merged.storefrontSlug, normalizedSellerUid),
     id: normalizedSellerUid,
@@ -411,10 +416,12 @@ async function loadPublicListings() {
 
 async function loadPublicDealers() {
   const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.dealers).get();
-  return snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  }));
+  return snapshot.docs
+    .map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }))
+    .filter((dealer) => !isOperatorOnlyRole(dealer.role));
 }
 
 function buildDealerLinkCard(seller, count) {

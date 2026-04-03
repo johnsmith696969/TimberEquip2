@@ -33,8 +33,8 @@ import { setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { buildSiteUrl } from '../utils/siteUrl';
 import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
 
-const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
-const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
+const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer']);
+const STOREFRONT_ADMIN_ROLES = new Set<string>();
 
 function roleLabel(role?: string): string {
   switch (role) {

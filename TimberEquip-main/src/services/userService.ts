@@ -20,6 +20,7 @@ import {
 import { AccountBootstrapResponse, UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
 import { getListingIdRemovalCandidates, normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
+import { normalizeScopedUserRole, supportsStorefrontRole } from '../utils/roleScopes';
 
 function slugifyStorefrontValue(value: string): string {
   return String(value || '')
@@ -267,17 +268,16 @@ function deriveSeatContextFromProfile(profile: Partial<UserProfile> | null | und
 
 export const userService = {
   normalizeRole(role: string | undefined): UserRole {
-    const normalized = (role || '').toLowerCase();
+    const normalized = normalizeScopedUserRole(role);
     if (normalized === 'admin') return 'admin';
     if (normalized === 'super_admin') return 'super_admin';
     if (normalized === 'developer') return 'developer';
     if (normalized === 'content_manager') return 'content_manager';
     if (normalized === 'editor') return 'editor';
-    if (normalized === 'dealer_staff') return 'dealer';
     if (normalized === 'dealer') return 'dealer';
-    if (normalized === 'dealer_manager' || normalized === 'pro_dealer') return 'pro_dealer';
+    if (normalized === 'pro_dealer') return 'pro_dealer';
     if (normalized === 'individual_seller') return 'individual_seller';
-    if (normalized === 'member' || normalized === 'buyer') return 'member';
+    if (normalized === 'member') return 'member';
     return 'member';
   },
 
@@ -292,8 +292,7 @@ export const userService = {
   },
 
   supportsEnterpriseStorefront(role?: string): boolean {
-    const normalized = this.normalizeRole(role);
-    return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalized);
+    return supportsStorefrontRole(this.normalizeRole(role));
   },
 
   supportsManagedStorefrontSync(role?: string): boolean {

@@ -33,6 +33,12 @@ const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-en
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
 const { renderDealerWidgetScript } = require('./dealer-widget.js');
+const {
+  normalizeScopedUserRole,
+  isOperatorOnlyRole,
+  isDealerSellerRole,
+  supportsStorefrontRole,
+} = require('./role-scopes.js');
 
 const LEGACY_RUNTIME_CONFIG = (() => {
   try {
@@ -465,11 +471,7 @@ function consumeAuthRateLimit(scope, req, identifier, limit = 5) {
 }
 
 function normalizeUserRole(role) {
-  const normalized = normalize(role);
-  if (normalized === 'dealer_staff') return 'dealer';
-  if (normalized === 'dealer_manager') return 'pro_dealer';
-  if (normalized === 'buyer') return 'member';
-  return normalized;
+  return normalizeScopedUserRole(role);
 }
 
 function normalizeAccountAccessSource(source) {
@@ -4896,7 +4898,10 @@ function getStateFromMarketplaceLocation(location) {
 
 function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
   const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
-  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  if (isPrivilegedStorefrontRecord({ role: rawRole })) {
+    return null;
+  }
+  const isDealerRole = isDealerSellerRole(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
@@ -4941,7 +4946,10 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
 
 function serializeSellerPayloadFromUser(snapshotId, data = {}) {
   const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
-  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  if (isPrivilegedStorefrontRecord({ role: rawRole })) {
+    return null;
+  }
+  const isDealerRole = isDealerSellerRole(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
@@ -5355,7 +5363,7 @@ function normalizeMarketplaceText(value) {
 
 function isVerifiedSellerRole(role, manuallyVerified) {
   if (manuallyVerified === true) return true;
-  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalizeUserRole(role));
+  return isDealerSellerRole(role);
 }
 
 function getFeaturedListingCapForRole(role) {
@@ -6830,8 +6838,161 @@ function buildStorefrontSlugValue(value, fallback = 'timber-equip-storefront') {
   return slug || fallback;
 }
 
+const STOREFRONT_PROFILE_FIELD_KEYS = Object.freeze([
+  'storefrontEnabled',
+  'storefrontSlug',
+  'storefrontName',
+  'storefrontTagline',
+  'storefrontDescription',
+  'storefrontLogoUrl',
+  'businessName',
+  'street1',
+  'street2',
+  'city',
+  'state',
+  'county',
+  'postalCode',
+  'country',
+  'latitude',
+  'longitude',
+  'serviceAreaScopes',
+  'serviceAreaStates',
+  'serviceAreaCounties',
+  'servicesOfferedCategories',
+  'servicesOfferedSubcategories',
+  'seoTitle',
+  'seoDescription',
+  'seoKeywords',
+]);
+
+function stripStorefrontFieldsForOperator(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+
+  const nextPayload = { ...payload };
+  STOREFRONT_PROFILE_FIELD_KEYS.forEach((field) => {
+    if (field in nextPayload) {
+      delete nextPayload[field];
+    }
+  });
+  return nextPayload;
+}
+
+function buildOperatorStorefrontFieldDeletes() {
+  return STOREFRONT_PROFILE_FIELD_KEYS.reduce((accumulator, field) => {
+    accumulator[field] = field === 'storefrontEnabled'
+      ? false
+      : admin.firestore.FieldValue.delete();
+    return accumulator;
+  }, {});
+}
+
+function isPrivilegedStorefrontRecord(data = {}) {
+  return isOperatorOnlyRole(data.role);
+}
+
 function supportsEnterpriseStorefrontRole(role) {
-  return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalizeUserRole(role));
+  return supportsStorefrontRole(normalizeUserRole(role));
+}
+
+function pickStorefrontArchiveFields(data = {}) {
+  return STOREFRONT_PROFILE_FIELD_KEYS.reduce((accumulator, field) => {
+    if (field in data) {
+      accumulator[field] = data[field];
+    }
+    return accumulator;
+  }, {});
+}
+
+async function archivePrivilegedOperatorStorefronts({ actorUid, dryRun = false } = {}) {
+  const db = getDb();
+  const privilegedRoles = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+  const [userSnapshots, storefrontSnapshots] = await Promise.all([
+    db.collection('users').where('role', 'in', privilegedRoles).get(),
+    db.collection('storefronts').where('role', 'in', privilegedRoles).get(),
+  ]);
+
+  const userDocsByUid = new Map(userSnapshots.docs.map((docSnap) => [docSnap.id, docSnap]));
+  const storefrontDocsByUid = new Map(storefrontSnapshots.docs.map((docSnap) => [docSnap.id, docSnap]));
+  const candidateUids = new Set([
+    ...userDocsByUid.keys(),
+    ...storefrontDocsByUid.keys(),
+  ]);
+
+  const archiveTargets = [];
+  candidateUids.forEach((uid) => {
+    const userData = userDocsByUid.get(uid)?.data() || {};
+    const storefrontData = storefrontDocsByUid.get(uid)?.data() || {};
+    const role = normalizeUserRole(userData.role || storefrontData.role);
+    if (!isOperatorOnlyRole(role)) {
+      return;
+    }
+
+    const hasLiveStorefrontData =
+      storefrontDocsByUid.has(uid) ||
+      Object.keys(pickStorefrontArchiveFields(userData)).length > 0;
+
+    if (!hasLiveStorefrontData) {
+      return;
+    }
+
+    archiveTargets.push({
+      uid,
+      role,
+      userData,
+      storefrontData,
+      hasStorefrontDoc: storefrontDocsByUid.has(uid),
+    });
+  });
+
+  if (dryRun || archiveTargets.length === 0) {
+    return {
+      dryRun: Boolean(dryRun),
+      archivedCount: archiveTargets.length,
+      archivedUids: archiveTargets.map((target) => target.uid),
+    };
+  }
+
+  const archiveBatchSize = 120;
+  for (const chunkStart of Array.from({ length: Math.ceil(archiveTargets.length / archiveBatchSize) }, (_, index) => index * archiveBatchSize)) {
+    const batch = db.batch();
+    archiveTargets.slice(chunkStart, chunkStart + archiveBatchSize).forEach((target) => {
+      const archiveRef = db.collection('adminStorefrontArchives').doc(target.uid);
+      const userRef = db.collection('users').doc(target.uid);
+      const storefrontRef = db.collection('storefronts').doc(target.uid);
+      const originalStorefrontSlug = normalizeNonEmptyString(
+        target.storefrontData.storefrontSlug || target.userData.storefrontSlug,
+      );
+
+      batch.set(archiveRef, {
+        uid: target.uid,
+        archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        archivedBy: normalizeNonEmptyString(actorUid),
+        originalRole: target.role,
+        originalStorefrontSlug: originalStorefrontSlug || null,
+        userStorefrontFields: pickStorefrontArchiveFields(target.userData),
+        storefrontDoc: target.hasStorefrontDoc ? target.storefrontData : null,
+      }, { merge: true });
+
+      batch.set(userRef, {
+        uid: target.uid,
+        ...buildOperatorStorefrontFieldDeletes(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      if (target.hasStorefrontDoc) {
+        batch.delete(storefrontRef);
+      }
+    });
+    await batch.commit();
+  }
+
+  return {
+    dryRun: false,
+    archivedCount: archiveTargets.length,
+    archivedUids: archiveTargets.map((target) => target.uid),
+  };
 }
 
 function buildEnterpriseStorefrontState({ uid, role, userData = {}, authRecord = null }) {
@@ -7085,6 +7246,7 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     ...overrides,
   });
   const entitlement = buildAccountEntitlementSnapshot(accountState);
+  const operatorOnlyAccount = isOperatorOnlyRole(accountState.role);
   const enrolledFactors = Array.isArray(authRecord?.multiFactor?.enrolledFactors)
     ? authRecord.multiFactor.enrolledFactors
     : [];
@@ -7124,18 +7286,18 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     country: normalizeNonEmptyString(userData.country) || '',
     latitude: toFiniteNumberOrUndefined(userData.latitude) ?? null,
     longitude: toFiniteNumberOrUndefined(userData.longitude) ?? null,
-    storefrontEnabled: Boolean(userData.storefrontEnabled),
-    storefrontSlug: normalizeNonEmptyString(userData.storefrontSlug) || '',
-    storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
-    storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline) || '',
-    storefrontDescription: normalizeNonEmptyString(userData.storefrontDescription) || '',
-    serviceAreaScopes: normalizeServiceAreaScopes(userData.serviceAreaScopes, 8),
-    serviceAreaStates: normalizeStringArray(userData.serviceAreaStates, 80, 120),
-    serviceAreaCounties: normalizeStringArray(userData.serviceAreaCounties, 120, 120),
-    servicesOfferedCategories: normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
-    servicesOfferedSubcategories: normalizeStringArray(userData.servicesOfferedSubcategories, 120, 120),
-    seoTitle: normalizeNonEmptyString(userData.seoTitle) || '',
-    seoDescription: normalizeNonEmptyString(userData.seoDescription) || '',
+    storefrontEnabled: operatorOnlyAccount ? false : Boolean(userData.storefrontEnabled),
+    storefrontSlug: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontSlug) || ''),
+    storefrontName: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontName) || ''),
+    storefrontTagline: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontTagline) || ''),
+    storefrontDescription: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontDescription) || ''),
+    serviceAreaScopes: operatorOnlyAccount ? [] : normalizeServiceAreaScopes(userData.serviceAreaScopes, 8),
+    serviceAreaStates: operatorOnlyAccount ? [] : normalizeStringArray(userData.serviceAreaStates, 80, 120),
+    serviceAreaCounties: operatorOnlyAccount ? [] : normalizeStringArray(userData.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: operatorOnlyAccount ? [] : normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: operatorOnlyAccount ? [] : normalizeStringArray(userData.servicesOfferedSubcategories, 120, 120),
+    seoTitle: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.seoTitle) || ''),
+    seoDescription: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.seoDescription) || ''),
     seoKeywords: Array.isArray(userData.seoKeywords)
       ? userData.seoKeywords.filter((keyword) => typeof keyword === 'string')
       : [],
@@ -7306,7 +7468,7 @@ async function buildAccountBootstrapPayload(decodedToken, options = {}) {
   const normalizedRole = normalizeNonEmptyString(profile.role).toLowerCase();
   const shouldLoadSeatContext =
     Number(profile.managedAccountCap) > 0 ||
-    ['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
+    isDealerSellerRole(normalizedRole);
 
   let seatContext = null;
   let seatContextSource = 'not_applicable';
@@ -11775,6 +11937,9 @@ exports.apiProxy = onRequest(
           ? req.body.listing
           : (req.body && typeof req.body === 'object' ? req.body : {});
         const requestedSellerUid = normalizeNonEmptyString(rawListing.sellerUid || rawListing.sellerId, actorUid);
+        if (isAdminActor && requestedSellerUid === actorUid && isOperatorOnlyRole(tokenRole)) {
+          return res.status(400).json({ error: 'Operator accounts cannot own listings. Assign this listing to a seller or dealer account UID.' });
+        }
 
         if (requestedSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'You can only create listings for your own account.' });
@@ -11935,6 +12100,9 @@ exports.apiProxy = onRequest(
 
         const existingData = listingSnapshot.data() || {};
         const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
+        if (isAdminActor && listingSellerUid === actorUid && isOperatorOnlyRole(tokenRole)) {
+          return res.status(400).json({ error: 'Operator-owned listings are not supported. Reassign this listing to a seller or dealer account.' });
+        }
         if (listingSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'Forbidden' });
         }
@@ -12053,6 +12221,9 @@ exports.apiProxy = onRequest(
 
         const existingData = listingSnapshot.data() || {};
         const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
+        if (isAdminActor && listingSellerUid === actorUid && isOperatorOnlyRole(tokenRole)) {
+          return res.status(400).json({ error: 'Operator-owned listings are not supported. Reassign this listing to a seller or dealer account.' });
+        }
         if (listingSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'Forbidden' });
         }
@@ -12073,6 +12244,9 @@ exports.apiProxy = onRequest(
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
         const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
+        if (isOperatorOnlyRole(actorRole) && requestedSellerUid === actorUid) {
+          return res.status(400).json({ error: 'Operator accounts do not have seller listing workspaces.' });
+        }
         if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
@@ -12145,12 +12319,7 @@ exports.apiProxy = onRequest(
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
         const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
-        const sanitizedUpdates = sanitizeAccountProfilePatchPayload(req.body || {});
-        const updatedFields = Object.keys(sanitizedUpdates);
-
-        if (updatedFields.length === 0) {
-          return res.status(400).json({ error: 'No supported profile updates were provided.' });
-        }
+        let sanitizedUpdates = sanitizeAccountProfilePatchPayload(req.body || {});
 
         let authRecord = null;
         try {
@@ -12185,6 +12354,15 @@ exports.apiProxy = onRequest(
         }
 
         const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'member');
+        if (isOperatorOnlyRole(nextRole)) {
+          sanitizedUpdates = stripStorefrontFieldsForOperator(sanitizedUpdates);
+        }
+        const updatedFields = Object.keys(sanitizedUpdates);
+
+        if (updatedFields.length === 0) {
+          return res.status(400).json({ error: 'No supported profile updates were provided.' });
+        }
+
         const nextUserData = {
           ...currentData,
           ...sanitizedUpdates,
@@ -12259,6 +12437,44 @@ exports.apiProxy = onRequest(
           },
           { merge: true }
         );
+
+        if (isOperatorOnlyRole(nextRole)) {
+          await getDb().collection('users').doc(actorUid).set(
+            {
+              uid: actorUid,
+              ...buildOperatorStorefrontFieldDeletes(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await getDb().collection('storefronts').doc(actorUid).delete().catch(() => undefined);
+          Object.assign(nextUserData, {
+            storefrontEnabled: false,
+            storefrontSlug: '',
+            storefrontName: '',
+            storefrontTagline: '',
+            storefrontDescription: '',
+            businessName: '',
+            street1: '',
+            street2: '',
+            city: '',
+            state: '',
+            county: '',
+            postalCode: '',
+            country: '',
+            latitude: null,
+            longitude: null,
+            storefrontLogoUrl: '',
+            serviceAreaScopes: [],
+            serviceAreaStates: [],
+            serviceAreaCounties: [],
+            servicesOfferedCategories: [],
+            servicesOfferedSubcategories: [],
+            seoTitle: '',
+            seoDescription: '',
+            seoKeywords: [],
+          });
+        }
 
         if (authRecord && ('displayName' in sanitizedUpdates || 'photoURL' in sanitizedUpdates)) {
           const authPatch = {};
@@ -12588,8 +12804,12 @@ exports.apiProxy = onRequest(
           }
 
           if (storefrontSnapshot.exists) {
+            const seller = serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {});
+            if (!seller) {
+              return res.status(200).json({ seller: null });
+            }
             res.set('Cache-Control', 'public, max-age=300');
-            return res.status(200).json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+            return res.status(200).json({ seller });
           }
 
           let userSnapshot = await getDb().collection('users').doc(requestedIdentity).get();
@@ -12605,8 +12825,12 @@ exports.apiProxy = onRequest(
           }
 
           if (userSnapshot.exists) {
+            const seller = serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {});
+            if (!seller) {
+              return res.status(200).json({ seller: null });
+            }
             res.set('Cache-Control', 'public, max-age=300');
-            return res.status(200).json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+            return res.status(200).json({ seller });
           }
 
           return res.status(200).json({ seller: null });
@@ -12709,6 +12933,38 @@ exports.apiProxy = onRequest(
           }
           throw error;
         }
+      }
+
+      if (req.method === 'POST' && path === '/admin/maintenance/archive-privileged-storefronts') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(tokenRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const dryRun = Boolean(req.body?.dryRun);
+        const result = await archivePrivilegedOperatorStorefronts({ actorUid, dryRun });
+
+        await writeAccountAuditLog({
+          eventType: 'ADMIN_STOREFRONT_ARCHIVE_RUN',
+          actorUid,
+          targetUid: null,
+          source: 'admin_maintenance',
+          reason: dryRun ? 'Dry run for privileged storefront archival.' : 'Archived privileged storefront data.',
+          metadata: {
+            dryRun,
+            archivedCount: result.archivedCount,
+            archivedUids: result.archivedUids,
+          },
+        });
+
+        return res.status(200).json(result);
       }
 
       if (req.method === 'POST' && path === '/admin/users/create-managed-account') {

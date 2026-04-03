@@ -30,6 +30,7 @@ import {
 import { SUPERADMIN_EMAIL } from '../utils/privilegedAdmin';
 import { taxonomyService } from './taxonomyService';
 import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
+import { isDealerSellerRole, isOperatorOnlyRole } from '../utils/roleScopes';
 
 const DEMO_CATEGORY_LOCATIONS: Record<string, string[]> = {
   'Logging Equipment': ['Wisconsin, USA', 'Georgia, USA', 'Ontario, Canada'],
@@ -450,7 +451,7 @@ function isAdminPublisherRole(role?: string | null): boolean {
 }
 
 function isVerifiedSellerRole(role?: string | null): boolean {
-  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalize(role));
+  return isDealerSellerRole(role);
 }
 
 function getFeaturedListingCapForRole(role?: string | null): number {
@@ -1628,10 +1629,6 @@ export const equipmentService = {
 
       sellerVerified = isVerifiedSellerRole(sellerRole);
 
-      if (sellerEmail === SUPERADMIN_EMAIL) {
-        sellerRole = 'super_admin';
-      }
-
       const nextApprovalStatus: Listing['approvalStatus'] = 'pending';
       const nextStatus: Listing['status'] = 'pending';
       const requestedPaymentStatus = normalize(String(listing.paymentStatus || 'pending'));
@@ -2131,7 +2128,10 @@ export const equipmentService = {
       if (storefrontSnap.exists()) {
         const data = storefrontSnap.data() || {};
         const rawRole = String(data.role || '').toLowerCase();
-        const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+        if (isOperatorOnlyRole(rawRole)) {
+          return undefined;
+        }
+        const isDealerRole = isDealerSellerRole(rawRole);
 
         return {
           id: storefrontSnap.id,
@@ -2181,7 +2181,10 @@ export const equipmentService = {
       if (userSnap.exists()) {
         const data = userSnap.data() || {};
         const rawRole = String(data.role || '').toLowerCase();
-        const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+        if (isOperatorOnlyRole(rawRole)) {
+          return undefined;
+        }
+        const isDealerRole = isDealerSellerRole(rawRole);
 
         return {
           id: userSnap.id,

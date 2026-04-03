@@ -3,6 +3,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { THIN_ROUTE_ROBOTS, evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { PUBLIC_SEO_COLLECTIONS } = require('./public-seo-read-model.js');
 const { buildListingPublicPath } = require('./listing-public-paths.js');
+const { isOperatorOnlyRole } = require('./role-scopes.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -391,6 +392,9 @@ async function loadSellerRecords(sellerUids) {
     const userData = userDocs[index]?.exists ? userDocs[index].data() || {} : {};
     const storefrontData = storefrontDocs[index]?.exists ? storefrontDocs[index].data() || {} : {};
     const merged = { ...userData, ...storefrontData };
+    if (isOperatorOnlyRole(merged.role)) {
+      return;
+    }
 
     sellerMap.set(sellerUid, {
       id: sellerUid,

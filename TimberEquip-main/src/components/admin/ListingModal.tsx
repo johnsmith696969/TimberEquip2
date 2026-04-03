@@ -93,6 +93,7 @@ interface ListingModalProps {
   onClose: () => void;
   onSave: (listing: any) => void | Promise<void>;
   listing?: Listing | null;
+  showSellerAssignment?: boolean;
 }
 
 // ── SpecField renderer ────────────────────────────────────────────────────────
@@ -205,7 +206,7 @@ function SpecInput({ fieldKey, label, type, required, unit, options, placeholder
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalProps) {
+export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssignment = false }: ListingModalProps) {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [submitError, setSubmitError] = useState('');
   const [uploadError, setUploadError] = useState('');
@@ -224,6 +225,8 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const defaultForm = () => ({
+    sellerUid: '',
+    sellerId: '',
     title: '',
     category: DEFAULT_TOP_LEVEL_CATEGORY,
     subcategory: DEFAULT_SUBCATEGORY,
@@ -275,6 +278,8 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
       setFormData({
         ...defaultForm(),
         ...listing,
+        sellerUid: String((listing as Listing & { sellerUid?: string }).sellerUid || (listing as Listing & { sellerId?: string }).sellerId || ''),
+        sellerId: String((listing as Listing & { sellerId?: string }).sellerId || (listing as Listing & { sellerUid?: string }).sellerUid || ''),
         images: normalizedImages,
         imageTitles: normalizeListingImageTitles(normalizedImages, listing.imageTitles),
         category: inferred.category,
@@ -599,6 +604,25 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 Basic Information
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {showSellerAssignment ? (
+                  <div className="space-y-1 lg:col-span-3">
+                    <label className="label-micro">Seller Account UID <span className="text-accent">*</span></label>
+                    <input
+                      type="text"
+                      value={formData.sellerUid || ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        sellerUid: e.target.value,
+                        sellerId: e.target.value,
+                      })}
+                      className="input-industrial w-full"
+                      placeholder="seller-account-uid"
+                    />
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                      Admin-created listings must be assigned to the owning seller or dealer account.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="space-y-1 lg:col-span-2">
                   <label className="label-micro">Listing Title <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.title}

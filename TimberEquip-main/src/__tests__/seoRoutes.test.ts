@@ -109,10 +109,10 @@ describe('isDealerRole', () => {
     expect(isDealerRole('dealer_staff')).toBe(true);
   });
 
-  it('returns true for admin roles', () => {
-    expect(isDealerRole('admin')).toBe(true);
-    expect(isDealerRole('super_admin')).toBe(true);
-    expect(isDealerRole('developer')).toBe(true);
+  it('returns false for operator-only roles', () => {
+    expect(isDealerRole('admin')).toBe(false);
+    expect(isDealerRole('super_admin')).toBe(false);
+    expect(isDealerRole('developer')).toBe(false);
   });
 
   it('returns false for non-dealer roles', () => {

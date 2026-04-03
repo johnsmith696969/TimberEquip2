@@ -562,15 +562,16 @@ export interface UserProfile {
 
 export interface AccountEntitlement {
   subscriptionState: 'active' | 'canceled' | 'past_due' | 'trialing' | 'pending' | 'none';
-  effectiveSellerCapability: 'none' | 'owner_operator' | 'dealer' | 'pro_dealer' | 'admin';
-  sellerAccessMode: 'none' | 'subscription' | 'admin_override' | 'admin';
+  effectiveSellerCapability: 'none' | 'owner_operator' | 'dealer' | 'pro_dealer';
+  sellerAccessMode: 'none' | 'subscription' | 'admin_override';
   sellerWorkspaceAccess: boolean;
+  adminWorkspaceAccess: boolean;
   canPostListings: boolean;
   dealerOsAccess: boolean;
   publicListingVisibility: 'publicly_eligible' | 'hidden_due_to_billing' | 'admin_override' | 'not_applicable';
-  visibilityReason: 'active_subscription' | 'inactive_subscription' | 'admin_override' | 'admin_role' | 'non_seller_role' | 'suspended_account';
+  visibilityReason: 'active_subscription' | 'inactive_subscription' | 'admin_override' | 'non_seller_role' | 'suspended_account';
   billingLabel: string;
-  overrideSource?: 'admin_override' | 'admin_role' | null;
+  overrideSource?: 'admin_override' | null;
 }
 
 export interface ManagedAccountSeatContext {

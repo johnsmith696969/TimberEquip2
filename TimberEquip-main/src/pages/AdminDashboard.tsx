@@ -27,6 +27,7 @@ import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { TaxonomyManager } from '../components/admin/TaxonomyManager';
+import { AccountMfaSettingsCard } from '../components/AccountMfaSettingsCard';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
@@ -76,7 +77,7 @@ function resolveDashboardTab(tab: string | null | undefined): DashboardTab {
 }
 
 export function AdminDashboard() {
-  const { user: authUser, logout: authLogout, patchCurrentUserProfile } = useAuth();
+  const { user: authUser, logout: authLogout, patchCurrentUserProfile, sendPasswordReset } = useAuth();
   const { formatPrice } = useLocale();
   const { confirm, alert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -196,6 +197,7 @@ export function AdminDashboard() {
   });
   const [savingAdminSettings, setSavingAdminSettings] = useState(false);
   const [savingAdminPreferenceKey, setSavingAdminPreferenceKey] = useState('');
+  const [sendingAdminPasswordReset, setSendingAdminPasswordReset] = useState(false);
   const [adminSettingsError, setAdminSettingsError] = useState('');
   const listingsInitializedRef = useRef(false);
   const operationalLoadKeyRef = useRef('');
@@ -590,6 +592,30 @@ export function AdminDashboard() {
     }
   };
 
+  const handleSendAdminPasswordReset = async () => {
+    const targetEmail = String(auth.currentUser?.email || authUser?.email || '').trim().toLowerCase();
+    if (!targetEmail) {
+      setAdminSettingsError('A valid account email is required before a password reset link can be sent.');
+      return;
+    }
+
+    setSendingAdminPasswordReset(true);
+    setAdminSettingsError('');
+    setUserFeedback(null);
+
+    try {
+      await sendPasswordReset(targetEmail);
+      setUserFeedback({
+        tone: 'success',
+        message: `Password reset instructions were sent to ${targetEmail}.`,
+      });
+    } catch (error) {
+      setAdminSettingsError(error instanceof Error ? error.message : 'Unable to send a password reset link right now.');
+    } finally {
+      setSendingAdminPasswordReset(false);
+    }
+  };
+
   const loadListingsPage = async (
     cursor: AdminListingsCursor,
     pageNumber: number,
@@ -844,12 +870,18 @@ export function AdminDashboard() {
 
   const handleSaveListing = async (formData: any) => {
     try {
+      const sellerUid = String(formData?.sellerUid || formData?.sellerId || editingListing?.sellerUid || editingListing?.sellerId || '').trim();
+      if (!editingListing && !sellerUid) {
+        throw new Error('A seller account UID is required before an admin can create a new machine listing.');
+      }
+
       if (editingListing) {
         await equipmentService.updateListing(editingListing.id, formData);
       } else {
         await equipmentService.addListing({
           ...formData,
-          sellerUid: authUser?.uid || 'anonymous'
+          sellerUid,
+          sellerId: sellerUid,
         });
       }
       setIsModalOpen(false);
@@ -3983,24 +4015,35 @@ export function AdminDashboard() {
             </button>
           </div>
 
+          <AccountMfaSettingsCard
+            user={authUser}
+            onProfilePatch={patchCurrentUserProfile}
+            recaptchaContainerId="admin-mfa-recaptcha"
+            confirmRemove={(factor) => confirm({
+              title: 'Remove SMS MFA',
+              message: `Remove SMS multi-factor authentication for ${factor.phoneNumber || 'this mobile number'}?`,
+              confirmLabel: 'Remove',
+              variant: 'danger',
+            })}
+          />
+
           <div className="flex items-center justify-between py-4 border-b border-line">
             <div className="flex items-center space-x-4">
               <div className="p-2 bg-bg border border-line rounded-sm text-muted">
-                <Shield size={18} />
+                <ShieldAlert size={18} />
               </div>
               <div>
-                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Two-Factor Authentication</h4>
-                <p className="text-[10px] font-bold text-muted uppercase">
-                  {authUser?.mfaEnabled ? 'SMS multi-factor authentication is active.' : 'Add an extra layer of security to your account.'}
-                </p>
+                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Password Reset</h4>
+                <p className="text-[10px] font-bold text-muted uppercase">Send a secure password reset email to your signed-in admin address</p>
               </div>
             </div>
             <button
               type="button"
-              onClick={() => window.location.assign('/profile?tab=Account%20Settings')}
-              className="btn-industrial py-2 px-4 text-[10px]"
+              onClick={() => void handleSendAdminPasswordReset()}
+              disabled={sendingAdminPasswordReset}
+              className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
             >
-              Manage
+              {sendingAdminPasswordReset ? 'Sending...' : 'Send Reset Link'}
             </button>
           </div>
 
@@ -5097,6 +5140,7 @@ export function AdminDashboard() {
         onClose={() => { setIsModalOpen(false); setEditingListing(null); }}
         onSave={handleSaveListing}
         listing={editingListing}
+        showSellerAssignment
       />
 
       {showCmsEditor && (

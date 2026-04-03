@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { canAccessDealerOs } from '../utils/sellerAccess';
 import { auth } from '../firebase';
+import { isOperatorOnlyRole } from '../utils/roleScopes';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
 
@@ -25,7 +26,7 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
   const hasSession = Boolean(isAuthenticated || hasFirebaseSession);
 
   const hasAdminAccess = !!(user && user.role && ADMIN_ROLES.includes(user.role));
-
+  const isOperatorAccount = Boolean(user && isOperatorOnlyRole(user.role));
   const hasDealerOsAccess = canAccessDealerOs(user);
 
   if (!hasSession) {
@@ -54,7 +55,7 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
   }
 
   if (requireDealerOs && !hasDealerOsAccess) {
-    return <Navigate to="/profile" replace state={{ from: `${location.pathname}${location.search}` }} />;
+    return <Navigate to={isOperatorAccount ? '/admin' : '/profile'} replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
   if (requireVerified && user && !user.emailVerified) {
