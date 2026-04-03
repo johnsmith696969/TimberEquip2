@@ -21,14 +21,14 @@ import {
 } from '../components/CategoryIcons';
 
 const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
-  'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-emerald-500/10 text-emerald-500' },
-  'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
-  'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-amber-500/10 text-amber-500' },
-  'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-lime-500/10 text-lime-500' },
-  'Sawmill Equipment': { icon: Settings, color: 'bg-sky-500/10 text-sky-500' },
-  Trailers: { icon: Truck, color: 'bg-cyan-500/10 text-cyan-500' },
-  Trucks: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },
-  'Parts And Attachments': { icon: Settings, color: 'bg-purple-500/10 text-purple-500' },
+  'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
+  'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-yellow-500/10 text-yellow-500' },
+  'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-red-500/10 text-red-500' },
+  'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-green-600/10 text-green-600' },
+  'Sawmill Equipment': { icon: Settings, color: 'bg-amber-500/10 text-amber-500' },
+  Trailers: { icon: Truck, color: 'bg-blue-600/10 text-blue-600' },
+  Trucks: { icon: Truck, color: 'bg-slate-600/10 text-slate-600' },
+  'Parts And Attachments': { icon: Settings, color: 'bg-sky-600/10 text-sky-600' },
 };
 
 export function Categories() {
@@ -207,8 +207,8 @@ export function Categories() {
               key={i}
               className="bg-bg border border-line p-10 flex flex-col group hover:border-accent hover:-translate-y-1 transition-all duration-300"
             >
-              <div className={`w-32 h-32 ${cat.color} flex items-center justify-center rounded-sm mb-8 group-hover:scale-110 transition-transform`}>
-                <cat.icon size={64} />
+              <div className={`w-28 h-28 ${cat.color} flex items-center justify-center rounded-sm mb-8 group-hover:scale-110 transition-transform`}>
+                <cat.icon size={56} />
               </div>
               
               <div className="flex justify-between items-start mb-4">
