@@ -180,7 +180,7 @@ export function Financing() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-business-structure" className="label-micro">Business Structure</label>
-                          <select id="financing-business-structure" value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                          <select id="financing-business-structure" value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
                             <option value="">-Select-</option>
                             <option value="Corporation">Corporation</option>
                             <option value="LLC">LLC</option>
@@ -190,11 +190,11 @@ export function Financing() {
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-entity-name" className="label-micro">Legal Entity Name</label>
-                          <input id="financing-entity-name" type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-entity-name" type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-years-operation" className="label-micro">Years in Operation</label>
-                          <input id="financing-years-operation" type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-years-operation" type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
@@ -221,15 +221,15 @@ export function Financing() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-asset-value" className="label-micro">Estimated Equipment Value (USD)</label>
-                          <input id="financing-asset-value" type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-asset-value" type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-requested-amount" className="label-micro">Requested Loan Amount (USD)</label>
-                          <input id="financing-requested-amount" type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-requested-amount" type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-term-length" className="label-micro">Preferred Term Length</label>
-                          <select id="financing-term-length" value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                          <select id="financing-term-length" value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
                             <option>24 Months</option>
                             <option>36 Months</option>
                             <option>48 Months</option>
@@ -240,7 +240,7 @@ export function Financing() {
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-down-payment" className="label-micro">Down Payment Available (USD)</label>
-                          <input id="financing-down-payment" type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-down-payment" type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
@@ -270,15 +270,15 @@ export function Financing() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-contact-name" className="label-micro">Primary Contact Name</label>
-                          <input id="financing-contact-name" type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-contact-name" type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
                           <label htmlFor="financing-contact-email" className="label-micro">Primary Contact Email</label>
-                          <input id="financing-contact-email" type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-contact-email" type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3 md:col-span-2">
                           <label htmlFor="financing-contact-phone" className="label-micro">Primary Contact Phone</label>
-                          <input id="financing-contact-phone" type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <input id="financing-contact-phone" type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 

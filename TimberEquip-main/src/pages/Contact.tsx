@@ -157,7 +157,7 @@ export function Contact() {
                               value={contactForm.name}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
                               placeholder="E.G. JOHN DOE"
-                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                              className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
                             />
                           </div>
                           <div className="flex flex-col space-y-3">
@@ -169,7 +169,7 @@ export function Contact() {
                               value={contactForm.email}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
                               placeholder="YOUR@EMAIL.COM"
-                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                              className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
                             />
                           </div>
                           <div className="flex flex-col space-y-3 md:col-span-2">
@@ -178,7 +178,7 @@ export function Contact() {
                               id="contact-category"
                               value={contactForm.category}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, category: e.target.value }))}
-                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                              className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
                             >
                               <option>General Support</option>
                               <option>Market Intelligence</option>

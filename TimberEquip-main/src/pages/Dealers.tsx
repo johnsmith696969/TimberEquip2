@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, ChevronDown, Globe, Mail, MapPin, Navigation, Search, X } from 'lucide-react';
+import { ArrowRight, Building2, Globe, Mail, MapPin, Navigation, Search, X } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -94,12 +94,11 @@ function FilterDropdown({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`flex items-center justify-between gap-2 bg-bg border border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-colors rounded-sm min-w-[160px] w-full hover:border-accent ${
+        className={`flex items-center gap-2 bg-bg border border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-colors rounded-sm min-w-[160px] w-full hover:border-accent ${
           value ? 'text-ink' : 'text-muted'
-        } ${open ? 'border-accent' : ''}`}
+        } ${open ? 'border-accent ring-1 ring-accent/30' : ''}`}
       >
-        <span className="truncate">{value || placeholder}</span>
-        <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className="truncate flex-1 text-left">{value || placeholder}</span>
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-72 max-h-80 bg-bg border border-line shadow-2xl z-50 flex flex-col rounded-sm overflow-hidden">
@@ -450,13 +449,13 @@ export function Dealers() {
 
             {/* Search bar */}
             <div className="relative w-full">
-              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted/60 pointer-events-none" />
               <input
                 type="search"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setDisplayCount(20); }}
                 placeholder="Search by name, location, category..."
-                className="w-full bg-bg border border-line pl-11 pr-4 py-3.5 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted/50 outline-none rounded-sm transition-all focus:border-accent focus:shadow-[inset_0_0_0_1px_var(--accent),0_0_0_3px_rgba(22,163,74,0.18)]"
+                className="w-full bg-bg border border-line pl-12 pr-4 py-3.5 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted/50 outline-none rounded-sm transition-all focus:border-accent focus:shadow-[inset_0_0_0_1px_var(--accent),0_0_0_3px_rgba(22,163,74,0.18)]"
               />
             </div>
 

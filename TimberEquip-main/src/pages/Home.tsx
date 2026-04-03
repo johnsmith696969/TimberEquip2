@@ -528,7 +528,7 @@ export function Home() {
                     value={selectedCategoryFamily}
                     onChange={(event) => setSelectedCategoryFamily(event.target.value)}
                     aria-label="Equipment category family"
-                    className="bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none min-w-0"
+                    className="bg-bg border border-line pl-4 pr-10 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none min-w-0"
                   >
                     {categoryCards.map((category) => (
                       <option key={category.name} value={category.name}>
