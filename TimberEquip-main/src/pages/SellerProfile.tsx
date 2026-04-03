@@ -23,6 +23,7 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
 import { useTheme } from '../components/ThemeContext';
 import { evaluateRouteQuality } from '../utils/seoRouteQuality';
@@ -71,6 +72,15 @@ function normalizeWebsiteHref(value?: string): string {
   return `https://${normalized}`;
 }
 
+function buildStorefrontLocationSummary(place: {
+  city?: string;
+  state?: string;
+  country?: string;
+  formattedAddress?: string;
+}) {
+  return [place.city, place.state, place.country].filter(Boolean).join(', ') || String(place.formattedAddress || '').trim();
+}
+
 export function SellerProfile() {
   const { id, categorySlug } = useParams<{ id: string; categorySlug?: string }>();
   const location = useLocation();
@@ -93,6 +103,8 @@ export function SellerProfile() {
     storefrontTagline: '',
     storefrontDescription: '',
     location: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
     phone: '',
     email: '',
     website: '',
@@ -154,6 +166,8 @@ export function SellerProfile() {
             storefrontTagline: sellerData.storefrontTagline || '',
             storefrontDescription: sellerData.storefrontDescription || '',
             location: sellerData.location || '',
+            latitude: typeof sellerData.latitude === 'number' ? sellerData.latitude : null,
+            longitude: typeof sellerData.longitude === 'number' ? sellerData.longitude : null,
             phone: sellerData.phone || '',
             email: sellerData.email || '',
             website: sellerData.website || '',
@@ -237,6 +251,8 @@ export function SellerProfile() {
         storefrontTagline: editData.storefrontTagline.trim(),
         storefrontDescription: editData.storefrontDescription.trim(),
         location: editData.location.trim(),
+        latitude: editData.latitude,
+        longitude: editData.longitude,
         phone: editData.phone.trim(),
         email: editData.email.trim(),
         website: editData.website.trim(),
@@ -258,6 +274,8 @@ export function SellerProfile() {
               storefrontTagline: editData.storefrontTagline.trim(),
               storefrontDescription: editData.storefrontDescription.trim(),
               location: editData.location.trim(),
+              latitude: editData.latitude ?? undefined,
+              longitude: editData.longitude ?? undefined,
               phone: editData.phone.trim(),
               email: editData.email.trim(),
               website: editData.website.trim(),
@@ -538,11 +556,26 @@ export function SellerProfile() {
                     </div>
                     <div>
                       <label className="label-micro text-white/40 block mb-2">Location</label>
-                      <input
-                        type="text"
+                      <GooglePlacesInput
+                        mode="city"
                         value={editData.location}
-                        onChange={(e) => setEditData({ ...editData, location: e.target.value })}
-                        className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
+                        onChange={(value) => setEditData((prev) => ({ ...prev, location: value }))}
+                        onSelect={(place) => {
+                          const nextLocation = buildStorefrontLocationSummary(place);
+                          setEditData((prev) => ({
+                            ...prev,
+                            location: nextLocation || prev.location,
+                            latitude: typeof place.latitude === 'number' ? place.latitude : prev.latitude,
+                            longitude: typeof place.longitude === 'number' ? place.longitude : prev.longitude,
+                          }));
+                        }}
+                        placeholder="Search city, state, or province with Google"
+                        helperText="Use a Google-verified location so your storefront geography stays clean and linkable."
+                        inputClassName="w-full bg-black/50 border-white/20 text-white placeholder:text-white/35 focus:border-accent"
+                        dropdownClassName="border-white/15 bg-ink/95"
+                        optionClassName="border-white/10 hover:bg-white/5"
+                        helperTextClassName="text-white/45"
+                        leadingIconClassName="text-white/45"
                       />
                     </div>
                     <div>

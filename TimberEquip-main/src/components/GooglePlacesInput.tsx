@@ -17,6 +17,11 @@ interface GooglePlacesInputProps {
   placeholder?: string;
   helperText?: string;
   className?: string;
+  inputClassName?: string;
+  dropdownClassName?: string;
+  optionClassName?: string;
+  helperTextClassName?: string;
+  leadingIconClassName?: string;
   disabled?: boolean;
 }
 
@@ -29,6 +34,11 @@ export function GooglePlacesInput({
   placeholder,
   helperText,
   className = '',
+  inputClassName = '',
+  dropdownClassName = '',
+  optionClassName = '',
+  helperTextClassName = '',
+  leadingIconClassName = '',
   disabled = false,
 }: GooglePlacesInputProps) {
   const [predictions, setPredictions] = useState<GooglePlacePrediction[]>([]);
@@ -89,7 +99,7 @@ export function GooglePlacesInput({
   return (
     <div className={`space-y-2 ${className}`.trim()}>
       <div className="relative">
-        <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+        <div className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted ${leadingIconClassName}`.trim()}>
           {isLoading || isSelecting ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />}
         </div>
         <input
@@ -108,7 +118,7 @@ export function GooglePlacesInput({
             window.setTimeout(() => setOpen(false), 160);
           }}
           placeholder={placeholder || (mode === 'address' ? 'Search address with Google' : 'Search city with Google')}
-          className="input-industrial w-full pl-10 pr-10"
+          className={`input-industrial w-full pl-10 pr-10 ${inputClassName}`.trim()}
         />
         {value ? (
           <button
@@ -125,14 +135,14 @@ export function GooglePlacesInput({
         ) : null}
 
         {open && predictions.length > 0 ? (
-          <div className="absolute z-50 top-full left-0 right-0 mt-1 overflow-hidden rounded-sm border border-line bg-bg shadow-lg">
+          <div className={`absolute z-50 top-full left-0 right-0 mt-1 overflow-hidden rounded-sm border border-line bg-bg shadow-lg ${dropdownClassName}`.trim()}>
             {predictions.map((prediction) => (
               <button
                 key={prediction.placeId}
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => void handleSelect(prediction)}
-                className="w-full border-b border-line px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-surface"
+                className={`w-full border-b border-line px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-surface ${optionClassName}`.trim()}
               >
                 <span className="block text-xs font-semibold text-ink">
                   {prediction.mainText || prediction.description}
@@ -149,7 +159,7 @@ export function GooglePlacesInput({
       </div>
 
       {helperText ? (
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+        <p className={`text-[10px] font-bold uppercase tracking-widest text-muted ${helperTextClassName}`.trim()}>
           {helperText}
         </p>
       ) : null}
