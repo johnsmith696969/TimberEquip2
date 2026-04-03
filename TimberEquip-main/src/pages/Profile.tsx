@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
   Clock, CheckCircle2,
@@ -24,7 +24,14 @@ import { auth } from '../firebase';
 import { getDownloadURL } from 'firebase/storage';
 import { updateEmail, updateProfile as updateAuthProfile, type RecaptchaVerifier } from 'firebase/auth';
 import { getUserRoleDisplayLabel } from '../utils/userRoles';
-import { canAccessDealerOs, canUserPostListings, getFeaturedListingCap, getManagedListingCap, hasAdminPublishingAccess } from '../utils/sellerAccess';
+import {
+  canAccessDealerOs,
+  canUserPostListings,
+  getFeaturedListingCap,
+  getManagedListingCap,
+  getPrivilegedProfileRedirectPath,
+  hasAdminPublishingAccess,
+} from '../utils/sellerAccess';
 import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
@@ -80,9 +87,14 @@ export function Profile() {
   const navigate = useNavigate();
   const { confirm: showConfirm, alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const hasUser = Boolean(user);
   const entitlement = useMemo(() => resolveAccountEntitlement(user), [user]);
   const normalizedRole = hasUser ? userService.normalizeRole(user?.role) : '';
+  const privilegedRedirectPath = useMemo(
+    () => getPrivilegedProfileRedirectPath(user, requestedTab),
+    [requestedTab, user]
+  );
   const hasSellerWorkspaceAccess = hasUser && canUserPostListings(user);
   const hasDealerWorkspaceAccess = hasUser && canAccessDealerOs(user);
   const hasStorefrontAccess = Boolean(
@@ -137,6 +149,11 @@ export function Profile() {
       : entitlement.publicListingVisibility === 'hidden_due_to_billing'
         ? 'hidden until billing is restored'
         : 'not applicable';
+
+  if (privilegedRedirectPath) {
+    return <Navigate replace to={privilegedRedirectPath} />;
+  }
+
   const profileTabs = useMemo(() => {
     const tabs = ['Overview'];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
