@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
 import { billingService, type ListingPlanId } from '../services/billingService';
+import { getListingCapDisplayLabel, UNLIMITED_LISTING_CAP } from '../utils/listingCaps';
 
 export type PlanId = ListingPlanId;
 
@@ -43,15 +44,16 @@ const PLANS: Plan[] = [
   {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    price: 499,
+    price: 250,
     period: 'month',
     icon: Building2,
     accountType: 'Dealer Inventory',
-    summary: 'For dealer teams running a full monthly inventory.',
+    summary: 'For dealer teams running a branded storefront with 50 active listings and a 6-month free launch.',
     listingCap: 50,
     managedAccountCap: 3,
     features: [
       'Up to 50 active machine listings',
+      '6 months free before monthly billing starts',
       'Includes 3 managed team accounts',
       'Dealer-level visibility and lead flow',
       'Works for ongoing monthly inventory',
@@ -61,15 +63,16 @@ const PLANS: Plan[] = [
   {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    price: 999,
+    price: 500,
     period: 'month',
     icon: Crown,
     accountType: 'High Volume Fleet',
-    summary: 'For larger dealer groups posting high volume inventory.',
-    listingCap: 150,
+    summary: 'For larger dealer groups that need unlimited active inventory and a 3-month free launch.',
+    listingCap: UNLIMITED_LISTING_CAP,
     managedAccountCap: 3,
     features: [
-      'Up to 150 active machine listings',
+      'Unlimited active machine listings',
+      '3 months free before monthly billing starts',
       'Includes 3 managed team accounts',
       'Built for larger multi-location teams',
       'Scale your ad coverage every month',
@@ -103,7 +106,7 @@ export function SubscriptionPaymentModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const plan = PLANS.find((p) => p.id === selectedPlan)!;
+  const plan = PLANS.find((candidate) => candidate.id === selectedPlan)!;
   const isAccountCheckout = checkoutMode === 'account';
   const isOwnerOperatorAccountCheckout = isAccountCheckout && selectedPlan === 'individual_seller';
   const clampedQuantity = Math.max(1, Math.min(10, Math.floor(subscriptionQuantity || 1)));
@@ -124,6 +127,7 @@ export function SubscriptionPaymentModal({
       setError('Sign in is required before checkout.');
       return;
     }
+
     if (isAccountCheckout) {
       const intentParams = new URLSearchParams({
         plan: selectedPlan,
@@ -133,7 +137,8 @@ export function SubscriptionPaymentModal({
       navigate(`/ad-programs?${intentParams.toString()}`);
       return;
     }
-    if (!isAccountCheckout && !listingId) {
+
+    if (!listingId) {
       setError('Listing is missing. Please save the listing again and retry checkout.');
       return;
     }
@@ -142,9 +147,7 @@ export function SubscriptionPaymentModal({
     setLoading(true);
 
     try {
-      const { url } = isAccountCheckout
-        ? await billingService.createAccountCheckoutSession(selectedPlan, returnPath, isOwnerOperatorAccountCheckout ? clampedQuantity : 1)
-        : await billingService.createListingCheckoutSession(selectedPlan, listingId as string);
+      const { url } = await billingService.createListingCheckoutSession(selectedPlan, listingId);
       window.location.assign(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start Stripe checkout right now.');
@@ -161,7 +164,9 @@ export function SubscriptionPaymentModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !loading) onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !loading) onClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, loading, onClose]);
@@ -174,7 +179,7 @@ export function SubscriptionPaymentModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={prefersReducedMotion ? { duration: 0 } : undefined}
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+          className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
           onClick={handleClose}
         >
           <motion.div
@@ -186,70 +191,71 @@ export function SubscriptionPaymentModal({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 8 }}
             transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl bg-surface border border-line rounded-sm shadow-2xl my-8"
+            onClick={(event) => event.stopPropagation()}
+            className="my-8 w-full max-w-2xl rounded-sm border border-line bg-surface shadow-2xl"
           >
-            {/* Header */}
-            <div className="bg-ink text-white p-6 flex items-start justify-between">
+            <div className="flex items-start justify-between bg-ink p-6 text-white">
               <div>
-                <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">{t('checkout.subscription', 'Seller Plan')}</span>
-                <h2 id="subscription-dialog-title" className="text-2xl font-black tracking-tighter uppercase">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.2em] text-accent">
+                  {t('checkout.subscription', 'Seller Plan')}
+                </span>
+                <h2 id="subscription-dialog-title" className="text-2xl font-black uppercase tracking-tighter">
                   {t('checkout.choosePlan', 'Choose Your Plan')}
                 </h2>
               </div>
-              <button onClick={handleClose} className="text-white/50 hover:text-white transition-colors p-1 -mt-1 -mr-1">
+              <button onClick={handleClose} className="p-1 text-white/50 transition-colors hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
             <div className="p-6">
               <div className="space-y-4">
-                <p className="text-sm text-muted font-medium mb-6">
+                <p className="mb-6 text-sm font-medium text-muted">
                   {isAccountCheckout
                     ? t('checkout.selectSellerPlan', 'Pick the seller plan for this account, then continue to the ad-program enrollment form with legal and billing confirmation.')
                     : t('checkout.selectPlan', 'Pick the ad package, then continue to secure Stripe checkout.')}
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {PLANS.map((p) => {
-                    const Icon = p.icon;
-                    const isSelected = selectedPlan === p.id;
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  {PLANS.map((candidate) => {
+                    const Icon = candidate.icon;
+                    const isSelected = selectedPlan === candidate.id;
+
                     return (
                       <button
-                        key={p.id}
-                        onClick={() => setSelectedPlan(p.id)}
-                        className={`relative text-left border rounded-sm p-5 transition-all ${
-                          isSelected
-                            ? 'border-accent bg-accent/5'
-                            : 'border-line bg-bg hover:border-accent/50'
+                        key={candidate.id}
+                        onClick={() => setSelectedPlan(candidate.id)}
+                        className={`relative rounded-sm border p-5 text-left transition-all ${
+                          isSelected ? 'border-accent bg-accent/5' : 'border-line bg-bg hover:border-accent/50'
                         }`}
                       >
-                        {p.highlight && (
-                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-accent text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm">
+                        {candidate.highlight ? (
+                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-sm bg-accent px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">
                             Best Value
                           </span>
-                        )}
+                        ) : null}
                         <div className={`mb-3 ${isSelected ? 'text-accent' : 'text-muted'}`}>
                           <Icon size={20} />
                         </div>
-                        <div className="text-[10px] font-black uppercase tracking-widest text-muted mb-1">{p.name}</div>
-                        <div className="text-2xl font-black tracking-tighter mb-0.5">
-                          ${p.price}
-                          <span className="text-sm font-medium text-muted">/{p.period}</span>
+                        <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-muted">{candidate.name}</div>
+                        <div className="mb-0.5 text-2xl font-black tracking-tighter">
+                          ${candidate.price}
+                          <span className="text-sm font-medium text-muted">/{candidate.period}</span>
                         </div>
-                        <div className="text-[10px] font-black uppercase tracking-widest text-accent mb-2">
-                          {p.accountType} • {p.listingCap} {p.listingCap === 1 ? 'Machine' : 'Machines'}
+                        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-accent">
+                          {candidate.accountType} | {getListingCapDisplayLabel(candidate.listingCap, 'Machine', 'Machines')}
                         </div>
-                        {p.managedAccountCap ? (
-                          <div className="text-[10px] font-black uppercase tracking-widest text-data mb-2">
-                            {p.managedAccountCap} Team Accounts Included
+                        {candidate.managedAccountCap ? (
+                          <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-data">
+                            {candidate.managedAccountCap} Team Accounts Included
                           </div>
                         ) : null}
-                        <p className="text-xs text-muted mb-3 leading-relaxed">{p.summary}</p>
+                        <p className="mb-3 text-xs leading-relaxed text-muted">{candidate.summary}</p>
                         <ul className="space-y-1.5">
-                          {p.features.map((f) => (
-                            <li key={f} className="flex items-start gap-1.5 text-xs text-muted">
-                              <CheckCircle2 size={12} className="text-data shrink-0 mt-0.5" />
-                              <span>{f}</span>
+                          {candidate.features.map((feature) => (
+                            <li key={feature} className="flex items-start gap-1.5 text-xs text-muted">
+                              <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-data" />
+                              <span>{feature}</span>
                             </li>
                           ))}
                         </ul>
@@ -258,8 +264,8 @@ export function SubscriptionPaymentModal({
                   })}
                 </div>
 
-                {isOwnerOperatorAccountCheckout && (
-                  <div className="border border-line rounded-sm p-4 bg-bg space-y-3">
+                {isOwnerOperatorAccountCheckout ? (
+                  <div className="space-y-3 rounded-sm border border-line bg-bg p-4">
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-ink">Owner-Operator Quantity</p>
@@ -268,8 +274,8 @@ export function SubscriptionPaymentModal({
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setSubscriptionQuantity((prev) => Math.max(1, prev - 1))}
-                          className="btn-industrial py-1.5 px-3 text-xs"
+                          onClick={() => setSubscriptionQuantity((previous) => Math.max(1, previous - 1))}
+                          className="btn-industrial px-3 py-1.5 text-xs"
                           disabled={loading || clampedQuantity <= 1}
                           aria-disabled={loading || clampedQuantity <= 1}
                         >
@@ -280,21 +286,21 @@ export function SubscriptionPaymentModal({
                           min={1}
                           max={10}
                           value={clampedQuantity}
-                          onChange={(e) => {
-                            const next = Number(e.target.value);
-                            if (!Number.isFinite(next)) {
+                          onChange={(event) => {
+                            const nextValue = Number(event.target.value);
+                            if (!Number.isFinite(nextValue)) {
                               setSubscriptionQuantity(1);
                               return;
                             }
-                            setSubscriptionQuantity(Math.max(1, Math.min(10, Math.floor(next))));
+                            setSubscriptionQuantity(Math.max(1, Math.min(10, Math.floor(nextValue))));
                           }}
                           className="input-industrial w-20 text-center"
                           disabled={loading}
                         />
                         <button
                           type="button"
-                          onClick={() => setSubscriptionQuantity((prev) => Math.min(10, prev + 1))}
-                          className="btn-industrial py-1.5 px-3 text-xs"
+                          onClick={() => setSubscriptionQuantity((previous) => Math.min(10, previous + 1))}
+                          className="btn-industrial px-3 py-1.5 text-xs"
                           disabled={loading || clampedQuantity >= 10}
                           aria-disabled={loading || clampedQuantity >= 10}
                         >
@@ -306,16 +312,16 @@ export function SubscriptionPaymentModal({
                       Total: ${monthlyTotal}/month for {clampedQuantity} {clampedQuantity === 1 ? 'active listing' : 'active listings'}
                     </p>
                   </div>
-                )}
+                ) : null}
 
-                {error && (
-                  <div role="alert" className="flex items-center gap-2 text-accent text-xs font-medium">
+                {error ? (
+                  <div role="alert" className="flex items-center gap-2 text-xs font-medium text-accent">
                     <AlertCircle size={14} className="shrink-0" />
                     <span>{error}</span>
                   </div>
-                )}
+                ) : null}
 
-                <p className="text-[10px] text-muted font-medium">
+                <p className="text-[10px] font-medium text-muted">
                   {isAccountCheckout
                     ? 'You will confirm legal terms on the ad-program enrollment form, finish payment on Stripe, and return with this seller account activated.'
                     : 'You will finish payment on Stripe and return here when checkout is complete.'}
@@ -325,7 +331,7 @@ export function SubscriptionPaymentModal({
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="btn-industrial py-3 px-6"
+                    className="btn-industrial px-6 py-3"
                     disabled={loading}
                     aria-disabled={loading}
                   >
@@ -337,12 +343,15 @@ export function SubscriptionPaymentModal({
                     disabled={loading}
                     aria-disabled={loading}
                     aria-busy={loading}
-                    className="flex-1 btn-industrial btn-accent py-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="btn-industrial btn-accent flex flex-1 items-center justify-center gap-2 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {loading
-                      ? 'Redirecting to Stripe...'
-                      : `${isAccountCheckout ? t('checkout.activateWith', 'Activate with') : t('checkout.continueWith', 'Continue with')} ${plan.name} — $${monthlyTotal}/mo`}
+                    <span>
+                      {isAccountCheckout
+                        ? `${t('checkout.activateWith', 'Activate with')} ${plan.name}`
+                        : `${t('checkout.continueWith', 'Continue with')} ${plan.name}`}
+                      {!isAccountCheckout || !isOwnerOperatorAccountCheckout ? ` - $${monthlyTotal}/mo` : ''}
+                    </span>
                   </button>
                 </div>
               </div>

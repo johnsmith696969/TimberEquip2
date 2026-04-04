@@ -21,16 +21,6 @@ const hostingConfig = {
     rewrites: [
       { source: '/api/**', function: 'apiProxy' },
       { source: '/sitemap.xml', function: 'publicPages' },
-      { source: '/logging-equipment-for-sale', function: 'publicPages' },
-      { source: '/forestry-equipment-for-sale', function: 'publicPages' },
-      { source: '/categories', function: 'publicPages' },
-      { source: '/categories/**', function: 'publicPages' },
-      { source: '/manufacturers', function: 'publicPages' },
-      { source: '/manufacturers/**', function: 'publicPages' },
-      { source: '/states', function: 'publicPages' },
-      { source: '/states/**', function: 'publicPages' },
-      { source: '/dealers', function: 'publicPages' },
-      { source: '/dealers/**', function: 'publicPages' },
       { source: '**', destination: '/index.html' },
     ],
     headers: [

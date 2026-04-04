@@ -2,7 +2,7 @@ import { createRequire } from 'module';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { templates } = require('../../functions/email-templates/index.js');
+const { templates, withEmailPreferenceFooter } = require('../../functions/email-templates/index.js');
 
 describe('email templates', () => {
   it('keeps placeholder-style requested amounts in financing confirmation output', () => {
@@ -17,7 +17,7 @@ describe('email templates', () => {
     expect(html).not.toContain('Not provided');
   });
 
-  it('preserves unsubscribe links in optional email templates', () => {
+  it('injects unsubscribe links into the shared email footer', () => {
     const { html } = templates.newMatchingListing({
       displayName: '{{displayName}}',
       searchName: '{{searchName}}',
@@ -25,11 +25,13 @@ describe('email templates', () => {
       listingUrl: '{{listingUrl}}',
       listingPrice: '{{listingPrice}}',
       location: '{{location}}',
+    });
+    const finalHtml = withEmailPreferenceFooter(html, {
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
 
-    expect(html).toContain('{{unsubscribeUrl}}');
-    expect(html).toContain('Unsubscribe from saved-search emails');
+    expect(finalHtml).toContain('{{unsubscribeUrl}}');
+    expect(finalHtml).toContain('Manage email preferences or unsubscribe from optional automated emails');
   });
 
   it('uses the branded password reset workspace url in password reset emails', () => {

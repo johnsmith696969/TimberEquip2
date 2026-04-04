@@ -17,6 +17,7 @@ import {
   clearRememberedSellerReturnTo,
 } from '../utils/sellerAccess';
 import type { UserProfile } from '../types';
+import { UNLIMITED_LISTING_CAP } from '../utils/listingCaps';
 
 function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
   return {
@@ -270,7 +271,7 @@ describe('getManagedListingCap', () => {
   });
 
   it('returns pro dealer fallback cap', () => {
-    expect(getManagedListingCap(makeUser({ role: 'pro_dealer', listingCap: 0 }))).toBe(150);
+    expect(getManagedListingCap(makeUser({ role: 'pro_dealer', listingCap: 0 }))).toBe(UNLIMITED_LISTING_CAP);
   });
 
   it('returns null for admin unlimited access', () => {

@@ -143,6 +143,16 @@ describe('Page module smoke tests', () => {
     expect(typeof mod.Categories).toBe('function');
   });
 
+  it('Manufacturers exports a component', async () => {
+    const mod = await import('../pages/Manufacturers');
+    expect(typeof mod.Manufacturers).toBe('function');
+  });
+
+  it('States exports a component', async () => {
+    const mod = await import('../pages/States');
+    expect(typeof mod.States).toBe('function');
+  });
+
   it('Sell exports a component', async () => {
     const mod = await import('../pages/Sell');
     expect(typeof mod.Sell).toBe('function');

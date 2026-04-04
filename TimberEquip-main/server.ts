@@ -853,6 +853,8 @@ type ListingCheckoutPlan = {
   priceId?: string;
 };
 
+const UNLIMITED_LISTING_CAP = 99999;
+
 const LISTING_CHECKOUT_PLANS: Record<ListingCheckoutPlanId, ListingCheckoutPlan> = {
   individual_seller: {
     id: 'individual_seller',
@@ -865,7 +867,7 @@ const LISTING_CHECKOUT_PLANS: Record<ListingCheckoutPlanId, ListingCheckoutPlan>
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    amountUsd: 499,
+    amountUsd: 250,
     listingCap: 50,
     productId: process.env.STRIPE_PRODUCT_DEALER || '',
     priceId: process.env.STRIPE_PRICE_DEALER || '',
@@ -873,8 +875,8 @@ const LISTING_CHECKOUT_PLANS: Record<ListingCheckoutPlanId, ListingCheckoutPlan>
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    amountUsd: 999,
-    listingCap: 150,
+    amountUsd: 500,
+    listingCap: UNLIMITED_LISTING_CAP,
     productId: process.env.STRIPE_PRODUCT_FLEET || '',
     priceId: process.env.STRIPE_PRICE_FLEET || '',
   },
@@ -950,6 +952,26 @@ function getListingCheckoutPlan(rawPlanId: unknown): ListingCheckoutPlan | null 
   return LISTING_CHECKOUT_PLANS[planId];
 }
 
+function getTrialMonthsForPlan(planId: ListingCheckoutPlanId): number {
+  switch (planId) {
+    case 'dealer':
+      return 6;
+    case 'fleet_dealer':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function buildTrialEndForPlan(planId: ListingCheckoutPlanId): number | null {
+  const trialMonths = getTrialMonthsForPlan(planId);
+  if (!trialMonths) return null;
+
+  const nextDate = new Date();
+  nextDate.setMonth(nextDate.getMonth() + trialMonths);
+  return Math.floor(nextDate.getTime() / 1000);
+}
+
 async function getManagedAccountSeatContext(ownerUid: string): Promise<{
   ownerUid: string;
   seatLimit: number;
@@ -1023,9 +1045,23 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
   const cached = checkoutPriceCache[plan.id];
   if (cached) return cached;
 
+  const expectedUnitAmount = Math.round(Number(plan.amountUsd || 0) * 100);
+
   if (plan.priceId) {
-    checkoutPriceCache[plan.id] = plan.priceId;
-    return plan.priceId;
+    try {
+      const pinnedPrice = await stripe.prices.retrieve(plan.priceId);
+      if (
+        pinnedPrice?.active
+        && pinnedPrice.type === 'recurring'
+        && pinnedPrice.recurring?.interval === 'month'
+        && (!expectedUnitAmount || pinnedPrice.unit_amount === expectedUnitAmount)
+      ) {
+        checkoutPriceCache[plan.id] = plan.priceId;
+        return plan.priceId;
+      }
+    } catch {
+      // Fall through to product/default price discovery.
+    }
   }
 
   const product = await stripe.products.retrieve(plan.productId, {
@@ -1033,9 +1069,14 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
   });
 
   let priceId = '';
-  if (typeof product.default_price === 'string') {
-    priceId = product.default_price;
-  } else if (product.default_price?.id) {
+  if (
+    typeof product.default_price !== 'string'
+    && product.default_price?.id
+    && product.default_price.active
+    && product.default_price.type === 'recurring'
+    && product.default_price.recurring?.interval === 'month'
+    && (!expectedUnitAmount || product.default_price.unit_amount === expectedUnitAmount)
+  ) {
     priceId = product.default_price.id;
   }
 
@@ -1046,7 +1087,9 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
       limit: 20,
     });
     const preferredPrice =
-      prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month') || prices.data[0];
+      prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month' && (!expectedUnitAmount || p.unit_amount === expectedUnitAmount))
+      || prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month')
+      || prices.data[0];
 
     if (!preferredPrice?.id) {
       throw new Error(`No active Stripe price found for product ${plan.productId}.`);
@@ -1643,24 +1686,11 @@ async function startServer() {
     });
   }
 
-  // Redirect /manufacturers and /states index routes to SPA equivalents
-  app.get('/manufacturers', (_req, res) => res.redirect(302, '/dealers'));
-  app.get('/states', (_req, res) => res.redirect(302, '/search'));
-  app.get('/logging-equipment-for-sale', (_req, res) => res.redirect(301, '/forestry-equipment-for-sale'));
-
   if (sharedPublicPagesProxy) {
-    // SSR only for deep parametric SEO routes (crawlers) + sitemap — NOT user-facing index pages
+    // Keep the sitemap on the shared public-pages handler, but let the SPA own
+    // the public route families so we do not have two conflicting page owners.
     app.get(
-      [
-        '/sitemap.xml',
-        '/manufacturers/:manufacturerSlug',
-        '/manufacturers/:manufacturerSlug/:categorySaleSlug',
-        '/states/:stateSlug/forestry-equipment-for-sale',
-        '/states/:stateSlug/:categorySaleSlug',
-        '/dealers/:id',
-        '/dealers/:id/inventory',
-        '/dealers/:id/:categorySlug',
-      ],
+      ['/sitemap.xml'],
       async (req, res, next) => {
         try {
           await sharedPublicPagesProxy?.(req, res, next);
@@ -1766,7 +1796,11 @@ async function startServer() {
         return String(data.status || 'active').toLowerCase() !== 'sold';
       }).length;
 
-      if (activePaidListingsCount >= plan.listingCap) {
+      if (!Number.isFinite(plan.listingCap) || plan.listingCap < 1) {
+        return res.status(400).json({ error: 'This plan does not support listing checkout.' });
+      }
+
+      if (activePaidListingsCount >= plan.listingCap && plan.listingCap < UNLIMITED_LISTING_CAP) {
         return res.status(409).json({
           error: `Your ${plan.name} includes up to ${plan.listingCap} active ${plan.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
         });
@@ -1775,6 +1809,7 @@ async function startServer() {
       const baseUrl = getRequestBaseUrl(req);
       const priceId = await resolveStripePriceIdForPlan(plan);
       const customerId = await getOrCreateStripeCustomer(uid, decodedToken.email, decodedToken.name);
+      const trialEnd = buildTrialEndForPlan(plan.id);
 
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
@@ -1791,6 +1826,7 @@ async function startServer() {
           listingCap: String(plan.listingCap),
         },
         subscription_data: {
+          ...(trialEnd ? { trial_end: trialEnd } : {}),
           metadata: {
             userUid: uid,
             listingId,
@@ -2316,7 +2352,7 @@ async function startServer() {
         const seatContext = await getManagedAccountSeatContext(ownerUid);
         if (seatContext.seatLimit < 1) {
           return res.status(403).json({
-            error: 'An active Dealer or Fleet Dealer subscription is required before adding managed accounts.',
+            error: 'An active Dealer or Pro Dealer subscription is required before adding managed accounts.',
           });
         }
         if (seatContext.seatCount >= seatContext.seatLimit) {

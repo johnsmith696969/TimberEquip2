@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { UNLIMITED_LISTING_CAP } from '../utils/listingCaps';
 
 // Mock Firebase before importing billingService (it transitively imports firebase.ts)
 vi.mock('../firebase', () => ({
@@ -82,9 +83,23 @@ describe('SELLER_PLAN_DEFINITIONS', () => {
     expect(dealer.listingCap).toBe(50);
   });
 
-  it('fleet_dealer has 150 listing cap', () => {
+  it('fleet_dealer uses the unlimited listing cap sentinel', () => {
     const fleet = SELLER_PLAN_DEFINITIONS.find((p) => p.id === 'fleet_dealer')!;
-    expect(fleet.listingCap).toBe(150);
+    expect(fleet.listingCap).toBe(UNLIMITED_LISTING_CAP);
+  });
+
+  it('dealer and fleet_dealer expose the new launch trials', () => {
+    const dealer = SELLER_PLAN_DEFINITIONS.find((p) => p.id === 'dealer')!;
+    const fleet = SELLER_PLAN_DEFINITIONS.find((p) => p.id === 'fleet_dealer')!;
+    expect(dealer.trialMonths).toBe(6);
+    expect(fleet.trialMonths).toBe(3);
+  });
+
+  it('uses the updated dealer pricing', () => {
+    const dealer = SELLER_PLAN_DEFINITIONS.find((p) => p.id === 'dealer')!;
+    const fleet = SELLER_PLAN_DEFINITIONS.find((p) => p.id === 'fleet_dealer')!;
+    expect(dealer.price).toBe(250);
+    expect(fleet.price).toBe(500);
   });
 });
 

@@ -153,7 +153,7 @@ export function AdPrograms() {
     },
     {
       title: 'Dealer',
-      price: '$499/MO',
+      price: '$250/MO',
       planId: 'dealer',
       roleLabel: 'dealer',
       icon: Building2,
@@ -179,7 +179,7 @@ export function AdPrograms() {
     },
     {
       title: 'Pro Dealer',
-      price: '$999/MO',
+      price: '$500/MO',
       planId: 'fleet_dealer',
       roleLabel: 'pro dealer',
       icon: Crown,

@@ -10,6 +10,7 @@ import {
   buildDealerPath,
   isDealerRole,
   getStateFromLocation,
+  getListingStateName,
   MARKET_ROUTE_LABELS,
   CANONICAL_MARKET_ROUTE_KEY,
 } from '../utils/seoRoutes';
@@ -130,12 +131,34 @@ describe('getStateFromLocation', () => {
     expect(getStateFromLocation('Madison, Wisconsin, USA')).toBe('Wisconsin');
   });
 
+  it('extracts state from city, state format', () => {
+    expect(getStateFromLocation('Macon, Georgia')).toBe('Georgia');
+  });
+
   it('extracts state from state-only', () => {
     expect(getStateFromLocation('Wisconsin')).toBe('Wisconsin');
   });
 
   it('returns empty for undefined', () => {
     expect(getStateFromLocation(undefined)).toBe('');
+  });
+});
+
+describe('getListingStateName', () => {
+  it('prefers a valid explicit state field when present', () => {
+    expect(getListingStateName({ location: 'Macon, Georgia', state: 'Georgia', city: 'Macon' })).toBe('Georgia');
+  });
+
+  it('falls back to parsing the location string', () => {
+    expect(getListingStateName({ location: 'Macon, Georgia', city: 'Macon' })).toBe('Georgia');
+  });
+
+  it('expands state abbreviations', () => {
+    expect(getListingStateName({ location: 'Duluth, MN', city: 'Duluth' })).toBe('Minnesota');
+  });
+
+  it('does not treat the city as the state when only a city is present', () => {
+    expect(getListingStateName({ location: 'Macon', city: 'Macon' })).toBe('');
   });
 });
 

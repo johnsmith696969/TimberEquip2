@@ -12,7 +12,7 @@ const sharp = require('sharp');
 const Stripe = require('stripe');
 const { XMLParser } = require('fast-xml-parser');
 const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = require('node:crypto');
-const { templates } = require('./email-templates/index.js');
+const { templates, withEmailPreferenceFooter } = require('./email-templates/index.js');
 const { handlePublicPagesRequest } = require('./public-pages.js');
 const {
   PUBLIC_SEO_COLLECTIONS,
@@ -33,6 +33,11 @@ const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-en
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
 const { renderDealerWidgetScript } = require('./dealer-widget.js');
+const {
+  UNLIMITED_LISTING_CAP,
+  isUnlimitedListingCap,
+  getActiveListingCapMessage,
+} = require('./listing-cap.js');
 const {
   normalizeScopedUserRole,
   isOperatorOnlyRole,
@@ -135,6 +140,8 @@ let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
 let publicNewsCache = null;
 const PUBLIC_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
+const EMAIL_PREFERENCE_RECIPIENTS_COLLECTION = 'emailPreferenceRecipients';
+const EXTERNAL_EMAIL_PREFERENCE_UID = '__external__';
 const dealerFeedXmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '',
@@ -169,7 +176,16 @@ function htmlToText(html) {
     .trim();
 }
 
-async function sendEmail({ to, subject, html, replyTo }) {
+async function sendEmail({
+  to,
+  subject,
+  html,
+  replyTo,
+  unsubscribeUrl,
+  emailPreferenceUid,
+  emailPreferenceScope = 'optional',
+  emailPreferenceLabel,
+}) {
   ensureSendGridClientConfigured();
   const from = String(EMAIL_FROM.value() || '').trim();
   if (!from) {
@@ -184,14 +200,34 @@ async function sendEmail({ to, subject, html, replyTo }) {
     throw new Error('No email recipients were provided.');
   }
 
-  await sgMail.send({
-    to: recipients,
-    from,
-    replyTo: resolvedReplyTo,
-    subject,
-    html,
-    text: htmlToText(html),
-  });
+  await Promise.all(recipients.map(async (recipient) => {
+    let resolvedUnsubscribeUrl = String(unsubscribeUrl || '').trim();
+    if (!resolvedUnsubscribeUrl) {
+      const resolvedPreferenceRecipient = await resolveEmailPreferenceRecipient({
+        uid: recipients.length === 1 ? emailPreferenceUid : '',
+        email: parseEmailAddress(recipient) || recipient,
+      });
+      resolvedUnsubscribeUrl = buildEmailUnsubscribeUrl({
+        uid: resolvedPreferenceRecipient.uid,
+        email: resolvedPreferenceRecipient.email,
+        scope: emailPreferenceScope,
+      });
+    }
+
+    const finalHtml = withEmailPreferenceFooter(html, {
+      unsubscribeUrl: resolvedUnsubscribeUrl,
+      label: emailPreferenceLabel,
+    });
+
+    await sgMail.send({
+      to: recipient,
+      from,
+      replyTo: resolvedReplyTo,
+      subject,
+      html: finalHtml,
+      text: htmlToText(finalHtml),
+    });
+  }));
 
   logger.info(`Email sent to ${recipients.join(', ')}: ${subject}`);
 }
@@ -201,6 +237,62 @@ function parseEmailAddress(input) {
   if (!value) return '';
   const match = value.match(/<([^>]+)>/);
   return (match?.[1] || value).trim().toLowerCase();
+}
+
+function normalizeEmailPreferenceUid(uid) {
+  return normalizeNonEmptyString(uid, EXTERNAL_EMAIL_PREFERENCE_UID);
+}
+
+async function resolveEmailPreferenceRecipient({ uid, email }) {
+  const normalizedEmail = parseEmailAddress(email);
+  if (!normalizedEmail) {
+    return {
+      uid: '',
+      email: '',
+    };
+  }
+
+  const normalizedUid = normalizeNonEmptyString(uid);
+  if (normalizedUid) {
+    return {
+      uid: normalizedUid,
+      email: normalizedEmail,
+    };
+  }
+
+  const matchingUsers = await getDb()
+    .collection('users')
+    .where('email', '==', normalizedEmail)
+    .limit(1)
+    .get();
+
+  if (!matchingUsers.empty) {
+    return {
+      uid: normalizeNonEmptyString(matchingUsers.docs[0]?.id),
+      email: normalizedEmail,
+    };
+  }
+
+  try {
+    const authUser = await admin.auth().getUserByEmail(normalizedEmail);
+    const authUid = normalizeNonEmptyString(authUser?.uid);
+    if (authUid) {
+      return {
+        uid: authUid,
+        email: normalizedEmail,
+      };
+    }
+  } catch (error) {
+    logger.debug('No auth user found for email preference recipient lookup.', {
+      email: normalizedEmail,
+      message: error instanceof Error ? error.message : String(error || ''),
+    });
+  }
+
+  return {
+    uid: '',
+    email: normalizedEmail,
+  };
 }
 
 function getAdminRecipients() {
@@ -240,7 +332,7 @@ function getEmailPreferenceSigningSecret() {
 function buildEmailPreferenceToken({ uid, email, scope = 'optional' }) {
   return createHmac('sha256', getEmailPreferenceSigningSecret())
     .update([
-      normalizeNonEmptyString(uid),
+      normalizeEmailPreferenceUid(uid),
       normalizeNonEmptyString(email).toLowerCase(),
       normalizeNonEmptyString(scope, 'optional').toLowerCase(),
     ].join('|'))
@@ -253,12 +345,11 @@ function verifyEmailPreferenceToken({ uid, email, scope = 'optional', token }) {
 }
 
 function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
-  const normalizedUid = normalizeNonEmptyString(uid);
   const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
-  if (!normalizedUid || !normalizedEmail) return '';
+  const normalizedUid = normalizeNonEmptyString(uid);
+  if (!normalizedEmail) return '';
 
   const params = new URLSearchParams({
-    uid: normalizedUid,
     email: normalizedEmail,
     scope: normalizeNonEmptyString(scope, 'optional').toLowerCase(),
     token: buildEmailPreferenceToken({
@@ -268,7 +359,17 @@ function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
     }),
   });
 
+  if (normalizedUid) {
+    params.set('uid', normalizedUid);
+  }
+
   return `${resolveConfiguredAppUrl()}/unsubscribe?${params.toString()}`;
+}
+
+function getEmailPreferenceRecipientRef(email) {
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  if (!normalizedEmail) return null;
+  return getDb().collection(EMAIL_PREFERENCE_RECIPIENTS_COLLECTION).doc(sha256Hex(normalizedEmail));
 }
 const PRIVILEGED_ADMIN_EMAILS = new Set(
   (process.env.PRIVILEGED_ADMIN_EMAILS || LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '')
@@ -284,7 +385,7 @@ const FEATURED_LISTING_CAPS = Object.freeze({
 function getRoleDefaultListingCap(role) {
   const normalizedRole = normalizeUserRole(role);
   if (normalizedRole === 'dealer') return 50;
-  if (normalizedRole === 'pro_dealer') return 150;
+  if (normalizedRole === 'pro_dealer') return UNLIMITED_LISTING_CAP;
   return 0;
 }
 
@@ -5337,6 +5438,7 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     featured: Boolean(listing.featured),
     views: toFiniteNumberOrUndefined(listing.views) || 0,
     leads: toFiniteNumberOrUndefined(listing.leads) || 0,
+    sellerVerified: Boolean(listing.sellerVerified),
     createdAt:
       timestampValueToIso(listing.createdAt) ||
       normalizeNonEmptyString(listing.createdAtIso) ||
@@ -6162,7 +6264,7 @@ const LISTING_CHECKOUT_PLANS = {
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    amountUsd: 499,
+    amountUsd: 250,
     listingCap: 50,
     productId: process.env.STRIPE_PRODUCT_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_dealer || '',
     priceId: process.env.STRIPE_PRICE_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_dealer || '',
@@ -6170,8 +6272,8 @@ const LISTING_CHECKOUT_PLANS = {
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    amountUsd: 999,
-    listingCap: 150,
+    amountUsd: 500,
+    listingCap: UNLIMITED_LISTING_CAP,
     productId: process.env.STRIPE_PRODUCT_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_fleet || '',
     priceId: process.env.STRIPE_PRICE_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_fleet || '',
   },
@@ -6194,6 +6296,21 @@ function getPlanInvoiceDisplayName(planId) {
   if (planId === 'dealer') return 'FES-DealerOS Dealer Subscription';
   if (planId === 'fleet_dealer') return 'FES-DealerOS Pro Dealer Subscription';
   return 'Owner-Operator Ad Program';
+}
+
+function getTrialMonthsForPlan(planId) {
+  if (planId === 'dealer') return 6;
+  if (planId === 'fleet_dealer') return 3;
+  return 0;
+}
+
+function buildTrialEndForPlan(planId) {
+  const trialMonths = getTrialMonthsForPlan(planId);
+  if (!trialMonths) return null;
+
+  const nextDate = new Date();
+  nextDate.setMonth(nextDate.getMonth() + trialMonths);
+  return Math.floor(nextDate.getTime() / 1000);
 }
 
 function getCheckoutStatementDescriptorSuffix(planId) {
@@ -8984,35 +9101,77 @@ async function getListingLifecycleActorContext(req, listing = null) {
 }
 
 async function resolveStripePriceIdForPlan(stripe, plan) {
-  if (plan.priceId) {
-    return plan.priceId;
-  }
+  const expectedUnitAmount = Math.round(Number(plan.amountUsd || 0) * 100);
+  let preferredPriceId = '';
+  let defaultPrice = null;
 
-  const product = await stripe.products.retrieve(plan.productId, {
+  const product = plan.productId ? await stripe.products.retrieve(plan.productId, {
     expand: ['default_price'],
-  });
+  }) : null;
 
-  let priceId = '';
-  if (typeof product.default_price === 'string') {
-    priceId = product.default_price;
-  } else if (product.default_price?.id) {
-    priceId = product.default_price.id;
+  if (product?.default_price && typeof product.default_price !== 'string') {
+    defaultPrice = product.default_price;
   }
 
-  if (!priceId) {
+  const candidatePriceId = String(plan.priceId || '').trim();
+  if (candidatePriceId) {
+    try {
+      const candidatePrice = await stripe.prices.retrieve(candidatePriceId);
+      if (
+        candidatePrice?.active
+        && candidatePrice.type === 'recurring'
+        && candidatePrice.recurring?.interval === 'month'
+        && (!expectedUnitAmount || candidatePrice.unit_amount === expectedUnitAmount)
+      ) {
+        return candidatePrice.id;
+      }
+    } catch (error) {
+      logger.warn('Configured Stripe price id could not be used for plan; falling back to product price discovery.', {
+        planId: plan.id,
+        candidatePriceId,
+        message: error instanceof Error ? error.message : String(error || ''),
+      });
+    }
+  }
+
+  if (
+    defaultPrice?.id
+    && defaultPrice.active
+    && defaultPrice.type === 'recurring'
+    && defaultPrice.recurring?.interval === 'month'
+    && (!expectedUnitAmount || defaultPrice.unit_amount === expectedUnitAmount)
+  ) {
+    preferredPriceId = defaultPrice.id;
+  }
+
+  if (!preferredPriceId && plan.productId) {
     const prices = await stripe.prices.list({
       product: plan.productId,
       active: true,
       limit: 20,
     });
-    const preferred = prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month') || prices.data[0];
+
+    const exactAmountPrice = prices.data.find((p) =>
+      p.type === 'recurring'
+      && p.recurring?.interval === 'month'
+      && (!expectedUnitAmount || p.unit_amount === expectedUnitAmount)
+    );
+    const preferred = exactAmountPrice
+      || prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month')
+      || prices.data[0];
+
     if (!preferred?.id) {
       throw new Error(`No active Stripe price found for product ${plan.productId}.`);
     }
-    priceId = preferred.id;
+
+    preferredPriceId = preferred.id;
   }
 
-  return priceId;
+  if (!preferredPriceId) {
+    throw new Error(`No Stripe price could be resolved for plan ${plan.id}.`);
+  }
+
+  return preferredPriceId;
 }
 
 async function findExistingStripeCustomerId(stripe, userUid, email) {
@@ -10819,15 +10978,16 @@ exports.apiProxy = onRequest(
           return String(listingData.status || 'active').toLowerCase() !== 'sold';
         }).length;
 
-        if (activePaidListingsCount >= plan.listingCap) {
+        if (!isUnlimitedListingCap(plan.listingCap) && activePaidListingsCount >= plan.listingCap) {
           return res.status(409).json({
-            error: `Your ${plan.name} includes up to ${plan.listingCap} active ${plan.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+            error: getActiveListingCapMessage(plan.name, plan.listingCap),
           });
         }
 
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
         const priceId = await resolveStripePriceIdForPlan(stripe, plan);
         const baseUrl = getRequestBaseUrl(req);
+        const trialEnd = buildTrialEndForPlan(plan.id);
 
         const session = await stripe.checkout.sessions.create({
           mode: 'subscription',
@@ -10847,6 +11007,7 @@ exports.apiProxy = onRequest(
             listingCap: String(plan.listingCap),
           },
           subscription_data: {
+            ...(trialEnd ? { trial_end: trialEnd } : {}),
             metadata: {
               userUid: uid,
               listingId,
@@ -10873,7 +11034,7 @@ exports.apiProxy = onRequest(
         const scope = normalizeNonEmptyString(payload?.scope, 'optional').toLowerCase();
         const token = normalizeNonEmptyString(payload?.token);
 
-        if (!uid || !email || !token) {
+        if (!email || !token) {
           return res.status(400).json({ error: 'Missing unsubscribe parameters.' });
         }
 
@@ -10881,30 +11042,70 @@ exports.apiProxy = onRequest(
           return res.status(401).json({ error: 'This unsubscribe link is invalid or has expired.' });
         }
 
-        const userRef = getDb().collection('users').doc(uid);
-        const userSnap = await userRef.get();
-        if (!userSnap.exists) {
+        if (uid) {
+          const userRef = getDb().collection('users').doc(uid);
+          const userSnap = await userRef.get();
+          if (!userSnap.exists) {
+            return res.status(404).json({ error: 'Subscriber not found.' });
+          }
+
+          const userData = userSnap.data() || {};
+          const storedEmail = normalizeNonEmptyString(userData.email).toLowerCase();
+          if (!storedEmail || storedEmail !== email) {
+            return res.status(404).json({ error: 'Subscriber not found.' });
+          }
+
+          if (req.method === 'GET') {
+            return res.status(200).json({
+              email,
+              displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+              scope,
+              emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+            });
+          }
+
+          await userRef.set(
+            {
+              emailNotificationsEnabled: false,
+              emailOptOutAt: admin.firestore.FieldValue.serverTimestamp(),
+              emailOptOutSource: 'unsubscribe_link',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          return res.status(200).json({
+            success: true,
+            email,
+            scope,
+            emailNotificationsEnabled: false,
+          });
+        }
+
+        const recipientRef = getEmailPreferenceRecipientRef(email);
+        if (!recipientRef) {
           return res.status(404).json({ error: 'Subscriber not found.' });
         }
 
-        const userData = userSnap.data() || {};
-        const storedEmail = normalizeNonEmptyString(userData.email).toLowerCase();
-        if (!storedEmail || storedEmail !== email) {
-          return res.status(404).json({ error: 'Subscriber not found.' });
-        }
+        const recipientSnap = await recipientRef.get();
+        const recipientData = recipientSnap.exists ? (recipientSnap.data() || {}) : {};
 
         if (req.method === 'GET') {
           return res.status(200).json({
             email,
-            displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+            displayName: normalizeNonEmptyString(recipientData.displayName, email),
             scope,
-            emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+            emailNotificationsEnabled: recipientData.emailNotificationsEnabled !== false,
           });
         }
 
-        await userRef.set(
+        await recipientRef.set(
           {
+            email,
+            emailHash: sha256Hex(email),
             emailNotificationsEnabled: false,
+            scope,
+            displayName: normalizeNonEmptyString(recipientData.displayName),
             emailOptOutAt: admin.firestore.FieldValue.serverTimestamp(),
             emailOptOutSource: 'unsubscribe_link',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -11284,6 +11485,8 @@ exports.apiProxy = onRequest(
         }
 
         const priceId = await resolveStripePriceIdForPlan(stripe, plan);
+        const shouldApplyTrial = !accountIsActive && !summary.planId;
+        const trialEnd = shouldApplyTrial ? buildTrialEndForPlan(plan.id) : null;
 
         logger.info('create-account-checkout-session: creating Stripe checkout session', {
           uid,
@@ -11324,6 +11527,7 @@ exports.apiProxy = onRequest(
           },
           subscription_data: {
             description: getPlanInvoiceDisplayName(plan.id),
+            ...(trialEnd ? { trial_end: trialEnd } : {}),
             metadata: {
               userUid: uid,
               planId: plan.id,
@@ -12010,9 +12214,9 @@ exports.apiProxy = onRequest(
 
         if (!isAdminActor && sellerEntitlement.listingCap > 0) {
           const activeListingCount = await countSellerListingsForCapacity(requestedSellerUid);
-          if (activeListingCount >= sellerEntitlement.listingCap) {
+          if (!isUnlimitedListingCap(sellerEntitlement.listingCap) && activeListingCount >= sellerEntitlement.listingCap) {
             return res.status(409).json({
-              error: `This account includes up to ${sellerEntitlement.listingCap} active ${sellerEntitlement.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+              error: getActiveListingCapMessage('This account', sellerEntitlement.listingCap),
             });
           }
         }
@@ -13043,7 +13247,7 @@ exports.apiProxy = onRequest(
           const seatContext = await getManagedAccountSeatContext(ownerUid);
           if (seatContext.seatLimit < 1) {
             return res.status(403).json({
-              error: 'An active Dealer or Fleet Dealer subscription is required before adding managed accounts.',
+              error: 'An active Dealer or Pro Dealer subscription is required before adding managed accounts.',
             });
           }
           if (seatContext.seatCount >= seatContext.seatLimit) {

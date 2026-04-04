@@ -19,6 +19,7 @@ import {
   hasAdminPublishingAccess,
   rememberSellerReturnTo,
 } from '../utils/sellerAccess';
+import { getActiveListingCapMessage, isUnlimitedListingCap } from '../utils/listingCaps';
 const SUPPORTED_PLANS = new Set<ListingPlanId>(['individual_seller', 'dealer', 'fleet_dealer']);
 
 export function Sell() {
@@ -227,8 +228,8 @@ export function Sell() {
       }
       if (!adminCanPublishWithoutPayment && activeListingCap && user?.uid) {
         const activeListingUsage = await equipmentService.getSellerListingUsage(user.uid);
-        if (activeListingUsage >= activeListingCap) {
-          throw new Error(`Your account includes up to ${activeListingCap} active ${activeListingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`);
+        if (!isUnlimitedListingCap(activeListingCap) && activeListingUsage >= activeListingCap) {
+          throw new Error(getActiveListingCapMessage('Your account', activeListingCap));
         }
       }
       const { id: _stripId, ...createPayload } = formData as any;

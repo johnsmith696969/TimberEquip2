@@ -30,6 +30,7 @@ import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { type Inquiry, type Listing, type Seller } from '../types';
 import { buildListingPath } from '../utils/listingPath';
+import { getListingCapDisplayLabel } from '../utils/listingCaps';
 import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap, getManagedListingCap } from '../utils/sellerAccess';
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
@@ -229,10 +230,8 @@ export function DealerOS() {
   const finiteListingCap = getManagedListingCap(user);
   const remainingListingSlots = finiteListingCap === null ? null : Math.max(finiteListingCap - activeListings.length, 0);
   const listingAllowanceText = finiteListingCap !== null
-    ? `${finiteListingCap} managed listings • ${remainingListingSlots} remaining`
-    : user?.role === 'pro_dealer'
-      ? '150 managed listings'
-      : '50 managed listings';
+    ? `${getListingCapDisplayLabel(finiteListingCap, 'managed listing', 'managed listings')} - ${remainingListingSlots} remaining`
+    : 'Unlimited managed listings';
   const featuredListings = useMemo(
     () => activeListings.filter((listing) => !!listing.featured),
     [activeListings]

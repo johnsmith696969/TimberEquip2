@@ -1,4 +1,5 @@
 import { Listing, Seller } from '../types';
+import { REGION_ABBREVIATIONS } from '../constants/storefrontRegions';
 import { isDealerSellerRole } from './roleScopes';
 
 export const MARKET_ROUTE_LABELS = {
@@ -79,11 +80,42 @@ export function getStateFromLocation(location?: string): string {
     .map((segment) => segment.trim())
     .filter(Boolean);
 
-  if (parts.length > 1) {
+  if (parts.length >= 3) {
     return parts[parts.length - 2];
   }
 
+  if (parts.length === 2) {
+    return parts[1];
+  }
+
   return parts[0] || '';
+}
+
+export function getListingStateName(listing: Pick<Listing, 'location' | 'state' | 'city'>): string {
+  const explicitState = String(listing.state || '').trim();
+  const locationParts = String(listing.location || '')
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const cityCandidate = String(listing.city || '').trim() || (locationParts.length >= 2 ? locationParts[0] : '');
+
+  if (explicitState) {
+    const expandedExplicitState = REGION_ABBREVIATIONS[explicitState.toUpperCase()] || explicitState;
+    if (!cityCandidate || expandedExplicitState.toLowerCase() !== cityCandidate.toLowerCase()) {
+      return expandedExplicitState;
+    }
+  }
+
+  const parsedState = getStateFromLocation(listing.location);
+  if (!parsedState) {
+    return '';
+  }
+
+  if (cityCandidate && parsedState.toLowerCase() === cityCandidate.toLowerCase()) {
+    return '';
+  }
+
+  return REGION_ABBREVIATIONS[parsedState.toUpperCase()] || parsedState;
 }
 
 export function buildCategoryPath(category: string): string {

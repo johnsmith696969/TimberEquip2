@@ -3,7 +3,7 @@ import path from 'path';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { templates } = require('../functions/email-templates/index.js');
+const { templates, withEmailPreferenceFooter } = require('../functions/email-templates/index.js');
 
 const SENDGRID_API_KEY = String(process.env.SENDGRID_API_KEY || '').trim();
 const SENDGRID_AUTH_HEADER = String(process.env.SENDGRID_AUTH_HEADER || '').trim();
@@ -36,6 +36,7 @@ function buildSharedTemplateData() {
   listingTitle: token('listingTitle'),
   listingUrl: token('listingUrl'),
   message: token('message'),
+  unsubscribeUrl: token('unsubscribeUrl'),
   displayName: token('displayName'),
   verificationLink: token('verificationLink'),
   intro: token('intro'),
@@ -281,6 +282,16 @@ function buildTemplateSpecs() {
   ];
 }
 
+function renderTemplateWithFooter(spec) {
+  const rendered = spec.render();
+  return {
+    ...rendered,
+    html: withEmailPreferenceFooter(rendered.html, {
+      unsubscribeUrl: token('unsubscribeUrl'),
+    }),
+  };
+}
+
 function htmlToPlainText(html) {
   return String(html || '')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -366,7 +377,7 @@ async function main() {
   const results = [];
 
   for (const spec of TEMPLATE_SPECS) {
-    const rendered = spec.render();
+    const rendered = renderTemplateWithFooter(spec);
     let template = byName.get(spec.name);
     let action = 'updated';
 
@@ -417,7 +428,7 @@ async function main() {
 
 if (process.env.PRINT_SENDGRID_TEMPLATE_SPECS === '1') {
   const printable = buildTemplateSpecs().map((spec) => {
-    const rendered = spec.render();
+    const rendered = renderTemplateWithFooter(spec);
     return {
       key: spec.key,
       name: spec.name,

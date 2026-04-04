@@ -33,7 +33,8 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { normalizeSeoSlug, buildManufacturerPath, buildStateMarketPath, getStateFromLocation, getListingManufacturer, CANONICAL_MARKET_ROUTE_KEY } from '../utils/seoRoutes';
+import { normalizeSeoSlug, buildManufacturerPath, buildStateMarketPath, getStateFromLocation, getListingManufacturer, getListingStateName, CANONICAL_MARKET_ROUTE_KEY } from '../utils/seoRoutes';
+import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   LoggingEquipmentIcon,
   LandClearingEquipmentIcon,
@@ -117,6 +118,43 @@ const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentSer
     return acc;
   }, {});
 
+type HomeStateSummary = {
+  name: string;
+  count: number;
+  topManufacturer: string;
+};
+
+const buildHomeStateSummaries = (listings: Listing[]): HomeStateSummary[] => {
+  const stateMap = new Map<string, { count: number; manufacturers: Map<string, number> }>();
+
+  listings.forEach((listing) => {
+    const state = getListingStateName(listing);
+    if (!state) return;
+
+    const manufacturer = getListingManufacturer(listing);
+    const existing = stateMap.get(state) || {
+      count: 0,
+      manufacturers: new Map<string, number>(),
+    };
+
+    existing.count += 1;
+    if (manufacturer) {
+      existing.manufacturers.set(manufacturer, (existing.manufacturers.get(manufacturer) || 0) + 1);
+    }
+
+    stateMap.set(state, existing);
+  });
+
+  return [...stateMap.entries()]
+    .map(([name, value]) => ({
+      name,
+      count: value.count,
+      topManufacturer: [...value.manufacturers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Mixed Inventory',
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 8);
+};
+
 export function Home() {
   const location = useLocation();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
@@ -126,6 +164,7 @@ export function Home() {
   const prefersReducedMotion = useReducedMotion();
   const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
   const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
+  const [stateSummaries, setStateSummaries] = useState<HomeStateSummary[]>([]);
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
   const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildTopLevelMetricMap(cachedMarketplaceData));
   const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
@@ -140,9 +179,12 @@ export function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [marketplaceData, listings] = await Promise.all([
+        const [marketplaceData, inventory] = await Promise.all([
           equipmentService.getHomeMarketplaceData(),
-          equipmentService.getListings(),
+          equipmentService.getListings().catch((error) => {
+            console.warn('State market preview on home page is temporarily unavailable:', error);
+            return [] as Listing[];
+          }),
         ]);
 
         setFeaturedListings(marketplaceData.featuredListings);
@@ -150,7 +192,8 @@ export function Home() {
         setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
         setTopLevelCategoryMetrics(buildTopLevelMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
-        setAllListings(listings);
+        setAllListings(inventory);
+        setStateSummaries(buildHomeStateSummaries(inventory));
       } catch (error) {
         console.error('Error fetching home data:', error);
       }
@@ -339,7 +382,8 @@ export function Home() {
             { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
             { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
             { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Markets By State', url: 'https://timberequip.com/states' },
+            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
           ],
         },
       ],
@@ -513,7 +557,7 @@ export function Home() {
                 <Link
                   key={i}
                   to={cat.searchPath}
-                  className="group bg-bg border border-line p-8 flex flex-col text-left hover:border-ink transition-all duration-300"
+                  className="group bg-bg border border-line rounded-sm p-8 flex flex-col text-left shadow-[var(--shadow-card)] hover:border-ink hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] transition-all duration-300"
                 >
                   <div className={`w-24 h-24 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
                     <cat.icon size={48} />
@@ -534,7 +578,7 @@ export function Home() {
               ))}
             </div>
 
-            <div className="mt-10 bg-bg border border-line p-6 md:p-8">
+            <div className="mt-10 bg-bg border border-line rounded-sm p-6 md:p-8 shadow-[var(--shadow-card)]">
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
                 <div>
                   <span className="label-micro text-accent mb-2 block">Category Selector</span>
@@ -659,7 +703,7 @@ export function Home() {
               {visibleCards.map((card) => (
                 <div
                   key={card.key}
-                  className="bg-surface p-8 border border-line flex flex-col"
+                  className="bg-surface p-8 border border-line rounded-sm flex flex-col shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-lift)] transition-shadow duration-300"
                 >
                   <div className="flex justify-between items-start mb-12">
                     <div className={`p-3 rounded-sm ${card.iconClass}`}>
