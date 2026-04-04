@@ -960,6 +960,20 @@ function parseGooglePlaceDetails(result, placeId = '') {
   };
 }
 
+function decodeAutocompleteFallbackAddress(placeId) {
+  const normalizedPlaceId = normalizeNonEmptyString(placeId);
+  if (!normalizedPlaceId.startsWith('geocode:')) return '';
+
+  const encoded = normalizedPlaceId.slice('geocode:'.length);
+  if (!encoded) return '';
+
+  try {
+    return normalizeNonEmptyString(Buffer.from(encoded, 'base64url').toString('utf8'));
+  } catch {
+    return '';
+  }
+}
+
 function normalizeStringArray(value, maxItems = 50, maxLength = 120) {
   if (!Array.isArray(value)) return [];
   const normalized = value
@@ -12352,12 +12366,36 @@ exports.apiProxy = onRequest(
             `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
           );
           const placesData = await placesRes.json();
-          const predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
+          let predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
             description: p.description,
             placeId: p.place_id,
             mainText: normalizeNonEmptyString(p?.structured_formatting?.main_text),
             secondaryText: normalizeNonEmptyString(p?.structured_formatting?.secondary_text),
           }));
+
+          if (!predictions.length && mode === 'address') {
+            const geocodeResponse = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(input)}&key=${encodeURIComponent(apiKey)}`
+            );
+            if (geocodeResponse.ok) {
+              const geocodePayload = await geocodeResponse.json();
+              const topResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+              if (geocodePayload?.status === 'OK' && topResult) {
+                const geocodedPlace = parseGooglePlaceDetails(topResult, normalizeNonEmptyString(topResult.place_id));
+                const placeId =
+                  geocodedPlace.placeId ||
+                  `geocode:${Buffer.from(geocodedPlace.formattedAddress || input, 'utf8').toString('base64url')}`;
+                predictions = [
+                  {
+                    description: geocodedPlace.formattedAddress || input,
+                    placeId,
+                    mainText: geocodedPlace.street1 || geocodedPlace.formattedAddress || input,
+                    secondaryText: [geocodedPlace.city, geocodedPlace.state, geocodedPlace.country].filter(Boolean).join(', '),
+                  },
+                ];
+              }
+            }
+          }
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ predictions });
         } catch {
@@ -12371,6 +12409,22 @@ exports.apiProxy = onRequest(
         const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
         if (!apiKey) return res.status(200).json({ place: null });
         try {
+          const fallbackAddress = decodeAutocompleteFallbackAddress(placeId);
+          if (fallbackAddress) {
+            const geocodeResponse = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fallbackAddress)}&key=${encodeURIComponent(apiKey)}`
+            );
+            if (geocodeResponse.ok) {
+              const geocodePayload = await geocodeResponse.json();
+              const geocodeResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+              if (geocodePayload?.status === 'OK' && geocodeResult) {
+                const geocodedPlace = parseGooglePlaceDetails(geocodeResult, placeId);
+                res.set('Cache-Control', 'public, max-age=300');
+                return res.status(200).json({ place: geocodedPlace });
+              }
+            }
+          }
+
           const placeDetailsRes = await fetch(
             `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
           );

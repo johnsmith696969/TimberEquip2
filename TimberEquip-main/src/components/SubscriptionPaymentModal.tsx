@@ -174,25 +174,26 @@ export function SubscriptionPaymentModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={prefersReducedMotion ? { duration: 0 } : undefined}
-          className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
-          onClick={handleClose}
-        >
+        <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
+            className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
+            onClick={handleClose}
+          />
           <motion.div
             ref={trapRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="subscription-dialog-title"
-            initial={{ scale: 0.95, opacity: 0, y: 8 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18 }}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             onClick={(event) => event.stopPropagation()}
-            className="my-8 w-full max-w-2xl rounded-sm border border-line bg-surface shadow-2xl"
+            className="relative z-10 my-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-sm border border-line bg-surface shadow-2xl"
           >
             <div className="flex items-start justify-between bg-ink p-6 text-white">
               <div>
@@ -357,7 +358,7 @@ export function SubscriptionPaymentModal({
               </div>
             </div>
           </motion.div>
-        </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

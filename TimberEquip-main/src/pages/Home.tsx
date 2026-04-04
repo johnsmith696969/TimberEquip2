@@ -391,6 +391,139 @@ export function Home() {
     []
   );
 
+  const marketIntelligenceSection = (
+    <section className="bg-bg px-4 py-24 md:px-8">
+      <div className="mx-auto max-w-[1600px]">
+        <div className="mb-16 flex flex-col justify-between md:flex-row md:items-end">
+          <div className="max-w-2xl">
+            <span className="label-micro mb-4 block text-accent">{t('home.marketData', 'Market Data')}</span>
+            <h2 className="mb-6 text-4xl font-black uppercase tracking-tighter leading-none md:text-5xl">
+              {t('home.analyticsTitleLine1', 'Real-Time')} <br />
+              <span className="text-muted">{t('home.analyticsTitleLine2', 'Equipment Analytics')}</span>
+            </h2>
+            <p className="font-medium text-muted">
+              {t('home.analyticsDescription', 'See average market values, recent price changes, and listing counts across every equipment category.')}
+            </p>
+          </div>
+          <div className="mt-8 flex items-center space-x-3 md:mt-0">
+            {marketCards.length > 3 && (
+              <>
+                <button
+                  aria-label="Previous"
+                  onClick={() => setCarouselIndex((prev) => (prev - 1 + marketCards.length) % marketCards.length)}
+                  className="btn-industrial p-2"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-[10px] font-bold uppercase tracking-widest tabular-nums text-muted">
+                  {carouselIndex + 1} / {marketCards.length}
+                </span>
+                <button
+                  aria-label="Next"
+                  onClick={() => setCarouselIndex((prev) => (prev + 1) % marketCards.length)}
+                  className="btn-industrial p-2"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </>
+            )}
+            <Link to="/blog" className="btn-industrial">
+              {t('home.accessReports', 'Access Reports')}
+              <ChevronRight className="ml-2" size={14} />
+            </Link>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={carouselIndex}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25 }}
+            className="grid grid-cols-1 gap-1 md:grid-cols-3"
+            style={{ touchAction: 'pan-y' }}
+            onPointerDown={(e) => {
+              swipeRef.current = { startX: e.clientX, swiping: true };
+            }}
+            onPointerMove={(e) => {
+              void e;
+            }}
+            onPointerUp={(e) => {
+              if (!swipeRef.current.swiping) return;
+              const delta = e.clientX - swipeRef.current.startX;
+              swipeRef.current.swiping = false;
+              if (delta < -50) {
+                setCarouselIndex((prev) => (prev + 1) % marketCards.length);
+              } else if (delta > 50) {
+                setCarouselIndex((prev) => (prev - 1 + marketCards.length) % marketCards.length);
+              }
+            }}
+            onPointerCancel={() => {
+              swipeRef.current.swiping = false;
+            }}
+          >
+            {visibleCards.map((card) => (
+              <div
+                key={card.key}
+                className="flex flex-col rounded-sm border border-line bg-surface p-8 shadow-[var(--shadow-card)] transition-shadow duration-300 hover:shadow-[var(--shadow-lift)]"
+              >
+                <div className="mb-12 flex items-start justify-between">
+                  <div className={`rounded-sm p-3 ${card.iconClass}`}>
+                    <card.icon size={24} />
+                  </div>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${card.badgeClass}`}>
+                    {card.badge}
+                  </span>
+                </div>
+                <h3 className="mb-2 text-sm font-black uppercase">{card.title}</h3>
+                <p className="mb-8 flex-1 text-xs text-muted">{card.description}</p>
+                <div className="flex items-end justify-between">
+                  <div className="flex items-end space-x-1">
+                    <span className="text-3xl font-black tracking-tighter">{card.value}</span>
+                    <span className="mb-1.5 text-[10px] font-bold uppercase text-muted">{card.unit}</span>
+                  </div>
+                  {card.linkCategory && (
+                    <Link
+                      to={`/search?subcategory=${encodeURIComponent(card.linkCategory)}`}
+                      className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline"
+                    >
+                      {t('home.view', 'View')} →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        </AnimatePresence>
+
+        {marketCards.length > 3 && (
+          <div className="mt-4 flex items-center justify-center space-x-2 text-muted animate-pulse md:hidden">
+            <ChevronLeft size={12} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Swipe to explore</span>
+            <ChevronRight size={12} />
+          </div>
+        )}
+
+        {marketCards.length > 3 && (
+          <div className="mt-4 flex justify-center space-x-1.5">
+            {marketCards.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCarouselIndex(i)}
+                aria-label={`Go to card ${i + 1}`}
+                className={`h-3 w-3 touch-manipulation rounded-full transition-colors ${
+                  i === carouselIndex ? 'bg-accent' : 'bg-line hover:bg-muted'
+                }`}
+                style={{ minWidth: 44, minHeight: 44, padding: 16, margin: -14, backgroundClip: 'content-box' }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
   return (
     <div className="flex flex-col">
       <Seo
@@ -559,8 +692,8 @@ export function Home() {
                   to={cat.searchPath}
                   className="group bg-bg border border-line rounded-sm p-8 flex flex-col text-left shadow-[var(--shadow-card)] hover:border-ink hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] transition-all duration-300"
                 >
-                  <div className={`w-24 h-24 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
-                    <cat.icon size={48} />
+                  <div className={`mb-6 flex h-24 w-24 items-center justify-center rounded-sm ${cat.color} transition-transform group-hover:scale-110`}>
+                    <cat.icon size={44} className="max-h-[56px] max-w-[56px]" />
                   </div>
                   <h4 className="text-sm font-black uppercase tracking-widest mb-3">{cat.name}</h4>
                   <p className="text-xs text-muted font-medium leading-relaxed mb-6 flex-1">{cat.description}</p>
@@ -624,7 +757,7 @@ export function Home() {
           </div>
         </section>
 
-        {/* Market Intelligence Section */}
+        {false ? (
         <section className="py-24 bg-bg px-4 md:px-8">
           <div className="max-w-[1600px] mx-auto">
             <div className="flex flex-col md:flex-row justify-between items-end mb-16">
@@ -761,6 +894,7 @@ export function Home() {
             )}
           </div>
         </section>
+        ) : null}
 
       {/* Featured Listings */}
       <section className="py-24 bg-bg px-4 md:px-8">
@@ -808,7 +942,7 @@ export function Home() {
                 value={mfgSearch}
                 onChange={(e) => setMfgSearch(e.target.value)}
                 placeholder="Search by make..."
-                className="w-full pl-10 pr-4 py-3 bg-bg border border-line text-ink text-xs font-bold uppercase tracking-widest placeholder:text-muted focus:outline-none focus:border-accent"
+                className="w-full bg-bg border border-line py-3 pl-12 pr-4 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted focus:outline-none focus:border-accent"
               />
             </div>
           </div>
@@ -882,6 +1016,8 @@ export function Home() {
           </div>
         </section>
       )}
+
+      {marketIntelligenceSection}
 
       {/* Financing CTA */}
       <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">

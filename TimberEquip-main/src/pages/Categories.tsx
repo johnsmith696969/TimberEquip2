@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Truck, Settings, Activity,
+  Truck, Settings, Activity, Layers3,
   ArrowRight
 } from 'lucide-react';
 import { useLocale } from '../components/LocaleContext';
@@ -164,13 +164,16 @@ export function Categories() {
       {/* Header */}
       <ImageHero imageSrc="/page-photos/bagged-firewood.webp" imageAlt="Bagged firewood stacks">
         <div>
-          <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
+          <div className="flex items-center gap-3 mb-4">
+            <Layers3 size={20} className="text-accent" />
+            <span className="label-micro text-accent">Equipment Classification</span>
+          </div>
           <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Equipment <br />
             <span className={heroSecondaryClass}>Categories</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            Find the right machine by category. Every listing includes specs, photos, and pricing.
+            Shop by equipment type first. Compare skidders, forwarders, chippers, trailers, and more with live pricing, specs, and photos in one place.
           </p>
         </div>
       </ImageHero>

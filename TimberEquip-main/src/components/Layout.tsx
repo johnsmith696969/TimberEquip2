@@ -54,6 +54,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFloatingQuickSearch, setShowFloatingQuickSearch] = useState(false);
 
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
   const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
@@ -105,6 +106,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setHeaderLogoSrc(headerLogo);
   }, [headerLogo]);
+
+  useEffect(() => {
+    let ticking = false;
+
+    const updateFloatingQuickSearch = () => {
+      const nextVisible = window.scrollY > 350;
+      setShowFloatingQuickSearch((current) => (current === nextVisible ? current : nextVisible));
+      ticking = false;
+    };
+
+    const handleViewportChange = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(updateFloatingQuickSearch);
+    };
+
+    updateFloatingQuickSearch();
+    window.addEventListener('scroll', handleViewportChange, { passive: true });
+    window.addEventListener('resize', handleViewportChange);
+
+    return () => {
+      window.removeEventListener('scroll', handleViewportChange);
+      window.removeEventListener('resize', handleViewportChange);
+    };
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -368,9 +394,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Persistent Quick Search Bar */}
-      <div className="sticky top-0 z-40 bg-bg border-b border-line py-2 px-4 md:px-8">
+      <div className={`border-b border-line py-2 px-4 shadow-none transition-all duration-200 ease-out md:px-8 ${showFloatingQuickSearch ? 'fixed inset-x-0 top-0 z-[var(--z-sticky)] bg-bg/95 backdrop-blur-md' : 'relative bg-bg'}`}>
         <div className="max-w-[900px] mx-auto flex items-center">
-          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
+          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm shadow-none outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
             <input
               type="text"
               placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
@@ -382,7 +408,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="submit"
               aria-label="Search"
-              className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 outline-none ring-0 focus:outline-none focus:ring-0"
+              className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
             >
               <Search size={16} />
             </button>

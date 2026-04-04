@@ -483,13 +483,13 @@ export function AuctionDetail() {
             <div className="flex flex-col sm:flex-row gap-3">
               {/* Search */}
               <div className="relative">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search lots..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-4 py-2 bg-surface border border-line text-sm font-medium focus:border-accent focus:outline-none w-48 placeholder:text-muted"
+                  className="w-48 bg-surface border border-line py-2 pl-11 pr-4 text-sm font-medium placeholder:text-muted focus:border-accent focus:outline-none"
                 />
               </div>
               {/* Category filter */}

@@ -32,13 +32,22 @@ function daysAgo(dateStr: string | { toDate?: () => Date } | undefined, days: nu
 export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, subscriptions, overviewTotalViews, overviewActiveSubscriptions }: Props) {
   // ── Listing metrics ─────────────────────────────────────────────
   const totalListings     = listings.length;
-  const activeListings    = listings.filter(l => l.status === 'active' || !l.status).length;
+  const activeListings    = listings.filter((listing) => (
+    listing.status === 'active'
+    || (!listing.status && listing.approvalStatus === 'approved' && ['paid', 'waived'].includes(String(listing.paymentStatus || '').toLowerCase()))
+  )).length;
   const soldListings      = listings.filter(l => l.status === 'sold').length;
-  const pendingListings   = listings.filter(l => l.approvalStatus === 'pending').length;
+  const pendingListings   = listings.filter((listing) => (
+    listing.approvalStatus === 'pending'
+    || (String(listing.status || '').toLowerCase() === 'pending' && String(listing.approvalStatus || '').toLowerCase() !== 'rejected')
+  )).length;
   const newListings30d    = listings.filter(l => daysAgo(l.createdAt, 30)).length;
   const newListings7d     = listings.filter(l => daysAgo(l.createdAt, 7)).length;
   const totalViews        = overviewTotalViews ?? listings.reduce((s, l) => s + (l.views || 0), 0);
-  const activeOnly        = listings.filter(l => l.status === 'active' || !l.status);
+  const activeOnly        = listings.filter((listing) => (
+    listing.status === 'active'
+    || (!listing.status && listing.approvalStatus === 'approved' && ['paid', 'waived'].includes(String(listing.paymentStatus || '').toLowerCase()))
+  ));
   const totalValue        = activeOnly.reduce((s, l) => s + (l.price || 0), 0);
   const avgPrice          = activeOnly.length > 0 ? Math.round(totalValue / activeOnly.length) : 0;
   const maxPrice          = activeOnly.reduce((max, l) => Math.max(max, l.price || 0), 0);

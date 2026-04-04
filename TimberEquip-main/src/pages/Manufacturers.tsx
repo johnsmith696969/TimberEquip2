@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Layers3, MapPin } from 'lucide-react';
+import { ArrowRight, Layers3, MapPin, Settings } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -151,13 +151,16 @@ export function Manufacturers() {
 
       <ImageHero imageSrc="/page-photos/john-deere-harvester.webp" imageAlt="Forestry harvester in the field">
         <div>
-          <span className="label-micro text-accent mb-4 block">Manufacturer Directory</span>
+          <div className="flex items-center gap-3 mb-4">
+            <Settings size={20} className="text-accent" />
+            <span className="label-micro text-accent">Manufacturer Directory</span>
+          </div>
           <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Equipment <br />
             <span className={heroSecondaryClass}>Manufacturers</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            Browse the brands powering the marketplace. Open a manufacturer route to see live listings, related machine categories, and the regions where inventory is currently available.
+            Start with the brands buyers trust most. Open a manufacturer page to see who has that make in stock, what machine types are available, and where inventory is showing up right now.
           </p>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             <div className="border border-line bg-bg/90 p-5 backdrop-blur-sm">
@@ -183,7 +186,7 @@ export function Manufacturers() {
               <span className="label-micro text-accent mb-3 block">Route Index</span>
               <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight text-ink">Browse Brands With Live Inventory</h2>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-relaxed text-muted">
-                These manufacturer routes are React-owned marketplace pages. They link buyers into the brand, model, and category inventory paths that are already live inside the app.
+                Use these brand pages to compare current market availability, jump into matching machine categories, and find nearby inventory without digging through the full search first.
               </p>
             </div>
             <Link to="/search" className="btn-industrial btn-accent py-4 px-6 w-full md:w-auto text-center">
@@ -218,7 +221,7 @@ export function Manufacturers() {
               >
                 <div className="flex items-start justify-between gap-4 mb-6">
                   <div className="flex h-14 w-14 items-center justify-center rounded-sm bg-accent/10 text-accent">
-                    <Building2 size={26} />
+                    <Settings size={26} />
                   </div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-accent">
                     {formatNumber.format(manufacturer.count)} Listings

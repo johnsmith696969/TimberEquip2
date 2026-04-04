@@ -9,6 +9,7 @@ import {
 import { motion } from 'framer-motion';
 import { AlertMessage } from '../components/AlertMessage';
 import { useAuth } from '../components/AuthContext';
+import { useTheme } from '../components/ThemeContext';
 import { Seo } from '../components/Seo';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
@@ -53,6 +54,7 @@ const ACCOUNT_OPTIONS: Array<{
 ];
 
 export function Register() {
+  const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -77,6 +79,14 @@ export function Register() {
   const postRegistrationHref = postRegistrationPath.startsWith('/sell')
     ? appendReturnToParam(postRegistrationPath, requestedReturnTo)
     : postRegistrationPath;
+  const isDuskMode = theme === 'dark';
+  const registerHeaderClasses = isDuskMode
+    ? 'bg-ink text-white border-b border-white/10'
+    : 'bg-surface text-ink border-b border-line';
+  const registerHeaderHeadlineClasses = isDuskMode ? 'text-white' : 'text-ink';
+  const registerHeaderIconClasses = isDuskMode
+    ? 'w-16 h-16 bg-accent flex items-center justify-center rounded-sm text-white shadow-[0_16px_45px_rgba(22,163,74,0.3)]'
+    : 'w-16 h-16 bg-accent/10 border border-accent/20 flex items-center justify-center rounded-sm text-accent shadow-sm';
 
   const handleNext = () => setStep(prev => prev + 1);
 
@@ -159,13 +169,15 @@ export function Register() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl bg-bg border border-line shadow-2xl relative z-10"
       >
-        <div className="bg-ink text-white p-12 flex justify-between items-center">
+        <div className={`${registerHeaderClasses} p-12 flex justify-between items-center`}>
           <div className="flex flex-col">
             <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Account Registration</span>
-            <h1 className="text-4xl font-black tracking-tighter uppercase leading-none text-white">New <br /> <span className="text-accent">Operator</span></h1>
+            <h1 className={`text-4xl font-black tracking-tighter uppercase leading-none ${registerHeaderHeadlineClasses}`}>
+              Create <br /> <span className="text-accent">Account</span>
+            </h1>
           </div>
-          <div className="w-16 h-16 bg-accent flex items-center justify-center rounded-sm">
-            <UserPlus className="text-white" size={32} />
+          <div className={registerHeaderIconClasses}>
+            <UserPlus size={32} />
           </div>
         </div>
 

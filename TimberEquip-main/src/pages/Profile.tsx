@@ -2742,12 +2742,12 @@ export function Profile() {
               type="button"
               onClick={() => openAssetPicker('avatar')}
               disabled={isUploadingAvatar}
-              className="w-24 h-24 bg-surface border border-line rounded-sm overflow-hidden flex items-center justify-center transition hover:border-accent disabled:opacity-60"
+              className="w-24 h-24 bg-accent/10 border border-accent/20 rounded-sm overflow-hidden flex items-center justify-center shadow-sm transition hover:border-accent disabled:opacity-60"
             >
               {settingsForm.photoURL ? (
                 <img src={settingsForm.photoURL} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <User size={30} className="text-muted" />
+                <User size={30} className="text-accent" />
               )}
             </button>
             <input
@@ -3225,7 +3225,7 @@ export function Profile() {
 
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
           <div className="flex items-center space-x-4 md:space-x-8 min-w-0">
-            <div className="w-24 h-24 bg-ink flex items-center justify-center rounded-sm border border-line overflow-hidden">
+            <div className="w-24 h-24 bg-accent/10 border border-accent/20 shadow-sm flex items-center justify-center rounded-sm overflow-hidden">
               {profilePhotoPreview ? (
                 <img src={profilePhotoPreview} alt={user?.displayName || 'Profile'} className="w-full h-full object-cover" />
               ) : (
