@@ -2987,6 +2987,117 @@ async function resolvePublicDealer(identity) {
   };
 }
 
+function serializeDealerDirectoryEntry(snapshotId, data = {}) {
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
+  if (!isDealerSellerRole(rawRole) || isPrivilegedStorefrontRecord({ role: rawRole })) {
+    return null;
+  }
+
+  const listingCount = toFiniteNumberOrUndefined(data.listingCount ?? data.totalListings) || 0;
+
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+    type: 'Dealer',
+    role: normalizeNonEmptyString(data.role, 'dealer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug, snapshotId),
+    businessName: normalizeNonEmptyString(data.businessName || data.company),
+    location: normalizeNonEmptyString(data.location, 'Location available on storefront'),
+    street1: normalizeNonEmptyString(data.street1),
+    street2: normalizeNonEmptyString(data.street2),
+    city: normalizeNonEmptyString(data.city),
+    state: normalizeNonEmptyString(data.state),
+    county: normalizeNonEmptyString(data.county),
+    postalCode: normalizeNonEmptyString(data.postalCode),
+    country: normalizeNonEmptyString(data.country),
+    latitude: toFiniteNumberOrUndefined(data.latitude),
+    longitude: toFiniteNumberOrUndefined(data.longitude),
+    phone: normalizeNonEmptyString(data.phone || data.phoneNumber),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.logo || data.storefrontLogoUrl || data.photoURL),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
+    serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(data.servicesOfferedSubcategories, 120, 120),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
+    rating: 5,
+    totalListings: listingCount,
+    memberSince: timestampValueToIso(data.createdAtIso || data.createdAt) || new Date().toISOString(),
+    verified: Boolean(data.verified === true || isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified))),
+    manuallyVerified: Boolean(data.manuallyVerified),
+  };
+}
+
+function sortDealerDirectoryEntries(dealers) {
+  const rolePriority = (role) => normalizeNonEmptyString(role).toLowerCase() === 'pro_dealer' ? 0 : 1;
+
+  return [...dealers].sort((left, right) => {
+    const verifiedDelta = Number(Boolean(right.verified)) - Number(Boolean(left.verified));
+    if (verifiedDelta !== 0) return verifiedDelta;
+
+    const roleDelta = rolePriority(left.role) - rolePriority(right.role);
+    if (roleDelta !== 0) return roleDelta;
+
+    const listingDelta = Number(right.totalListings || 0) - Number(left.totalListings || 0);
+    if (listingDelta !== 0) return listingDelta;
+
+    return normalizeNonEmptyString(left.storefrontName || left.name).localeCompare(
+      normalizeNonEmptyString(right.storefrontName || right.name)
+    );
+  });
+}
+
+async function getPublicDealerDirectoryEntries() {
+  const db = getDb();
+  const dealers = [];
+
+  const publicDealerSnapshot = await db.collection('publicDealers').get();
+  publicDealerSnapshot.docs.forEach((docSnap) => {
+    const dealer = serializeDealerDirectoryEntry(docSnap.id, docSnap.data() || {});
+    if (dealer) {
+      dealers.push(dealer);
+    }
+  });
+
+  if (dealers.length > 0) {
+    return sortDealerDirectoryEntries(dealers);
+  }
+
+  const [storefrontSnapshot, userSnapshot] = await Promise.all([
+    db.collection('storefronts').where('role', 'in', ['dealer', 'pro_dealer']).get(),
+    db.collection('users').where('role', 'in', ['dealer', 'pro_dealer']).get(),
+  ]);
+
+  const seen = new Set();
+  storefrontSnapshot.docs.forEach((docSnap) => {
+    const dealer = serializeSellerPayloadFromStorefront(docSnap.id, docSnap.data() || {});
+    if (dealer && isDealerSellerRole(dealer.role)) {
+      dealers.push(dealer);
+      seen.add(docSnap.id);
+    }
+  });
+
+  userSnapshot.docs.forEach((docSnap) => {
+    if (seen.has(docSnap.id)) return;
+    const dealer = serializeSellerPayloadFromUser(docSnap.id, docSnap.data() || {});
+    if (dealer && isDealerSellerRole(dealer.role)) {
+      dealers.push(dealer);
+    }
+  });
+
+  return sortDealerDirectoryEntries(dealers);
+}
+
 async function getPublicDealerListings(sellerUid, options = {}) {
   const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
   const limitCount = Math.max(1, Math.min(Number(options.limitCount || 24), 100));
@@ -10587,6 +10698,26 @@ exports.apiProxy = onRequest(
 
       applyApiResponseCachePolicy(res, req, path);
       const stripe = createStripeClient();
+
+      if (req.method === 'GET' && path === '/public/dealers') {
+        try {
+          const dealers = await getPublicDealerDirectoryEntries();
+          res.set('Access-Control-Allow-Origin', '*');
+          res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+          return res.status(200).json({
+            dealers,
+            count: dealers.length,
+          });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Public dealer directory API is returning a quota-limited fallback feed.');
+            return res.status(200).json(buildQuotaLimitedPayload('dealers', [], 'Dealer directory data is temporarily unavailable because the Firestore daily read quota is exhausted.', {
+              source: 'quota_fallback',
+            }));
+          }
+          throw error;
+        }
+      }
 
       const publicDealerFeedMatch = path.match(/^\/public\/dealers\/([^/]+)\/feed\.json$/i);
       if (req.method === 'GET' && publicDealerFeedMatch) {
