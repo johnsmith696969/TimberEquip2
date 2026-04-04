@@ -34,6 +34,7 @@ export function BidderRegistration() {
 
   const returnTo = searchParams.get('returnTo') || (auctionSlug ? `/auctions/${auctionSlug}` : '/auctions');
   const legalLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
+  const bidderInputClass = 'input-industrial w-full min-h-12 px-4 py-3 text-base font-semibold normal-case tracking-normal';
 
   useEffect(() => {
     if (!loading || isAuthenticated) return;
@@ -302,31 +303,31 @@ export function BidderRegistration() {
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="label-micro mb-1 block">Full Legal Name</label>
-                  <input className="input-industrial w-full" value={fullName} onChange={(event) => setFullName(event.target.value)} />
+                  <input className={bidderInputClass} value={fullName} onChange={(event) => setFullName(event.target.value)} />
                 </div>
                 <div>
                   <label className="label-micro mb-1 block">Phone Number</label>
-                  <input className="input-industrial w-full" value={phone} onChange={(event) => setPhone(event.target.value)} />
+                  <input className={bidderInputClass} value={phone} onChange={(event) => setPhone(event.target.value)} />
                 </div>
                 <div className="md:col-span-2">
                   <label className="label-micro mb-1 block">Company Name</label>
-                  <input className="input-industrial w-full" value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+                  <input className={bidderInputClass} value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
                 </div>
                 <div className="md:col-span-2">
                   <label className="label-micro mb-1 block">Street Address</label>
-                  <input className="input-industrial w-full" value={street} onChange={(event) => setStreet(event.target.value)} />
+                  <input className={bidderInputClass} value={street} onChange={(event) => setStreet(event.target.value)} />
                 </div>
                 <div>
                   <label className="label-micro mb-1 block">City</label>
-                  <input className="input-industrial w-full" value={city} onChange={(event) => setCity(event.target.value)} />
+                  <input className={bidderInputClass} value={city} onChange={(event) => setCity(event.target.value)} />
                 </div>
                 <div>
                   <label className="label-micro mb-1 block">State / Province</label>
-                  <input className="input-industrial w-full" value={state} onChange={(event) => setState(event.target.value)} />
+                  <input className={bidderInputClass} value={state} onChange={(event) => setState(event.target.value)} />
                 </div>
                 <div>
                   <label className="label-micro mb-1 block">Postal Code</label>
-                  <input className="input-industrial w-full" value={zip} onChange={(event) => setZip(event.target.value)} />
+                  <input className={bidderInputClass} value={zip} onChange={(event) => setZip(event.target.value)} />
                 </div>
               </div>
 

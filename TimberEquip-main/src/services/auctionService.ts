@@ -99,6 +99,11 @@ export interface AuctionInvoicePaymentSessionResponse {
   sessionId?: string;
 }
 
+export interface AuctionInvoiceSettlementResponse {
+  invoice: AuctionInvoice;
+  lot: AuctionLot;
+}
+
 export const auctionService = {
   async getAuctions(): Promise<Auction[]> {
     const q = query(collection(db, 'auctions'), orderBy('startTime', 'desc'));
@@ -388,6 +393,13 @@ export const auctionService = {
     return getAuthorizedJson<AuctionInvoicePaymentSessionResponse>(`/api/auctions/invoices/${encodeURIComponent(invoiceId)}/payment-session`, {
       method: 'POST',
       body: JSON.stringify({ paymentMethod }),
+    });
+  },
+
+  async adminSettleAuctionInvoice(invoiceId: string): Promise<AuctionInvoiceSettlementResponse> {
+    return getAuthorizedJson<AuctionInvoiceSettlementResponse>(`/api/admin/auctions/invoices/${encodeURIComponent(invoiceId)}/settlement`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
 

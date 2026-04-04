@@ -138,6 +138,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
     navigate(normalized ? `/search?q=${encodeURIComponent(normalized)}` : '/search');
   };
 
+  const renderQuickSearchBar = (floating = false) => (
+    <div className={`border-b border-line py-2 px-4 md:px-8 ${floating ? 'bg-bg/96 backdrop-blur-md' : 'bg-bg'}`}>
+      <div className="max-w-[900px] mx-auto flex items-center">
+        <form
+          onSubmit={handleSearch}
+          className="flex-1 flex items-center bg-surface border border-line rounded-sm shadow-none outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0"
+        >
+          <input
+            type="text"
+            placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
+            className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
+            style={{ fontSize: '16px' }}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button
+            type="submit"
+            aria-label="Search"
+            className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
+          >
+            <Search size={16} />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
   const LANGUAGE_OPTIONS: ReadonlyArray<{ code: Language; label: string; flag: string }> = [
     { code: 'EN', label: 'English (Default)', flag: '🇺🇸' },
     { code: 'FR', label: 'Francais', flag: '🇫🇷' },
@@ -394,27 +421,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Persistent Quick Search Bar */}
-      <div className={`border-b border-line py-2 px-4 shadow-none transition-all duration-200 ease-out md:px-8 ${showFloatingQuickSearch ? 'fixed inset-x-0 top-0 z-[var(--z-sticky)] bg-bg/95 backdrop-blur-md' : 'relative bg-bg'}`}>
-        <div className="max-w-[900px] mx-auto flex items-center">
-          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm shadow-none outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
-            <input
-              type="text"
-              placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
-              className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
-              style={{ fontSize: '16px' }}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <button
-              type="submit"
-              aria-label="Search"
-              className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
-            >
-              <Search size={16} />
-            </button>
-          </form>
-        </div>
-      </div>
+      {renderQuickSearchBar()}
+      <AnimatePresence initial={false}>
+        {showFloatingQuickSearch ? (
+          <motion.div
+            initial={{ opacity: 0, y: -18 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } }}
+            exit={{ opacity: 0, y: -18, transition: { duration: 0.3, ease: [0.4, 0, 1, 1] } }}
+            className="fixed inset-x-0 top-0 z-[var(--z-sticky)] shadow-none"
+          >
+            {renderQuickSearchBar(true)}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* Mobile Menu */}
       <AnimatePresence>

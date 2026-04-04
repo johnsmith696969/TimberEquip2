@@ -582,6 +582,10 @@ export interface AuctionLot {
   storageFeePerDay: number;
   isTitledItem?: boolean;
   titleDocumentFee?: number;
+  releasedAt?: string | null;
+  releasedBy?: string | null;
+  releaseAuthorizedAt?: string | null;
+  releaseAuthorizedBy?: string | null;
 }
 
 export interface AuctionBid {
@@ -666,6 +670,10 @@ export interface AuctionInvoice {
   stripePaymentIntentId?: string | null;
   paymentTermsVersion?: string | null;
   paidAt: string | null;
+  wireReceivedAt?: string | null;
+  wireReceivedBy?: string | null;
+  releaseAuthorizedAt?: string | null;
+  releaseAuthorizedBy?: string | null;
   dueDate: string;
   sellerCommission: number;
   sellerPayout: number;

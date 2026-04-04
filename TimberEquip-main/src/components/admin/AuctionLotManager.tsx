@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Loader2, Search, Star, Trash2 } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Loader2, Search, Star, Trash2 } from 'lucide-react';
 import { auctionService } from '../../services/auctionService';
-import type { Auction, AuctionLot, Listing } from '../../types';
+import type { Auction, AuctionInvoice, AuctionLot, Listing } from '../../types';
 
 interface AuctionLotManagerProps {
   auction: Auction;
@@ -67,7 +67,9 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
   const [lotDrafts, setLotDrafts] = useState<Record<string, LotDraftState>>({});
   const [savingLotId, setSavingLotId] = useState('');
   const [deletingLotId, setDeletingLotId] = useState('');
+  const [settlingInvoiceId, setSettlingInvoiceId] = useState('');
   const [addingLot, setAddingLot] = useState(false);
+  const [lotInvoices, setLotInvoices] = useState<Record<string, AuctionInvoice>>({});
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
 
@@ -129,6 +131,56 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
   const sortedLots = useMemo(() => {
     return [...lots].sort((left, right) => Number(left.closeOrder || 0) - Number(right.closeOrder || 0));
   }, [lots]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const soldLots = sortedLots.filter((lot) => lot.status === 'sold');
+
+    if (soldLots.length === 0) {
+      setLotInvoices({});
+      return undefined;
+    }
+
+    async function loadLotInvoices() {
+      const invoiceEntries = await Promise.all(
+        soldLots.map(async (lot) => {
+          try {
+            const response = await auctionService.getLotInvoice(auction.slug, lot.lotNumber);
+            return [lot.id, response.invoice] as const;
+          } catch (invoiceError) {
+            console.error(`Failed to load invoice for auction lot ${lot.lotNumber}:`, invoiceError);
+            return [lot.id, null] as const;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      const nextInvoices: Record<string, AuctionInvoice> = {};
+      invoiceEntries.forEach(([lotId, invoice]) => {
+        if (invoice) {
+          nextInvoices[lotId] = invoice;
+        }
+      });
+      setLotInvoices(nextInvoices);
+    }
+
+    void loadLotInvoices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auction.slug, sortedLots]);
+
+  function formatCurrency(value: number | null | undefined) {
+    return `$${Number(value || 0).toLocaleString()}`;
+  }
+
+  function formatDateTime(value: string | null | undefined) {
+    if (!value) return '';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleString();
+  }
 
   async function refreshAuctionShell() {
     await onAuctionUpdated?.();
@@ -207,6 +259,32 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
       setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete auction lot.');
     } finally {
       setDeletingLotId('');
+    }
+  }
+
+  async function handleSettleWireInvoice(lot: AuctionLot, invoice: AuctionInvoice) {
+    setSettlingInvoiceId(invoice.id);
+    setError('');
+    setFeedback('');
+
+    try {
+      const response = await auctionService.adminSettleAuctionInvoice(invoice.id);
+      setLotInvoices((current) => ({
+        ...current,
+        [lot.id]: response.invoice,
+      }));
+      setLots((current) => current.map((entry) => (
+        entry.id === lot.id
+          ? { ...entry, ...response.lot }
+          : entry
+      )));
+      setFeedback(`Wire received and lot ${lot.lotNumber} released.`);
+      await refreshAuctionShell();
+    } catch (settlementError) {
+      console.error('Failed to settle auction invoice:', settlementError);
+      setError(settlementError instanceof Error ? settlementError.message : 'Unable to settle auction invoice.');
+    } finally {
+      setSettlingInvoiceId('');
     }
   }
 
@@ -412,6 +490,14 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
               <tbody>
                 {sortedLots.map((lot) => {
                   const draft = lotDrafts[lot.id] || toLotDraft(lot);
+                  const settlementInvoice = lotInvoices[lot.id];
+                  const settlementTimestamp = formatDateTime(
+                    lot.releasedAt
+                    || lot.releaseAuthorizedAt
+                    || settlementInvoice?.releaseAuthorizedAt
+                    || settlementInvoice?.paidAt
+                    || settlementInvoice?.wireReceivedAt,
+                  );
                   return (
                     <tr key={lot.id} className="border-b border-line/80 align-top">
                       <td className="px-4 py-4">
@@ -514,6 +600,44 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
                               </>
                             )}
                           </button>
+                          {lot.status === 'sold' ? (
+                            settlementInvoice ? (
+                              settlementInvoice.status === 'paid' ? (
+                                <div className="rounded-sm border border-accent/20 bg-accent/5 px-3 py-2 text-left">
+                                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-accent">
+                                    <CheckCircle2 size={12} />
+                                    Released
+                                  </div>
+                                  <p className="mt-1 text-[10px] font-bold text-muted">
+                                    {settlementTimestamp ? `Released ${settlementTimestamp}` : 'Wire received and release approved.'}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="rounded-sm border border-line bg-bg/70 px-3 py-2">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-ink">
+                                    Invoice Pending
+                                  </p>
+                                  <p className="mt-1 text-[10px] font-bold text-muted">
+                                    Total due {formatCurrency(settlementInvoice.totalDue)}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    className="btn-industrial btn-accent mt-2 w-full text-[9px]"
+                                    disabled={settlingInvoiceId === settlementInvoice.id}
+                                    onClick={() => handleSettleWireInvoice(lot, settlementInvoice)}
+                                  >
+                                    {settlingInvoiceId === settlementInvoice.id
+                                      ? 'Settling...'
+                                      : 'Mark Wire Received / Release Lot'}
+                                  </button>
+                                </div>
+                              )
+                            ) : (
+                              <div className="rounded-sm border border-line bg-bg/70 px-3 py-2 text-[10px] font-bold text-muted">
+                                Loading settlement...
+                              </div>
+                            )
+                          ) : null}
                         </div>
                       </td>
                     </tr>

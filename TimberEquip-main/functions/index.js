@@ -12504,6 +12504,103 @@ exports.apiProxy = onRequest(
         return res.status(200).json({ lot: updatedLot });
       }
 
+      const adminAuctionInvoiceSettlementMatch = path.match(/^\/admin\/auctions\/invoices\/([^/]+)\/settlement$/i);
+      if (req.method === 'POST' && adminAuctionInvoiceSettlementMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const invoiceId = decodeURIComponent(adminAuctionInvoiceSettlementMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const auctionId = normalizeNonEmptyString(invoice.auctionId);
+        const lotId = normalizeNonEmptyString(invoice.lotId);
+        if (!auctionId || !lotId) {
+          return res.status(400).json({ error: 'Auction invoice is missing auction or lot references.' });
+        }
+
+        const auctionRef = getAuctionDb().collection('auctions').doc(auctionId);
+        const lotRef = auctionRef.collection('lots').doc(lotId);
+        const [auctionSnap, lotSnap] = await Promise.all([auctionRef.get(), lotRef.get()]);
+        if (!auctionSnap.exists || !lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction invoice context could not be found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const lot = { id: lotSnap.id, ...lotSnap.data() };
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const nowIso = new Date().toISOString();
+        const wireTotals = buildAuctionInvoiceTotals({
+          winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+          isTitledItem: Boolean(lot.isTitledItem),
+          paymentMethod: null,
+        });
+        const wasAlreadyPaid = normalizeNonEmptyString(invoice.status).toLowerCase() === 'paid';
+        const paidAt = normalizeNonEmptyString(invoice.paidAt) || nowIso;
+        const releaseAuthorizedAt = normalizeNonEmptyString(invoice.releaseAuthorizedAt || lot.releaseAuthorizedAt || lot.releasedAt) || nowIso;
+
+        const settledInvoice = stripUndefinedDeep({
+          ...invoice,
+          buyerPremium: wireTotals.buyerPremium,
+          documentationFee: wireTotals.documentationFee,
+          cardProcessingFee: 0,
+          totalDue: wireTotals.subtotalBeforeCardFee,
+          status: 'paid',
+          paymentMethod: 'wire',
+          paymentMethodFunding: null,
+          paidAt,
+          wireReceivedAt: normalizeNonEmptyString(invoice.wireReceivedAt) || nowIso,
+          wireReceivedBy: normalizeNonEmptyString(invoice.wireReceivedBy) || actorUid,
+          releaseAuthorizedAt,
+          releaseAuthorizedBy: normalizeNonEmptyString(invoice.releaseAuthorizedBy) || actorUid,
+          updatedAt: nowIso,
+        });
+        await upsertAuctionInvoice(invoiceId, settledInvoice);
+
+        const lotPatch = stripUndefinedDeep({
+          status: 'sold',
+          releasedAt: normalizeNonEmptyString(lot.releasedAt) || nowIso,
+          releasedBy: normalizeNonEmptyString(lot.releasedBy) || actorUid,
+          releaseAuthorizedAt,
+          releaseAuthorizedBy: normalizeNonEmptyString(lot.releaseAuthorizedBy) || actorUid,
+          updatedAt: nowIso,
+        });
+        await lotRef.set(lotPatch, { merge: true });
+
+        const refreshedLotSnap = await lotRef.get();
+        const refreshedLot = refreshedLotSnap.exists
+          ? { id: refreshedLotSnap.id, ...refreshedLotSnap.data() }
+          : { ...lot, ...lotPatch };
+
+        if (!wasAlreadyPaid) {
+          const bidderProfile = await getAuctionBidderProfile(invoice.buyerId);
+          const bidderContact = await resolveAuctionUserContact(invoice.buyerId, bidderProfile || {});
+          if (bidderContact.email) {
+            await sendAuctionPaymentReceiptEmailMessage({
+              email: bidderContact.email,
+              displayName: bidderContact.displayName,
+              invoiceNumber: invoiceId,
+              amountPaid: settledInvoice.totalDue,
+              invoiceUrl: buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId),
+            });
+          }
+        }
+
+        return res.status(200).json({
+          invoice: settledInvoice,
+          lot: refreshedLot,
+        });
+      }
+
       const auctionLotInvoiceMatch = path.match(/^\/auctions\/([^/]+)\/lots\/([^/]+)\/invoice$/i);
       if (req.method === 'GET' && auctionLotInvoiceMatch) {
         const decodedToken = await getDecodedUserFromBearer(req);
