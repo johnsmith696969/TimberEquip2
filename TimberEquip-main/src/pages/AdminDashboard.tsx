@@ -9,7 +9,7 @@ import {
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
   FileText, Image, Layers, Database, Upload, RefreshCw, FolderTree,
-  Loader2
+  Loader2, Gavel
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
@@ -17,8 +17,10 @@ import { userService } from '../services/userService';
 import { adminUserService, type AdminOperationsBootstrapResponse } from '../services/adminUserService';
 import { cmsService, type AdminContentBootstrapResponse } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
+import type { Auction, AuctionStatus } from '../types';
 import { billingService, Invoice, Subscription, BillingAuditLog, AccountAuditLog, SellerProgramAgreementAcceptance, isSubscriptionTrulyActive, type AdminBillingBootstrapResponse, type AdminDealerPerformanceReportResponse } from '../services/billingService';
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../services/dealerFeedService';
+import { auctionService } from '../services/auctionService';
 import { ListingModal } from '../components/admin/ListingModal';
 import { BulkImportToolkit } from '../components/BulkImportToolkit';
 import { InquiryList } from '../components/admin/InquiryList';
@@ -45,7 +47,7 @@ import {
 } from '../utils/dealerFeedSetup';
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
-type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds' | 'taxonomy';
+type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds' | 'taxonomy' | 'auctions';
 type ListingReviewFilter = 'all' | 'pending_approval' | 'paid_not_live' | 'rejected' | 'expired' | 'sold' | 'archived' | 'anomalies';
 
 const LISTINGS_PAGE_SIZE_DEFAULT = 50;
@@ -63,6 +65,7 @@ const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
   'content',
   'dealer_feeds',
   'taxonomy',
+  'auctions',
 ]);
 
 const CONTENT_ONLY_DASHBOARD_ROLES = new Set(['content_manager', 'editor']);
@@ -120,6 +123,9 @@ export function AdminDashboard() {
   const [contentLoading, setContentLoading] = useState(false);
   const [contentLoaded, setContentLoaded] = useState(false);
   const [contentLoadError, setContentLoadError] = useState('');
+  const [auctionsList, setAuctionsList] = useState<Auction[]>([]);
+  const [auctionsLoading, setAuctionsLoading] = useState(false);
+  const [auctionEditing, setAuctionEditing] = useState<{ mode: 'create' } | { mode: 'edit'; auction: Auction } | null>(null);
   const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
   const resolvedRequestedTab = useMemo<DashboardTab>(() => resolveDashboardTab(requestedTab), [requestedTab]);
   const activeTab = useMemo<DashboardTab>(() => {
@@ -787,6 +793,10 @@ export function AdminDashboard() {
       void fetchContentData();
     }
   }, [activeTab, authUser?.uid]);
+
+  useEffect(() => {
+    if (activeTab === 'auctions') void loadAuctions();
+  }, [activeTab]);
 
   useEffect(() => {
     if (!authUser?.uid || !listingsInitializedRef.current) {
@@ -4942,6 +4952,194 @@ export function AdminDashboard() {
     );
   };
 
+  async function loadAuctions() {
+    setAuctionsLoading(true);
+    try {
+      const data = await auctionService.getAuctions();
+      setAuctionsList(data);
+    } catch (e) {
+      console.error('Failed to load auctions:', e);
+    } finally {
+      setAuctionsLoading(false);
+    }
+  }
+
+  async function handleAuctionStatusChange(auctionId: string, newStatus: AuctionStatus) {
+    try {
+      await auctionService.updateAuctionStatus(auctionId, newStatus);
+      await loadAuctions();
+    } catch (e) {
+      console.error('Failed to update auction status:', e);
+    }
+  }
+
+  function AuctionEditor({ auction, onSave, onCancel }: { auction?: Auction; onSave: () => void; onCancel: () => void }) {
+    const [title, setTitle] = useState(auction?.title || '');
+    const [description, setDescription] = useState(auction?.description || '');
+    const [startTime, setStartTime] = useState(auction?.startTime?.slice(0, 16) || '');
+    const [endTime, setEndTime] = useState(auction?.endTime?.slice(0, 16) || '');
+    const [buyerPremium, setBuyerPremium] = useState(auction?.defaultBuyerPremiumPercent ?? 10);
+    const [saving, setSaving] = useState(false);
+
+    async function handleSave() {
+      if (!title.trim()) return;
+      setSaving(true);
+      try {
+        const data = {
+          title: title.trim(),
+          slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+          description,
+          coverImageUrl: auction?.coverImageUrl || '',
+          startTime: startTime ? new Date(startTime).toISOString() : '',
+          endTime: endTime ? new Date(endTime).toISOString() : '',
+          previewStartTime: startTime ? new Date(startTime).toISOString() : '',
+          status: (auction?.status || 'draft') as AuctionStatus,
+          defaultBuyerPremiumPercent: buyerPremium,
+          termsAndConditionsUrl: auction?.termsAndConditionsUrl || '',
+          featured: auction?.featured ?? false,
+          bannerEnabled: auction?.bannerEnabled ?? false,
+          bannerImageUrl: auction?.bannerImageUrl || '',
+          softCloseThresholdMin: auction?.softCloseThresholdMin ?? 3,
+          softCloseExtensionMin: auction?.softCloseExtensionMin ?? 2,
+          staggerIntervalMin: auction?.staggerIntervalMin ?? 1,
+          defaultPaymentDeadlineDays: auction?.defaultPaymentDeadlineDays ?? 3,
+          defaultRemovalDeadlineDays: auction?.defaultRemovalDeadlineDays ?? 14,
+          createdBy: auction?.createdBy || '',
+        };
+        if (auction?.id) {
+          await auctionService.updateAuction(auction.id, data);
+        } else {
+          await auctionService.createAuction(data);
+        }
+        onSave();
+      } catch (e) {
+        console.error('Failed to save auction:', e);
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    return (
+      <div className="border border-line rounded-sm p-6 space-y-4">
+        <h3 className="font-black text-sm uppercase tracking-widest">{auction ? 'Edit Auction' : 'Create Auction'}</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label-micro block mb-1">Title</label>
+            <input className="input-industrial w-full" value={title} onChange={e => setTitle(e.target.value)} placeholder="April 2026 Forestry Equipment Auction" />
+          </div>
+          <div>
+            <label className="label-micro block mb-1">Buyer Premium %</label>
+            <input className="input-industrial w-full" type="number" value={buyerPremium} onChange={e => setBuyerPremium(Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="label-micro block mb-1">Bidding Opens</label>
+            <input className="input-industrial w-full" type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} />
+          </div>
+          <div>
+            <label className="label-micro block mb-1">First Lot Closes</label>
+            <input className="input-industrial w-full" type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <label className="label-micro block mb-1">Description</label>
+          <textarea className="input-industrial w-full min-h-[80px]" value={description} onChange={e => setDescription(e.target.value)} placeholder="Auction description…" />
+        </div>
+        <div className="flex gap-2">
+          <button className="btn-industrial btn-accent" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Auction'}</button>
+          <button className="btn-industrial btn-outline" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAuctions() {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight">Auction Management</h2>
+            <p className="text-xs text-muted mt-1">Create and manage timed online auctions</p>
+          </div>
+          <button
+            className="btn-industrial btn-accent"
+            onClick={() => setAuctionEditing({ mode: 'create' })}
+          >
+            + Create Auction
+          </button>
+        </div>
+
+        {auctionEditing ? (
+          <AuctionEditor
+            auction={auctionEditing.mode === 'edit' ? auctionEditing.auction : undefined}
+            onSave={async () => { setAuctionEditing(null); await loadAuctions(); }}
+            onCancel={() => setAuctionEditing(null)}
+          />
+        ) : (
+          <div className="space-y-3">
+            {auctionsLoading ? (
+              <div className="text-center py-12 text-muted text-sm">Loading auctions…</div>
+            ) : auctionsList.length === 0 ? (
+              <div className="text-center py-12 border border-line rounded-sm">
+                <Gavel size={32} className="mx-auto text-muted mb-3" />
+                <p className="text-sm font-bold">No auctions yet</p>
+                <p className="text-xs text-muted mt-1">Create your first auction to get started</p>
+              </div>
+            ) : (
+              auctionsList.map((auction) => (
+                <div key={auction.id} className="border border-line rounded-sm p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <span className={`inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
+                        auction.status === 'active' ? 'bg-accent/10 text-accent' :
+                        auction.status === 'preview' ? 'bg-data/10 text-data' :
+                        auction.status === 'draft' ? 'bg-muted/10 text-muted' :
+                        auction.status === 'closed' || auction.status === 'settled' ? 'bg-ink/10 text-ink' :
+                        'bg-muted/10 text-muted'
+                      }`}>
+                        {auction.status}
+                      </span>
+                    </div>
+                    <div>
+                      <h3 className="font-black text-sm">{auction.title}</h3>
+                      <p className="text-[10px] text-muted">
+                        {auction.lotCount} lots · {auction.totalBids} bids
+                        {auction.startTime && ` · Starts ${new Date(auction.startTime).toLocaleDateString()}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {auction.status === 'draft' && (
+                      <button
+                        className="btn-industrial btn-outline text-[9px]"
+                        onClick={() => handleAuctionStatusChange(auction.id, 'preview')}
+                      >
+                        Publish Preview
+                      </button>
+                    )}
+                    {auction.status === 'preview' && (
+                      <button
+                        className="btn-industrial btn-accent text-[9px]"
+                        onClick={() => handleAuctionStatusChange(auction.id, 'active')}
+                      >
+                        Go Live
+                      </button>
+                    )}
+                    <button
+                      className="btn-industrial btn-outline text-[9px]"
+                      onClick={() => setAuctionEditing({ mode: 'edit', auction })}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const dashboardHeading = activeTab === 'overview'  ? 'Account Overview'
     : activeTab === 'listings'  ? 'Machine Inventory'
     : activeTab === 'inquiries' ? 'Lead Monitoring'
@@ -4951,6 +5149,7 @@ export function AdminDashboard() {
     : activeTab === 'billing'   ? 'Billing Account'
     : activeTab === 'content'   ? 'Content Studio'
     : activeTab === 'dealer_feeds' ? 'Dealer Feed Manager'
+    : activeTab === 'auctions'  ? 'Auction Management'
     : activeTab === 'taxonomy'  ? 'Taxonomy Manager'
     : activeTab === 'users'     ? 'Operator Directory'
     : 'Profile Settings';
@@ -4970,6 +5169,7 @@ export function AdminDashboard() {
     { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
+    { id: 'auctions', label: 'Auctions', icon: Gavel },
     { id: 'taxonomy', label: 'Taxonomy', icon: FolderTree, adminOnly: true },
     { id: 'users', label: 'Users', icon: Users, adminOnly: true },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -5151,6 +5351,7 @@ export function AdminDashboard() {
               {activeTab === 'billing'   && renderBilling()}
               {activeTab === 'content'   && renderContent()}
               {activeTab === 'dealer_feeds' && renderDealerFeeds()}
+              {activeTab === 'auctions' && renderAuctions()}
               {activeTab === 'taxonomy' && (
                 <div className="space-y-4">
                   <TaxonomyManager />

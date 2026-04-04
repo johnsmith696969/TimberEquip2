@@ -237,6 +237,14 @@ export interface Listing {
   // Legacy fields for compatibility if needed
   manufacturer?: string;
   sellerId?: string;
+  // Auction fields (set when listing is assigned to an auction lot)
+  auctionId?: string;
+  auctionSlug?: string;
+  auctionStatus?: AuctionLotStatus;
+  auctionEndTime?: string;
+  currentBid?: number;
+  bidCount?: number;
+  lotNumber?: string;
 }
 
 export interface ListingFilters {
@@ -485,16 +493,153 @@ export interface ListingLifecycleAuditView {
   transitions: ListingLifecycleTransitionRecord[];
 }
 
+export type AuctionStatus = 'draft' | 'preview' | 'active' | 'closed' | 'settling' | 'settled' | 'cancelled';
+export type AuctionLotStatus = 'upcoming' | 'preview' | 'active' | 'extended' | 'closed' | 'sold' | 'unsold' | 'cancelled';
+export type BidType = 'manual' | 'proxy' | 'auto_increment';
+export type BidStatus = 'active' | 'outbid' | 'retracted' | 'winning';
+export type BidderTier = 'basic' | 'verified' | 'approved';
+
 export interface Auction {
   id: string;
   title: string;
-  date: string;
-  location: string;
-  type: 'Live' | 'Online' | 'Timed';
-  status: 'Upcoming' | 'Active' | 'Closed';
-  itemCount: number;
-  image: string;
-  featured?: boolean;
+  slug: string;
+  description: string;
+  coverImageUrl: string;
+  startTime: string;
+  endTime: string;
+  previewStartTime: string;
+  status: AuctionStatus;
+  lotCount: number;
+  totalBids: number;
+  totalGMV: number;
+  defaultBuyerPremiumPercent: number;
+  termsAndConditionsUrl: string;
+  featured: boolean;
+  bannerEnabled: boolean;
+  bannerImageUrl: string;
+  softCloseThresholdMin: number;
+  softCloseExtensionMin: number;
+  staggerIntervalMin: number;
+  defaultPaymentDeadlineDays: number;
+  defaultRemovalDeadlineDays: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  // Legacy compat
+  date?: string;
+  location?: string;
+  type?: 'Live' | 'Online' | 'Timed';
+  itemCount?: number;
+  image?: string;
+}
+
+export interface AuctionLot {
+  id: string;
+  auctionId: string;
+  listingId: string;
+  lotNumber: string;
+  closeOrder: number;
+  startingBid: number;
+  reservePrice: number | null;
+  reserveMet: boolean;
+  buyerPremiumPercent: number;
+  startTime: string;
+  endTime: string;
+  originalEndTime: string;
+  softCloseThresholdMin: number;
+  softCloseExtensionMin: number;
+  softCloseGroupId: string | null;
+  extensionCount: number;
+  currentBid: number;
+  currentBidderId: string | null;
+  currentBidderAnonymousId: string;
+  bidCount: number;
+  uniqueBidders: number;
+  lastBidTime: string | null;
+  status: AuctionLotStatus;
+  promoted: boolean;
+  promotedOrder: number;
+  winningBidderId: string | null;
+  winningBid: number | null;
+  watcherIds: string[];
+  watcherCount: number;
+  // Denormalized from listing for fast reads
+  title: string;
+  manufacturer: string;
+  model: string;
+  year: number;
+  thumbnailUrl: string;
+  pickupLocation: string;
+  paymentDeadlineDays: number;
+  removalDeadlineDays: number;
+  storageFeePerDay: number;
+}
+
+export interface AuctionBid {
+  id: string;
+  lotId: string;
+  auctionId: string;
+  bidderId: string;
+  bidderAnonymousId: string;
+  amount: number;
+  maxBid: number | null;
+  type: BidType;
+  status: BidStatus;
+  timestamp: string;
+  triggeredExtension: boolean;
+}
+
+export interface BidderProfile {
+  verificationTier: BidderTier;
+  fullName: string;
+  phone: string;
+  phoneVerified: boolean;
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
+  companyName: string | null;
+  stripeCustomerId: string;
+  preAuthPaymentIntentId: string | null;
+  preAuthAmount: number;
+  preAuthStatus: 'pending' | 'held' | 'captured' | 'released';
+  idVerificationStatus: 'not_started' | 'pending' | 'verified' | 'failed';
+  idVerifiedAt: string | null;
+  totalAuctionsParticipated: number;
+  totalItemsWon: number;
+  totalSpent: number;
+  nonPaymentCount: number;
+  termsAcceptedAt: string;
+  termsVersion: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuctionInvoice {
+  id: string;
+  auctionId: string;
+  lotId: string;
+  buyerId: string;
+  sellerId: string;
+  winningBid: number;
+  buyerPremium: number;
+  documentationFee: number;
+  salesTax: number;
+  salesTaxRate: number;
+  taxExempt: boolean;
+  totalDue: number;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled' | 'refunded';
+  paymentMethod: 'wire' | 'ach' | 'card' | 'financing' | null;
+  paidAt: string | null;
+  dueDate: string;
+  sellerCommission: number;
+  sellerPayout: number;
+  sellerPaidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserProfile {

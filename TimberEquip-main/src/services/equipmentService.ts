@@ -18,7 +18,7 @@ import {
   getDocFromServer,
   runTransaction
 } from 'firebase/firestore';
-import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, ListingLifecycleStateSnapshot, Seller, NewsPost, Inquiry, FinancingRequest, Account, CallLog, Auction, ListingFilters } from '../types';
+import { Listing, ListingLifecycleAction, ListingLifecycleAuditView, ListingLifecycleStateSnapshot, Seller, NewsPost, Inquiry, FinancingRequest, Account, CallLog, Auction, AuctionLot, AuctionBid, AuctionStatus, AuctionLotStatus, BidderProfile, AuctionInvoice, ListingFilters } from '../types';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   AMV_MATCH_HOURS_PERCENT,

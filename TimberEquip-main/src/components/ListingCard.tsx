@@ -1,9 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Clock, MapPin, TrendingUp, TrendingDown, 
+import {
+  Clock, MapPin, TrendingUp, TrendingDown,
   Star, Bookmark, ShieldCheck,
-  Square, CheckSquare
+  Square, CheckSquare, Gavel
 } from 'lucide-react';
 import { Listing } from '../types';
 import { useLocale } from './LocaleContext';
@@ -78,6 +78,15 @@ export function ListingCard({
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col space-y-2">
+          {listing.auctionId && listing.auctionStatus && !['closed', 'sold', 'unsold'].includes(listing.auctionStatus) && (
+            <span className="bg-ink text-bg text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm shadow-lg flex items-center gap-1">
+              <Gavel size={10} />
+              {listing.auctionStatus === 'active' || listing.auctionStatus === 'extended'
+                ? 'Bidding Live'
+                : `Auction ${listing.auctionEndTime ? new Date(listing.auctionEndTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}`
+              }
+            </span>
+          )}
           {listing.featured && (
             <span className="bg-accent text-white text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm shadow-lg">
               {t('listingCard.featuredEquipment', 'Featured Equipment')}
@@ -165,10 +174,20 @@ export function ListingCard({
         <div className="mt-auto">
           <div className="flex items-end justify-between mb-4">
             <div className="flex flex-col">
-              <span className="label-micro">{t('listingCard.currentPrice', 'Current Price')}</span>
-              <span className="text-xl font-black tracking-tighter">
-                {formatPrice(safePrice, listing.currency || 'USD', 0)}
-              </span>
+              {listing.auctionId && listing.auctionStatus === 'active' && listing.currentBid ? (
+                <div>
+                  <span className="label-micro">Current Bid</span>
+                  <div className="text-base font-black">{formatPrice(listing.currentBid, listing.currency || 'USD', 0)}</div>
+                  {listing.bidCount ? <span className="text-[9px] text-muted">{listing.bidCount} bids</span> : null}
+                </div>
+              ) : (
+                <>
+                  <span className="label-micro">{t('listingCard.currentPrice', 'Current Price')}</span>
+                  <span className="text-xl font-black tracking-tighter">
+                    {formatPrice(safePrice, listing.currency || 'USD', 0)}
+                  </span>
+                </>
+              )}
             </div>
             <div className="flex flex-col items-end">
               <span className="label-micro">{t('listingCard.location', 'Location')}</span>
@@ -187,16 +206,22 @@ export function ListingCard({
             >
               {t('listingCard.details', 'Details')}
             </Link>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                onInquire?.(listing);
-              }}
-              aria-label={`Inquire about ${displayTitle}`}
-              className="btn-industrial btn-accent py-2.5"
-            >
-              {t('listingCard.inquire', 'Inquire')}
-            </button>
+            {listing.auctionId && (listing.auctionStatus === 'active' || listing.auctionStatus === 'extended') ? (
+              <Link to={`/auctions/${listing.auctionSlug}/lots/${listing.lotNumber}`} className="btn-industrial btn-accent flex-1 text-center py-2.5">
+                Place Bid
+              </Link>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  onInquire?.(listing);
+                }}
+                aria-label={`Inquire about ${displayTitle}`}
+                className="btn-industrial btn-accent py-2.5"
+              >
+                {t('listingCard.inquire', 'Inquire')}
+              </button>
+            )}
           </div>
         </div>
       </div>

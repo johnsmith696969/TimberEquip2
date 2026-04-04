@@ -4,11 +4,12 @@ import {
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
-  Phone, Calculator, AlertCircle, Landmark, RefreshCw
+  Phone, Calculator, AlertCircle, Landmark, RefreshCw, Gavel
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
+import { auctionService } from '../services/auctionService';
 import {
   AMV_MIN_COMPARABLES,
   getAmvMatchRulesSummary,
@@ -124,6 +125,11 @@ export function ListingDetail() {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
   const fullscreenSwipeRef = React.useRef<{ startX: number; startY: number; time: number } | null>(null);
+  const [auctionLot, setAuctionLot] = useState<import('../types').AuctionLot | null>(null);
+  const [auctionBids, setAuctionBids] = useState<import('../types').AuctionBid[]>([]);
+  const [bidAmount, setBidAmount] = useState('');
+  const [bidding, setBidding] = useState(false);
+  const [showBidHistory, setShowBidHistory] = useState(false);
   
   const [inquiryForm, setInquiryForm] = useState({
     name: '',
@@ -472,8 +478,20 @@ export function ListingDetail() {
     return () => media.removeEventListener?.('change', update);
   }, []);
 
+  useEffect(() => {
+    if (!listing?.auctionId) return;
+    const unsub = auctionService.onLotsChange(listing.auctionId, (lots) => {
+      const lot = lots.find(l => l.listingId === listing.id);
+      if (lot) setAuctionLot(lot);
+    });
+    return unsub;
+  }, [listing?.auctionId, listing?.id]);
 
-
+  useEffect(() => {
+    if (!listing?.auctionId || !auctionLot?.id) return;
+    const unsub = auctionService.onBidsChange(listing.auctionId, auctionLot.id, setAuctionBids);
+    return unsub;
+  }, [listing?.auctionId, auctionLot?.id]);
 
   const machineLatitude = toFiniteNumber(listing?.latitude);
   const machineLongitude = toFiniteNumber(listing?.longitude);
@@ -1199,6 +1217,21 @@ export function ListingDetail() {
               )}
             </div>
 
+            {listing.auctionId && auctionLot && (
+              <div className="flex items-center gap-4 py-3 px-4 bg-surface border border-line rounded-sm mb-4">
+                <Gavel size={16} className="text-accent flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <Link to={`/auctions/${listing.auctionSlug || ''}`} className="font-black text-xs uppercase tracking-widest hover:text-accent">
+                    Auction Lot #{auctionLot.lotNumber}
+                  </Link>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="label-micro block">Closes</span>
+                  <span className="text-xs font-black">{auctionLot.endTime ? new Date(auctionLot.endTime).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'TBD'}</span>
+                </div>
+              </div>
+            )}
+
             {/* Gallery */}
             <div className="flex flex-col space-y-4">
               <div className="aspect-[16/9] bg-surface border border-line overflow-hidden relative group">
@@ -1280,7 +1313,102 @@ export function ListingDetail() {
             </div>
 
             <div className="lg:hidden">
-              {pricingCard}
+              {listing.auctionId && auctionLot && (auctionLot.status === 'active' || auctionLot.status === 'extended' || auctionLot.status === 'preview' || auctionLot.status === 'upcoming') ? (
+                <div className="border border-line rounded-sm p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="label-micro">Auction Lot #{auctionLot.lotNumber}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
+                      auctionLot.status === 'active' || auctionLot.status === 'extended' ? 'bg-accent/10 text-accent' : 'bg-muted/10 text-muted'
+                    }`}>{auctionLot.status === 'extended' ? 'Extended' : auctionLot.status}</span>
+                  </div>
+
+                  <div>
+                    <span className="label-micro">{auctionLot.currentBid > 0 ? 'Current Bid' : 'Starting Bid'}</span>
+                    <div className="text-2xl font-black">${(auctionLot.currentBid || auctionLot.startingBid).toLocaleString()}</div>
+                    {auctionLot.bidCount > 0 && <span className="text-[10px] text-muted">{auctionLot.bidCount} bid{auctionLot.bidCount !== 1 ? 's' : ''}</span>}
+                  </div>
+
+                  {auctionLot.endTime && (
+                    <div>
+                      <span className="label-micro">Time Remaining</span>
+                      <div className="text-sm font-black">{auctionService.formatTimeRemaining(auctionLot.endTime)}</div>
+                    </div>
+                  )}
+
+                  {auctionLot.reservePrice != null && (
+                    <div className={`text-[10px] font-bold ${auctionLot.reserveMet ? 'text-accent' : 'text-muted'}`}>
+                      {auctionLot.reserveMet ? '✓ Reserve met' : 'Reserve not met'}
+                    </div>
+                  )}
+
+                  {(auctionLot.status === 'active' || auctionLot.status === 'extended') && (
+                    <>
+                      <div>
+                        <span className="label-micro mb-1 block">Your Max Bid</span>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            className="input-industrial flex-1"
+                            placeholder={`Min $${((auctionLot.currentBid || auctionLot.startingBid) + auctionService.getBidIncrement(auctionLot.currentBid || auctionLot.startingBid)).toLocaleString()}`}
+                            value={bidAmount}
+                            onChange={(e) => setBidAmount(e.target.value)}
+                          />
+                          <button
+                            className="btn-industrial btn-accent"
+                            disabled={bidding}
+                            onClick={() => {
+                              alert('Bidding will be available when the auction goes live. Register as a bidder to participate.');
+                            }}
+                          >
+                            {bidding ? 'Placing…' : 'Place Bid'}
+                          </button>
+                        </div>
+                        <p className="text-[9px] text-muted mt-1">{auctionLot.buyerPremiumPercent}% buyer premium applies</p>
+                      </div>
+                    </>
+                  )}
+
+                  {(auctionLot.status === 'upcoming' || auctionLot.status === 'preview') && (
+                    <div className="text-center py-2">
+                      <p className="text-xs text-muted">Bidding opens {auctionLot.startTime ? new Date(auctionLot.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}</p>
+                      <Link to={`/login?redirect=/auctions/${listing.auctionSlug}/register`} className="btn-industrial btn-accent w-full mt-2">
+                        Register to Bid
+                      </Link>
+                    </div>
+                  )}
+
+                  <button
+                    className="text-[10px] text-muted hover:text-ink transition-colors w-full text-left"
+                    onClick={() => setShowBidHistory(!showBidHistory)}
+                  >
+                    {showBidHistory ? '▾' : '▸'} Bid History ({auctionBids.length})
+                  </button>
+                  {showBidHistory && (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {auctionBids.length === 0 ? (
+                        <p className="text-[10px] text-muted">No bids yet</p>
+                      ) : (
+                        auctionBids.map((bid) => (
+                          <div key={bid.id} className="flex justify-between text-[10px]">
+                            <span className="text-muted">{bid.bidderAnonymousId}</span>
+                            <span className="font-bold">${bid.amount.toLocaleString()}</span>
+                            <span className="text-muted">{new Date(bid.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  <div className="border-t border-line pt-3 space-y-1 text-[10px] text-muted">
+                    <p>Payment due within {auctionLot.paymentDeadlineDays || 3} days</p>
+                    <p>Removal by {auctionLot.removalDeadlineDays || 14} days after payment</p>
+                    <p>Pickup: {auctionLot.pickupLocation || listing.location}</p>
+                    <p>Condition: As is, where is</p>
+                  </div>
+                </div>
+              ) : (
+                pricingCard
+              )}
             </div>
 
             {listingVideos.length > 0 && (
@@ -1666,7 +1794,102 @@ export function ListingDetail() {
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-8">
               <div className="hidden lg:block">
-                {pricingCard}
+                {listing.auctionId && auctionLot && (auctionLot.status === 'active' || auctionLot.status === 'extended' || auctionLot.status === 'preview' || auctionLot.status === 'upcoming') ? (
+                  <div className="border border-line rounded-sm p-4 space-y-4 sticky top-20">
+                    <div className="flex items-center justify-between">
+                      <span className="label-micro">Auction Lot #{auctionLot.lotNumber}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
+                        auctionLot.status === 'active' || auctionLot.status === 'extended' ? 'bg-accent/10 text-accent' : 'bg-muted/10 text-muted'
+                      }`}>{auctionLot.status === 'extended' ? 'Extended' : auctionLot.status}</span>
+                    </div>
+
+                    <div>
+                      <span className="label-micro">{auctionLot.currentBid > 0 ? 'Current Bid' : 'Starting Bid'}</span>
+                      <div className="text-2xl font-black">${(auctionLot.currentBid || auctionLot.startingBid).toLocaleString()}</div>
+                      {auctionLot.bidCount > 0 && <span className="text-[10px] text-muted">{auctionLot.bidCount} bid{auctionLot.bidCount !== 1 ? 's' : ''}</span>}
+                    </div>
+
+                    {auctionLot.endTime && (
+                      <div>
+                        <span className="label-micro">Time Remaining</span>
+                        <div className="text-sm font-black">{auctionService.formatTimeRemaining(auctionLot.endTime)}</div>
+                      </div>
+                    )}
+
+                    {auctionLot.reservePrice != null && (
+                      <div className={`text-[10px] font-bold ${auctionLot.reserveMet ? 'text-accent' : 'text-muted'}`}>
+                        {auctionLot.reserveMet ? '✓ Reserve met' : 'Reserve not met'}
+                      </div>
+                    )}
+
+                    {(auctionLot.status === 'active' || auctionLot.status === 'extended') && (
+                      <>
+                        <div>
+                          <span className="label-micro mb-1 block">Your Max Bid</span>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              className="input-industrial flex-1"
+                              placeholder={`Min $${((auctionLot.currentBid || auctionLot.startingBid) + auctionService.getBidIncrement(auctionLot.currentBid || auctionLot.startingBid)).toLocaleString()}`}
+                              value={bidAmount}
+                              onChange={(e) => setBidAmount(e.target.value)}
+                            />
+                            <button
+                              className="btn-industrial btn-accent"
+                              disabled={bidding}
+                              onClick={() => {
+                                alert('Bidding will be available when the auction goes live. Register as a bidder to participate.');
+                              }}
+                            >
+                              {bidding ? 'Placing…' : 'Place Bid'}
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-muted mt-1">{auctionLot.buyerPremiumPercent}% buyer premium applies</p>
+                        </div>
+                      </>
+                    )}
+
+                    {(auctionLot.status === 'upcoming' || auctionLot.status === 'preview') && (
+                      <div className="text-center py-2">
+                        <p className="text-xs text-muted">Bidding opens {auctionLot.startTime ? new Date(auctionLot.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}</p>
+                        <Link to={`/login?redirect=/auctions/${listing.auctionSlug}/register`} className="btn-industrial btn-accent w-full mt-2">
+                          Register to Bid
+                        </Link>
+                      </div>
+                    )}
+
+                    <button
+                      className="text-[10px] text-muted hover:text-ink transition-colors w-full text-left"
+                      onClick={() => setShowBidHistory(!showBidHistory)}
+                    >
+                      {showBidHistory ? '▾' : '▸'} Bid History ({auctionBids.length})
+                    </button>
+                    {showBidHistory && (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {auctionBids.length === 0 ? (
+                          <p className="text-[10px] text-muted">No bids yet</p>
+                        ) : (
+                          auctionBids.map((bid) => (
+                            <div key={bid.id} className="flex justify-between text-[10px]">
+                              <span className="text-muted">{bid.bidderAnonymousId}</span>
+                              <span className="font-bold">${bid.amount.toLocaleString()}</span>
+                              <span className="text-muted">{new Date(bid.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    <div className="border-t border-line pt-3 space-y-1 text-[10px] text-muted">
+                      <p>Payment due within {auctionLot.paymentDeadlineDays || 3} days</p>
+                      <p>Removal by {auctionLot.removalDeadlineDays || 14} days after payment</p>
+                      <p>Pickup: {auctionLot.pickupLocation || listing.location}</p>
+                      <p>Condition: As is, where is</p>
+                    </div>
+                  </div>
+                ) : (
+                  pricingCard
+                )}
               </div>
 
               {/* Seller Card */}

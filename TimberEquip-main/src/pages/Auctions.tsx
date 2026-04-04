@@ -1,117 +1,230 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, MapPin, Clock, ArrowRight, Gavel, ShieldCheck, Activity } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { equipmentService } from '../services/equipmentService';
-import { Auction } from '../types';
+import {
+  Gavel,
+  Calendar,
+  Clock,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  CheckCircle,
+  UserCheck,
+  DollarSign,
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { auctionService } from '../services/auctionService';
+import { Auction, AuctionStatus } from '../types';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
 
-function formatAuctionDate(date: string) {
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) {
-    return 'Date to be announced';
-  }
-
-  return parsed.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return 'Date TBD';
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-function getAuctionDateParts(date: string) {
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) {
-    return { day: 'TBD', month: 'DATE' };
-  }
+function formatDateShort(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return 'TBD';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
-  return {
-    day: parsed.toLocaleDateString('en-US', { day: '2-digit' }),
-    month: parsed.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
-  };
+function getStatusLabel(status: AuctionStatus): string {
+  switch (status) {
+    case 'active': return 'Live Now';
+    case 'preview': return 'Preview Open';
+    case 'closed': return 'Closed';
+    case 'settling': return 'Settling';
+    case 'settled': return 'Settled';
+    case 'cancelled': return 'Cancelled';
+    case 'draft': return 'Draft';
+    default: return status;
+  }
+}
+
+function getStatusBadgeClass(status: AuctionStatus): string {
+  switch (status) {
+    case 'active': return 'bg-green-600 text-white';
+    case 'preview': return 'bg-accent text-white';
+    case 'closed':
+    case 'settling':
+    case 'settled': return 'bg-surface border border-line text-muted';
+    case 'cancelled': return 'bg-red-600/10 text-red-600';
+    default: return 'bg-surface border border-line text-muted';
+  }
+}
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    step: '01',
+    icon: Search,
+    title: 'Browse',
+    desc: 'Explore upcoming and active auction catalogs. View lots, photos, and starting bids.',
+  },
+  {
+    step: '02',
+    icon: UserCheck,
+    title: 'Register',
+    desc: 'Create an account and complete bidder verification to participate in auctions.',
+  },
+  {
+    step: '03',
+    icon: Gavel,
+    title: 'Bid',
+    desc: 'Place bids on individual lots. Proxy bidding available so you never miss a closing.',
+  },
+  {
+    step: '04',
+    icon: DollarSign,
+    title: 'Win & Pay',
+    desc: 'Winning bidders receive an invoice. Payment is due within the deadline set per auction.',
+  },
+];
+
+function AuctionCardSkeleton() {
+  return (
+    <div className="bg-surface border border-line overflow-hidden">
+      <div className="h-48 animate-pulse bg-bg" />
+      <div className="p-6 space-y-3">
+        <div className="animate-pulse bg-bg h-3 w-24 rounded-sm" />
+        <div className="animate-pulse bg-bg h-5 w-3/4 rounded-sm" />
+        <div className="animate-pulse bg-bg h-3 w-1/2 rounded-sm" />
+        <div className="animate-pulse bg-bg h-10 w-full rounded-sm mt-4" />
+      </div>
+    </div>
+  );
+}
+
+function AuctionCard({ auction }: { auction: Auction }) {
+  const coverSrc = auction.coverImageUrl || auction.image || '/page-photos/john-deere-harvester.webp';
+
+  return (
+    <motion.div
+      whileHover={{ y: -4 }}
+      className="bg-surface border border-line overflow-hidden flex flex-col group"
+    >
+      <div className="relative h-48 overflow-hidden">
+        <img
+          src={coverSrc}
+          alt={auction.title}
+          width={400}
+          height={192}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+        <div className={`absolute top-3 left-3 px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getStatusBadgeClass(auction.status)}`}>
+          {getStatusLabel(auction.status)}
+        </div>
+      </div>
+      <div className="p-6 flex-1 flex flex-col">
+        <div className="flex items-center text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-2">
+          <Calendar size={10} className="mr-1.5" />
+          {formatDateShort(auction.startTime)} – {formatDateShort(auction.endTime)}
+        </div>
+        <h3 className="text-lg font-black tracking-tighter uppercase mb-1 group-hover:text-accent transition-colors line-clamp-2">
+          {auction.title}
+        </h3>
+        <div className="flex items-center gap-4 mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
+          <span className="flex items-center gap-1">
+            <Gavel size={9} />
+            {auction.lotCount} Lots
+          </span>
+          {auction.totalBids > 0 && (
+            <span className="flex items-center gap-1">
+              <Clock size={9} />
+              {auction.totalBids} Bids
+            </span>
+          )}
+        </div>
+        <div className="mt-auto pt-6 border-t border-line flex items-center justify-between">
+          <Link
+            to={`/auctions/${auction.slug}`}
+            className="btn-industrial btn-accent py-3 px-6 text-[10px]"
+          >
+            View Catalog
+          </Link>
+          {auction.status === 'active' && (
+            <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-green-600">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Live
+            </span>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export function Auctions() {
   const { theme } = useTheme();
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pastExpanded, setPastExpanded] = useState(false);
+
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
   const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
   useEffect(() => {
-    const fetchAuctions = async () => {
+    let cancelled = false;
+    const load = async () => {
       try {
-        const data = await equipmentService.getAuctions();
-        setAuctions(data);
-      } catch (error) {
-        console.error('Error fetching auctions:', error);
+        const data = await auctionService.getAuctions();
+        if (!cancelled) setAuctions(data);
+      } catch (err) {
+        // Silently allow empty state on error
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-
-    fetchAuctions();
+    load();
+    return () => { cancelled = true; };
   }, []);
 
-  const sortedAuctions = useMemo(
-    () =>
-      [...auctions].sort((a, b) => {
-        const aTime = new Date(a.date).getTime() || 0;
-        const bTime = new Date(b.date).getTime() || 0;
-        return aTime - bTime;
-      }),
-    [auctions]
-  );
+  const { featuredAuction, activeAuctions, upcomingAuctions, pastAuctions } = useMemo(() => {
+    const active = auctions.filter((a) => a.status === 'active');
+    const upcoming = auctions.filter((a) => a.status === 'preview' || a.status === 'draft');
+    const past = auctions.filter((a) => a.status === 'closed' || a.status === 'settling' || a.status === 'settled' || a.status === 'cancelled');
 
-  const featuredAuction = sortedAuctions.find((auction) => auction.featured) || sortedAuctions[0] || null;
-  const hasLiveAuctions = sortedAuctions.length > 0;
+    const featured =
+      auctions.find((a) => a.featured && (a.status === 'active' || a.status === 'preview')) ||
+      active[0] ||
+      upcoming[0] ||
+      null;
 
-  if (loading && !hasLiveAuctions) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-accent"></div>
-      </div>
-    );
-  }
+    return {
+      featuredAuction: featured,
+      activeAuctions: active,
+      upcomingAuctions: upcoming,
+      pastAuctions: past,
+    };
+  }, [auctions]);
+
+  const hasAuctions = auctions.length > 0;
 
   return (
     <div className="bg-bg min-h-screen">
       <Seo
-        title="Live Auctions | Forestry Equipment Auctions | Forestry Equipment Sales"
-        description="Browse upcoming and live forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers."
+        title="Equipment Auctions | Forestry Equipment Sales"
+        description="Browse active and upcoming forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers."
         canonicalPath="/auctions"
         imagePath="/page-photos/john-deere-harvester.webp"
         preloadImage="/page-photos/john-deere-harvester.webp"
         jsonLd={{
           '@context': 'https://schema.org',
-          '@graph': [
-            {
-              '@type': 'CollectionPage',
-              name: 'Forestry Equipment Auctions',
-              description: 'Browse upcoming and live forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers.',
-              url: 'https://timberequip.com/auctions',
-            },
-            {
-              '@type': 'ItemList',
-              name: 'Auction Listings',
-              url: 'https://timberequip.com/auctions',
-              numberOfItems: sortedAuctions.length,
-            },
-            {
-              '@type': 'BreadcrumbList',
-              itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
-                { '@type': 'ListItem', position: 2, name: 'Auctions', item: 'https://timberequip.com/auctions' },
-              ],
-            },
-          ],
+          '@type': 'CollectionPage',
+          name: 'Forestry Equipment Auctions',
+          description: 'Browse active and upcoming forestry equipment auctions.',
+          url: 'https://timberequip.com/auctions',
         }}
       />
 
-      {/* Hero */}
+      <Breadcrumbs />
+
       <ImageHero imageSrc="/page-photos/john-deere-harvester.webp" imageAlt="John Deere harvester in the forest">
         <div>
           <div className="flex items-center gap-3 mb-4">
@@ -119,226 +232,239 @@ export function Auctions() {
             <span className="label-micro text-accent">Auction Center</span>
           </div>
           <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
-            {hasLiveAuctions ? 'Live ' : 'Equipment '}
-            <br />
+            Equipment <br />
             <span className={heroSecondaryClass}>Auctions</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            {hasLiveAuctions
-              ? 'Verified auction schedules for buyers and sellers who need a structured liquidation or bidding event.'
-              : 'Timed and live auctions are not yet open for direct bidding on Forestry Equipment Sales. Use this desk for launch updates and support.'}
+            Verified auction events for forestry and logging equipment. Browse catalogs, register to bid, and win quality machines.
           </p>
         </div>
       </ImageHero>
 
-      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
-          {/* Main Content */}
-          <div className="lg:col-span-8">
-            {hasLiveAuctions && featuredAuction ? (
-              <div className="space-y-16">
-                {/* Featured Auction */}
-                <motion.div
-                  key={featuredAuction.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-surface border border-line overflow-hidden"
-                >
-                  <div className="relative h-[300px]">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-16 space-y-20">
+
+        {/* Loading skeletons */}
+        {loading && (
+          <div>
+            <div className="animate-pulse bg-surface h-6 w-40 rounded-sm mb-8" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <AuctionCardSkeleton key={i} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && !hasAuctions && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="p-4 bg-surface border border-line rounded-sm mb-6">
+              <Gavel size={28} className="text-accent" />
+            </div>
+            <h2 className="text-2xl font-black tracking-tighter uppercase mb-3">No Auctions Scheduled</h2>
+            <p className="text-sm font-medium text-muted max-w-md mb-8">
+              There are no active or upcoming auctions at this time. Check back soon or contact support for information on upcoming events.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Link to="/contact" className="btn-industrial btn-accent py-4 px-10">
+                Contact Support
+              </Link>
+              <Link to="/search" className="btn-industrial btn-outline py-4 px-10">
+                Browse Inventory
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {!loading && hasAuctions && (
+          <>
+            {/* Featured Auction */}
+            {featuredAuction && (
+              <section>
+                <div className="flex items-center justify-between mb-8 border-b border-line pb-4">
+                  <h2 className="text-xl font-black tracking-tighter uppercase">Featured Auction</h2>
+                  <span className="label-micro text-accent">Highlighted Event</span>
+                </div>
+                <div className="bg-surface border border-line overflow-hidden">
+                  <div className="relative h-[320px] md:h-[400px] overflow-hidden">
                     <img
-                      src={featuredAuction.image}
+                      src={featuredAuction.coverImageUrl || featuredAuction.image || '/page-photos/john-deere-harvester.webp'}
                       alt={featuredAuction.title}
-                      width={800}
-                      height={300}
                       className="absolute inset-0 w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                     />
-                    <div className="absolute top-4 left-4 bg-accent text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest">
-                      Featured Event
+                    <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent" />
+                    <div className={`absolute top-4 left-4 px-3 py-1 text-[9px] font-black uppercase tracking-widest ${getStatusBadgeClass(featuredAuction.status)}`}>
+                      {getStatusLabel(featuredAuction.status)}
+                    </div>
+                    {featuredAuction.featured && (
+                      <div className="absolute top-4 right-4 bg-accent text-white px-3 py-1 text-[9px] font-black uppercase tracking-widest">
+                        Featured
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 p-8">
+                      <h3 className="text-3xl md:text-4xl font-black tracking-tighter uppercase text-white mb-2">
+                        {featuredAuction.title}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-6 text-white/70 text-[10px] font-bold uppercase tracking-widest">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar size={10} />
+                          {formatDate(featuredAuction.startTime)}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Gavel size={10} />
+                          {featuredAuction.lotCount} Lots
+                        </span>
+                        {featuredAuction.totalBids > 0 && (
+                          <span className="flex items-center gap-1.5">
+                            <Clock size={10} />
+                            {featuredAuction.totalBids} Total Bids
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="p-8 md:p-12">
-                    <div className="flex items-center space-x-4 mb-6">
-                      <div className="flex flex-col items-center bg-ink text-bg px-4 py-2 rounded-sm">
-                        <span className="text-2xl font-black leading-none">{getAuctionDateParts(featuredAuction.date).day}</span>
-                        <span className="text-[9px] font-bold uppercase tracking-widest">{getAuctionDateParts(featuredAuction.date).month}</span>
-                      </div>
-                      <div>
-                        <h2 className="text-3xl font-black tracking-tighter uppercase">{featuredAuction.title}</h2>
-                        <div className="flex items-center text-muted text-xs font-bold uppercase tracking-widest mt-1">
-                          <MapPin size={12} className="mr-1" /> {featuredAuction.location || 'Location to be announced'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-8 mb-8">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-bg border border-line rounded-sm">
-                          <Clock size={16} className="text-accent" />
-                        </div>
-                        <div>
-                          <span className="block text-[10px] text-muted font-bold uppercase tracking-widest">Schedule</span>
-                          <span className="text-sm font-black tracking-tight">{formatAuctionDate(featuredAuction.date)}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-bg border border-line rounded-sm">
-                          <Gavel size={16} className="text-accent" />
-                        </div>
-                        <div>
-                          <span className="block text-[10px] text-muted font-bold uppercase tracking-widest">Lots</span>
-                          <span className="text-sm font-black tracking-tight">{featuredAuction.itemCount || 0} Equipment</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mb-8 p-6 bg-bg border border-line rounded-sm">
-                      <span className="block text-[10px] text-muted font-black uppercase tracking-[0.2em] mb-2">Registration Status</span>
-                      <p className="text-[11px] font-bold uppercase tracking-widest text-muted">
-                        Auction registration is handled by the Forestry Equipment Sales support team until the bidder workflow is live.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <Link to="/contact" className="btn-industrial btn-accent flex-1 py-4 text-center">
-                        Contact Support
+                  <div className="p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between">
+                    <p className="text-sm font-medium text-muted max-w-xl line-clamp-2">
+                      {featuredAuction.description}
+                    </p>
+                    <div className="flex gap-3 flex-shrink-0">
+                      <Link
+                        to={`/auctions/${featuredAuction.slug}`}
+                        className="btn-industrial btn-accent py-4 px-10 whitespace-nowrap"
+                      >
+                        View Catalog
+                        <ArrowRight size={14} className="ml-2" />
                       </Link>
-                      <Link to="/search" className="btn-industrial bg-surface border border-line flex-1 py-4 text-center">
-                        Browse Inventory
+                      <Link
+                        to={`/login?redirect=/auctions/${featuredAuction.slug}/register`}
+                        className="btn-industrial btn-outline py-4 px-6 whitespace-nowrap"
+                      >
+                        Register to Bid
                       </Link>
                     </div>
                   </div>
-                </motion.div>
+                </div>
+              </section>
+            )}
 
-                {/* Auction Schedule */}
-                {sortedAuctions.length > 1 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-12 border-b border-line pb-4">
-                      <h3 className="text-xl font-black tracking-tighter uppercase">Auction Schedule</h3>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted">
-                        Live event data only
-                      </span>
-                    </div>
+            {/* Active Auctions */}
+            {activeAuctions.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-8 border-b border-line pb-4">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <h2 className="text-xl font-black tracking-tighter uppercase">Active Auctions</h2>
+                  </div>
+                  <span className="label-micro text-muted">{activeAuctions.length} Live</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {activeAuctions.map((auction) => (
+                    <AuctionCard key={auction.id} auction={auction} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {sortedAuctions.map((auction) => (
-                        <motion.div
-                          key={auction.id}
-                          whileHover={{ y: -5 }}
-                          className="bg-surface border border-line overflow-hidden flex flex-col group"
-                        >
-                          <div className="relative h-48">
-                            <img
-                              src={auction.image}
-                              alt={auction.title}
-                              width={400}
-                              height={192}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                              referrerPolicy="no-referrer"
-                              loading="lazy"
-                            />
-                            <div className="absolute top-3 right-3 bg-bg/90 backdrop-blur-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest border border-line">
-                              {auction.type || 'Auction'}
-                            </div>
-                          </div>
-                          <div className="p-6 flex-1 flex flex-col">
-                            <div className="flex items-center text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-2">
-                              <Calendar size={10} className="mr-1.5" />
-                              {formatAuctionDate(auction.date)}
-                            </div>
-                            <h4 className="text-lg font-black tracking-tighter uppercase mb-2 group-hover:text-accent transition-colors">{auction.title}</h4>
-                            <div className="flex items-center text-muted text-[10px] font-bold uppercase tracking-widest mb-2">
-                              <MapPin size={10} className="mr-1" /> {auction.location || 'Location to be announced'}
-                            </div>
-                            <div className="flex items-center text-muted text-[10px] font-bold uppercase tracking-widest mb-6">
-                              <Clock size={10} className="mr-1" /> {auction.status || 'Schedule pending'}
-                            </div>
+            {/* Upcoming Auctions */}
+            {upcomingAuctions.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-8 border-b border-line pb-4">
+                  <h2 className="text-xl font-black tracking-tighter uppercase">Upcoming Auctions</h2>
+                  <span className="label-micro text-muted">{upcomingAuctions.length} Scheduled</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {upcomingAuctions.map((auction) => (
+                    <AuctionCard key={auction.id} auction={auction} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-                            <div className="mt-auto flex items-center justify-between pt-6 border-t border-line">
-                              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
-                                {auction.itemCount || 0} listed lots
-                              </span>
-                              <Link to="/contact" className="text-[10px] font-black uppercase tracking-widest flex items-center hover:text-accent transition-colors">
-                                Request Details <ArrowRight size={12} className="ml-1" />
-                              </Link>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
+            {/* Past Auctions */}
+            {pastAuctions.length > 0 && (
+              <section>
+                <button
+                  type="button"
+                  onClick={() => setPastExpanded((prev) => !prev)}
+                  className="w-full flex items-center justify-between border-b border-line pb-4 mb-8 group"
+                >
+                  <h2 className="text-xl font-black tracking-tighter uppercase group-hover:text-accent transition-colors">
+                    Past Auctions
+                  </h2>
+                  <div className="flex items-center gap-3">
+                    <span className="label-micro text-muted">{pastAuctions.length} Closed</span>
+                    {pastExpanded ? (
+                      <ChevronUp size={16} className="text-muted" />
+                    ) : (
+                      <ChevronDown size={16} className="text-muted" />
+                    )}
+                  </div>
+                </button>
+                {pastExpanded && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {pastAuctions.map((auction) => (
+                      <AuctionCard key={auction.id} auction={auction} />
+                    ))}
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="bg-surface border border-line p-8 md:p-12">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-bg border border-line rounded-sm">
-                    <Gavel size={18} className="text-accent" />
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-accent">Launch Status</span>
-                </div>
-                <h2 className="text-3xl font-black tracking-tighter uppercase mb-6">
-                  Auctions Are Not Yet Open For Direct Bidding
-                </h2>
-                <p className="text-sm font-medium text-muted leading-relaxed mb-8 max-w-3xl">
-                  Forestry Equipment Sales is still building the operator workflow for live auction registration, bidder verification,
-                  catalog publishing, and settlement.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <Link to="/contact" className="btn-industrial btn-accent py-5 px-12 text-center">
-                    Contact Support
-                  </Link>
-                  <Link to="/search" className="btn-industrial py-5 px-12 bg-surface border border-line text-center">
-                    Browse Live Inventory
-                  </Link>
-                </div>
-              </div>
+              </section>
             )}
-          </div>
+          </>
+        )}
 
-          {/* Sidebar */}
-          <div className="lg:col-span-4 space-y-8">
-            <div className="bg-surface border border-line p-8">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Auction Information</h4>
-              <div className="space-y-8">
-                {[
-                  { title: 'Verified Events', desc: 'Every listed auction is reviewed and verified by the operations team.', icon: ShieldCheck },
-                  { title: 'Live Scheduling', desc: 'Auction dates, locations, and lot counts are pulled from live data.', icon: Calendar },
-                  { title: 'Support Registration', desc: 'Bidder registration is handled through the support team until self-service launches.', icon: Activity },
-                  { title: 'Secure Settlement', desc: 'All transactions are handled through verified settlement workflows.', icon: Clock },
-                ].map((item, i) => (
-                  <div key={i} className="flex space-x-4">
-                    <div className="p-2 bg-bg border border-line rounded-sm h-fit">
-                      <item.icon className="text-accent" size={18} />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-black uppercase tracking-tight mb-1">{item.title}</span>
-                      <p className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        {/* How It Works */}
+        <section className="border-t border-line pt-16">
+          <div className="flex items-center justify-between mb-12">
+            <div>
+              <span className="label-micro text-accent mb-3 block">Process</span>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter uppercase leading-none">
+                How It Works
+              </h2>
             </div>
-
-            {hasLiveAuctions && (
-              <div className="bg-surface border border-line p-8">
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-4 text-accent">Quick Stats</h4>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center border-b border-line pb-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">Total Events</span>
-                    <span className="text-lg font-black tracking-tight">{sortedAuctions.length}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-line pb-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">Total Lots</span>
-                    <span className="text-lg font-black tracking-tight">
-                      {sortedAuctions.reduce((sum, a) => sum + (a.itemCount || 0), 0)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {HOW_IT_WORKS_STEPS.map((step) => (
+              <div key={step.step} className="bg-surface border border-line p-8 flex flex-col">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent mb-4">{step.step}</span>
+                <div className="p-3 bg-bg border border-line w-fit mb-6">
+                  <step.icon size={20} className="text-accent" />
+                </div>
+                <h3 className="text-lg font-black tracking-tighter uppercase mb-3">{step.title}</h3>
+                <p className="text-[11px] font-medium text-muted leading-relaxed uppercase tracking-wider">
+                  {step.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="bg-surface border border-line p-12 md:p-16 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <CheckCircle size={16} className="text-accent" />
+              <span className="label-micro text-accent">Bidder Registration</span>
+            </div>
+            <h2 className="text-3xl font-black tracking-tighter uppercase mb-3 leading-none">
+              Register to Bid on <br className="hidden md:block" />Upcoming Auctions
+            </h2>
+            <p className="text-sm font-medium text-muted max-w-lg">
+              Create an account and complete verification to participate in live and timed auctions.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-4 flex-shrink-0">
+            <Link
+              to="/login?redirect=/auctions"
+              className="btn-industrial btn-accent py-5 px-12 whitespace-nowrap"
+            >
+              Register Now
+            </Link>
+            <Link to="/contact" className="btn-industrial btn-outline py-5 px-12 whitespace-nowrap">
+              Contact Support
+            </Link>
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -395,6 +395,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const [savingSearch, setSavingSearch] = useState(false);
   const [alertPreferences, setAlertPreferences] = useState<AlertPreferences>(DEFAULT_ALERT_PREFERENCES);
   const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
+  const [auctionOnly, setAuctionOnly] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [geoLocating, setGeoLocating] = useState(false);
   const favoriteIds = normalizeListingIdList(user?.favorites);
@@ -798,6 +799,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const filteredListings = useMemo(() => {
     let results = allListings.filter((listing) => matchesFilters(listing));
 
+    if (auctionOnly) {
+      results = results.filter((l) => l.auctionId);
+    }
+
     const featuredFirst = (a: Listing, b: Listing) => Number(!!b.featured) - Number(!!a.featured);
     if (filters.sortBy === 'price_asc') {
       results = [...results].sort((a, b) => featuredFirst(a, b) || a.price - b.price);
@@ -832,7 +837,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     }
 
     return results;
-  }, [allListings, matchesFilters, filters.sortBy, filters.q, userCoords]);
+  }, [allListings, matchesFilters, filters.sortBy, filters.q, userCoords, auctionOnly]);
 
   // Reset pagination whenever the result set changes (new filters applied)
   useEffect(() => {
@@ -1709,6 +1714,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <option value="nearest">{t('search.sortNearest', 'Nearest First')}</option>
                 </select>
               </div>
+              <button
+                className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm border transition-colors ${
+                  auctionOnly ? 'bg-accent text-white border-accent' : 'bg-transparent text-muted border-line hover:border-ink'
+                }`}
+                onClick={() => setAuctionOnly(!auctionOnly)}
+              >
+                Auction Items
+              </button>
             </div>
           </div>
 
