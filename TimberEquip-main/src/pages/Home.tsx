@@ -33,7 +33,7 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { CANONICAL_MARKET_ROUTE_KEY, buildManufacturerPath, buildStateMarketPath, getStateFromLocation, normalizeSeoSlug } from '../utils/seoRoutes';
+import { CANONICAL_MARKET_ROUTE_KEY, buildManufacturerPath, buildStateMarketPath, getListingManufacturer, getStateFromLocation, normalizeSeoSlug } from '../utils/seoRoutes';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   LoggingEquipmentIcon,
