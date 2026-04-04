@@ -5,6 +5,7 @@ const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
 const SELLER_RETURN_TO_STORAGE_KEY = 'fes:sell-return-to';
 const SELLER_RETURN_TO_MAX_AGE_MS = 30 * 60 * 1000;
 const ROLE_BASED_LISTING_CAPS: Record<string, number> = {
+  individual_seller: 1,
   dealer: 50,
   pro_dealer: 150,
 };
@@ -120,7 +121,7 @@ export function getDealerInventoryOwnerUid(user: UserProfile | null | undefined)
 
 export function getFeaturedListingCap(user: UserProfile | null | undefined): number {
   const role = normalizeRole(user?.role);
-  if (role === 'individual_seller') return 1;
+  if (role === 'individual_seller') return 0;
   if (role === 'dealer') return 3;
   if (role === 'pro_dealer') return 6;
   return 0;

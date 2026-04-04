@@ -878,7 +878,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         handleDraftFilterChange('location', fallback);
         handleFilterChange('location', fallback);
       } else {
-        alert('Geolocation is not supported by your browser.');
+        showAlert('Location Unavailable', 'Geolocation is not supported by your browser. Please enter your location manually.');
       }
       setGeoLocating(false);
       return;
@@ -903,7 +903,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
           handleDraftFilterChange('location', fallback);
           handleFilterChange('location', fallback);
         } else {
-          alert('Unable to retrieve your location. Please enter it manually.');
+          showAlert('Location Unavailable', 'Unable to retrieve your location. Please enter it manually or allow location access in your browser settings.');
         }
         setGeoLocating(false);
       },
@@ -1256,10 +1256,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <label className="label-micro">Manufacturer / Brand</label>
+                        <label className="label-micro">Make</label>
                         <MultiSelectDropdown
-                          label="Manufacturers"
-                          placeholder="All Manufacturers"
+                          label="Makes"
+                          placeholder="All Makes"
                           options={manufacturerMultiOptions}
                           selected={parseMultiValue(draftFilters.manufacturer)}
                           onChange={(sel) => handleDraftMultiSelect('manufacturer', sel)}
@@ -1699,7 +1699,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     handleDraftFilterChange('sortBy', nextSort);
                   }}
                   aria-label="Sort by"
-                  className="bg-transparent border-none focus:ring-0 cursor-pointer text-ink ml-1 pl-2"
+                  className="bg-bg border-none focus:ring-0 cursor-pointer text-ink ml-1 pl-2 font-bold"
                 >
                   <option value="newest">{t('search.sortNewest', 'Newest')}</option>
                   <option value="price_asc">{t('search.sortPriceLowHigh', 'Price: Low to High')}</option>

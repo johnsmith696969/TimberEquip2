@@ -4,7 +4,7 @@ import {
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
-  Phone, Calculator, AlertCircle, Landmark
+  Phone, Calculator, AlertCircle, Landmark, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
@@ -111,8 +111,7 @@ export function ListingDetail() {
   const [showAMVModal, setShowAMVModal] = useState(false);
   const [showPaymentCalcModal, setShowPaymentCalcModal] = useState(false);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
-  const [showShareMenu, setShowShareMenu] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [inquirySent, setInquirySent] = useState(false);
   const [financingSent, setFinancingSent] = useState(false);
   const [shippingSent, setShippingSent] = useState(false);
@@ -124,6 +123,7 @@ export function ListingDetail() {
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
+  const fullscreenSwipeRef = React.useRef<{ startX: number; startY: number; time: number } | null>(null);
   
   const [inquiryForm, setInquiryForm] = useState({
     name: '',
@@ -863,6 +863,11 @@ export function ListingDetail() {
   const safeSellerLogo = typeof seller?.logo === 'string' ? seller.logo : '';
   const safeSellerId = formatSpecValue(seller?.id) || '';
   const safeSellerTotalListings = toFiniteNumber(seller?.totalListings) ?? 0;
+  const sellerIsVerified = Boolean(
+    listing.sellerVerified
+    || seller?.manuallyVerified
+    || isDealerRole(seller?.role || '')
+  );
 
   const hasAmv = typeof safeMarketValueEstimate === 'number' && safeMarketValueEstimate > 0;
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
@@ -1109,44 +1114,27 @@ export function ListingDetail() {
             {t('listingDetail.backToInventory', 'Back to Inventory')}
           </Link>
           <div className="flex items-center space-x-4">
-            <div className="relative">
-              <button
-                onClick={() => setShowShareMenu((prev) => !prev)}
-                className="p-2 text-muted hover:text-ink"
-                aria-label="Share listing"
-              ><Share2 size={18} /></button>
-              {showShareMenu && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-line shadow-xl rounded-sm z-50 py-1">
-                  <a
-                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setShowShareMenu(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors"
-                  >Facebook</a>
-                  <a
-                    href={`sms:?body=${encodeURIComponent(`${safeYear} ${safeMake} ${safeModel} - ${window.location.href}`)}`}
-                    onClick={() => setShowShareMenu(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors"
-                  >Text (SMS)</a>
-                  <a
-                    href={`mailto:?subject=${encodeURIComponent(`${safeYear} ${safeMake} ${safeModel} for Sale`)}&body=${encodeURIComponent(window.location.href)}`}
-                    onClick={() => setShowShareMenu(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors"
-                  >Email</a>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(window.location.href).then(() => {
-                        setLinkCopied(true);
-                        setTimeout(() => setLinkCopied(false), 2000);
-                      }).catch(() => {});
-                      setShowShareMenu(false);
-                    }}
-                    className="flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-ink hover:bg-bg transition-colors w-full text-left"
-                  >{linkCopied ? 'Copied!' : 'Copy URL'}</button>
-                </div>
-              )}
-            </div>
+            <button
+              onClick={async () => {
+                const shareData = {
+                  title: `${safeYear} ${safeMake} ${safeModel} for Sale`,
+                  text: `Check out this ${safeYear} ${safeMake} ${safeModel} on Forestry Equipment Sales`,
+                  url: window.location.href,
+                };
+                if (navigator.share) {
+                  try { await navigator.share(shareData); } catch { /* user cancelled */ }
+                } else {
+                  navigator.clipboard.writeText(window.location.href).then(() => {
+                    setShareCopied(true);
+                    setTimeout(() => setShareCopied(false), 2000);
+                  }).catch(() => {});
+                }
+              }}
+              className="p-2 text-muted hover:text-ink relative"
+              aria-label="Share listing"
+            >
+              {shareCopied ? <CheckCircle2 size={18} className="text-accent" /> : <Share2 size={18} />}
+            </button>
             <button
               onClick={handleToggleFavorite}
               aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
@@ -1220,7 +1208,7 @@ export function ListingDetail() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
+                    transition={{ duration: 0.18 }}
                     src={galleryImages[activeImage]}
                     alt={activeImageTitle || listing.title}
                     width={1280}
@@ -1361,7 +1349,8 @@ export function ListingDetail() {
                 { label: t('listingDetail.condition', 'Condition'), value: safeCondition, icon: ShieldCheck },
                 { label: t('listingDetail.location', 'Location'), value: safeLocation, icon: MapPin },
                 { label: t('listingDetail.make', 'Make'), value: safeMake, icon: Info },
-                { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info }
+                { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info },
+                ...(listing.updatedAt ? [{ label: t('listingDetail.lastUpdated', 'Last Updated'), value: new Date(listing.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), icon: RefreshCw }] : [])
               ].map((spec, i) => (
                 <div key={i} className="bg-bg p-6 flex flex-col">
                   <div className="flex items-center space-x-2 mb-2">
@@ -1686,7 +1675,7 @@ export function ListingDetail() {
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex flex-col">
                     <span className="label-micro mb-2">
-                      {listing.sellerVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
+                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
                     </span>
                     <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
                     <a 
@@ -1716,10 +1705,10 @@ export function ListingDetail() {
                 </div>
 
                 <div className="flex flex-col space-y-3">
-                  <div className={`flex items-center space-x-3 text-xs font-bold ${listing.sellerVerified || seller?.manuallyVerified ? 'text-data' : 'text-muted'}`}>
+                  <div className={`flex items-center space-x-3 text-xs font-bold ${sellerIsVerified ? 'text-data' : 'text-muted'}`}>
                     <ShieldCheck size={16} />
                     <span className="uppercase tracking-widest">
-                      {listing.sellerVerified || seller?.manuallyVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
+                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
                     </span>
                   </div>
                   {['super_admin', 'admin'].includes(user?.role || '') && seller?.id && (
@@ -1807,7 +1796,6 @@ export function ListingDetail() {
               </button>
 
               <TransformWrapper
-                key={activeImage}
                 initialScale={1}
                 minScale={1}
                 maxScale={5}
@@ -1816,7 +1804,7 @@ export function ListingDetail() {
                 doubleClick={{ disabled: true }}
                 centerOnInit
               >
-                {({ zoomIn, zoomOut, resetTransform }) => (
+                {({ zoomIn, zoomOut, resetTransform, state }) => (
                   <>
                     <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
                       <button onClick={() => zoomOut()} className="px-3 py-2 bg-black/65 text-white text-xs font-black rounded-sm hover:bg-black transition-colors">-</button>
@@ -1824,23 +1812,49 @@ export function ListingDetail() {
                       <button onClick={() => resetTransform()} className="px-3 py-2 bg-black/65 text-white text-xs font-black rounded-sm hover:bg-black transition-colors">Reset</button>
                     </div>
 
-                    <TransformComponent wrapperClass="w-full h-full !overflow-visible" contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10">
-                      <div className="relative inline-block">
-                        <AnimatePresence mode="wait">
-                          <motion.img
-                            key={galleryImages[activeImage]}
+                    <TransformComponent
+                      wrapperClass="w-full h-full !overflow-visible"
+                      contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10"
+                      wrapperProps={{
+                        onTouchStart: (e: React.TouchEvent) => {
+                          if (e.touches.length === 1) {
+                            fullscreenSwipeRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, time: Date.now() };
+                          }
+                        },
+                        onTouchEnd: (e: React.TouchEvent) => {
+                          if (!fullscreenSwipeRef.current || state.scale > 1.05) { fullscreenSwipeRef.current = null; return; }
+                          const touch = e.changedTouches[0];
+                          const dx = touch.clientX - fullscreenSwipeRef.current.startX;
+                          const dy = touch.clientY - fullscreenSwipeRef.current.startY;
+                          const elapsed = Date.now() - fullscreenSwipeRef.current.time;
+                          fullscreenSwipeRef.current = null;
+                          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && elapsed < 500) {
+                            resetTransform();
+                            if (dx < 0) showNextImage();
+                            else showPrevImage();
+                          }
+                        },
+                      }}
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.div
+                          key={activeImage}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.18 }}
+                          onAnimationStart={() => resetTransform()}
+                          className="relative inline-block"
+                        >
+                          <img
                             src={galleryImages[activeImage]}
                             alt={activeImageTitle || listing.title}
                             className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
                             referrerPolicy="no-referrer"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.12 }}
                           />
-                        </AnimatePresence>
-                        <WatermarkOverlay index={activeImage} />
-                      </div>
+                          <WatermarkOverlay index={activeImage} />
+                        </motion.div>
+                      </AnimatePresence>
                     </TransformComponent>
 
                     <button
@@ -1883,12 +1897,12 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden"
             >
-              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
                 </div>
-                <button onClick={dismissInquiryModal} aria-label="Close inquiry form" className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissInquiryModal} aria-label="Close inquiry form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -1991,12 +2005,12 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Market Logic</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
                 </div>
-                <button onClick={() => setShowAMVModal(false)} aria-label="Close AMV modal" className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={() => setShowAMVModal(false)} aria-label="Close AMV modal" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -2058,12 +2072,12 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Credit Center</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
                 </div>
-                <button onClick={dismissFinancingModal} aria-label="Close financing form" className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissFinancingModal} aria-label="Close financing form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -2144,12 +2158,12 @@ export function ListingDetail() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-ink text-white'}`}>
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Logistics</span>
                   <h3 className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>
                 </div>
-                <button onClick={dismissShippingModal} aria-label="Close shipping form" className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissShippingModal} aria-label="Close shipping form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>

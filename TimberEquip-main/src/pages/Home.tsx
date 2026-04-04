@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   Package,
   Calculator,
-  Search as SearchIcon
+  Search as SearchIcon,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -32,8 +33,7 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { normalizeSeoSlug, buildManufacturerPath } from '../utils/seoRoutes';
-import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
+import { normalizeSeoSlug, buildManufacturerPath, buildStateMarketPath, getStateFromLocation, getListingManufacturer, CANONICAL_MARKET_ROUTE_KEY } from '../utils/seoRoutes';
 import {
   LoggingEquipmentIcon,
   LandClearingEquipmentIcon,
@@ -135,16 +135,22 @@ export function Home() {
   const listEquipmentState = currentReturnPath.startsWith('/') ? { returnTo: currentReturnPath } : undefined;
   const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
 
+  const [allListings, setAllListings] = useState<Listing[]>([]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const marketplaceData = await equipmentService.getHomeMarketplaceData();
+        const [marketplaceData, listings] = await Promise.all([
+          equipmentService.getHomeMarketplaceData(),
+          equipmentService.getListings(),
+        ]);
 
         setFeaturedListings(marketplaceData.featuredListings);
         setRecentSoldListings(marketplaceData.recentSoldListings);
         setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
         setTopLevelCategoryMetrics(buildTopLevelMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
+        setAllListings(listings);
       } catch (error) {
         console.error('Error fetching home data:', error);
       }
@@ -264,22 +270,33 @@ export function Home() {
   const [mfgSearch, setMfgSearch] = useState('');
 
   const allManufacturers = useMemo(() => {
-    const set = new Set<string>();
-    for (const category of Object.values(EQUIPMENT_TAXONOMY)) {
-      for (const manufacturers of Object.values(category)) {
-        for (const mfg of manufacturers) {
-          if (mfg) set.add(mfg);
-        }
-      }
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, []);
+    const counts = new Map<string, number>();
+    allListings.forEach((listing) => {
+      const mfg = getListingManufacturer(listing).trim();
+      if (mfg) counts.set(mfg, (counts.get(mfg) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name);
+  }, [allListings]);
 
   const filteredManufacturers = useMemo(() => {
     if (!mfgSearch.trim()) return allManufacturers;
     const q = mfgSearch.trim().toLowerCase();
     return allManufacturers.filter((m) => m.toLowerCase().includes(q));
   }, [allManufacturers, mfgSearch]);
+
+  const topStates = useMemo(() => {
+    const counts = new Map<string, number>();
+    allListings.forEach((listing) => {
+      const state = getStateFromLocation(listing.location).trim();
+      if (state) counts.set(state, (counts.get(state) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 16)
+      .map(([name, count]) => ({ name, count }));
+  }, [allListings]);
 
   const visibleCards = marketCards.length <= 3
     ? marketCards
@@ -312,7 +329,7 @@ export function Home() {
         {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
-          description: 'Browse in-stock forestry equipment across categories, manufacturers, models, dealers, and state markets.',
+          description: 'Browse in-stock forestry equipment by make (manufacturer), model, category, dealer, and state. Shop equipment from Caterpillar, John Deere, Tigercat, and more.',
           url: 'https://timberequip.com/',
         },
         {
@@ -528,7 +545,7 @@ export function Home() {
                     value={selectedCategoryFamily}
                     onChange={(event) => setSelectedCategoryFamily(event.target.value)}
                     aria-label="Equipment category family"
-                    className="bg-bg border border-line pl-4 pr-10 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none min-w-0"
+                    className="bg-surface border border-line pl-4 pr-10 py-3 text-sm font-black uppercase tracking-widest text-ink focus:border-accent focus:outline-none min-w-0"
                   >
                     {categoryCards.map((category) => (
                       <option key={category.name} value={category.name}>
@@ -736,6 +753,9 @@ export function Home() {
               <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">
                 Browse by <span className="text-muted">Manufacturer</span>
               </h2>
+              <p className="text-muted font-medium mt-4 max-w-xl">
+                Search equipment by make (manufacturer) including Caterpillar, John Deere, Tigercat, and more.
+              </p>
             </div>
             <div className="relative w-full md:w-80">
               <SearchIcon size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
@@ -743,7 +763,7 @@ export function Home() {
                 type="text"
                 value={mfgSearch}
                 onChange={(e) => setMfgSearch(e.target.value)}
-                placeholder="Search manufacturers..."
+                placeholder="Search by make..."
                 className="w-full pl-10 pr-4 py-3 bg-bg border border-line text-ink text-xs font-bold uppercase tracking-widest placeholder:text-muted focus:outline-none focus:border-accent"
               />
             </div>
@@ -761,7 +781,7 @@ export function Home() {
           </div>
           {filteredManufacturers.length > 48 && (
             <div className="flex justify-center mt-8">
-              <Link to="/search" className="btn-industrial">
+              <Link to="/manufacturers" className="btn-industrial">
                 View All {filteredManufacturers.length} Manufacturers
                 <ArrowRight className="ml-2" size={14} />
               </Link>
@@ -774,6 +794,50 @@ export function Home() {
           )}
         </div>
       </section>
+
+      {/* Browse by State */}
+      {topStates.length > 0 && (
+        <section className="py-24 bg-bg px-4 md:px-8">
+          <div className="max-w-[1600px] mx-auto">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-12 gap-6">
+              <div>
+                <span className="label-micro text-accent mb-4 block">Browse by State</span>
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">
+                  Equipment <span className="text-muted">Near You</span>
+                </h2>
+                <p className="text-muted font-medium mt-4 max-w-xl">
+                  Find forestry and logging equipment for sale in your state from local dealers and private sellers.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
+              {topStates.map((state) => (
+                <Link
+                  key={state.name}
+                  to={buildStateMarketPath(state.name, CANONICAL_MARKET_ROUTE_KEY)}
+                  className="bg-surface border border-line px-4 py-4 flex items-center gap-3 hover:border-accent hover:text-accent transition-colors group"
+                >
+                  <MapPin size={14} className="text-accent shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-ink group-hover:text-accent transition-colors block truncate">
+                      {state.name}
+                    </span>
+                    <span className="text-[9px] font-bold text-muted uppercase tracking-widest">
+                      {formatNumber(state.count)} Listings
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div className="flex justify-center mt-8">
+              <Link to="/states" className="btn-industrial">
+                View All States
+                <ArrowRight className="ml-2" size={14} />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Financing CTA */}
       <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">

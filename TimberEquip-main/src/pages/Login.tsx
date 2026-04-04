@@ -400,7 +400,7 @@ export function Login() {
           <form onSubmit={handleLogin} className="space-y-8">
             <div className="flex flex-col space-y-2">
               <label className="label-micro">Email Address</label>
-              <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+              <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                 <div className="p-3 text-muted">
                   <Mail size={18} />
                 </div>
@@ -433,7 +433,7 @@ export function Login() {
                   Forgot Password?
                 </button>
               </div>
-              <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+              <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                 <div className="p-3 text-muted">
                   <Lock size={18} />
                 </div>
@@ -499,7 +499,7 @@ export function Login() {
 
               <div className="space-y-2">
                 <label className="label-micro">Verification Code</label>
-                <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                   <div className="p-3 text-muted">
                     <KeyRound size={18} />
                   </div>
@@ -659,7 +659,7 @@ export function Login() {
                     <form onSubmit={handlePasswordReset} className="space-y-6">
                       <div className="flex flex-col space-y-2">
                         <label className="label-micro">Email Address</label>
-                        <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                        <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                           <div className="p-3 text-muted">
                             <Mail size={18} />
                           </div>

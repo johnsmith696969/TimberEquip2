@@ -103,7 +103,7 @@ export function Calculator() {
                     <select 
                       value={term}
                       onChange={(e) => setTerm(Number(e.target.value))}
-                      className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                      className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent"
                     >
                       {[24, 36, 48, 60, 72, 84].map(t => (
                         <option key={t} value={t}>{t} Months</option>
@@ -115,7 +115,7 @@ export function Calculator() {
                       <label className="label-micro">Interest Rate (APR %)</label>
                       <span className="text-xs font-black text-data uppercase tracking-widest">Prime: 6.25%</span>
                     </div>
-                    <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                    <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                       <div className="p-4 text-muted">
                         <Percent size={18} />
                       </div>

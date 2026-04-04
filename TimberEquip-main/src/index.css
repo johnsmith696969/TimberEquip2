@@ -151,7 +151,7 @@ body {
 
 /* Buttons */
 .btn-industrial {
-  @apply bg-secondary font-black uppercase tracking-widest px-2.5 flex items-center justify-center gap-1.5 hover:opacity-90 transition-all active:scale-95 rounded-sm;
+  @apply bg-secondary font-black uppercase tracking-widest px-2.5 flex items-center justify-center gap-1.5 transition-all active:scale-95 rounded-sm;
   color: var(--btn-text);
   font-size: 11px;
   line-height: 1;
@@ -160,8 +160,18 @@ body {
   padding-bottom: 7px;
 }
 
+.btn-industrial:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
 .btn-accent {
   @apply bg-accent border-accent;
+}
+
+.btn-accent:hover {
+  background-color: color-mix(in srgb, var(--accent) 85%, black);
+  border-color: color-mix(in srgb, var(--accent) 85%, black);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .btn-outline {
@@ -186,6 +196,21 @@ body {
 .input-industrial:focus,
 .select-industrial:focus {
   box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18);
+}
+
+/* Force dark-mode option elements to match theme (browsers default to white bg) */
+:root.dark select,
+:root.dark option {
+  background-color: var(--surface);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) select,
+  :root:not(.light):not(.dark) option {
+    background-color: var(--surface);
+    color: var(--ink);
+  }
 }
 
 /* Override browser autofill blue/yellow backgrounds */
@@ -221,4 +246,9 @@ select:-webkit-autofill:focus {
   to {
     transform: translate3d(-50%, 0, 0);
   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

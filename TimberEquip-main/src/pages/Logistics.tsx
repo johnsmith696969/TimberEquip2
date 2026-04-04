@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Clock3, Mail, MapPinned, Phone, ShieldCheck, Truck } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { equipmentService } from '../services/equipmentService';
@@ -320,25 +321,23 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label htmlFor="logistics-pickup" className="label-micro">Pickup Location</label>
-                      <input
-                        id="logistics-pickup"
-                        type="text"
+                      <label className="label-micro">Pickup Location</label>
+                      <GooglePlacesInput
+                        mode="city"
                         value={formData.pickupLocation}
-                        onChange={(event) => updateField('pickupLocation', event.target.value)}
+                        onChange={(value) => updateField('pickupLocation', value)}
+                        onSelect={(place) => updateField('pickupLocation', place ? `${place.city}, ${place.state}` : '')}
                         placeholder="Duluth, Minnesota"
-                        className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label htmlFor="logistics-destination" className="label-micro">Destination</label>
-                      <input
-                        id="logistics-destination"
-                        type="text"
+                      <label className="label-micro">Destination</label>
+                      <GooglePlacesInput
+                        mode="city"
                         value={formData.destination}
-                        onChange={(event) => updateField('destination', event.target.value)}
+                        onChange={(value) => updateField('destination', value)}
+                        onSelect={(place) => updateField('destination', place ? `${place.city}, ${place.state}` : '')}
                         placeholder="Atlanta, Georgia"
-                        className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
                       />
                     </div>
                     <div className="flex flex-col space-y-3">

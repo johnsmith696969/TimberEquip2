@@ -172,7 +172,7 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
         description: 'Primary cutting mechanism'
       },
       {
-        key: 'headMake', label: 'Head Manufacturer', type: 'text',
+        key: 'headMake', label: 'Head Make', type: 'text',
         required: true,
         placeholder: 'e.g. Quadco, John Deere, Tigercat, TimberPro',
         description: 'The manufacturer of the felling head'
@@ -248,7 +248,7 @@ export const CATEGORY_SCHEMAS: Record<string, CategorySchema> = {
         description: 'Single-grip fells and processes; double-grip processes pre-felled trees'
       },
       {
-        key: 'headMake', label: 'Head Manufacturer', type: 'text',
+        key: 'headMake', label: 'Head Make', type: 'text',
         required: true,
         placeholder: 'e.g. Waratah, Log Max, Ponsse, Keto, SP Maskiner'
       },

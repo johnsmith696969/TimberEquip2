@@ -1125,6 +1125,9 @@ export function DealerOS() {
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
                 {feedDryRun ? 'Dry Run Enabled' : 'Live Import Enabled'}
               </span>
+              {!feedDryRun && (
+                <span className="text-[10px] font-bold text-accent">Changes will write to live inventory</span>
+              )}
             </div>
 
             {feedError ? (
@@ -1297,6 +1300,22 @@ export function DealerOS() {
         {syndicationNotice ? (
           <div className="mt-5 rounded-sm border border-line bg-bg p-4 text-sm font-bold text-ink">{syndicationNotice}</div>
         ) : null}
+
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { step: '1', title: 'JSON Feed', desc: 'Share raw inventory data with partners and downstream systems.' },
+            { step: '2', title: 'Embed Widget', desc: 'Add an interactive inventory browser to any dealer website.' },
+            { step: '3', title: 'Iframe Fallback', desc: 'Use when the dealer site only supports iframe markup.' },
+          ].map((s) => (
+            <div key={s.step} className="flex items-start gap-3 rounded-sm border border-line bg-bg p-4">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-black text-accent">{s.step}</span>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">{s.title}</div>
+                <div className="mt-1 text-xs text-muted">{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-sm border border-line bg-bg p-4">
@@ -1471,22 +1490,34 @@ export function DealerOS() {
                 />
                 <div className="text-[10px] font-bold text-muted text-center">{widgetPageSize} per page</div>
               </div>
-              <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={widgetDarkMode} onChange={(e) => setWidgetDarkMode(e.target.checked)} className="accent-accent" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Dark Mode</span>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetDarkMode} onChange={(e) => setWidgetDarkMode(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Dark Mode</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Match your dark-themed website</span>
+                  </span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={widgetShowInquiry} onChange={(e) => setWidgetShowInquiry(e.target.checked)} className="accent-accent" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Inquiry</span>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowInquiry} onChange={(e) => setWidgetShowInquiry(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Inquiry</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Inquiry form button on each card</span>
+                  </span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={widgetShowCall} onChange={(e) => setWidgetShowCall(e.target.checked)} className="accent-accent" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Call</span>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowCall} onChange={(e) => setWidgetShowCall(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Call</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Click-to-call button on each card</span>
+                  </span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={widgetShowDetails} onChange={(e) => setWidgetShowDetails(e.target.checked)} className="accent-accent" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Details</span>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowDetails} onChange={(e) => setWidgetShowDetails(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Details</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Lightbox detail view on card click</span>
+                  </span>
                 </label>
               </div>
             </div>
@@ -1621,7 +1652,10 @@ export function DealerOS() {
                     callbackUrl: webhookUrl.trim(),
                     events: webhookEvents,
                   });
-                  setWebhookNotice(`Webhook created. Signing secret: ${result.secret} — copy it now, it won't be shown again.`);
+                  setWebhookNotice('Webhook created successfully. The signing secret is shown below — copy it now, it will not be displayed again.');
+                  if (result.id && result.secret) {
+                    setRevealedSecrets((prev) => ({ ...prev, [result.id]: result.secret }));
+                  }
                   setWebhookUrl('');
                   const fresh = await dealerFeedService.getWebhooks(ownerUid);
                   setWebhooks(fresh);
@@ -1737,16 +1771,23 @@ export function DealerOS() {
               <p className="mt-1 text-sm text-muted">Track new inbound leads, assign follow-up, and leave internal notes without leaving DealerOS.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(['all', 'new', 'working', 'closed'] as LeadFilter[]).map((filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  onClick={() => setLeadFilter(filter)}
-                  className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${leadFilter === filter ? 'border-ink bg-bg text-ink' : 'border-line text-muted'}`}
-                >
-                  {filter}
-                </button>
-              ))}
+              {(['all', 'new', 'working', 'closed'] as LeadFilter[]).map((filter) => {
+                const count =
+                  filter === 'all' ? inquiries.length
+                  : filter === 'new' ? inquiries.filter((i) => i.status === 'New').length
+                  : filter === 'working' ? inquiries.filter((i) => ['Contacted', 'Qualified', 'Won'].includes(i.status)).length
+                  : inquiries.filter((i) => ['Lost', 'Closed'].includes(i.status)).length;
+                return (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setLeadFilter(filter)}
+                    className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${leadFilter === filter ? 'border-ink bg-bg text-ink' : 'border-line text-muted'}`}
+                  >
+                    {filter}<span className="ml-1.5 text-[9px]">{count}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

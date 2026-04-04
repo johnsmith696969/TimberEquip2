@@ -22,6 +22,8 @@ const BlogPostDetail = lazy(() => import('./pages/BlogPostDetail').then((module)
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const Compare = lazy(() => import('./pages/Compare').then((module) => ({ default: module.Compare })));
 const Categories = lazy(() => import('./pages/Categories').then((module) => ({ default: module.Categories })));
+const Manufacturers = lazy(() => import('./pages/Manufacturers').then((module) => ({ default: module.Manufacturers })));
+const States = lazy(() => import('./pages/States').then((module) => ({ default: module.States })));
 const ForestryHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ForestryHubPage })));
 const LoggingHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.LoggingHubPage })));
 const CategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.CategoryLandingPage })));
@@ -122,10 +124,12 @@ function App() {
                     <Route path="/compare" element={<Compare />} />
                     <Route path="/categories" element={<Categories />} />
                     <Route path="/categories/:categorySlug" element={<CategorySearchPage />} />
+                    <Route path="/manufacturers" element={<Manufacturers />} />
                     <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug/:categorySaleSlug" element={<ManufacturerModelCategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/models/:modelSlug" element={<ManufacturerModelLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug/:categorySaleSlug" element={<ManufacturerCategoryLandingPage />} />
                     <Route path="/manufacturers/:manufacturerSlug" element={<ManufacturerLandingPage />} />
+                    <Route path="/states" element={<States />} />
                     <Route path="/states/:stateSlug/logging-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="logging" />} />
                     <Route path="/states/:stateSlug/forestry-equipment-for-sale" element={<StateMarketLandingPage marketKeyOverride="forestry" />} />
                     <Route path="/states/:stateSlug/:categorySaleSlug" element={<StateCategoryLandingPage />} />

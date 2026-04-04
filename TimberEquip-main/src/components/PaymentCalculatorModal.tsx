@@ -6,6 +6,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { useTheme } from './ThemeContext';
 
 interface FinancingRequestPayload {
   buyerName: string;
@@ -58,6 +59,7 @@ export function PaymentCalculatorModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const { alert, dialogProps } = useConfirmDialog();
+  const { theme } = useTheme();
   const prefersReducedMotion = useReducedMotion();
 
   // Reset defaults whenever the modal re-opens
@@ -175,7 +177,7 @@ export function PaymentCalculatorModal({
             className="bg-bg border border-line relative z-10 mt-4 mb-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden shadow-2xl sm:my-8"
           >
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-ink text-white p-6 flex justify-between items-center">
+            <div className={`sticky top-0 z-10 p-6 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
               <div>
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
                   Payment Calculator
@@ -186,7 +188,7 @@ export function PaymentCalculatorModal({
               </div>
               <button
                 onClick={handleClose}
-                className="p-2 bg-white/10 hover:bg-white/20 transition-colors rounded-sm"
+                className={`p-2 transition-colors rounded-sm ${theme === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'hover:bg-ink/5'}`}
               >
                 <X size={18} />
               </button>
@@ -271,31 +273,31 @@ export function PaymentCalculatorModal({
               </div>
 
               {/* Results */}
-              <div className="bg-ink text-white p-6 rounded-sm space-y-4">
+              <div className={`p-6 rounded-sm space-y-4 ${theme === 'dark' ? 'bg-ink text-white' : 'bg-surface border border-line text-ink'}`}>
                 <div className="flex justify-between items-end">
                   <div>
-                    <span className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
+                    <span className={`text-[10px] font-black uppercase tracking-[0.2em] block mb-1 ${theme === 'dark' ? 'text-white/60' : 'text-muted'}`}>
                       Est. Monthly Payment
                     </span>
                     <span className="text-4xl font-black tracking-tighter text-accent">
                       {fmt(monthly)}
                     </span>
-                    <span className="text-white/40 text-xs font-bold ml-2">/mo</span>
+                    <span className={`text-xs font-bold ml-2 ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>/mo</span>
                   </div>
-                  <Calculator size={32} className="text-white/20" />
+                  <Calculator size={32} className={theme === 'dark' ? 'text-white/20' : 'text-muted/30'} />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-white/10">
+                <div className={`grid grid-cols-3 gap-3 pt-4 border-t ${theme === 'dark' ? 'border-white/10' : 'border-line'}`}>
                   <div className="flex flex-col">
-                    <span className="text-white/50 text-[9px] font-black uppercase tracking-widest mb-1">Principal</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>Principal</span>
                     <span className="text-sm font-black tracking-tighter">{fmt(principal)}</span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-white/50 text-[9px] font-black uppercase tracking-widest mb-1">Total Interest</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>Total Interest</span>
                     <span className="text-sm font-black tracking-tighter text-accent/80">{fmt(totalInterest)}</span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-white/50 text-[9px] font-black uppercase tracking-widest mb-1">Total Cost</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>Total Cost</span>
                     <span className="text-sm font-black tracking-tighter">{fmt(totalCost)}</span>
                   </div>
                 </div>

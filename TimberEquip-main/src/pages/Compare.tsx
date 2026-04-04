@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { 
-  ArrowLeft, Check, X, Info, 
-  TrendingUp, TrendingDown, Clock, 
+import {
+  ArrowLeft, Check, X, Info,
+  TrendingUp, TrendingDown, Clock,
   Activity, ShieldCheck, MapPin
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -11,12 +11,14 @@ import { Listing } from '../types';
 import { useLocale } from '../components/LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
 import { Seo } from '../components/Seo';
+import { InquiryModal } from '../components/InquiryModal';
 
 export function Compare() {
   const { formatNumber, formatPrice } = useLocale();
   const [searchParams] = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inquiryListing, setInquiryListing] = useState<Listing | null>(null);
 
   useEffect(() => {
     const ids = searchParams.get('ids')?.split(',') || [];
@@ -173,7 +175,10 @@ export function Compare() {
                       <Link to={buildListingPath(listing)} className="btn-industrial py-2.5 text-center bg-ink text-bg">
                         View Details
                       </Link>
-                      <button className="btn-industrial btn-accent py-2.5">
+                      <button
+                        className="btn-industrial btn-accent py-2.5"
+                        onClick={() => setInquiryListing(listing)}
+                      >
                         Inquire
                       </button>
                     </div>
@@ -184,6 +189,14 @@ export function Compare() {
           </table>
         </div>
       </div>
+
+      {inquiryListing && (
+        <InquiryModal
+          isOpen
+          onClose={() => setInquiryListing(null)}
+          listing={inquiryListing}
+        />
+      )}
     </div>
   );
 }

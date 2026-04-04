@@ -3280,9 +3280,18 @@ export function AdminDashboard() {
                       <td className="p-4 text-xs font-black uppercase">{sub.planId}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-sm ${
-                          isSubscriptionTrulyActive(sub) ? 'bg-data/10 text-data' : 'bg-accent/10 text-accent'
+                          isSubscriptionTrulyActive(sub) ? 'bg-data/10 text-data' :
+                          sub.status === 'canceled' ? 'bg-yellow-500/10 text-yellow-500' :
+                          sub.status === 'past_due' ? 'bg-orange-500/10 text-orange-500' :
+                          sub.status === 'trialing' ? 'bg-blue-500/10 text-blue-500' :
+                          'bg-accent/10 text-accent'
                         }`}>
-                          {sub.status}
+                          {isSubscriptionTrulyActive(sub) ? 'Active' :
+                           sub.status === 'active' ? 'Expired' :
+                           sub.status === 'canceled' ? 'Canceled' :
+                           sub.status === 'past_due' ? 'Past Due' :
+                           sub.status === 'trialing' ? 'Trial' :
+                           sub.status}
                         </span>
                       </td>
                       <td className="p-4 text-xs text-muted">
@@ -3296,11 +3305,11 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        <div className="bg-[#1C1917] text-white p-8 rounded-sm">
+        <div className="bg-surface border border-line p-8 rounded-sm">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
               <Shield className="text-accent" size={24} />
-              <h3 className="text-lg font-black uppercase tracking-tighter">Billing Audit Trail</h3>
+              <h3 className="text-lg font-black uppercase tracking-tighter text-ink">Billing Audit Trail</h3>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
@@ -3309,12 +3318,12 @@ export function AdminDashboard() {
                   placeholder="Search audit logs..."
                   value={billingAuditQuery}
                   onChange={(e) => setBillingAuditQuery(e.target.value)}
-                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm placeholder:text-white/30 focus:outline-none focus:border-accent w-52"
+                  className="bg-bg border border-line text-ink text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm placeholder:text-muted focus:outline-none focus:border-accent w-52"
                 />
                 <select
                   value={billingAuditActionFilter}
                   onChange={(e) => setBillingAuditActionFilter(e.target.value)}
-                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm focus:outline-none focus:border-accent"
+                  className="bg-bg border border-line text-ink text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm focus:outline-none focus:border-accent"
                 >
                   <option value="">All Actions</option>
                   {uniqueBillingActions.map((action) => (
@@ -3324,7 +3333,7 @@ export function AdminDashboard() {
                 <select
                   value={billingAuditUserFilter}
                   onChange={(e) => setBillingAuditUserFilter(e.target.value)}
-                  className="bg-white/10 border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm focus:outline-none focus:border-accent max-w-[160px]"
+                  className="bg-bg border border-line text-ink text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm focus:outline-none focus:border-accent max-w-[160px]"
                 >
                   <option value="">All Users</option>
                   {uniqueBillingUsers.map((uid) => (
@@ -3363,16 +3372,16 @@ export function AdminDashboard() {
             ) : null}
 
             {filteredBillingLogs.length === 0 && !billingLoadError ? (
-              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest py-4 text-center">
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest py-4 text-center">
                 {(billingAuditQuery || billingAuditActionFilter || billingAuditUserFilter) ? 'No audit logs match your filters' : 'No audit logs recorded'}
               </p>
             ) : filteredBillingLogs.map((log, i) => (
-              <div key={i} className="flex justify-between items-center py-3 border-b border-white/10 last:border-0">
+              <div key={i} className="flex justify-between items-center py-3 border-b border-line last:border-0">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-accent uppercase tracking-widest">{log.action}</span>
-                  <span className="text-[11px] text-white/60 mt-1">{log.details}</span>
+                  <span className="text-[11px] text-muted mt-1">{log.details}</span>
                 </div>
-                <span className="text-[9px] font-bold text-white/30 flex-shrink-0 ml-4">
+                <span className="text-[9px] font-bold text-muted/50 flex-shrink-0 ml-4">
                   {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : new Date(log.timestamp).toLocaleString()}
                 </span>
               </div>
@@ -3380,7 +3389,7 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <div className="space-y-8">
           <div className="bg-surface border border-line rounded-sm overflow-hidden">
             <div className="p-6 border-b border-line bg-bg/50 flex items-center justify-between gap-3">
               <div>
@@ -3455,9 +3464,28 @@ export function AdminDashboard() {
                       {log.metadata && Object.keys(log.metadata).length > 0 ? (
                         <div className="rounded-sm border border-line bg-bg px-3 py-2 text-[10px] text-muted">
                           {Object.entries(log.metadata)
-                            .slice(0, 3)
                             .map(([key, value]) => `${formatLifecycleLabel(key)}: ${String(value)}`)
                             .join(' • ')}
+                        </div>
+                      ) : null}
+                      {(log.previousState || log.nextState) ? (
+                        <div className="flex flex-wrap gap-4">
+                          {log.previousState && Object.keys(log.previousState).length > 0 ? (
+                            <div className="rounded-sm border border-line bg-bg px-3 py-2 text-[10px] text-muted flex-1 min-w-[200px]">
+                              <span className="font-black uppercase tracking-widest text-muted/70 block mb-1">Previous State</span>
+                              {Object.entries(log.previousState).map(([key, value]) => (
+                                <div key={key}>{formatLifecycleLabel(key)}: {String(value)}</div>
+                              ))}
+                            </div>
+                          ) : null}
+                          {log.nextState && Object.keys(log.nextState).length > 0 ? (
+                            <div className="rounded-sm border border-line bg-bg px-3 py-2 text-[10px] text-muted flex-1 min-w-[200px]">
+                              <span className="font-black uppercase tracking-widest text-muted/70 block mb-1">New State</span>
+                              {Object.entries(log.nextState).map(([key, value]) => (
+                                <div key={key}>{formatLifecycleLabel(key)}: {String(value)}</div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>

@@ -4940,7 +4940,8 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     rating: 5,
     totalListings: 0,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    verified: Boolean(data.storefrontEnabled),
+    verified: isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified)),
+    manuallyVerified: Boolean(data.manuallyVerified),
   };
 }
 
@@ -4988,7 +4989,8 @@ function serializeSellerPayloadFromUser(snapshotId, data = {}) {
     rating: 5,
     totalListings: 0,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    verified: true,
+    verified: isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified)),
+    manuallyVerified: Boolean(data.manuallyVerified),
   };
 }
 
@@ -5293,6 +5295,7 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     title: normalizeNonEmptyString(listing.title, 'Equipment Listing'),
     category: normalizeNonEmptyString(listing.category, 'Equipment'),
     subcategory: normalizeNonEmptyString(listing.subcategory || listing.category, 'Equipment'),
+    sellerVerified: Boolean(listing.sellerVerified),
     make,
     manufacturer: normalizeNonEmptyString(listing.manufacturer || make),
     brand: normalizeNonEmptyString(listing.brand || make),

@@ -251,8 +251,8 @@ describe('getFeaturedListingCap', () => {
     expect(getFeaturedListingCap(makeUser({ role: 'pro_dealer' }))).toBe(6);
   });
 
-  it('returns 1 for individual_seller', () => {
-    expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(1);
+  it('returns 0 for individual_seller (purchasable at $20/each)', () => {
+    expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(0);
   });
 
   it('returns 0 for member', () => {

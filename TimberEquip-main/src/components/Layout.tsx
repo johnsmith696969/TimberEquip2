@@ -368,9 +368,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Persistent Quick Search Bar */}
-      <div className="sticky top-0 z-40 bg-bg border-b border-line py-2 px-4 md:px-8 shadow-sm">
+      <div className="sticky top-0 z-40 bg-bg border-b border-line py-2 px-4 md:px-8">
         <div className="max-w-[900px] mx-auto flex items-center">
-          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color,box-shadow] focus-within:border-accent/50 focus-within:shadow-[0_0_0_3px_rgba(22,163,74,0.18)] focus-within:outline-none focus-within:ring-0">
+          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
             <input
               type="text"
               placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
@@ -414,6 +414,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
              <div className="flex flex-col space-y-8 text-2xl font-black tracking-tighter uppercase pt-20 px-6">
               <Link to="/search" onClick={() => setIsMenuOpen(false)}>{t('layout.inventory', 'Inventory')}</Link>
               <Link to="/categories" onClick={() => setIsMenuOpen(false)}>{t('layout.categories', 'Categories')}</Link>
+              <Link to="/manufacturers" onClick={() => setIsMenuOpen(false)}>Manufacturers</Link>
               <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
@@ -538,6 +539,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
                 <li><Link to="/search" className="hover:text-accent transition-colors">{t('layout.browseInventory', 'Browse Inventory')}</Link></li>
                 <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
+                <li><Link to="/manufacturers" className="hover:text-accent transition-colors">Manufacturers</Link></li>
+                <li><Link to="/states" className="hover:text-accent transition-colors">Browse by State</Link></li>
                 <li><Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.liveAuctions', 'Live Auctions')}</Link></li>
                 <li><Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>

@@ -202,7 +202,7 @@ export function Register() {
 
                 <div className="flex flex-col space-y-3">
                   <label htmlFor="register-name" className="label-micro">Full Name</label>
-                  <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                  <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <User size={18} />
                     </div>
@@ -220,7 +220,7 @@ export function Register() {
 
                 <div className="flex flex-col space-y-3">
                   <label htmlFor="register-company" className="label-micro">Company Name (Optional)</label>
-                  <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                  <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <Building size={18} />
                     </div>
@@ -256,7 +256,7 @@ export function Register() {
 
                 <div className="flex flex-col space-y-3">
                   <label htmlFor="register-email" className="label-micro">Email Address</label>
-                  <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                  <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <Mail size={18} />
                     </div>
@@ -274,7 +274,7 @@ export function Register() {
 
                 <div className="flex flex-col space-y-3">
                   <label htmlFor="register-password" className="label-micro">Access Key (Password)</label>
-                  <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                  <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                     <div className="p-3 text-muted">
                       <Lock size={18} />
                     </div>

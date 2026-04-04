@@ -750,7 +750,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await userService.createProfile(profile);
-      if (isAdmin) {
+      if (profile.role === 'super_admin') {
         await bootstrapPrivilegedAdminProfile(credential.user);
       }
     } catch (error) {

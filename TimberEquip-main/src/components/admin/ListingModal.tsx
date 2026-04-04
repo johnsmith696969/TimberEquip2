@@ -5,7 +5,8 @@ import { Listing, ListingConditionChecklist } from '../../types';
 import { getSchemaForListing } from '../../constants/categorySpecs';
 import { EQUIPMENT_TAXONOMY } from '../../constants/equipmentData';
 import { storageService } from '../../services/storageService';
-import { getPlacePredictions, type GooglePlacePrediction } from '../../services/placesService';
+import { GooglePlacesInput } from '../GooglePlacesInput';
+import type { GooglePlaceSelection } from '../../services/placesService';
 import { taxonomyService, FullEquipmentTaxonomy } from '../../services/taxonomyService';
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -216,9 +217,6 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
   const [imageUploadProgress, setImageUploadProgress] = useState<number>(0);
   const [videoUploadProgress, setVideoUploadProgress] = useState<number>(0);
   const [imageDragIdx, setImageDragIdx] = useState<number | null>(null);
-  const [locationSuggestions, setLocationSuggestions] = useState<GooglePlacePrediction[]>([]);
-  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
-  const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [listingStorageId, setListingStorageId] = useState<string>(createDraftListingId());
   const [fullTaxonomy, setFullTaxonomy] = useState<FullEquipmentTaxonomy>(FALLBACK_FULL_TAXONOMY);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -317,19 +315,6 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
     const current: string[] = formData.specs.attachments || [];
     const next = current.includes(att) ? current.filter((a) => a !== att) : [...current, att];
     handleSpecChange('attachments', next);
-  };
-
-  // ── Location autocomplete ────────────────────────────────────────────────
-  const fetchLocationSuggestions = (input: string) => {
-    if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
-    if (input.length < 3) { setLocationSuggestions([]); setShowLocationSuggestions(false); return; }
-    locationDebounceRef.current = setTimeout(async () => {
-      try {
-        const predictions = await getPlacePredictions(input, 'city');
-        setLocationSuggestions(predictions);
-        setShowLocationSuggestions(predictions.length > 0);
-      } catch { setLocationSuggestions([]); }
-    }, 300);
   };
 
   // ── Image upload ─────────────────────────────────────────────────────────
@@ -665,7 +650,7 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="label-micro">Manufacturer / Brand <span className="text-accent">*</span></label>
+                  <label className="label-micro">Make <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.manufacturer || formData.make}
                     onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value, make: e.target.value, model: '' })}
                     className="input-industrial w-full" placeholder="e.g. Tigercat"
@@ -751,25 +736,24 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
                     <option>USD</option><option>CAD</option><option>EUR</option><option>GBP</option>
                   </select>
                 </div>
-                <div className="space-y-1 relative">
+                <div className="space-y-1">
                   <label className="label-micro">Location <span className="text-accent">*</span></label>
-                  <input type="text" required value={formData.location}
-                    onChange={(e) => { setFormData({ ...formData, location: e.target.value }); fetchLocationSuggestions(e.target.value); }}
-                    onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
-                    onFocus={() => { if (locationSuggestions.length > 0) setShowLocationSuggestions(true); }}
-                    className="input-industrial w-full" placeholder="City, State / Province" autoComplete="off" />
-                  {showLocationSuggestions && locationSuggestions.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-line bg-bg shadow-lg rounded-sm overflow-hidden">
-                      {locationSuggestions.map((s) => (
-                        <button key={s.placeId} type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => { setFormData({ ...formData, location: s.description }); setShowLocationSuggestions(false); setLocationSuggestions([]); }}
-                          className="w-full text-left px-3 py-2 text-xs font-medium text-ink hover:bg-surface transition-colors border-b border-line last:border-b-0">
-                          {s.description}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <GooglePlacesInput
+                    mode="city"
+                    value={formData.location}
+                    onChange={(value) => setFormData({ ...formData, location: value })}
+                    onSelect={(place: GooglePlaceSelection) => {
+                      const parts: string[] = [];
+                      if (place.city) parts.push(place.city);
+                      if (place.state) parts.push(place.state);
+                      if (place.country && place.country !== 'US' && place.country !== 'United States') parts.push(place.country);
+                      const formatted = parts.length > 0 ? parts.join(', ') : place.formattedAddress;
+                      setFormData((prev) => ({ ...prev, location: formatted }));
+                    }}
+                    placeholder="City, State / Province"
+                    leadingIconClassName="hidden"
+                    inputClassName="!pl-3"
+                  />
                 </div>
               </div>
               <label className="flex items-center gap-3 cursor-pointer w-fit">

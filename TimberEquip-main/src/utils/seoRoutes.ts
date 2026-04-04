@@ -30,8 +30,34 @@ export function titleCaseSlug(slug: string): string {
     .join(' ');
 }
 
+/** Map of known aliases → canonical manufacturer name (uppercase keys). */
+const MANUFACTURER_ALIASES: Record<string, string> = {
+  CAT: 'CATERPILLAR',
+  'BLOUNT CAT': 'CATERPILLAR',
+  LOGMAX: 'LOG MAX',
+  'CLARK RANGER': 'CLARK',
+  'INTERNATIONAL HARVESTER': 'INTERNATIONAL',
+  WOODPAKER: 'WOOD-PAKER',
+  PETERSON: 'PETERSON PACIFIC',
+  'TOWMASTERS': 'TOWERMASTER',
+  'OLOFSFORS ECO-TRACKS': 'OLOFSORS ECO-TRACKS',
+  'PEWAG ECO-TRACKS': 'OLOFSORS ECO-TRACKS',
+};
+
+/**
+ * Resolve a raw manufacturer string to its canonical form.
+ * Merges known aliases (e.g. "CAT" → "CATERPILLAR").
+ */
+export function canonicalizeManufacturer(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return trimmed;
+  const upper = trimmed.toUpperCase();
+  return MANUFACTURER_ALIASES[upper] || trimmed;
+}
+
 export function getListingManufacturer(listing: Listing): string {
-  return String(listing.make || listing.manufacturer || listing.brand || '').trim();
+  const raw = String(listing.make || listing.manufacturer || listing.brand || '').trim();
+  return canonicalizeManufacturer(raw);
 }
 
 export function getListingCategoryLabel(listing: Listing): string {

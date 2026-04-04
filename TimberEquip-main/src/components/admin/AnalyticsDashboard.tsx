@@ -122,7 +122,6 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
             <div className={`text-3xl font-black tracking-tighter ${kpi.color}`}>{kpi.value}</div>
             <div className="flex items-center text-[9px] font-bold text-muted uppercase tracking-widest">
               {kpi.sub}
-              <span className="text-[9px] font-bold text-muted ml-2" title="Trend data coming soon">&mdash;</span>
             </div>
           </div>
         ))}
@@ -154,11 +153,11 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           </div>
           <div className="border-t border-line pt-3 grid grid-cols-2 gap-2 text-center">
             <div>
-              <div className="text-lg font-black tracking-tighter text-ink">{newListings7d}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
+              <div className="text-lg font-black tracking-tighter text-ink">{newListings7d}</div>
               <div className="text-[8px] font-bold text-muted uppercase">New (7d)</div>
             </div>
             <div>
-              <div className="text-lg font-black tracking-tighter text-ink">{newListings30d}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
+              <div className="text-lg font-black tracking-tighter text-ink">{newListings30d}</div>
               <div className="text-[8px] font-bold text-muted uppercase">New (30d)</div>
             </div>
           </div>
@@ -169,36 +168,42 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-ink flex items-center gap-2">
             <Activity size={14} /> Lead Pipeline
           </h3>
-          <div className="space-y-3">
-            {inquiryByStatus.map(s => (
-              <div key={s.label} className="flex items-center gap-3">
-                <span className="text-[9px] font-bold text-muted uppercase w-20 shrink-0">{s.label}</span>
-                <div className="flex-1">
-                  <Bar value={s.count} max={totalInquiries || 1} color={
-                    s.label === 'Won' ? 'bg-data' :
-                    s.label === 'New' ? 'bg-accent' :
-                    s.label === 'Lost' ? 'bg-red-500' :
-                    'bg-line'
-                  } />
-                </div>
-                <span className="text-[9px] font-black text-ink w-6 text-right">{s.count}</span>
+          {totalInquiries === 0 ? (
+            <p className="text-[10px] font-bold text-muted uppercase">No inquiries yet. Leads will appear here as they come in.</p>
+          ) : (
+            <>
+              <div className="space-y-3">
+                {inquiryByStatus.map(s => (
+                  <div key={s.label} className="flex items-center gap-3">
+                    <span className="text-[9px] font-bold text-muted uppercase w-20 shrink-0">{s.label}</span>
+                    <div className="flex-1">
+                      <Bar value={s.count} max={totalInquiries || 1} color={
+                        s.label === 'Won' ? 'bg-data' :
+                        s.label === 'New' ? 'bg-accent' :
+                        s.label === 'Lost' ? 'bg-red-500' :
+                        'bg-line'
+                      } />
+                    </div>
+                    <span className="text-[9px] font-black text-ink w-6 text-right">{s.count}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="border-t border-line pt-3 flex items-center justify-between">
-            <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-data">{conversionRate}%<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
-              <div className="text-[8px] font-bold text-muted uppercase">Conversion</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-ink">{newInquiries30d}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
-              <div className="text-[8px] font-bold text-muted uppercase">New (30d)</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-accent">{wonInquiries}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
-              <div className="text-[8px] font-bold text-muted uppercase">Won</div>
-            </div>
-          </div>
+              <div className="border-t border-line pt-3 flex items-center justify-between">
+                <div className="text-center">
+                  <div className="text-lg font-black tracking-tighter text-data">{conversionRate}%</div>
+                  <div className="text-[8px] font-bold text-muted uppercase">Conversion</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black tracking-tighter text-ink">{newInquiries30d}</div>
+                  <div className="text-[8px] font-bold text-muted uppercase">New (30d)</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black tracking-tighter text-accent">{wonInquiries}</div>
+                  <div className="text-[8px] font-bold text-muted uppercase">Won</div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Inquiry by type */}
@@ -206,17 +211,21 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-ink flex items-center gap-2">
             <MessageSquare size={14} /> Inquiry Types
           </h3>
-          <div className="space-y-3">
-            {inquiryByType.map(t => (
-              <div key={t.label} className="space-y-1">
-                <div className="flex justify-between text-[9px] font-black uppercase tracking-widest">
-                  <span className="text-muted">{t.label}</span>
-                  <span className="text-ink">{t.count} <span className="text-muted font-bold">({pct(t.count, totalInquiries)}%)</span></span>
+          {totalInquiries === 0 ? (
+            <p className="text-[10px] font-bold text-muted uppercase">No inquiries yet. Type breakdown will appear here.</p>
+          ) : (
+            <div className="space-y-3">
+              {inquiryByType.map(t => (
+                <div key={t.label} className="space-y-1">
+                  <div className="flex justify-between text-[9px] font-black uppercase tracking-widest">
+                    <span className="text-muted">{t.label}</span>
+                    <span className="text-ink">{t.count} <span className="text-muted font-bold">({pct(t.count, totalInquiries)}%)</span></span>
+                  </div>
+                  <Bar value={t.count} max={totalInquiries || 1} color="bg-accent" />
                 </div>
-                <Bar value={t.count} max={totalInquiries || 1} color="bg-accent" />
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
           <div className="border-t border-line pt-3 space-y-1">
             <div className="flex justify-between text-[9px] font-bold text-muted uppercase">
               <span>Total Views (all listings)</span>
@@ -282,33 +291,39 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-ink flex items-center gap-2">
             <Users size={14} /> Account Distribution
           </h3>
-          <div className="space-y-3">
-            {[
-              { label: 'Pro Dealers',     count: proDealerAccounts, color: 'bg-emerald-500' },
-              { label: 'Dealers',         count: dealerAccounts,    color: 'bg-accent' },
-              { label: 'Owner-Operators', count: sellerAccounts,    color: 'bg-data' },
-              { label: 'Members',         count: memberAccounts,    color: 'bg-cyan-500' },
-              { label: 'Admin / Staff',   count: adminAccounts,     color: 'bg-secondary' },
-            ].filter(s => s.count > 0).map(s => (
-              <div key={s.label} className="space-y-1">
-                <div className="flex justify-between text-[9px] font-black uppercase tracking-widest">
-                  <span className="text-muted">{s.label}</span>
-                  <span className="text-ink">{s.count}</span>
-                </div>
-                <Bar value={s.count} max={totalAccounts || 1} color={s.color} />
+          {totalAccounts === 0 ? (
+            <p className="text-[10px] font-bold text-muted uppercase">No accounts registered yet.</p>
+          ) : (
+            <>
+              <div className="space-y-3">
+                {[
+                  { label: 'Pro Dealers',     count: proDealerAccounts, color: 'bg-emerald-500' },
+                  { label: 'Dealers',         count: dealerAccounts,    color: 'bg-accent' },
+                  { label: 'Owner-Operators', count: sellerAccounts,    color: 'bg-data' },
+                  { label: 'Members',         count: memberAccounts,    color: 'bg-cyan-500' },
+                  { label: 'Admin / Staff',   count: adminAccounts,     color: 'bg-secondary' },
+                ].filter(s => s.count > 0).map(s => (
+                  <div key={s.label} className="space-y-1">
+                    <div className="flex justify-between text-[9px] font-black uppercase tracking-widest">
+                      <span className="text-muted">{s.label}</span>
+                      <span className="text-ink">{s.count}</span>
+                    </div>
+                    <Bar value={s.count} max={totalAccounts || 1} color={s.color} />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="border-t border-line pt-3 flex gap-6">
-            <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-data">{activeAccounts}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
-              <div className="text-[8px] font-bold text-muted uppercase">Active</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-black tracking-tighter text-accent">{totalAccounts - activeAccounts}<span className="text-[9px] font-bold text-muted ml-1" title="Trend data coming soon">&mdash;</span></div>
-              <div className="text-[8px] font-bold text-muted uppercase">Inactive</div>
-            </div>
-          </div>
+              <div className="border-t border-line pt-3 flex gap-6">
+                <div className="text-center">
+                  <div className="text-lg font-black tracking-tighter text-data">{activeAccounts}</div>
+                  <div className="text-[8px] font-bold text-muted uppercase">Active</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-black tracking-tighter text-accent">{totalAccounts - activeAccounts}</div>
+                  <div className="text-[8px] font-bold text-muted uppercase">Inactive</div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Top sellers */}

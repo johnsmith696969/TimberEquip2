@@ -1235,59 +1235,63 @@ export function Profile() {
       return;
     }
 
-    switch (section) {
-      case 'myListings': {
-        if (hasAdminProfileScope) {
-          const allListings: Listing[] = [];
-          let cursor: string | null = null;
-          let hasMore = true;
-          while (hasMore) {
-            const page = await equipmentService.getAdminListingsPage({ pageSize: 100, cursor: cursor ?? undefined });
-            allListings.push(...page.listings);
-            cursor = page.nextCursor;
-            hasMore = page.hasMore;
+    try {
+      switch (section) {
+        case 'myListings': {
+          if (hasAdminProfileScope) {
+            const allListings: Listing[] = [];
+            let cursor: string | null = null;
+            let hasMore = true;
+            while (hasMore) {
+              const page = await equipmentService.getAdminListingsPage({ pageSize: 100, cursor: cursor ?? undefined });
+              allListings.push(...page.listings);
+              cursor = page.nextCursor;
+              hasMore = page.hasMore;
+            }
+            setMyListings(allListings);
+          } else {
+            const nextListings = await equipmentService.getMyListings();
+            setMyListings(nextListings);
           }
-          setMyListings(allListings);
-        } else {
-          const nextListings = await equipmentService.getMyListings();
-          setMyListings(nextListings);
+          break;
         }
-        break;
+        case 'financingRequests': {
+          const nextFinancingRequests = await equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role });
+          setFinancingRequests(nextFinancingRequests);
+          break;
+        }
+        case 'savedSearches': {
+          const nextSavedSearches = await userService.getSavedSearches(user.uid);
+          setSavedSearches(nextSavedSearches);
+          break;
+        }
+        case 'savedAssets': {
+          const nextSavedAssets = user.favorites && user.favorites.length > 0
+            ? await equipmentService.getListingsByIds(user.favorites)
+            : [];
+          setSavedAssets(nextSavedAssets);
+          break;
+        }
+        case 'calls': {
+          const nextCalls = await equipmentService.getMyCalls();
+          setCalls(nextCalls);
+          break;
+        }
+        case 'inquiries': {
+          const nextInquiries = await equipmentService.getMyInquiries();
+          setInquiries(nextInquiries);
+          break;
+        }
+        case 'storefrontPreview': {
+          const nextStorefront = await equipmentService.getMyStorefront();
+          setStorefrontPreview(nextStorefront || null);
+          break;
+        }
+        default:
+          break;
       }
-      case 'financingRequests': {
-        const nextFinancingRequests = await equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role });
-        setFinancingRequests(nextFinancingRequests);
-        break;
-      }
-      case 'savedSearches': {
-        const nextSavedSearches = await userService.getSavedSearches(user.uid);
-        setSavedSearches(nextSavedSearches);
-        break;
-      }
-      case 'savedAssets': {
-        const nextSavedAssets = user.favorites && user.favorites.length > 0
-          ? await equipmentService.getListingsByIds(user.favorites)
-          : [];
-        setSavedAssets(nextSavedAssets);
-        break;
-      }
-      case 'calls': {
-        const nextCalls = await equipmentService.getMyCalls();
-        setCalls(nextCalls);
-        break;
-      }
-      case 'inquiries': {
-        const nextInquiries = await equipmentService.getMyInquiries();
-        setInquiries(nextInquiries);
-        break;
-      }
-      case 'storefrontPreview': {
-        const nextStorefront = await equipmentService.getMyStorefront();
-        setStorefrontPreview(nextStorefront || null);
-        break;
-      }
-      default:
-        break;
+    } catch (error) {
+      console.warn(`Profile section "${section}" failed to load:`, error);
     }
   }, [user]);
 
@@ -1337,8 +1341,10 @@ export function Profile() {
           return next;
         });
 
-        if (results.some((result) => result.status === 'rejected')) {
-          setProfileDataError('Some account data could not be loaded. Refresh to retry.');
+        // Individual section loaders handle their own errors gracefully.
+        // Only surface an error if every single section failed.
+        if (results.length > 0 && results.every((result) => result.status === 'rejected')) {
+          setProfileDataError('Unable to load account data right now. Refresh to retry.');
         }
       } catch (error) {
         if (cancelled || profileSectionRequestIdRef.current !== requestId) {
@@ -1381,7 +1387,7 @@ export function Profile() {
   const featuredSlotsHelperText = remainingFeaturedSlots === null
     ? 'Unlimited featured control'
     : isOwnerOperatorAccount
-      ? `${remainingFeaturedSlots} featured upgrade slot${remainingFeaturedSlots === 1 ? '' : 's'} remaining`
+      ? 'Purchase featured listing upgrades at $20/each'
       : `${remainingFeaturedSlots} slots remaining`;
 
   const formatDateLabel = (value?: string) => {
@@ -1886,7 +1892,11 @@ export function Profile() {
             {remainingManagedListings === null ? 'Unlimited' : remainingManagedListings}
           </p>
           <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-            {finiteListingCap === null ? 'Admin / super admin unlimited posting access' : `${finiteListingCap} listing allowance`}
+            {finiteListingCap === null
+              ? 'Admin / super admin unlimited posting access'
+              : isOwnerOperatorAccount
+                ? `${finiteListingCap} listing slot included — purchase additional at $39/each`
+                : `${finiteListingCap} listing allowance`}
           </p>
         </div>
         <div className="rounded-sm border border-line bg-surface p-4">
@@ -1899,7 +1909,7 @@ export function Profile() {
           </p>
           {isOwnerOperatorAccount && (
             <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-accent">
-              Owner-Operators can upgrade one active listing to featured.
+              Purchase featured listing upgrades to boost visibility — $20 per listing.
             </p>
           )}
         </div>
