@@ -354,7 +354,7 @@ async function syncPublicDealerSummary(sellerUid) {
     id: normalizedSellerUid,
     uid: normalizedSellerUid,
     storefrontSlug: normalizeText(merged.storefrontSlug, normalizedSellerUid),
-    canonicalPath: normalizeText(merged.canonicalPath, sellerPath),
+    canonicalPath: sellerPath,
     storefrontName: normalizeText(merged.storefrontName || merged.displayName || merged.name, 'Dealer Storefront'),
     storefrontTagline: normalizeText(merged.storefrontTagline),
     storefrontDescription: normalizeText(merged.storefrontDescription || merged.about),

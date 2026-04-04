@@ -639,7 +639,7 @@ export function Dealers() {
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 {filteredDealers.slice(0, displayCount).map((dealer) => {
                   const dealerName = getDealerDisplayName(dealer);
-                  const dealerPath = dealer.canonicalPath || buildDealerPath(dealer);
+                  const dealerPath = buildDealerPath(dealer);
                   const websiteLabel = getWebsiteLabel(dealer.website);
                   const distance = getDealerDistance(dealer);
                   const dealerInitials = getDealerInitials(dealerName);
