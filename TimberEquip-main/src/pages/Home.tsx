@@ -33,7 +33,7 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { CANONICAL_MARKET_ROUTE_KEY, buildManufacturerPath, buildStateMarketPath, getListingManufacturer, getStateFromLocation, normalizeSeoSlug } from '../utils/seoRoutes';
+import { CANONICAL_MARKET_ROUTE_KEY, buildManufacturerPath, buildStateMarketPath, getListingManufacturer, getListingStateName, normalizeSeoSlug } from '../utils/seoRoutes';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   LoggingEquipmentIcon,
@@ -128,7 +128,7 @@ const buildHomeStateSummaries = (listings: Listing[]): HomeStateSummary[] => {
   const stateMap = new Map<string, { count: number; manufacturers: Map<string, number> }>();
 
   listings.forEach((listing) => {
-    const state = getStateFromLocation(listing.location);
+    const state = getListingStateName(listing);
     if (!state) return;
 
     const manufacturer = getListingManufacturer(listing);

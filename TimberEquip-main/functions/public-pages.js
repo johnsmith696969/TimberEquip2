@@ -2982,6 +2982,29 @@ async function handlePublicPagesRequest(req, res, next) {
       return;
     }
 
+    if (req.query && (req.query.__asset_recovery !== undefined || req.query._asset_recovery !== undefined)) {
+      const searchParams = new URLSearchParams();
+      Object.entries(req.query).forEach(([key, value]) => {
+        if (key === '__asset_recovery' || key === '_asset_recovery') return;
+
+        if (Array.isArray(value)) {
+          value.forEach((entry) => {
+            if (entry !== undefined && entry !== null && String(entry).length > 0) {
+              searchParams.append(key, String(entry));
+            }
+          });
+          return;
+        }
+
+        if (value !== undefined && value !== null && String(value).length > 0) {
+          searchParams.set(key, String(value));
+        }
+      });
+
+      res.redirect(302, `${req.path || '/'}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+      return;
+    }
+
     if (!isPublicSeoPath(req.path || '/')) {
       if (typeof next === 'function') return next();
       res.status(404).send('Not found');
