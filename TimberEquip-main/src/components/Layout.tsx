@@ -22,6 +22,8 @@ const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSE
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO = `/Logo-Transparent-sm.webp?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
+const QUICK_SEARCH_SHOW_THRESHOLD = 350;
+const QUICK_SEARCH_HIDE_THRESHOLD = 320;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -55,6 +57,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFloatingQuickSearch, setShowFloatingQuickSearch] = useState(false);
+  const [floatingQuickSearchHasFocus, setFloatingQuickSearchHasFocus] = useState(false);
 
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
   const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
@@ -111,8 +114,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     let ticking = false;
 
     const updateFloatingQuickSearch = () => {
-      const nextVisible = window.scrollY > 350;
-      setShowFloatingQuickSearch((current) => (current === nextVisible ? current : nextVisible));
+      setShowFloatingQuickSearch((current) => {
+        const scrollY = window.scrollY || 0;
+        const nextVisible = current
+          ? scrollY > QUICK_SEARCH_HIDE_THRESHOLD
+          : scrollY > QUICK_SEARCH_SHOW_THRESHOLD;
+        return current === nextVisible ? current : nextVisible;
+      });
       ticking = false;
     };
 
@@ -124,11 +132,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
     updateFloatingQuickSearch();
     window.addEventListener('scroll', handleViewportChange, { passive: true });
-    window.addEventListener('resize', handleViewportChange);
 
     return () => {
       window.removeEventListener('scroll', handleViewportChange);
-      window.removeEventListener('resize', handleViewportChange);
     };
   }, []);
 
@@ -138,12 +144,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
     navigate(normalized ? `/search?q=${encodeURIComponent(normalized)}` : '/search');
   };
 
+  const shouldShowFloatingQuickSearch = showFloatingQuickSearch || floatingQuickSearchHasFocus;
+
   const renderQuickSearchBar = (floating = false) => (
-    <div className={`border-b border-line py-2 px-4 md:px-8 ${floating ? 'bg-bg/96 backdrop-blur-md' : 'bg-bg'}`}>
+    <div className={`py-2 px-4 md:px-8 ${floating ? 'bg-bg/96 backdrop-blur-md border-b-0' : 'bg-bg border-b border-line'}`}>
       <div className="max-w-[900px] mx-auto flex items-center">
         <form
           onSubmit={handleSearch}
-          className="flex-1 flex items-center bg-surface border border-line rounded-sm shadow-none outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0"
+          onFocusCapture={floating ? () => setFloatingQuickSearchHasFocus(true) : undefined}
+          onBlurCapture={floating ? (event) => {
+            const nextTarget = event.relatedTarget as Node | null;
+            if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+            setFloatingQuickSearchHasFocus(false);
+          } : undefined}
+          className="flex-1 flex items-center bg-surface border border-line rounded-sm shadow-none outline-none ring-0 transition-none focus-within:border-line focus-within:outline-none focus-within:ring-0"
         >
           <input
             type="text"
@@ -423,11 +437,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Persistent Quick Search Bar */}
       {renderQuickSearchBar()}
       <AnimatePresence initial={false}>
-        {showFloatingQuickSearch ? (
+        {shouldShowFloatingQuickSearch ? (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0, transition: { duration: 0.12, ease: [0.22, 1, 0.36, 1] } }}
-            exit={{ opacity: 0, y: -10, transition: { duration: 0.12, ease: [0.22, 1, 0.36, 1] } }}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } }}
+            exit={{ opacity: 0, y: -8, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } }}
             className="fixed inset-x-0 top-0 z-[var(--z-sticky)] shadow-none"
           >
             {renderQuickSearchBar(true)}
