@@ -29,6 +29,7 @@ import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { TaxonomyManager } from '../components/admin/TaxonomyManager';
+import { AuctionLotManager } from '../components/admin/AuctionLotManager';
 import { AccountMfaSettingsCard } from '../components/AccountMfaSettingsCard';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
@@ -131,6 +132,7 @@ export function AdminDashboard() {
   const [auctionsList, setAuctionsList] = useState<Auction[]>([]);
   const [auctionsLoading, setAuctionsLoading] = useState(false);
   const [auctionEditing, setAuctionEditing] = useState<{ mode: 'create' } | { mode: 'edit'; auction: Auction } | null>(null);
+  const [managedAuctionId, setManagedAuctionId] = useState('');
   const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
   const resolvedRequestedTab = useMemo<DashboardTab>(() => resolveDashboardTab(requestedTab), [requestedTab]);
   const activeTab = useMemo<DashboardTab>(() => {
@@ -5238,7 +5240,7 @@ export function AdminDashboard() {
           softCloseThresholdMin: auction?.softCloseThresholdMin ?? 3,
           softCloseExtensionMin: auction?.softCloseExtensionMin ?? 2,
           staggerIntervalMin: auction?.staggerIntervalMin ?? 1,
-          defaultPaymentDeadlineDays: auction?.defaultPaymentDeadlineDays ?? 3,
+          defaultPaymentDeadlineDays: auction?.defaultPaymentDeadlineDays ?? 7,
           defaultRemovalDeadlineDays: auction?.defaultRemovalDeadlineDays ?? 14,
           createdBy: auction?.createdBy || '',
         };
@@ -5321,8 +5323,11 @@ export function AdminDashboard() {
                 <p className="text-xs text-muted mt-1">Create your first auction to get started</p>
               </div>
             ) : (
-              auctionsList.map((auction) => (
-                <div key={auction.id} className="border border-line rounded-sm p-4 flex items-center justify-between">
+              auctionsList.map((auction) => {
+                const isManagingLots = managedAuctionId === auction.id;
+                return (
+                <React.Fragment key={auction.id}>
+                <div className="border border-line rounded-sm p-4 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div>
                       <span className={`inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
@@ -5362,13 +5367,26 @@ export function AdminDashboard() {
                     )}
                     <button
                       className="btn-industrial btn-outline text-[9px]"
+                      onClick={() => setManagedAuctionId((current) => current === auction.id ? '' : auction.id)}
+                    >
+                      {isManagingLots ? 'Hide Lots' : 'Manage Lots'}
+                    </button>
+                    <button
+                      className="btn-industrial btn-outline text-[9px]"
                       onClick={() => setAuctionEditing({ mode: 'edit', auction })}
                     >
                       Edit
                     </button>
                   </div>
                 </div>
-              ))
+                {isManagingLots && (
+                  <div className="border border-line border-t-0 rounded-b-sm bg-bg/40 p-4">
+                    <AuctionLotManager auction={auction} onAuctionUpdated={loadAuctions} />
+                  </div>
+                )}
+                </React.Fragment>
+                );
+              })
             )}
           </div>
         )}

@@ -580,6 +580,8 @@ export interface AuctionLot {
   paymentDeadlineDays: number;
   removalDeadlineDays: number;
   storageFeePerDay: number;
+  isTitledItem?: boolean;
+  titleDocumentFee?: number;
 }
 
 export interface AuctionBid {
@@ -599,6 +601,7 @@ export interface AuctionBid {
 export interface BidderProfile {
   verificationTier: BidderTier;
   fullName: string;
+  email?: string;
   phone: string;
   phoneVerified: boolean;
   address: {
@@ -610,11 +613,26 @@ export interface BidderProfile {
   };
   companyName: string | null;
   stripeCustomerId: string;
+  stripeIdentityVerificationSessionId?: string | null;
+  stripeIdentityVerificationUrl?: string | null;
+  stripeIdentityLastError?: string | null;
+  stripeSetupSessionId?: string | null;
+  stripeSetupSessionStatus?: 'pending' | 'completed' | 'expired' | 'cancelled' | null;
+  stripeSetupIntentId?: string | null;
+  defaultPaymentMethodId?: string | null;
+  defaultPaymentMethodBrand?: string | null;
+  defaultPaymentMethodLast4?: string | null;
+  defaultPaymentMethodFunding?: 'credit' | 'debit' | 'prepaid' | 'unknown' | null;
   preAuthPaymentIntentId: string | null;
   preAuthAmount: number;
   preAuthStatus: 'pending' | 'held' | 'captured' | 'released';
   idVerificationStatus: 'not_started' | 'pending' | 'verified' | 'failed';
   idVerifiedAt: string | null;
+  bidderApprovedAt?: string | null;
+  bidderApprovedBy?: string | null;
+  lastAuctionRegistrationAt?: string | null;
+  legalAcceptedAuctionSlug?: string | null;
+  legalAcceptedAuctionId?: string | null;
   totalAuctionsParticipated: number;
   totalItemsWon: number;
   totalSpent: number;
@@ -634,12 +652,19 @@ export interface AuctionInvoice {
   winningBid: number;
   buyerPremium: number;
   documentationFee: number;
+  cardProcessingFee?: number;
+  isTitledItem?: boolean;
   salesTax: number;
   salesTaxRate: number;
   taxExempt: boolean;
   totalDue: number;
   status: 'pending' | 'paid' | 'overdue' | 'cancelled' | 'refunded';
   paymentMethod: 'wire' | 'ach' | 'card' | 'financing' | null;
+  paymentMethodFunding?: 'credit' | 'debit' | 'prepaid' | 'unknown' | null;
+  stripeInvoiceId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+  stripePaymentIntentId?: string | null;
+  paymentTermsVersion?: string | null;
   paidAt: string | null;
   dueDate: string;
   sellerCommission: number;

@@ -1,25 +1,115 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, orderBy, addDoc, onSnapshot, serverTimestamp, Timestamp, writeBatch, increment } from 'firebase/firestore';
-import { db } from '../firebase';
-import type { Auction, AuctionLot, AuctionBid, AuctionStatus, AuctionLotStatus, AuctionInvoice } from '../types';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  addDoc,
+  onSnapshot,
+  writeBatch,
+  increment,
+} from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import type { Auction, AuctionBid, AuctionInvoice, AuctionLot, AuctionLotStatus, AuctionStatus, BidderProfile, Listing } from '../types';
 
 function normalizeSeoSlug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Unauthorized');
+  }
+
+  const idToken = await currentUser.getIdToken();
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const rawBody = await response.text().catch(() => '');
+  let payload: Record<string, unknown> = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(String(payload?.error || rawBody || `Auction request failed (${response.status}).`));
+  }
+
+  return payload as T;
+}
+
+export interface AuctionBidderStatusResponse {
+  auction: Auction | null;
+  profile: BidderProfile | null;
+  registrationComplete: boolean;
+  canBid: boolean;
+  identityVerified: boolean;
+  paymentMethodReady: boolean;
+  bidderApproved: boolean;
+  legalAccepted: boolean;
+}
+
+export interface AuctionAssignableListingsResponse {
+  listings: Listing[];
+  count: number;
+}
+
+export interface CreateAuctionLotInput {
+  listingId: string;
+  lotNumber?: string;
+  closeOrder?: number;
+  startingBid?: number;
+  reservePrice?: number | null;
+  buyerPremiumPercent?: number;
+  promoted?: boolean;
+  promotedOrder?: number;
+  startTime?: string;
+  endTime?: string;
+  storageFeePerDay?: number;
+  paymentDeadlineDays?: number;
+  removalDeadlineDays?: number;
+  isTitledItem?: boolean;
+}
+
+export interface PlaceAuctionBidInput {
+  amount: number;
+}
+
+export interface AuctionInvoicePaymentSessionResponse {
+  invoice: AuctionInvoice;
+  cardEligible: boolean;
+  paymentMethodOptions: Array<'wire' | 'card'>;
+  url?: string;
+  sessionId?: string;
+}
+
 export const auctionService = {
-
-  // ─── Auction CRUD ───
-
   async getAuctions(): Promise<Auction[]> {
     const q = query(collection(db, 'auctions'), orderBy('startTime', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Auction));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Auction));
   },
 
   async getAuctionsByStatus(status: AuctionStatus): Promise<Auction[]> {
     const q = query(collection(db, 'auctions'), where('status', '==', status), orderBy('startTime', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Auction));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Auction));
   },
 
   async getAuctionBySlug(slug: string): Promise<Auction | null> {
@@ -58,24 +148,24 @@ export const auctionService = {
   },
 
   async updateAuctionStatus(id: string, status: AuctionStatus): Promise<void> {
-    await updateDoc(doc(db, 'auctions', id), { status, updatedAt: new Date().toISOString() });
+    await updateDoc(doc(db, 'auctions', id), {
+      status,
+      updatedAt: new Date().toISOString(),
+    });
   },
 
   async deleteAuction(id: string): Promise<void> {
-    // Delete all lots first
     const lotsSnap = await getDocs(collection(db, 'auctions', id, 'lots'));
     const batch = writeBatch(db);
-    lotsSnap.docs.forEach(d => batch.delete(d.ref));
+    lotsSnap.docs.forEach((d) => batch.delete(d.ref));
     batch.delete(doc(db, 'auctions', id));
     await batch.commit();
   },
 
-  // ─── Lot Management ───
-
   async getLots(auctionId: string): Promise<AuctionLot[]> {
     const q = query(collection(db, 'auctions', auctionId, 'lots'), orderBy('closeOrder', 'asc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuctionLot));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionLot));
   },
 
   async getLot(auctionId: string, lotId: string): Promise<AuctionLot | null> {
@@ -90,6 +180,15 @@ export const auctionService = {
     if (snap.empty) return null;
     const d = snap.docs[0];
     return { id: d.id, ...d.data() } as AuctionLot;
+  },
+
+  async getAuctionWithLot(auctionSlug: string, lotNumber: string): Promise<{ auction: Auction | null; lot: AuctionLot | null }> {
+    const auction = await this.getAuctionBySlug(auctionSlug);
+    if (!auction?.id) {
+      return { auction: null, lot: null };
+    }
+    const lot = await this.getLotByNumber(auction.id, lotNumber);
+    return { auction, lot };
   },
 
   async addLot(auctionId: string, data: Omit<AuctionLot, 'id' | 'bidCount' | 'uniqueBidders' | 'lastBidTime' | 'currentBid' | 'currentBidderId' | 'currentBidderAnonymousId' | 'extensionCount' | 'reserveMet' | 'winningBidderId' | 'winningBid' | 'watcherIds' | 'watcherCount'>): Promise<string> {
@@ -109,7 +208,6 @@ export const auctionService = {
       watcherIds: [],
       watcherCount: 0,
     });
-    // Increment auction lot count
     await updateDoc(doc(db, 'auctions', auctionId), {
       lotCount: increment(1),
       updatedAt: new Date().toISOString(),
@@ -137,22 +235,18 @@ export const auctionService = {
     await batch.commit();
   },
 
-  // ─── Bids ───
-
   async getBids(auctionId: string, lotId: string): Promise<AuctionBid[]> {
-    const q = query(
-      collection(db, 'auctions', auctionId, 'lots', lotId, 'bids'),
-      orderBy('timestamp', 'desc')
-    );
+    const q = query(collection(db, 'auctions', auctionId, 'lots', lotId, 'bids'), orderBy('timestamp', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuctionBid));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionBid));
   },
-
-  // ─── Real-time Listeners ───
 
   onAuctionChange(auctionId: string, callback: (auction: Auction | null) => void): () => void {
     return onSnapshot(doc(db, 'auctions', auctionId), (snap) => {
-      if (!snap.exists()) { callback(null); return; }
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
       callback({ id: snap.id, ...snap.data() } as Auction);
     });
   },
@@ -160,39 +254,37 @@ export const auctionService = {
   onLotsChange(auctionId: string, callback: (lots: AuctionLot[]) => void): () => void {
     const q = query(collection(db, 'auctions', auctionId, 'lots'), orderBy('closeOrder', 'asc'));
     return onSnapshot(q, (snap) => {
-      callback(snap.docs.map(d => ({ id: d.id, ...d.data() } as AuctionLot)));
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionLot)));
     });
   },
 
   onLotChange(auctionId: string, lotId: string, callback: (lot: AuctionLot | null) => void): () => void {
     return onSnapshot(doc(db, 'auctions', auctionId, 'lots', lotId), (snap) => {
-      if (!snap.exists()) { callback(null); return; }
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
       callback({ id: snap.id, ...snap.data() } as AuctionLot);
     });
   },
 
   onBidsChange(auctionId: string, lotId: string, callback: (bids: AuctionBid[]) => void): () => void {
-    const q = query(
-      collection(db, 'auctions', auctionId, 'lots', lotId, 'bids'),
-      orderBy('timestamp', 'desc')
-    );
+    const q = query(collection(db, 'auctions', auctionId, 'lots', lotId, 'bids'), orderBy('timestamp', 'desc'));
     return onSnapshot(q, (snap) => {
-      callback(snap.docs.map(d => ({ id: d.id, ...d.data() } as AuctionBid)));
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionBid)));
     });
   },
-
-  // ─── Invoices ───
 
   async getInvoicesForAuction(auctionId: string): Promise<AuctionInvoice[]> {
     const q = query(collection(db, 'invoices'), where('auctionId', '==', auctionId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuctionInvoice));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionInvoice));
   },
 
   async getInvoicesForUser(userId: string): Promise<AuctionInvoice[]> {
     const q = query(collection(db, 'invoices'), where('buyerId', '==', userId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuctionInvoice));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionInvoice));
   },
 
   async updateInvoice(invoiceId: string, data: Partial<AuctionInvoice>): Promise<void> {
@@ -202,22 +294,102 @@ export const auctionService = {
     });
   },
 
-  // ─── Bidder Profiles ───
-
-  async getBidderProfile(userId: string): Promise<import('../types').BidderProfile | null> {
+  async getBidderProfile(userId: string): Promise<BidderProfile | null> {
     const d = await getDoc(doc(db, 'users', userId, 'bidderProfile', 'profile'));
     if (!d.exists()) return null;
-    return d.data() as import('../types').BidderProfile;
+    return d.data() as BidderProfile;
   },
 
-  async saveBidderProfile(userId: string, data: Partial<import('../types').BidderProfile>): Promise<void> {
+  async saveBidderProfile(userId: string, data: Partial<BidderProfile>): Promise<void> {
     await setDoc(doc(db, 'users', userId, 'bidderProfile', 'profile'), {
       ...data,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
   },
 
-  // ─── Helpers ───
+  async getBidderStatus(auctionSlug: string): Promise<AuctionBidderStatusResponse> {
+    return getAuthorizedJson<AuctionBidderStatusResponse>(`/api/auctions/${encodeURIComponent(auctionSlug)}/bidder-status`);
+  },
+
+  async saveBidderProfileForAuction(auctionSlug: string, data: Partial<BidderProfile>): Promise<AuctionBidderStatusResponse> {
+    return getAuthorizedJson<AuctionBidderStatusResponse>(`/api/auctions/${encodeURIComponent(auctionSlug)}/bidder-profile`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async createBidderIdentitySession(auctionSlug: string): Promise<{ url: string; sessionId: string }> {
+    return getAuthorizedJson<{ url: string; sessionId: string }>(`/api/auctions/${encodeURIComponent(auctionSlug)}/identity-session`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  async createBidderPaymentSetupSession(auctionSlug: string): Promise<{ url: string; sessionId: string }> {
+    return getAuthorizedJson<{ url: string; sessionId: string }>(`/api/auctions/${encodeURIComponent(auctionSlug)}/payment-setup-session`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  async syncBidderPaymentSetupSession(sessionId: string, auctionSlug = ''): Promise<AuctionBidderStatusResponse> {
+    const params = new URLSearchParams();
+    if (auctionSlug.trim()) {
+      params.set('auctionSlug', auctionSlug.trim());
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return getAuthorizedJson<AuctionBidderStatusResponse>(`/api/auctions/bidder-setup-session/${encodeURIComponent(sessionId)}${suffix}`);
+  },
+
+  async getAssignableListings(auctionId: string, searchQuery = ''): Promise<AuctionAssignableListingsResponse> {
+    const params = new URLSearchParams();
+    if (searchQuery.trim()) {
+      params.set('q', searchQuery.trim());
+    }
+    return getAuthorizedJson<AuctionAssignableListingsResponse>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/assignable-listings?${params.toString()}`);
+  },
+
+  async createAdminAuctionLot(auctionId: string, payload: CreateAuctionLotInput): Promise<{ lot: AuctionLot }> {
+    return getAuthorizedJson<{ lot: AuctionLot }>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/lots`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateAdminAuctionLot(auctionId: string, lotId: string, payload: Partial<CreateAuctionLotInput>): Promise<{ lot: AuctionLot }> {
+    return getAuthorizedJson<{ lot: AuctionLot }>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/lots/${encodeURIComponent(lotId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async removeAdminAuctionLot(auctionId: string, lotId: string): Promise<{ success: true }> {
+    return getAuthorizedJson<{ success: true }>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/lots/${encodeURIComponent(lotId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async placeBid(auctionSlug: string, lotNumber: string, payload: PlaceAuctionBidInput): Promise<{ lot: AuctionLot; bid: AuctionBid }> {
+    return getAuthorizedJson<{ lot: AuctionLot; bid: AuctionBid }>(`/api/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/bids`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getLotInvoice(auctionSlug: string, lotNumber: string): Promise<{ invoice: AuctionInvoice; cardEligible: boolean; paymentMethodOptions: Array<'wire' | 'card'> }> {
+    return getAuthorizedJson(`/api/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/invoice`);
+  },
+
+  async getAuctionInvoice(invoiceId: string): Promise<{ invoice: AuctionInvoice; cardEligible: boolean; paymentMethodOptions: Array<'wire' | 'card'> }> {
+    return getAuthorizedJson(`/api/auctions/invoices/${encodeURIComponent(invoiceId)}`);
+  },
+
+  async createAuctionInvoicePaymentSession(invoiceId: string, paymentMethod: 'wire' | 'card'): Promise<AuctionInvoicePaymentSessionResponse> {
+    return getAuthorizedJson<AuctionInvoicePaymentSessionResponse>(`/api/auctions/invoices/${encodeURIComponent(invoiceId)}/payment-session`, {
+      method: 'POST',
+      body: JSON.stringify({ paymentMethod }),
+    });
+  },
 
   getBidIncrement(currentBid: number): number {
     if (currentBid < 250) return 10;
@@ -232,12 +404,10 @@ export const auctionService = {
     return 10000;
   },
 
-  getBuyerPremium(amount: number, defaultPercent: number = 10): number {
-    // Tiered: 10% under $10K, 7% $10K-$75K, 5% $75K-$250K, 3% $250K+
-    if (amount < 10000) return amount * 0.10;
-    if (amount < 75000) return 1000 + (amount - 10000) * 0.07;
-    if (amount < 250000) return 1000 + 4550 + (amount - 75000) * 0.05;
-    return 1000 + 4550 + 8750 + (amount - 250000) * 0.03;
+  getBuyerPremium(amount: number): number {
+    if (amount <= 25000) return Math.max(amount * 0.10, 100);
+    if (amount <= 75000) return Math.max(amount * 0.05, 2500);
+    return 3500;
   },
 
   formatTimeRemaining(endTime: string): string {

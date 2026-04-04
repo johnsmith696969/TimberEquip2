@@ -831,6 +831,97 @@ const templates = {
     `);
     return { subject, html };
   },
+
+  auctionBidderRegistered({ displayName, auctionTitle, auctionUrl }) {
+    const subject = `You are registered for ${auctionTitle}`;
+    const html = baseLayout(subject, 'Auction Registration Confirmed', `
+      <p class="label">Auction Registration</p>
+      <h2>Your bidder profile is saved</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your bidder profile has been saved for <strong>${auctionTitle}</strong>. Complete identity verification and add a payment method to unlock live bidding.</p>
+      ${renderInfoPanel([
+        { label: 'Auction', value: auctionTitle },
+        { label: 'Next Step', value: 'Verify ID and add payment method' },
+      ])}
+      <a href="${auctionUrl}" class="cta">Open Auction</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionIdentitySubmitted({ displayName, auctionTitle, auctionUrl }) {
+    const subject = `ID verification received for ${auctionTitle}`;
+    const html = baseLayout(subject, 'Identity Verification Received', `
+      <p class="label">Auction Verification</p>
+      <h2>Your identity review is in progress</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>We received your identity submission for <strong>${auctionTitle}</strong>. Once Stripe finishes verification and your payment method is on file, your bidder profile will be approved automatically.</p>
+      <a href="${auctionUrl}" class="cta">Return to Auction</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionBidderApproved({ displayName, auctionTitle, auctionUrl }) {
+    const subject = `You are approved to bid in ${auctionTitle}`;
+    const html = baseLayout(subject, 'Approved To Bid', `
+      <p class="label">Bidder Approved</p>
+      <h2>Your auction access is active</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your bidder profile is approved for <strong>${auctionTitle}</strong>. You can now place bids on active lots.</p>
+      <a href="${auctionUrl}" class="cta">Start Bidding</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionOutbid({ displayName, auctionTitle, lotTitle, bidAmount, lotUrl }) {
+    const subject = `You were outbid on ${lotTitle}`;
+    const html = baseLayout(subject, 'You Were Outbid', `
+      <p class="label">Auction Alert</p>
+      <h2>Your lead bid has been surpassed</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Another bidder has placed a higher bid on <strong>${lotTitle}</strong> in <strong>${auctionTitle}</strong>.</p>
+      ${renderInfoPanel([
+        { label: 'Lot', value: lotTitle },
+        { label: 'Latest Bid', value: bidAmount },
+      ])}
+      <a href="${lotUrl}" class="cta">Review Lot</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionWinningBid({ displayName, auctionTitle, lotTitle, hammerPrice, invoiceUrl }) {
+    const subject = `Winning bid confirmed for ${lotTitle}`;
+    const html = baseLayout(subject, 'Winning Bid Confirmed', `
+      <p class="label">Auction Winner</p>
+      <h2>You won the lot</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your bid won <strong>${lotTitle}</strong> in <strong>${auctionTitle}</strong>.</p>
+      ${renderInfoPanel([
+        { label: 'Hammer Price', value: hammerPrice },
+        { label: 'Payment Terms', value: 'Payment due within 7 calendar days' },
+      ])}
+      <div class="panel">
+        <p><strong>Important:</strong> Buyer’s fees, titled document fees, card fees, tax, wire instructions, storage, and removal deadlines are listed with your invoice and auction terms.</p>
+      </div>
+      <a href="${invoiceUrl}" class="cta">View Invoice Details</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionDownPaymentReceipt({ displayName, invoiceNumber, amountPaid, invoiceUrl }) {
+    const subject = `Auction payment receipt ${invoiceNumber}`;
+    const html = baseLayout(subject, 'Auction Payment Receipt', `
+      <p class="label">Payment Receipt</p>
+      <h2>Your payment was received</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>We received your auction payment and updated your invoice record.</p>
+      ${renderInfoPanel([
+        { label: 'Invoice', value: invoiceNumber },
+        { label: 'Amount Paid', value: amountPaid },
+      ])}
+      <a href="${invoiceUrl}" class="cta">Review Auction Purchase</a>
+    `);
+    return { subject, html };
+  },
 };
 
 module.exports = {

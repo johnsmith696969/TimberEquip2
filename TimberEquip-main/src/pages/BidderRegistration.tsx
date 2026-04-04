@@ -1,25 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, CreditCard, FileText, CheckCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { CheckCircle, CreditCard, ExternalLink, FileText, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { Seo } from '../components/Seo';
-import { Breadcrumbs } from '../components/Breadcrumbs';
-import { auctionService } from '../services/auctionService';
-import type { Auction, BidderProfile } from '../types';
+import { Breadcrumbs, type BreadcrumbItem } from '../components/Breadcrumbs';
+import { auctionService, type AuctionBidderStatusResponse } from '../services/auctionService';
+import { AUCTION_TERMS_VERSION, buildAuctionLegalSummaryLines } from '../utils/auctionFees';
+import type { Auction } from '../types';
 
 export function BidderRegistration() {
   const { auctionSlug } = useParams<{ auctionSlug: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
 
   const [auction, setAuction] = useState<Auction | null>(null);
+  const [status, setStatus] = useState<AuctionBidderStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [existingProfile, setExistingProfile] = useState<BidderProfile | null>(null);
-  const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
-  const [complete, setComplete] = useState(false);
+  const [identityLoading, setIdentityLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  // Form state
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -29,276 +32,432 @@ export function BidderRegistration() {
   const [zip, setZip] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!isAuthenticated && !loading) {
-      navigate(`/login?redirect=${encodeURIComponent(`/auctions/${auctionSlug}/register`)}`);
-    }
-  }, [isAuthenticated, loading, navigate, auctionSlug]);
+  const returnTo = searchParams.get('returnTo') || (auctionSlug ? `/auctions/${auctionSlug}` : '/auctions');
+  const legalLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
 
-  // Load auction and existing bidder profile
   useEffect(() => {
-    async function load() {
-      try {
-        if (auctionSlug) {
-          const a = await auctionService.getAuctionBySlug(auctionSlug);
-          setAuction(a);
-        }
-        if (user?.uid) {
-          const profile = await auctionService.getBidderProfile(user.uid);
-          if (profile) {
-            setExistingProfile(profile);
-            // Pre-fill form from existing profile
-            setFullName(profile.fullName || '');
-            setPhone(profile.phone || '');
-            setCompanyName(profile.companyName || '');
-            setStreet(profile.address?.street || '');
-            setCity(profile.address?.city || '');
-            setState(profile.address?.state || '');
-            setZip(profile.address?.zip || '');
-            if (profile.verificationTier === 'verified' || profile.verificationTier === 'approved') {
-              setComplete(true);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Failed to load auction/profile:', e);
-      } finally {
+    if (!loading || isAuthenticated) return;
+    navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+  }, [isAuthenticated, loading, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPage() {
+      if (!auctionSlug || !isAuthenticated) {
         setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+      try {
+        const [auctionRecord, bidderStatus] = await Promise.all([
+          auctionService.getAuctionBySlug(auctionSlug),
+          auctionService.getBidderStatus(auctionSlug),
+        ]);
+
+        if (cancelled) return;
+
+        setAuction(auctionRecord);
+        setStatus(bidderStatus);
+        const profile = bidderStatus.profile;
+        setFullName(profile?.fullName || user?.displayName || '');
+        setPhone(profile?.phone || user?.phoneNumber || '');
+        setCompanyName(profile?.companyName || '');
+        setStreet(profile?.address?.street || '');
+        setCity(profile?.address?.city || '');
+        setState(profile?.address?.state || '');
+        setZip(profile?.address?.zip || '');
+        setTermsAccepted(Boolean(profile?.termsAcceptedAt));
+      } catch (loadError) {
+        if (!cancelled) {
+          console.error('Failed to load bidder registration:', loadError);
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load bidder registration.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
-    load();
-  }, [auctionSlug, user?.uid]);
 
-  async function handleSubmit() {
-    if (!user?.uid || !termsAccepted) return;
-    setSaving(true);
+    void loadPage();
+    return () => {
+      cancelled = true;
+    };
+  }, [auctionSlug, isAuthenticated, user?.displayName, user?.phoneNumber]);
+
+  useEffect(() => {
+    const setupSessionId = searchParams.get('setup_session_id');
+    if (!auctionSlug || !setupSessionId || !isAuthenticated) return;
+
+    let cancelled = false;
+    async function syncSetupSession() {
+      setPaymentLoading(true);
+      setError('');
+      setNotice('Refreshing saved payment method...');
+      try {
+        const bidderStatus = await auctionService.syncBidderPaymentSetupSession(setupSessionId, auctionSlug);
+        if (!cancelled) {
+          setStatus(bidderStatus);
+          setNotice(bidderStatus.bidderApproved
+            ? 'Payment method confirmed and bidder approval completed.'
+            : 'Payment method saved. Finish any remaining verification steps to bid.');
+        }
+      } catch (syncError) {
+        if (!cancelled) {
+          console.error('Failed to sync bidder setup session:', syncError);
+          setError(syncError instanceof Error ? syncError.message : 'Unable to refresh payment setup.');
+        }
+      } finally {
+        if (!cancelled) {
+          setPaymentLoading(false);
+        }
+      }
+    }
+
+    void syncSetupSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [auctionSlug, isAuthenticated, searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('identity_return') === '1') {
+      setNotice('Identity verification returned. Refresh bidder status below if approval does not appear right away.');
+    } else if (searchParams.get('setup_cancelled') === '1') {
+      setNotice('Payment method setup was cancelled. You can restart it below when ready.');
+    }
+  }, [searchParams]);
+
+  const breadcrumbs: BreadcrumbItem[] = [
+    { label: 'Home', path: '/' },
+    { label: 'Auctions', path: '/auctions' },
+    ...(auction ? [{ label: auction.title, path: `/auctions/${auction.slug}` }] : []),
+    { label: 'Register to Bid', path: '' },
+  ];
+
+  async function refreshBidderStatus() {
+    if (!auctionSlug) return;
+    setLoading(true);
+    setError('');
     try {
-      await auctionService.saveBidderProfile(user.uid, {
-        verificationTier: 'verified',
+      const bidderStatus = await auctionService.getBidderStatus(auctionSlug);
+      setStatus(bidderStatus);
+    } catch (refreshError) {
+      console.error('Failed to refresh bidder status:', refreshError);
+      setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh bidder status.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveRegistration() {
+    if (!auctionSlug) return;
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      const bidderStatus = await auctionService.saveBidderProfileForAuction(auctionSlug, {
         fullName,
         phone,
-        phoneVerified: false,
-        companyName: companyName || null,
-        address: { street, city, state, zip, country: 'US' },
-        stripeCustomerId: '',
-        preAuthPaymentIntentId: null,
-        preAuthAmount: 250,
-        preAuthStatus: 'pending',
-        idVerificationStatus: 'not_started',
-        idVerifiedAt: null,
-        totalAuctionsParticipated: existingProfile?.totalAuctionsParticipated || 0,
-        totalItemsWon: existingProfile?.totalItemsWon || 0,
-        totalSpent: existingProfile?.totalSpent || 0,
-        nonPaymentCount: existingProfile?.nonPaymentCount || 0,
+        companyName,
+        address: {
+          street,
+          city,
+          state,
+          zip,
+          country: 'US',
+        },
         termsAcceptedAt: new Date().toISOString(),
-        termsVersion: '1.0',
-        createdAt: existingProfile?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        termsVersion: AUCTION_TERMS_VERSION,
       });
-      setComplete(true);
-    } catch (e) {
-      console.error('Failed to save bidder profile:', e);
-      alert('Failed to complete registration. Please try again.');
+      setStatus(bidderStatus);
+      setTermsAccepted(true);
+      setNotice('Registration details saved. Continue with identity verification and payment setup.');
+    } catch (saveError) {
+      console.error('Failed to save bidder registration:', saveError);
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save bidder registration.');
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleStartIdentityVerification() {
+    if (!auctionSlug) return;
+    setIdentityLoading(true);
+    setError('');
+    try {
+      const response = await auctionService.createBidderIdentitySession(auctionSlug);
+      window.location.assign(response.url);
+    } catch (identityError) {
+      console.error('Failed to create identity verification session:', identityError);
+      setError(identityError instanceof Error ? identityError.message : 'Unable to start identity verification.');
+      setIdentityLoading(false);
+    }
+  }
+
+  async function handleStartPaymentSetup() {
+    if (!auctionSlug) return;
+    setPaymentLoading(true);
+    setError('');
+    try {
+      const response = await auctionService.createBidderPaymentSetupSession(auctionSlug);
+      window.location.assign(response.url);
+    } catch (paymentError) {
+      console.error('Failed to create bidder payment setup session:', paymentError);
+      setError(paymentError instanceof Error ? paymentError.message : 'Unable to start payment setup.');
+      setPaymentLoading(false);
+    }
+  }
+
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-surface rounded w-1/2" />
-          <div className="h-4 bg-surface rounded w-3/4" />
-          <div className="h-64 bg-surface rounded" />
+      <div className="mx-auto max-w-3xl px-4 py-16 md:px-8">
+        <div className="space-y-4 animate-pulse">
+          <div className="h-4 w-32 rounded-sm bg-surface" />
+          <div className="h-10 w-2/3 rounded-sm bg-surface" />
+          <div className="h-[320px] rounded-sm bg-surface" />
         </div>
       </div>
     );
   }
 
-  const breadcrumbs = [
-    { label: 'Home', path: '/' },
-    { label: 'Auctions', path: '/auctions' },
-    ...(auction ? [{ label: auction.title, path: `/auctions/${auctionSlug}` }] : []),
-    { label: 'Register to Bid', path: '' },
+  const statusCards = [
+    {
+      label: 'Registration',
+      complete: Boolean(status?.legalAccepted),
+      detail: status?.legalAccepted ? 'Saved and accepted' : 'Complete your bidder profile',
+      icon: FileText,
+    },
+    {
+      label: 'Identity',
+      complete: Boolean(status?.identityVerified),
+      detail: status?.identityVerified ? 'Stripe Identity verified' : status?.profile?.idVerificationStatus || 'Needs verification',
+      icon: ShieldCheck,
+    },
+    {
+      label: 'Payment',
+      complete: Boolean(status?.paymentMethodReady),
+      detail: status?.paymentMethodReady ? 'Payment method on file' : 'Add card or debit card',
+      icon: CreditCard,
+    },
   ];
-
-  if (complete) {
-    return (
-      <>
-        <Seo title="Registered to Bid — TimberEquip" description="You are registered to bid on this auction." />
-        <Breadcrumbs items={breadcrumbs} />
-        <div className="max-w-xl mx-auto px-4 py-12 text-center">
-          <CheckCircle size={48} className="mx-auto text-accent mb-4" />
-          <h1 className="text-xl font-black uppercase tracking-tight mb-2">You're Registered to Bid</h1>
-          <p className="text-sm text-muted mb-6">
-            Your bidder registration is complete. You can now place bids on auction items.
-          </p>
-          {auction && (
-            <Link to={`/auctions/${auctionSlug}`} className="btn-industrial btn-accent">
-              View Auction Catalog
-            </Link>
-          )}
-          <Link to="/auctions" className="btn-industrial btn-outline ml-2">
-            All Auctions
-          </Link>
-        </div>
-      </>
-    );
-  }
 
   return (
     <>
-      <Seo title={`Register to Bid${auction ? ` — ${auction.title}` : ''} — TimberEquip`} description="Register as a bidder to participate in this forestry equipment auction." />
+      <Seo
+        title={`${auction ? `${auction.title} | ` : ''}Register to Bid | Forestry Equipment Sales`}
+        description="Complete bidder registration, identity verification, and payment setup for the auction."
+      />
       <Breadcrumbs items={breadcrumbs} />
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-xl font-black uppercase tracking-tight mb-1">Register to Bid</h1>
-        {auction && (
-          <p className="text-sm text-muted mb-6">{auction.title} — {auction.startTime ? new Date(auction.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''}</p>
-        )}
-
-        {/* Progress Steps */}
-        <div className="flex items-center gap-2 mb-8">
-          {[
-            { num: 1, label: 'Personal Info', icon: ShieldCheck },
-            { num: 2, label: 'Payment', icon: CreditCard },
-            { num: 3, label: 'Terms', icon: FileText },
-          ].map(({ num, label, icon: Icon }) => (
-            <div key={num} className="flex items-center gap-2 flex-1">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black ${
-                step >= num ? 'bg-accent text-white' : 'bg-surface border border-line text-muted'
-              }`}>
-                {num}
-              </div>
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${step >= num ? 'text-ink' : 'text-muted'}`}>{label}</span>
-              {num < 3 && <div className={`flex-1 h-px ${step > num ? 'bg-accent' : 'bg-line'}`} />}
-            </div>
-          ))}
+      <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <span className="label-micro text-accent">Auction Registration</span>
+            <h1 className="mt-2 text-3xl font-black uppercase tracking-tight md:text-4xl">
+              Register to Bid
+            </h1>
+            {auction && (
+              <p className="mt-3 text-sm text-muted">
+                {auction.title} · bidding window opens {new Date(auction.startTime).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="btn-industrial btn-outline" onClick={refreshBidderStatus}>
+              <RefreshCw size={14} className="mr-2" />
+              Refresh Status
+            </button>
+            <Link to={returnTo} className="btn-industrial btn-accent">
+              Return to Auction
+            </Link>
+          </div>
         </div>
 
-        {/* Step 1: Personal Info */}
-        {step === 1 && (
-          <div className="border border-line rounded-sm p-6 space-y-4">
-            <h2 className="font-black text-sm uppercase tracking-widest">Personal Information</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="label-micro block mb-1" htmlFor="bidder-name">Full Legal Name *</label>
-                <input id="bidder-name" className="input-industrial w-full" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Smith" required />
-              </div>
-              <div>
-                <label className="label-micro block mb-1" htmlFor="bidder-phone">Phone Number *</label>
-                <input id="bidder-phone" className="input-industrial w-full" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" required />
-              </div>
-              <div className="md:col-span-2">
-                <label className="label-micro block mb-1" htmlFor="bidder-company">Company Name (optional)</label>
-                <input id="bidder-company" className="input-industrial w-full" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Company name" />
-              </div>
+        <div className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
+          <section className="space-y-8">
+            <div className="grid gap-4 md:grid-cols-3">
+              {statusCards.map(({ label, complete, detail, icon: Icon }) => (
+                <div key={label} className="rounded-sm border border-line bg-surface p-5">
+                  <div className="flex items-center justify-between">
+                    <Icon size={18} className={complete ? 'text-accent' : 'text-muted'} />
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${complete ? 'text-accent' : 'text-muted'}`}>
+                      {complete ? 'Complete' : 'Pending'}
+                    </span>
+                  </div>
+                  <h2 className="mt-4 text-sm font-black uppercase tracking-widest">{label}</h2>
+                  <p className="mt-2 text-sm text-muted">{detail}</p>
+                </div>
+              ))}
             </div>
-            <h3 className="font-black text-xs uppercase tracking-widest pt-2">Mailing Address</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="label-micro block mb-1" htmlFor="bidder-street">Street Address *</label>
-                <input id="bidder-street" className="input-industrial w-full" value={street} onChange={e => setStreet(e.target.value)} placeholder="123 Main St" required />
-              </div>
-              <div>
-                <label className="label-micro block mb-1" htmlFor="bidder-city">City *</label>
-                <input id="bidder-city" className="input-industrial w-full" value={city} onChange={e => setCity(e.target.value)} placeholder="Minneapolis" required />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+
+            <div className="rounded-sm border border-line bg-surface p-6">
+              <h2 className="text-sm font-black uppercase tracking-widest">Bidder Profile</h2>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="label-micro block mb-1" htmlFor="bidder-state">State *</label>
-                  <input id="bidder-state" className="input-industrial w-full" value={state} onChange={e => setState(e.target.value)} placeholder="MN" required />
+                  <label className="label-micro mb-1 block">Full Legal Name</label>
+                  <input className="input-industrial w-full" value={fullName} onChange={(event) => setFullName(event.target.value)} />
                 </div>
                 <div>
-                  <label className="label-micro block mb-1" htmlFor="bidder-zip">ZIP *</label>
-                  <input id="bidder-zip" className="input-industrial w-full" value={zip} onChange={e => setZip(e.target.value)} placeholder="55401" required />
+                  <label className="label-micro mb-1 block">Phone Number</label>
+                  <input className="input-industrial w-full" value={phone} onChange={(event) => setPhone(event.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label-micro mb-1 block">Company Name</label>
+                  <input className="input-industrial w-full" value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label-micro mb-1 block">Street Address</label>
+                  <input className="input-industrial w-full" value={street} onChange={(event) => setStreet(event.target.value)} />
+                </div>
+                <div>
+                  <label className="label-micro mb-1 block">City</label>
+                  <input className="input-industrial w-full" value={city} onChange={(event) => setCity(event.target.value)} />
+                </div>
+                <div>
+                  <label className="label-micro mb-1 block">State / Province</label>
+                  <input className="input-industrial w-full" value={state} onChange={(event) => setState(event.target.value)} />
+                </div>
+                <div>
+                  <label className="label-micro mb-1 block">Postal Code</label>
+                  <input className="input-industrial w-full" value={zip} onChange={(event) => setZip(event.target.value)} />
                 </div>
               </div>
-            </div>
-            <div className="flex justify-end pt-2">
+
+              <label className="mt-5 flex items-start gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={termsAccepted}
+                  onChange={(event) => setTermsAccepted(event.target.checked)}
+                />
+                <span>
+                  I accept the auction terms, acknowledge that all bids are binding, and understand that payment is due within 7 days.
+                </span>
+              </label>
+
               <button
-                className="btn-industrial btn-accent"
-                disabled={!fullName || !phone || !street || !city || !state || !zip}
-                onClick={() => setStep(2)}
+                type="button"
+                className="btn-industrial btn-accent mt-5"
+                disabled={saving || !termsAccepted || !fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !state.trim() || !zip.trim()}
+                onClick={handleSaveRegistration}
               >
-                Continue to Payment
+                {saving ? 'Saving Registration...' : 'Save Registration Details'}
               </button>
             </div>
-          </div>
-        )}
 
-        {/* Step 2: Payment / Pre-Auth */}
-        {step === 2 && (
-          <div className="border border-line rounded-sm p-6 space-y-4">
-            <h2 className="font-black text-sm uppercase tracking-widest">Payment Verification</h2>
-            <div className="bg-surface border border-line rounded-sm p-4">
-              <div className="flex items-start gap-3">
-                <CreditCard size={20} className="text-accent flex-shrink-0 mt-0.5" />
+            <div className="rounded-sm border border-line bg-surface p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-bold">$250 Pre-Authorization Hold</p>
-                  <p className="text-xs text-muted mt-1">
-                    A temporary $250 hold will be placed on your credit card. This is <strong>not a charge</strong> —
-                    it verifies your identity and commitment. The hold is automatically released 48 hours
-                    after the auction closes if you do not win any items.
+                  <h2 className="text-sm font-black uppercase tracking-widest">Identity Verification</h2>
+                  <p className="mt-2 text-sm text-muted">
+                    We use Stripe Identity for government-ID checks before bidders can participate in the auction.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  className="btn-industrial btn-accent"
+                  disabled={identityLoading || !status?.legalAccepted}
+                  onClick={handleStartIdentityVerification}
+                >
+                  {identityLoading ? (
+                    <>
+                      <Loader2 size={14} className="mr-2 animate-spin" />
+                      Opening Stripe...
+                    </>
+                  ) : (
+                    <>
+                      Verify Identity
+                      <ExternalLink size={13} className="ml-2" />
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-            <div className="bg-surface border border-line rounded-sm p-4">
-              <p className="text-xs text-muted text-center py-4">
-                Stripe payment integration will be configured here. For now, continue to accept terms.
-              </p>
-            </div>
-            <div className="flex justify-between pt-2">
-              <button className="btn-industrial btn-outline" onClick={() => setStep(1)}>Back</button>
-              <button className="btn-industrial btn-accent" onClick={() => setStep(3)}>
-                Continue to Terms
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* Step 3: Terms & Conditions */}
-        {step === 3 && (
-          <div className="border border-line rounded-sm p-6 space-y-4">
-            <h2 className="font-black text-sm uppercase tracking-widest">Terms & Conditions</h2>
-            <div className="bg-surface border border-line rounded-sm p-4 space-y-3 text-xs text-muted">
-              <p>By registering as a bidder, you agree to the following:</p>
-              <ul className="list-disc list-inside space-y-1">
-                <li><strong>All bids are binding contracts.</strong> Placing a bid constitutes a legal obligation to purchase the item if you are the winning bidder.</li>
-                <li><strong>Buyer premium applies.</strong> A buyer's premium ({auction?.defaultBuyerPremiumPercent || 10}%) will be added to the winning bid amount.</li>
-                <li><strong>Payment is due within 3 business days</strong> of auction close. Accepted methods: wire transfer, ACH, or credit card (2.9% surcharge).</li>
-                <li><strong>Equipment is sold "as is, where is."</strong> No warranties are expressed or implied. Inspection before bidding is recommended.</li>
-                <li><strong>Sales tax applies</strong> unless a valid exemption certificate is provided.</li>
-                <li><strong>Equipment removal</strong> must occur within 14 days of payment confirmation.</li>
-                <li><strong>Non-payment consequences:</strong> forfeiture of pre-authorization hold, account suspension, and potential legal action.</li>
+            <div className="rounded-sm border border-line bg-surface p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-widest">Payment Method Setup</h2>
+                  <p className="mt-2 text-sm text-muted">
+                    Add a valid card or debit card so your bidder profile can be approved. Cards are limited to $50,000 total due and receive a 3% processing fee if used for settlement.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-industrial btn-accent"
+                  disabled={paymentLoading || !status?.legalAccepted}
+                  onClick={handleStartPaymentSetup}
+                >
+                  {paymentLoading ? (
+                    <>
+                      <Loader2 size={14} className="mr-2 animate-spin" />
+                      Opening Stripe...
+                    </>
+                  ) : (
+                    <>
+                      Add Payment Method
+                      <ExternalLink size={13} className="ml-2" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <aside className="space-y-6">
+            {status?.registrationComplete ? (
+              <div className="rounded-sm border border-accent/20 bg-accent/5 p-6">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="mt-0.5 text-accent" size={22} />
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-widest">Approved to Bid</h2>
+                    <p className="mt-2 text-sm text-muted">
+                      Your bidder account is fully approved. You can now place bids on active lots in this auction.
+                    </p>
+                    <Link to={returnTo} className="btn-industrial btn-accent mt-4 inline-flex">
+                      Start Bidding
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-sm border border-line bg-surface p-6">
+                <h2 className="text-sm font-black uppercase tracking-widest">Approval Checklist</h2>
+                <ul className="mt-4 space-y-3 text-sm text-muted">
+                  <li>1. Save your bidder registration details.</li>
+                  <li>2. Complete Stripe Identity verification with a matching selfie.</li>
+                  <li>3. Add a valid card or debit card through Stripe.</li>
+                  <li>4. Refresh bidder status until approval is complete.</li>
+                </ul>
+              </div>
+            )}
+
+            <div className="rounded-sm border border-line bg-surface p-6">
+              <h2 className="text-sm font-black uppercase tracking-widest">Auction Legal Summary</h2>
+              <ul className="mt-4 space-y-2 text-sm text-muted">
+                {legalLines.map((line) => (
+                  <li key={line} className="flex gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent flex-shrink-0" />
+                    <span>{line}</span>
+                  </li>
+                ))}
               </ul>
             </div>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
-                className="mt-1 accent-accent"
-              />
-              <span className="text-xs">
-                I have read and agree to the <strong>Auction Terms & Conditions</strong> and <strong>Privacy Policy</strong>.
-                I understand that all bids are binding and that a {auction?.defaultBuyerPremiumPercent || 10}% buyer premium applies.
-              </span>
-            </label>
-            <div className="flex justify-between pt-2">
-              <button className="btn-industrial btn-outline" onClick={() => setStep(2)}>Back</button>
-              <button
-                className="btn-industrial btn-accent"
-                disabled={!termsAccepted || saving}
-                onClick={handleSubmit}
-              >
-                {saving ? 'Completing Registration…' : 'Complete Registration'}
-              </button>
-            </div>
-          </div>
-        )}
+
+            {(error || notice) && (
+              <div className={`rounded-sm border p-4 text-sm ${error ? 'border-red-500/30 bg-red-500/5 text-red-700' : 'border-accent/20 bg-accent/5 text-ink'}`}>
+                {error || notice}
+              </div>
+            )}
+          </aside>
+        </div>
       </div>
     </>
   );
