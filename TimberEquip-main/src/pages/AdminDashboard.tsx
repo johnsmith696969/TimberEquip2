@@ -5373,7 +5373,7 @@ export function AdminDashboard() {
                       className="btn-industrial btn-outline text-[9px]"
                       onClick={() => setManagedAuctionId((current) => current === auction.id ? '' : auction.id)}
                     >
-                      {isManagingLots ? 'Hide Lots' : 'Manage Lots'}
+                      {isManagingLots ? 'Hide Lots & Results' : 'Manage Lots & Results'}
                     </button>
                     <button
                       className="btn-industrial btn-outline text-[9px]"

@@ -53,6 +53,7 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
   const [lots, setLots] = useState<AuctionLot[]>([]);
   const [lotsLoading, setLotsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [resultsQuery, setResultsQuery] = useState('');
   const [assignableListings, setAssignableListings] = useState<Listing[]>([]);
   const [assignableLoading, setAssignableLoading] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -132,9 +133,15 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
     return [...lots].sort((left, right) => Number(left.closeOrder || 0) - Number(right.closeOrder || 0));
   }, [lots]);
 
+  const soldLots = useMemo(() => sortedLots.filter((lot) => lot.status === 'sold'), [sortedLots]);
+  const unsoldLots = useMemo(() => sortedLots.filter((lot) => lot.status === 'unsold'), [sortedLots]);
+  const endedLots = useMemo(
+    () => sortedLots.filter((lot) => ['sold', 'unsold', 'closed'].includes(String(lot.status || '').toLowerCase())),
+    [sortedLots],
+  );
+
   useEffect(() => {
     let cancelled = false;
-    const soldLots = sortedLots.filter((lot) => lot.status === 'sold');
 
     if (soldLots.length === 0) {
       setLotSettlements({});
@@ -170,7 +177,57 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
     return () => {
       cancelled = true;
     };
-  }, [auction.slug, sortedLots]);
+  }, [auction.slug, soldLots]);
+
+  const visibleEndedLots = useMemo(() => {
+    const queryValue = resultsQuery.trim().toLowerCase();
+    if (!queryValue) return endedLots;
+
+    return endedLots.filter((lot) => {
+      const settlement = lotSettlements[lot.id];
+      const buyer = settlement?.buyer;
+      const haystack = [
+        lot.lotNumber,
+        lot.year,
+        lot.manufacturer,
+        lot.model,
+        lot.status,
+        lot.pickupLocation,
+        buyer?.uid,
+        buyer?.email,
+        buyer?.displayName,
+        buyer?.fullName,
+        buyer?.firstName,
+        buyer?.lastName,
+        buyer?.businessName,
+        settlement?.invoice?.id,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(queryValue);
+    });
+  }, [endedLots, lotSettlements, resultsQuery]);
+
+  const openSettlementCount = useMemo(
+    () => soldLots.filter((lot) => {
+      const invoice = lotSettlements[lot.id]?.invoice;
+      return Boolean(invoice && invoice.status !== 'paid');
+    }).length,
+    [lotSettlements, soldLots],
+  );
+
+  const latestEndTime = useMemo(() => {
+    const values = endedLots
+      .map((lot) => {
+        const parsed = lot.endTime ? new Date(lot.endTime).getTime() : Number.NaN;
+        return Number.isFinite(parsed) ? parsed : null;
+      })
+      .filter((value): value is number => value !== null);
+    if (!values.length) return '';
+    return formatDateTime(new Date(Math.max(...values)).toISOString());
+  }, [endedLots]);
 
   function formatCurrency(value: number | null | undefined) {
     return `$${Number(value || 0).toLocaleString()}`;
@@ -307,9 +364,9 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
 
         <div className="space-y-4 p-5">
           <div className="relative">
-            <Search size={13} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted/80" />
+            <Search size={13} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted/80" />
             <input
-              className="input-industrial w-full py-2.5 pl-12 pr-4 text-xs"
+              className="input-industrial w-full py-2.5 pl-14 pr-4 text-xs"
               placeholder="Search by title, make, model, stock number, or location"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
@@ -471,6 +528,145 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
             View Public Auction
             <ExternalLink size={12} className="ml-1.5" />
           </a>
+        </div>
+
+        <div className="border-b border-line bg-bg/40 px-5 py-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                {[
+                  { label: 'Sold Lots', value: soldLots.length, tone: 'text-accent' },
+                  { label: 'Unsold Lots', value: unsoldLots.length, tone: 'text-ink' },
+                  { label: 'Open Settlements', value: openSettlementCount, tone: openSettlementCount > 0 ? 'text-amber-600' : 'text-ink' },
+                  { label: 'Last End Time', value: latestEndTime || 'Pending', tone: 'text-ink' },
+                ].map((metric) => (
+                  <div key={metric.label} className="rounded-sm border border-line bg-surface px-4 py-3">
+                    <p className="label-micro">{metric.label}</p>
+                    <p className={`mt-2 text-sm font-black uppercase tracking-wide ${metric.tone}`}>
+                      {metric.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {endedLots.length > 0 ? (
+                <div className="rounded-sm border border-line bg-surface">
+                  <div className="flex flex-col gap-3 border-b border-line px-4 py-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h5 className="text-xs font-black uppercase tracking-widest text-ink">Auction Results & Settlement</h5>
+                      <p className="mt-1 text-[11px] text-muted">
+                        Search ended lots and instantly see the winner, invoice, settlement, and auction close details.
+                      </p>
+                    </div>
+                    <div className="relative w-full md:w-[320px]">
+                      <Search size={12} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted/80" />
+                      <input
+                        className="input-industrial w-full py-2.5 pl-14 pr-4 text-[11px]"
+                        placeholder="Search winner, email, business, UID, lot, or invoice"
+                        value={resultsQuery}
+                        onChange={(event) => setResultsQuery(event.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="max-h-[280px] overflow-y-auto">
+                    {visibleEndedLots.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-[11px] font-bold text-muted">
+                        No ended lots matched that search.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-line/80">
+                        {visibleEndedLots.map((lot) => {
+                          const settlement = lotSettlements[lot.id];
+                          const buyer = settlement?.buyer || null;
+                          const invoice = settlement?.invoice || null;
+                          return (
+                            <div key={`result-${lot.id}`} className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,0.8fr)]">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-sm border border-line px-2 py-1 text-[9px] font-black uppercase tracking-widest text-muted">
+                                    Lot {lot.lotNumber}
+                                  </span>
+                                  <span className={`rounded-sm px-2 py-1 text-[9px] font-black uppercase tracking-widest ${
+                                    lot.status === 'sold'
+                                      ? 'bg-accent/10 text-accent'
+                                      : lot.status === 'unsold'
+                                        ? 'bg-amber-500/10 text-amber-700'
+                                        : 'bg-ink/10 text-ink'
+                                  }`}>
+                                    {lot.status}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-xs font-black uppercase tracking-wide text-ink">
+                                  {lot.year} {lot.manufacturer} {lot.model}
+                                </p>
+                                <p className="mt-1 text-[11px] font-bold text-muted">
+                                  Ended {formatDateTime(lot.endTime) || 'Pending'} · Hammer {formatCurrency(lot.winningBid || lot.currentBid)}
+                                </p>
+                                {invoice ? (
+                                  <p className="mt-1 text-[10px] font-bold text-muted">
+                                    Invoice {invoice.id} · Due {formatCurrency(invoice.totalDue)} · {invoice.status}
+                                  </p>
+                                ) : null}
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-accent">Winning Bidder</p>
+                                {buyer ? (
+                                  <div className="mt-2 space-y-1.5 text-[11px] font-bold text-muted">
+                                    <p className="text-xs font-black uppercase tracking-wide text-ink">
+                                      {buyer.fullName || buyer.displayName || 'Bidder'}
+                                    </p>
+                                    {buyer.businessName ? <p>{buyer.businessName}</p> : null}
+                                    {buyer.email ? <p className="break-all">{buyer.email}</p> : null}
+                                    {buyer.uid ? <p className="break-all">UID {buyer.uid}</p> : null}
+                                    {(buyer.firstName || buyer.lastName) ? (
+                                      <p>First: {buyer.firstName || 'N/A'} · Last: {buyer.lastName || 'N/A'}</p>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-[11px] font-bold text-muted">
+                                    {lot.status === 'sold' ? 'Loading winner details…' : 'No winning bidder'}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-accent">Settlement</p>
+                                {invoice ? (
+                                  <div className="mt-2 space-y-1.5 text-[11px] font-bold text-muted">
+                                    <p className="text-xs font-black uppercase tracking-wide text-ink">
+                                      {invoice.status === 'paid' ? 'Released / Paid' : 'Awaiting Treasury'}
+                                    </p>
+                                    <p>Buyer premium {formatCurrency(invoice.buyerPremium)}</p>
+                                    {invoice.documentationFee > 0 ? <p>Document fee {formatCurrency(invoice.documentationFee)}</p> : null}
+                                    <p>Due {formatDateTime(invoice.dueDate) || 'Pending'}</p>
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-[11px] font-bold text-muted">
+                                    {lot.status === 'sold' ? 'Preparing settlement…' : 'No settlement needed'}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-sm border border-line bg-surface px-4 py-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-accent">Auction Connectivity</p>
+              <ul className="mt-3 space-y-2 text-[11px] font-bold text-muted">
+                <li>Starts, ends, and GMV are shown on the auction card above.</li>
+                <li>Every sold lot surfaces bidder identity, invoice, and settlement status here.</li>
+                <li>Winner details sync from the bidder profile, user account, and live auction invoice record.</li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         {lotsLoading ? (
