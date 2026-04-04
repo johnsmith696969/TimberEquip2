@@ -883,7 +883,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         handleDraftFilterChange('location', fallback);
         handleFilterChange('location', fallback);
       } else {
-        showAlert('Location Unavailable', 'Geolocation is not supported by your browser. Please enter your location manually.');
+        showAlert({ title: 'Location Unavailable', message: 'Geolocation is not supported by your browser. Please enter your location manually.' });
       }
       setGeoLocating(false);
       return;
@@ -908,7 +908,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
           handleDraftFilterChange('location', fallback);
           handleFilterChange('location', fallback);
         } else {
-          showAlert('Location Unavailable', 'Unable to retrieve your location. Please enter it manually or allow location access in your browser settings.');
+          showAlert({ title: 'Location Unavailable', message: 'Unable to retrieve your location. Please enter it manually or allow location access in your browser settings.' });
         }
         setGeoLocating(false);
       },

@@ -7,7 +7,7 @@ import {
   Phone, Calculator, AlertCircle, Landmark, RefreshCw, Gavel
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
 import { auctionService } from '../services/auctionService';
 import {
@@ -2027,7 +2027,7 @@ export function ListingDetail() {
                 doubleClick={{ disabled: true }}
                 centerOnInit
               >
-                {({ zoomIn, zoomOut, resetTransform, state }) => (
+                {(ref) => { const { zoomIn, zoomOut, resetTransform, state } = ref as unknown as ReactZoomPanPinchRef; return (
                   <>
                     <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
                       <button onClick={() => zoomOut()} className="px-3 py-2 bg-black/65 text-white text-xs font-black rounded-sm hover:bg-black transition-colors">-</button>
@@ -2095,7 +2095,7 @@ export function ListingDetail() {
                       <ChevronRight size={22} />
                     </button>
                   </>
-                )}
+                ); }}
               </TransformWrapper>
             </motion.div>
           </div>

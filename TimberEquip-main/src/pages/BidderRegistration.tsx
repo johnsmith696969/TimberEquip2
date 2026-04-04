@@ -121,13 +121,13 @@ export function BidderRegistration() {
     { label: 'Home', path: '/' },
     { label: 'Auctions', path: '/auctions' },
     ...(auction ? [{ label: auction.title, path: `/auctions/${auctionSlug}` }] : []),
-    { label: 'Register to Bid' },
+    { label: 'Register to Bid', path: '' },
   ];
 
   if (complete) {
     return (
       <>
-        <Seo title="Registered to Bid — TimberEquip" />
+        <Seo title="Registered to Bid — TimberEquip" description="You are registered to bid on this auction." />
         <Breadcrumbs items={breadcrumbs} />
         <div className="max-w-xl mx-auto px-4 py-12 text-center">
           <CheckCircle size={48} className="mx-auto text-accent mb-4" />
@@ -150,7 +150,7 @@ export function BidderRegistration() {
 
   return (
     <>
-      <Seo title={`Register to Bid${auction ? ` — ${auction.title}` : ''} — TimberEquip`} />
+      <Seo title={`Register to Bid${auction ? ` — ${auction.title}` : ''} — TimberEquip`} description="Register as a bidder to participate in this forestry equipment auction." />
       <Breadcrumbs items={breadcrumbs} />
       <div className="max-w-2xl mx-auto px-4 py-8">
         <h1 className="text-xl font-black uppercase tracking-tight mb-1">Register to Bid</h1>

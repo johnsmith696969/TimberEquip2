@@ -492,7 +492,7 @@ export function Profile() {
 
     const sellerName = storefrontPreview?.storefrontName || user.storefrontName || user.company || user.displayName || '';
     const sellerLocation = storefrontPreview?.location || user.location || '';
-    const roleLabel = user.role === 'pro_dealer' ? 'Pro Dealer' : user.role === 'dealer' ? 'Dealer' : user.role === 'owner_operator' ? 'Owner-Operator' : '';
+    const roleLabel = user.role === 'pro_dealer' ? 'Pro Dealer' : user.role === 'dealer' ? 'Dealer' : (user.role as string) === 'owner_operator' ? 'Owner-Operator' : '';
     const locationSuffix = sellerLocation ? ` in ${sellerLocation}` : '';
 
     const defaultSeoTitle = sellerName
@@ -1810,7 +1810,8 @@ export function Profile() {
         if (canViewSellerInquiries) {
           inquiries.slice(0, 3).forEach((inq) => {
             const title = listingTitleLookup.get(inq.listingId || '') || inq.listingId || 'Equipment';
-            const ago = inq.createdAt ? new Date(typeof inq.createdAt === 'object' && 'toDate' in inq.createdAt ? (inq.createdAt as { toDate: () => Date }).toDate() : inq.createdAt as string).toLocaleDateString() : '';
+            const _inqCreatedAt = inq.createdAt as unknown as string | { toDate: () => Date } | null | undefined;
+            const ago = _inqCreatedAt ? new Date(typeof _inqCreatedAt === 'object' && 'toDate' in _inqCreatedAt ? (_inqCreatedAt as { toDate: () => Date }).toDate() : _inqCreatedAt as string).toLocaleDateString() : '';
             recentItems.push({ action: `Inquiry — ${inq.status || 'New'}`, target: title, time: ago });
           });
         }

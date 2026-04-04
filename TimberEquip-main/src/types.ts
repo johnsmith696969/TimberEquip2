@@ -198,6 +198,9 @@ export interface Listing {
     format?: 'image/avif' | 'image/webp' | 'image/jpeg';
   }>;
   location: string;
+  city?: string;
+  state?: string;
+  sellerName?: string;
   stockNumber?: string;
   serialNumber?: string;
   latitude?: number;
@@ -310,6 +313,9 @@ export interface NewsPost {
   seoDescription?: string;
   seoKeywords?: string[];
   seoSlug?: string;
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Inquiry {

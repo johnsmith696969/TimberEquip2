@@ -79,7 +79,7 @@ export function AnalyticsDashboard({ listings, inquiries, accounts, invoices, su
   const proDealerAccounts = accounts.filter(a => a.role === 'pro_dealer').length;
   const dealerAccounts  = accounts.filter(a => ['dealer', 'dealer_manager', 'dealer_staff'].includes(a.role)).length;
   const sellerAccounts  = accounts.filter(a => a.role === 'individual_seller').length;
-  const memberAccounts  = accounts.filter(a => a.role === 'member' || a.role === 'buyer').length;
+  const memberAccounts  = accounts.filter(a => a.role === 'member' || (a.role as string) === 'buyer').length;
   const adminAccounts   = accounts.filter(a => ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(a.role)).length;
 
   // Top sellers by listing count

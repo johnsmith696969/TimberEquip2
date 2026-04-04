@@ -81,6 +81,8 @@ export interface AdminOverviewBootstrapPayload {
     avgResponseTimeMinutes: number | null;
     marketSentiment: string;
     inventoryTurnoverRate: number;
+    totalViews?: number;
+    activeSubscriptions?: number;
   };
   listingSummary: {
     totalListings: number;
