@@ -5345,6 +5345,10 @@ export function AdminDashboard() {
                       <p className="text-[10px] text-muted">
                         {auction.lotCount} lots · {auction.totalBids} bids
                         {auction.startTime && ` · Starts ${new Date(auction.startTime).toLocaleDateString()}`}
+                        {auction.endTime && ` · Ends ${new Date(auction.endTime).toLocaleString()}`}
+                        {Number.isFinite(Number(auction.totalGMV || 0)) && Number(auction.totalGMV || 0) > 0
+                          ? ` · GMV $${Number(auction.totalGMV || 0).toLocaleString()}`
+                          : ''}
                       </p>
                     </div>
                   </div>

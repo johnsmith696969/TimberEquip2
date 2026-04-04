@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ExternalLink, Loader2, Search, Star, Trash2 } from 'lucide-react';
-import { auctionService } from '../../services/auctionService';
+import { CalendarDays, CheckCircle2, ExternalLink, Loader2, Mail, Search, ShieldCheck, Star, Trash2, UserRound } from 'lucide-react';
+import { auctionService, type AuctionLotInvoiceResponse } from '../../services/auctionService';
 import type { Auction, AuctionInvoice, AuctionLot, Listing } from '../../types';
 
 interface AuctionLotManagerProps {
@@ -69,7 +69,7 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
   const [deletingLotId, setDeletingLotId] = useState('');
   const [settlingInvoiceId, setSettlingInvoiceId] = useState('');
   const [addingLot, setAddingLot] = useState(false);
-  const [lotInvoices, setLotInvoices] = useState<Record<string, AuctionInvoice>>({});
+  const [lotSettlements, setLotSettlements] = useState<Record<string, AuctionLotInvoiceResponse>>({});
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
 
@@ -137,16 +137,16 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
     const soldLots = sortedLots.filter((lot) => lot.status === 'sold');
 
     if (soldLots.length === 0) {
-      setLotInvoices({});
+      setLotSettlements({});
       return undefined;
     }
 
     async function loadLotInvoices() {
-      const invoiceEntries = await Promise.all(
+      const settlementEntries = await Promise.all(
         soldLots.map(async (lot) => {
           try {
             const response = await auctionService.getLotInvoice(auction.slug, lot.lotNumber);
-            return [lot.id, response.invoice] as const;
+            return [lot.id, response] as const;
           } catch (invoiceError) {
             console.error(`Failed to load invoice for auction lot ${lot.lotNumber}:`, invoiceError);
             return [lot.id, null] as const;
@@ -156,13 +156,13 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
 
       if (cancelled) return;
 
-      const nextInvoices: Record<string, AuctionInvoice> = {};
-      invoiceEntries.forEach(([lotId, invoice]) => {
-        if (invoice) {
-          nextInvoices[lotId] = invoice;
+      const nextSettlements: Record<string, AuctionLotInvoiceResponse> = {};
+      settlementEntries.forEach(([lotId, response]) => {
+        if (response?.invoice) {
+          nextSettlements[lotId] = response;
         }
       });
-      setLotInvoices(nextInvoices);
+      setLotSettlements(nextSettlements);
     }
 
     void loadLotInvoices();
@@ -269,9 +269,16 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
 
     try {
       const response = await auctionService.adminSettleAuctionInvoice(invoice.id);
-      setLotInvoices((current) => ({
+      setLotSettlements((current) => ({
         ...current,
-        [lot.id]: response.invoice,
+        [lot.id]: current[lot.id]
+          ? { ...current[lot.id], invoice: response.invoice }
+          : {
+            invoice: response.invoice,
+            cardEligible: false,
+            paymentMethodOptions: ['wire'],
+            buyer: null,
+          },
       }));
       setLots((current) => current.map((entry) => (
         entry.id === lot.id
@@ -300,9 +307,9 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
 
         <div className="space-y-4 p-5">
           <div className="relative">
-            <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+            <Search size={13} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted/80" />
             <input
-              className="input-industrial w-full pl-11"
+              className="input-industrial w-full py-2.5 pl-12 pr-4 text-xs"
               placeholder="Search by title, make, model, stock number, or location"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
@@ -480,9 +487,11 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
                 <tr className="border-b border-line">
                   <th className="px-4 py-3 label-micro">Lot</th>
                   <th className="px-4 py-3 label-micro">Equipment</th>
+                  <th className="px-4 py-3 label-micro">Auction Window</th>
                   <th className="px-4 py-3 label-micro">Starting Bid</th>
                   <th className="px-4 py-3 label-micro">Reserve</th>
                   <th className="px-4 py-3 label-micro">Status</th>
+                  <th className="px-4 py-3 label-micro">Winning Bidder</th>
                   <th className="px-4 py-3 label-micro">Flags</th>
                   <th className="px-4 py-3 label-micro">Actions</th>
                 </tr>
@@ -490,7 +499,9 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
               <tbody>
                 {sortedLots.map((lot) => {
                   const draft = lotDrafts[lot.id] || toLotDraft(lot);
-                  const settlementInvoice = lotInvoices[lot.id];
+                  const settlement = lotSettlements[lot.id];
+                  const settlementInvoice = settlement?.invoice;
+                  const winningBuyer = settlement?.buyer || null;
                   const settlementTimestamp = formatDateTime(
                     lot.releasedAt
                     || lot.releaseAuthorizedAt
@@ -519,6 +530,23 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
                         </p>
                       </td>
                       <td className="px-4 py-4">
+                        <div className="min-w-[190px] space-y-1.5 text-[11px] text-muted">
+                          <div className="flex items-center gap-2 font-bold text-ink">
+                            <CalendarDays size={12} className="text-accent shrink-0" />
+                            <span>{formatDateTime(lot.endTime) || 'End time pending'}</span>
+                          </div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                            {lot.status === 'sold'
+                              ? 'Auction ended with winner'
+                              : lot.status === 'unsold'
+                                ? 'Auction ended without reserve'
+                                : lot.status === 'closed'
+                                  ? 'Awaiting final settlement'
+                                  : `Auction ${lot.status}`}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
                         <input
                           className="input-industrial w-28"
                           type="number"
@@ -544,9 +572,72 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
                         />
                       </td>
                       <td className="px-4 py-4">
-                        <span className="inline-flex rounded-sm border border-line px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted">
-                          {lot.status}
-                        </span>
+                        <div className="space-y-2 min-w-[130px]">
+                          <span className="inline-flex rounded-sm border border-line px-2 py-1 text-[10px] font-black uppercase tracking-widest text-muted">
+                            {lot.status}
+                          </span>
+                          <div className="text-[10px] font-bold text-muted">
+                            {lot.bidCount} bid{lot.bidCount === 1 ? '' : 's'}
+                            {Number.isFinite(Number(lot.winningBid || lot.currentBid))
+                              ? ` · Hammer ${formatCurrency(lot.winningBid || lot.currentBid)}`
+                              : ''}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        {lot.status === 'sold' && winningBuyer ? (
+                          <div className="min-w-[280px] rounded-sm border border-line bg-bg/70 px-3 py-3 text-left">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-accent">Winning Bidder</p>
+                                <h5 className="mt-1 text-xs font-black uppercase tracking-wide text-ink">
+                                  {winningBuyer.fullName || winningBuyer.displayName || 'Bidder'}
+                                </h5>
+                              </div>
+                              {(winningBuyer.idVerificationStatus === 'verified' || winningBuyer.verificationTier === 'approved') ? (
+                                <span className="inline-flex items-center gap-1 rounded-sm bg-accent/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-accent">
+                                  <ShieldCheck size={11} />
+                                  Verified
+                                </span>
+                              ) : null}
+                            </div>
+                            {winningBuyer.businessName ? (
+                              <p className="mt-1 text-[11px] font-bold text-muted">{winningBuyer.businessName}</p>
+                            ) : null}
+                            <div className="mt-3 space-y-1.5 text-[10px] font-bold text-muted">
+                              {winningBuyer.email ? (
+                                <div className="flex items-center gap-2 break-all">
+                                  <Mail size={11} className="text-accent shrink-0" />
+                                  <span>{winningBuyer.email}</span>
+                                </div>
+                              ) : null}
+                              {winningBuyer.uid ? (
+                                <div className="flex items-center gap-2 break-all">
+                                  <UserRound size={11} className="text-accent shrink-0" />
+                                  <span>UID {winningBuyer.uid}</span>
+                                </div>
+                              ) : null}
+                              {(winningBuyer.firstName || winningBuyer.lastName) ? (
+                                <p>
+                                  First: {winningBuyer.firstName || 'N/A'} · Last: {winningBuyer.lastName || 'N/A'}
+                                </p>
+                              ) : null}
+                              {settlementInvoice ? (
+                                <p>
+                                  Invoice {settlementInvoice.id} · Due {formatCurrency(settlementInvoice.totalDue)}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : lot.status === 'sold' ? (
+                          <div className="min-w-[220px] rounded-sm border border-line bg-bg/70 px-3 py-3 text-[10px] font-bold text-muted">
+                            Loading winner details...
+                          </div>
+                        ) : (
+                          <div className="min-w-[180px] text-[10px] font-bold uppercase tracking-widest text-muted">
+                            No winning bidder yet
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-2">
@@ -576,7 +667,7 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="flex flex-col gap-2">
+                        <div className="flex min-w-[180px] flex-col gap-2">
                           <button
                             type="button"
                             className="btn-industrial btn-outline text-[10px]"

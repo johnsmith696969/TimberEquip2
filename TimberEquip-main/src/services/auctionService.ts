@@ -104,6 +104,30 @@ export interface AuctionInvoiceSettlementResponse {
   lot: AuctionLot;
 }
 
+export interface AuctionAdminBidderSummary {
+  uid: string | null;
+  email: string | null;
+  displayName: string | null;
+  fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  businessName: string | null;
+  phone: string | null;
+  verificationTier: string | null;
+  idVerificationStatus: string | null;
+  bidderApprovedAt: string | null;
+  defaultPaymentMethodBrand: string | null;
+  defaultPaymentMethodLast4: string | null;
+  defaultPaymentMethodFunding: string | null;
+}
+
+export interface AuctionLotInvoiceResponse {
+  invoice: AuctionInvoice;
+  cardEligible: boolean;
+  paymentMethodOptions: Array<'wire' | 'card'>;
+  buyer?: AuctionAdminBidderSummary | null;
+}
+
 export const auctionService = {
   async getAuctions(): Promise<Auction[]> {
     const q = query(collection(db, 'auctions'), orderBy('startTime', 'desc'));
@@ -381,7 +405,7 @@ export const auctionService = {
     });
   },
 
-  async getLotInvoice(auctionSlug: string, lotNumber: string): Promise<{ invoice: AuctionInvoice; cardEligible: boolean; paymentMethodOptions: Array<'wire' | 'card'> }> {
+  async getLotInvoice(auctionSlug: string, lotNumber: string): Promise<AuctionLotInvoiceResponse> {
     return getAuthorizedJson(`/api/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/invoice`);
   },
 

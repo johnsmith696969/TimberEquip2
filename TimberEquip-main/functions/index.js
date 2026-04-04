@@ -1716,6 +1716,55 @@ async function resolveAuctionUserContact(userUid, fallbackProfile = null) {
   };
 }
 
+function splitAuctionContactName(fullName = '') {
+  const parts = normalizeNonEmptyString(fullName)
+    .split(/\s+/u)
+    .filter(Boolean);
+
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+async function buildAuctionAdminBidderSummary(userUid, fallbackProfile = null) {
+  const bidderProfile = normalizeAuctionBidderProfile(
+    fallbackProfile || await getAuctionBidderProfile(userUid) || {},
+  );
+  const bidderContact = await resolveAuctionUserContact(userUid, bidderProfile || {});
+  const userData = bidderContact.userData || {};
+  const fullName = normalizeNonEmptyString(
+    bidderProfile.fullName || userData.displayName || bidderContact.displayName,
+  );
+  const { firstName, lastName } = splitAuctionContactName(fullName);
+
+  return stripUndefinedDeep({
+    uid: normalizeNonEmptyString(bidderContact.uid) || null,
+    email: normalizeNonEmptyString(bidderContact.email).toLowerCase() || null,
+    displayName: normalizeNonEmptyString(bidderContact.displayName || fullName) || null,
+    fullName: fullName || null,
+    firstName: firstName || null,
+    lastName: lastName || null,
+    businessName: normalizeNonEmptyString(
+      bidderProfile.companyName
+      || userData.businessName
+      || userData.company
+      || userData.storefrontName,
+    ) || null,
+    phone: normalizeNonEmptyString(
+      bidderProfile.phone
+      || userData.phoneNumber
+      || userData.phone,
+    ) || null,
+    verificationTier: normalizeNonEmptyString(bidderProfile.verificationTier) || null,
+    idVerificationStatus: normalizeNonEmptyString(bidderProfile.idVerificationStatus) || null,
+    bidderApprovedAt: normalizeNonEmptyString(bidderProfile.bidderApprovedAt) || null,
+    defaultPaymentMethodBrand: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodBrand) || null,
+    defaultPaymentMethodLast4: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodLast4) || null,
+    defaultPaymentMethodFunding: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodFunding) || null,
+  });
+}
+
 function buildAuctionInvoiceId(auctionId, lotId) {
   return `${normalizeNonEmptyString(auctionId)}_${normalizeNonEmptyString(lotId)}`;
 }
@@ -12631,10 +12680,14 @@ exports.apiProxy = onRequest(
         }
 
         const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(invoice.totalDue, 0));
+        const buyer = canAdministrateAccount(actorRole)
+          ? await buildAuctionAdminBidderSummary(invoice.buyerId)
+          : null;
         return res.status(200).json({
           invoice,
           cardEligible,
           paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+          buyer,
         });
       }
 
