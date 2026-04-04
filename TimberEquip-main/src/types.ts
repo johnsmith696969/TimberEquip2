@@ -49,6 +49,7 @@ export interface Seller {
   type: 'Dealer' | 'Private';
   role?: UserRole;
   storefrontSlug?: string;
+  canonicalPath?: string;
   businessName?: string;
   location: string;
   street1?: string;

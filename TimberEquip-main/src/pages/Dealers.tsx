@@ -24,6 +24,18 @@ function getDealerDisplayName(dealer: Seller): string {
   return String(dealer.storefrontName || dealer.name || 'Dealer Storefront').trim();
 }
 
+function getDealerInitials(name: string): string {
+  const initials = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((segment) => segment.charAt(0).toUpperCase())
+    .join('');
+
+  return initials || 'DS';
+}
+
 function norm(value?: string): string {
   return String(value || '').trim().toLowerCase();
 }
@@ -627,9 +639,10 @@ export function Dealers() {
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 {filteredDealers.slice(0, displayCount).map((dealer) => {
                   const dealerName = getDealerDisplayName(dealer);
-                  const dealerPath = buildDealerPath(dealer);
+                  const dealerPath = dealer.canonicalPath || buildDealerPath(dealer);
                   const websiteLabel = getWebsiteLabel(dealer.website);
                   const distance = getDealerDistance(dealer);
+                  const dealerInitials = getDealerInitials(dealerName);
 
                   return (
                     <Link
@@ -643,7 +656,7 @@ export function Dealers() {
                             {dealer.logo ? (
                               <img src={dealer.logo} alt={dealerName} width={56} height={56} className="h-full w-full object-cover" loading="lazy" />
                             ) : (
-                              <Building2 size={24} />
+                              <span className="text-sm font-black uppercase tracking-[0.18em] text-accent">{dealerInitials}</span>
                             )}
                           </div>
                           <div className="min-w-0">

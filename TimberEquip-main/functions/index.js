@@ -3002,6 +3002,7 @@ function serializeDealerDirectoryEntry(snapshotId, data = {}) {
     type: 'Dealer',
     role: normalizeNonEmptyString(data.role, 'dealer'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug, snapshotId),
+    canonicalPath: normalizeNonEmptyString(data.canonicalPath) || `/dealers/${normalizeNonEmptyString(data.storefrontSlug, snapshotId)}`,
     businessName: normalizeNonEmptyString(data.businessName || data.company),
     location: normalizeNonEmptyString(data.location, 'Location available on storefront'),
     street1: normalizeNonEmptyString(data.street1),
@@ -3016,7 +3017,7 @@ function serializeDealerDirectoryEntry(snapshotId, data = {}) {
     phone: normalizeNonEmptyString(data.phone || data.phoneNumber),
     email: normalizeNonEmptyString(data.email),
     website: normalizeNonEmptyString(data.website),
-    logo: normalizeNonEmptyString(data.logo || data.storefrontLogoUrl || data.photoURL),
+    logo: normalizeNonEmptyString(data.logo || data.storefrontLogoUrl || data.photoURL || data.profileImage),
     coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
     storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
@@ -3035,6 +3036,74 @@ function serializeDealerDirectoryEntry(snapshotId, data = {}) {
     memberSince: timestampValueToIso(data.createdAtIso || data.createdAt) || new Date().toISOString(),
     verified: Boolean(data.verified === true || isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified))),
     manuallyVerified: Boolean(data.manuallyVerified),
+  };
+}
+
+function buildDealerDirectorySeed(snapshotId, primaryData = {}, storefrontData = {}, userData = {}) {
+  const storefrontSlug = normalizeNonEmptyString(
+    primaryData.storefrontSlug || storefrontData.storefrontSlug || userData.storefrontSlug,
+    snapshotId
+  );
+
+  return {
+    ...userData,
+    ...storefrontData,
+    ...primaryData,
+    role: normalizeNonEmptyString(primaryData.role || storefrontData.role || userData.role, 'member'),
+    storefrontSlug,
+    canonicalPath: normalizeNonEmptyString(
+      primaryData.canonicalPath || storefrontData.canonicalPath || userData.canonicalPath
+    ) || `/dealers/${storefrontSlug}`,
+    storefrontName: normalizeNonEmptyString(
+      primaryData.storefrontName
+      || storefrontData.storefrontName
+      || userData.storefrontName
+      || primaryData.displayName
+      || storefrontData.displayName
+      || userData.displayName
+      || primaryData.name
+      || userData.name,
+      'Dealer Storefront'
+    ),
+    businessName: normalizeNonEmptyString(
+      primaryData.businessName
+      || storefrontData.businessName
+      || userData.businessName
+      || primaryData.company
+      || storefrontData.company
+      || userData.company
+    ),
+    location: normalizeNonEmptyString(
+      primaryData.location || storefrontData.location || userData.location,
+      'Location available on storefront'
+    ),
+    phone: normalizeNonEmptyString(
+      primaryData.phone
+      || primaryData.phoneNumber
+      || storefrontData.phone
+      || storefrontData.phoneNumber
+      || userData.phone
+      || userData.phoneNumber
+    ),
+    email: normalizeNonEmptyString(primaryData.email || storefrontData.email || userData.email),
+    website: normalizeNonEmptyString(primaryData.website || storefrontData.website || userData.website),
+    logo: normalizeNonEmptyString(
+      primaryData.logo
+      || primaryData.storefrontLogoUrl
+      || primaryData.photoURL
+      || primaryData.profileImage
+      || storefrontData.logo
+      || storefrontData.storefrontLogoUrl
+      || storefrontData.photoURL
+      || storefrontData.profileImage
+      || userData.logo
+      || userData.storefrontLogoUrl
+      || userData.photoURL
+      || userData.profileImage
+    ),
+    coverPhotoUrl: normalizeNonEmptyString(
+      primaryData.coverPhotoUrl || storefrontData.coverPhotoUrl || userData.coverPhotoUrl
+    ),
   };
 }
 
@@ -3059,43 +3128,44 @@ function sortDealerDirectoryEntries(dealers) {
 
 async function getPublicDealerDirectoryEntries() {
   const db = getDb();
-  const dealers = [];
+  const dealersByUid = new Map();
 
-  const publicDealerSnapshot = await db.collection('publicDealers').get();
-  publicDealerSnapshot.docs.forEach((docSnap) => {
-    const dealer = serializeDealerDirectoryEntry(docSnap.id, docSnap.data() || {});
-    if (dealer) {
-      dealers.push(dealer);
-    }
-  });
-
-  if (dealers.length > 0) {
-    return sortDealerDirectoryEntries(dealers);
-  }
-
-  const [storefrontSnapshot, userSnapshot] = await Promise.all([
+  const [publicDealerSnapshot, storefrontSnapshot, userSnapshot] = await Promise.all([
+    db.collection('publicDealers').get(),
     db.collection('storefronts').where('role', 'in', ['dealer', 'pro_dealer']).get(),
     db.collection('users').where('role', 'in', ['dealer', 'pro_dealer']).get(),
   ]);
 
-  const seen = new Set();
-  storefrontSnapshot.docs.forEach((docSnap) => {
-    const dealer = serializeSellerPayloadFromStorefront(docSnap.id, docSnap.data() || {});
-    if (dealer && isDealerSellerRole(dealer.role)) {
-      dealers.push(dealer);
-      seen.add(docSnap.id);
-    }
-  });
+  const storefrontByUid = new Map(storefrontSnapshot.docs.map((docSnap) => [docSnap.id, docSnap.data() || {}]));
+  const userByUid = new Map(userSnapshot.docs.map((docSnap) => [docSnap.id, docSnap.data() || {}]));
 
-  userSnapshot.docs.forEach((docSnap) => {
-    if (seen.has(docSnap.id)) return;
-    const dealer = serializeSellerPayloadFromUser(docSnap.id, docSnap.data() || {});
-    if (dealer && isDealerSellerRole(dealer.role)) {
-      dealers.push(dealer);
-    }
-  });
+  const upsertDealer = (uid, primaryData = {}) => {
+    const normalizedUid = normalizeNonEmptyString(uid);
+    if (!normalizedUid) return;
 
-  return sortDealerDirectoryEntries(dealers);
+    const dealer = serializeDealerDirectoryEntry(
+      normalizedUid,
+      buildDealerDirectorySeed(
+        normalizedUid,
+        primaryData,
+        storefrontByUid.get(normalizedUid) || {},
+        userByUid.get(normalizedUid) || {}
+      )
+    );
+
+    if (dealer) {
+      dealersByUid.set(normalizedUid, dealer);
+      return;
+    }
+
+    dealersByUid.delete(normalizedUid);
+  };
+
+  publicDealerSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+  storefrontSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+  userSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+
+  return sortDealerDirectoryEntries([...dealersByUid.values()]);
 }
 
 async function getPublicDealerListings(sellerUid, options = {}) {
@@ -7127,6 +7197,33 @@ function buildOperatorStorefrontFieldDeletes() {
       : admin.firestore.FieldValue.delete();
     return accumulator;
   }, {});
+}
+
+async function deleteSellerStorefrontArtifacts(uid) {
+  const normalizedUid = normalizeNonEmptyString(uid);
+  if (!normalizedUid) return;
+
+  const db = getDb();
+  const batch = db.batch();
+  batch.delete(db.collection('storefronts').doc(normalizedUid));
+  batch.delete(db.collection('publicDealers').doc(normalizedUid));
+  batch.delete(db.collection('dealerWidgetConfigs').doc(normalizedUid));
+  await batch.commit();
+
+  const webhookSnapshot = await db
+    .collection('dealerWebhookSubscriptions')
+    .where('dealerUid', '==', normalizedUid)
+    .get()
+    .catch(() => null);
+
+  if (webhookSnapshot && !webhookSnapshot.empty) {
+    for (let index = 0; index < webhookSnapshot.docs.length; index += 400) {
+      const webhookBatchDocs = webhookSnapshot.docs.slice(index, index + 400);
+      const webhookBatch = db.batch();
+      webhookBatchDocs.forEach((docSnap) => webhookBatch.delete(docSnap.ref));
+      await webhookBatch.commit();
+    }
+  }
 }
 
 function isPrivilegedStorefrontRecord(data = {}) {
@@ -12795,7 +12892,7 @@ exports.apiProxy = onRequest(
             },
             { merge: true }
           );
-          await getDb().collection('storefronts').doc(actorUid).delete().catch(() => undefined);
+          await deleteSellerStorefrontArtifacts(actorUid).catch(() => undefined);
           Object.assign(nextUserData, {
             storefrontEnabled: false,
             storefrontSlug: '',
@@ -13530,6 +13627,12 @@ exports.apiProxy = onRequest(
 
           if (authUserRecord?.uid) {
             try {
+              await deleteSellerStorefrontArtifacts(authUserRecord.uid);
+            } catch (cleanupError) {
+              logger.error('Failed to clean up managed user storefront artifacts after invite error', cleanupError);
+            }
+
+            try {
               await getDb().collection('users').doc(authUserRecord.uid).delete();
             } catch (cleanupError) {
               logger.error('Failed to clean up managed user profile after invite error', cleanupError);
@@ -14168,6 +14271,13 @@ exports.apiProxy = onRequest(
             }
           }
 
+          await deleteSellerStorefrontArtifacts(targetUid).catch((error) => {
+            logger.warn('Unable to delete storefront artifacts for deleted user.', {
+              targetUid,
+              error: error instanceof Error ? error.message : String(error || ''),
+            });
+          });
+
           if (targetExistsInFirestore) {
             await targetRef.delete();
           }
@@ -14401,6 +14511,43 @@ exports.apiProxy = onRequest(
               storefrontName: storefrontSync.storefront.storefrontName,
             };
           }
+        } else if (!firestoreQuotaLimited) {
+          await getDb().collection('users').doc(targetUid).set(
+            {
+              uid: targetUid,
+              ...buildOperatorStorefrontFieldDeletes(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await deleteSellerStorefrontArtifacts(targetUid);
+          currentData = {
+            ...currentData,
+            storefrontEnabled: false,
+            storefrontSlug: '',
+            storefrontName: '',
+            storefrontTagline: '',
+            storefrontDescription: '',
+            businessName: '',
+            street1: '',
+            street2: '',
+            city: '',
+            state: '',
+            county: '',
+            postalCode: '',
+            country: '',
+            latitude: null,
+            longitude: null,
+            storefrontLogoUrl: '',
+            serviceAreaScopes: [],
+            serviceAreaStates: [],
+            serviceAreaCounties: [],
+            servicesOfferedCategories: [],
+            servicesOfferedSubcategories: [],
+            seoTitle: '',
+            seoDescription: '',
+            seoKeywords: [],
+          };
         }
         return res.status(200).json({
           message: 'User updated.',

@@ -3,7 +3,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { buildListingPublicPath, encodeListingPublicKey } = require('./listing-public-paths.js');
-const { isDealerSellerRole, isOperatorOnlyRole } = require('./role-scopes.js');
+const { isDealerSellerRole, isOperatorOnlyRole, supportsStorefrontRole } = require('./role-scopes.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -327,7 +327,15 @@ async function syncPublicDealerSummary(sellerUid) {
   ]);
 
   const merged = { ...userData, ...storefrontData };
-  if (isOperatorOnlyRole(merged.role)) {
+  const normalizedRole = normalizeText(merged.role);
+  const hasStorefrontIdentity = Boolean(
+    merged.storefrontEnabled === true
+    || normalizeText(merged.storefrontSlug)
+    || normalizeText(merged.storefrontName)
+    || normalizeText(storefrontData.storefrontSlug)
+  );
+
+  if (isOperatorOnlyRole(normalizedRole) || (!supportsStorefrontRole(normalizedRole) && !hasStorefrontIdentity)) {
     await db.collection(PUBLIC_SEO_COLLECTIONS.dealers).doc(normalizedSellerUid).delete().catch(() => undefined);
     return null;
   }
@@ -346,6 +354,7 @@ async function syncPublicDealerSummary(sellerUid) {
     id: normalizedSellerUid,
     uid: normalizedSellerUid,
     storefrontSlug: normalizeText(merged.storefrontSlug, normalizedSellerUid),
+    canonicalPath: normalizeText(merged.canonicalPath, sellerPath),
     storefrontName: normalizeText(merged.storefrontName || merged.displayName || merged.name, 'Dealer Storefront'),
     storefrontTagline: normalizeText(merged.storefrontTagline),
     storefrontDescription: normalizeText(merged.storefrontDescription || merged.about),
@@ -363,7 +372,7 @@ async function syncPublicDealerSummary(sellerUid) {
     phone: normalizeText(merged.phone || merged.phoneNumber),
     email: normalizeText(merged.email),
     website: normalizeText(merged.website),
-    logo: normalizeText(merged.logo || merged.storefrontLogoUrl || merged.photoURL),
+    logo: normalizeText(merged.logo || merged.storefrontLogoUrl || merged.photoURL || merged.profileImage),
     coverPhotoUrl: normalizeText(merged.coverPhotoUrl),
     serviceAreaScopes: normalizeServiceAreaScopes(merged.serviceAreaScopes, 8),
     serviceAreaStates: Array.isArray(merged.serviceAreaStates) ? merged.serviceAreaStates.map((entry) => normalizeText(entry)).filter(Boolean) : [],
