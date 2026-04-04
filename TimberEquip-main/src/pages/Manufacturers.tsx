@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Layers3, MapPin, Settings } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -151,8 +151,7 @@ export function Manufacturers() {
 
       <ImageHero imageSrc="/page-photos/john-deere-harvester.webp" imageAlt="Forestry harvester in the field">
         <div>
-          <div className="flex items-center gap-3 mb-4">
-            <Settings size={20} className="text-accent" />
+          <div className="mb-4">
             <span className="label-micro text-accent">Manufacturer Directory</span>
           </div>
           <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
@@ -220,8 +219,9 @@ export function Manufacturers() {
                 className="group border border-line bg-bg p-8 transition-all duration-300 hover:-translate-y-1 hover:border-accent"
               >
                 <div className="flex items-start justify-between gap-4 mb-6">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-sm bg-accent/10 text-accent">
-                    <Settings size={26} />
+                  <div>
+                    <span className="label-micro mb-2 block text-accent">Brand Snapshot</span>
+                    <div className="text-lg font-black uppercase tracking-tight text-ink">{manufacturer.name}</div>
                   </div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-accent">
                     {formatNumber.format(manufacturer.count)} Listings
@@ -236,23 +236,17 @@ export function Manufacturers() {
                 </p>
 
                 <div className="space-y-4 mb-8">
-                  <div className="flex items-start gap-3 text-xs text-muted">
-                    <Layers3 size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <span className="label-micro mb-1 block">Top Categories</span>
-                      <span className="font-medium">
-                        {manufacturer.topCategories.length ? manufacturer.topCategories.join(', ') : 'Inventory categories populating now'}
-                      </span>
-                    </div>
+                  <div className="text-xs text-muted">
+                    <span className="label-micro mb-1 block">Top Categories</span>
+                    <span className="font-medium">
+                      {manufacturer.topCategories.length ? manufacturer.topCategories.join(', ') : 'Inventory categories populating now'}
+                    </span>
                   </div>
-                  <div className="flex items-start gap-3 text-xs text-muted">
-                    <MapPin size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <span className="label-micro mb-1 block">Top Markets</span>
-                      <span className="font-medium">
-                        {manufacturer.topStates.length ? manufacturer.topStates.join(', ') : 'Regional inventory populating now'}
-                      </span>
-                    </div>
+                  <div className="text-xs text-muted">
+                    <span className="label-micro mb-1 block">Top Markets</span>
+                    <span className="font-medium">
+                      {manufacturer.topStates.length ? manufacturer.topStates.join(', ') : 'Regional inventory populating now'}
+                    </span>
                   </div>
                 </div>
 
