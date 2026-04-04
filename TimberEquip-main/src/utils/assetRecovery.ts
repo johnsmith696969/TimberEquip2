@@ -1,5 +1,16 @@
 const ASSET_RECOVERY_KEY = 'forestryequipmentsales.asset-recovery-attempted';
 const ASSET_RECOVERY_PARAM = '__asset_recovery';
+const SHELL_CHECK_INTERVAL_MS = 60_000;
+
+export function getCurrentShellAssetSignature(doc: Document = document): string {
+  const script = doc.querySelector('script[type="module"][src*="/assets/index-"]') as HTMLScriptElement | null;
+  return script?.getAttribute('src') || '';
+}
+
+export function extractShellAssetSignatureFromHtml(html: string): string {
+  const match = String(html || '').match(/<script[^>]+type="module"[^>]+src="([^"]*\/assets\/index-[^"]+\.js)"/i);
+  return match?.[1] || '';
+}
 
 export function getErrorMessage(input: unknown): string {
   if (input instanceof Error) return input.message;
@@ -45,6 +56,39 @@ export function recoverFromStaleAssets(reason: string): void {
   window.location.replace(recoveryUrl.toString());
 }
 
+async function checkForNewShellVersion(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  const currentSignature = getCurrentShellAssetSignature();
+  if (!currentSignature) return;
+
+  try {
+    const probeUrl = new URL('/index.html', window.location.origin);
+    probeUrl.searchParams.set('__shell_probe', String(Date.now()));
+
+    const response = await window.fetch(probeUrl.toString(), {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'text/html',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    });
+
+    if (!response.ok) return;
+
+    const latestHtml = await response.text();
+    const latestSignature = extractShellAssetSignatureFromHtml(latestHtml);
+    if (latestSignature && latestSignature !== currentSignature) {
+      recoverFromStaleAssets(`shell-version-mismatch:${currentSignature}->${latestSignature}`);
+    }
+  } catch (error) {
+    console.warn('Shell version probe failed:', error);
+  }
+}
+
 export function installAssetRecoveryGuards(): void {
   if (typeof window === 'undefined') return;
 
@@ -76,4 +120,28 @@ export function installAssetRecoveryGuards(): void {
       recoverFromStaleAssets(message);
     }
   });
+
+  let shellCheckTimer: number | null = null;
+  const scheduleShellCheck = (delayMs = 2500) => {
+    if (shellCheckTimer !== null) {
+      window.clearTimeout(shellCheckTimer);
+    }
+    shellCheckTimer = window.setTimeout(() => {
+      void checkForNewShellVersion();
+    }, delayMs);
+  };
+
+  scheduleShellCheck();
+
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      scheduleShellCheck(500);
+    }
+  });
+
+  window.setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      void checkForNewShellVersion();
+    }
+  }, SHELL_CHECK_INTERVAL_MS);
 }

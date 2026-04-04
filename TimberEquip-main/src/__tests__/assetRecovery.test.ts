@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  extractShellAssetSignatureFromHtml,
   getErrorMessage,
+  getCurrentShellAssetSignature,
   normalizeAssetRecoveryUrl,
   shouldRecoverFromAssetError,
 } from '../utils/assetRecovery';
@@ -27,5 +29,23 @@ describe('asset recovery helpers', () => {
     expect(getErrorMessage('plain string')).toBe('plain string');
     expect(getErrorMessage({ message: 'structured failure' })).toBe('structured failure');
     expect(getErrorMessage({})).toBe('');
+  });
+
+  it('extracts the live shell asset signature from html', () => {
+    expect(
+      extractShellAssetSignatureFromHtml(`
+        <!doctype html>
+        <html>
+          <head>
+            <script type="module" crossorigin src="/assets/index-BJsk6Fga.js"></script>
+          </head>
+        </html>
+      `)
+    ).toBe('/assets/index-BJsk6Fga.js');
+  });
+
+  it('reads the current shell asset signature from the document', () => {
+    document.head.innerHTML = '<script type="module" src="/assets/index-XYZ123.js"></script>';
+    expect(getCurrentShellAssetSignature(document)).toBe('/assets/index-XYZ123.js');
   });
 });

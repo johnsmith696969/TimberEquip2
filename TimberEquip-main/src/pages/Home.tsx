@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   Package,
   Calculator,
-  Search as SearchIcon
+  Search as SearchIcon,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -32,7 +33,7 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { normalizeSeoSlug, buildManufacturerPath } from '../utils/seoRoutes';
+import { CANONICAL_MARKET_ROUTE_KEY, buildManufacturerPath, buildStateMarketPath, getStateFromLocation, normalizeSeoSlug } from '../utils/seoRoutes';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
 import {
   LoggingEquipmentIcon,
@@ -117,6 +118,43 @@ const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentSer
     return acc;
   }, {});
 
+type HomeStateSummary = {
+  name: string;
+  count: number;
+  topManufacturer: string;
+};
+
+const buildHomeStateSummaries = (listings: Listing[]): HomeStateSummary[] => {
+  const stateMap = new Map<string, { count: number; manufacturers: Map<string, number> }>();
+
+  listings.forEach((listing) => {
+    const state = getStateFromLocation(listing.location);
+    if (!state) return;
+
+    const manufacturer = getListingManufacturer(listing);
+    const existing = stateMap.get(state) || {
+      count: 0,
+      manufacturers: new Map<string, number>(),
+    };
+
+    existing.count += 1;
+    if (manufacturer) {
+      existing.manufacturers.set(manufacturer, (existing.manufacturers.get(manufacturer) || 0) + 1);
+    }
+
+    stateMap.set(state, existing);
+  });
+
+  return [...stateMap.entries()]
+    .map(([name, value]) => ({
+      name,
+      count: value.count,
+      topManufacturer: [...value.manufacturers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Mixed Inventory',
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 8);
+};
+
 export function Home() {
   const location = useLocation();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
@@ -126,6 +164,7 @@ export function Home() {
   const prefersReducedMotion = useReducedMotion();
   const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
   const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
+  const [stateSummaries, setStateSummaries] = useState<HomeStateSummary[]>([]);
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
   const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildTopLevelMetricMap(cachedMarketplaceData));
   const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
@@ -138,13 +177,20 @@ export function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const marketplaceData = await equipmentService.getHomeMarketplaceData();
+        const [marketplaceData, inventory] = await Promise.all([
+          equipmentService.getHomeMarketplaceData(),
+          equipmentService.getListings().catch((error) => {
+            console.warn('State market preview on home page is temporarily unavailable:', error);
+            return [] as Listing[];
+          }),
+        ]);
 
         setFeaturedListings(marketplaceData.featuredListings);
         setRecentSoldListings(marketplaceData.recentSoldListings);
         setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
         setTopLevelCategoryMetrics(buildTopLevelMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
+        setStateSummaries(buildHomeStateSummaries(inventory));
       } catch (error) {
         console.error('Error fetching home data:', error);
       }
@@ -322,7 +368,8 @@ export function Home() {
             { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
             { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
             { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Markets By State', url: 'https://timberequip.com/states' },
+            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
           ],
         },
       ],
@@ -771,6 +818,61 @@ export function Home() {
             <p className="text-center text-muted text-xs font-bold uppercase tracking-widest py-12">
               No manufacturers match &ldquo;{mfgSearch}&rdquo;
             </p>
+          )}
+        </div>
+      </section>
+
+      <section className="py-24 bg-bg px-4 md:px-8">
+        <div className="max-w-[1600px] mx-auto">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-12">
+            <div>
+              <span className="label-micro text-accent mb-4 block">Browse by State</span>
+              <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">
+                Browse by <span className="text-muted">State</span>
+              </h2>
+              <p className="text-muted font-medium max-w-3xl mt-4">
+                Jump straight into the strongest regional markets on the platform and open state-level inventory routes backed by live listings.
+              </p>
+            </div>
+            <Link to="/states" className="btn-industrial">
+              Open State Markets
+              <ArrowRight className="ml-2" size={14} />
+            </Link>
+          </div>
+
+          {stateSummaries.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              {stateSummaries.map((state) => (
+                <Link
+                  key={state.name}
+                  to={buildStateMarketPath(state.name, CANONICAL_MARKET_ROUTE_KEY)}
+                  className="group bg-surface border border-line rounded-sm p-6 flex flex-col shadow-[var(--shadow-card)] hover:border-accent hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] transition-all duration-300"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-5">
+                    <div className="w-12 h-12 bg-accent/10 text-accent flex items-center justify-center rounded-sm">
+                      <MapPin size={20} />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-accent">
+                      {formatNumber(state.count)} Listings
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-black tracking-tighter uppercase mb-2 text-ink">{state.name}</h3>
+                  <p className="text-xs font-medium text-muted leading-relaxed mb-6">
+                    Top manufacturer: {state.topManufacturer}
+                  </p>
+                  <div className="mt-auto inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-accent">
+                    Browse State Market
+                    <ArrowRight size={12} className="transition-transform duration-300 group-hover:translate-x-1" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-surface border border-line rounded-sm p-8 shadow-[var(--shadow-card)]">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted">
+                State markets are loading from live inventory and will appear here as soon as the regional index finishes refreshing.
+              </p>
+            </div>
           )}
         </div>
       </section>
