@@ -1889,7 +1889,9 @@ export function Profile() {
             {remainingManagedListings === null ? 'Unlimited' : remainingManagedListings}
           </p>
           <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-            {finiteListingCap === null ? 'Admin / super admin unlimited posting access' : `${finiteListingCap} listing allowance`}
+            {finiteListingCap === null
+              ? 'Admin / super admin unlimited posting access'
+              : `${getListingCapDisplayLabel(finiteListingCap, 'active machine', 'active machines')} allowed`}
           </p>
         </div>
         <div className="rounded-sm border border-line bg-surface p-4">
@@ -2942,7 +2944,7 @@ export function Profile() {
             { label: 'Billing Label', value: billingLabel },
             { label: 'Listing Visibility', value: listingVisibilityLabel },
             { label: 'SMS MFA', value: smsMfaFactors.length > 0 ? 'enabled' : 'not enrolled' },
-            { label: 'Listing Capacity', value: hasAdminPublishingAccess(user) ? 'unlimited' : String(getManagedListingCap(user) ?? 0) },
+            { label: 'Listing Capacity', value: hasAdminPublishingAccess(user) ? 'Unlimited active machines' : getListingCapDisplayLabel(getManagedListingCap(user) ?? 0, 'active machine', 'active machines') },
             { label: 'Managed Seats', value: typeof user?.managedAccountCap === 'number' ? String(user.managedAccountCap) : '0' },
             { label: 'Email Verified', value: user?.emailVerified ? 'verified' : 'unverified' },
             { label: 'Storefront Access', value: hasStorefrontAccess ? 'enabled' : 'not available' },

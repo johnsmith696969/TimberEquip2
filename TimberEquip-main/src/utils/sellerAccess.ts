@@ -1,4 +1,5 @@
 import type { UserProfile } from '../types';
+import { UNLIMITED_LISTING_CAP } from './listingCaps';
 import { isOperatorOnlyRole, isSellerRole, normalizeScopedUserRole, supportsDealerOsRole } from './roleScopes';
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
@@ -6,7 +7,7 @@ const SELLER_RETURN_TO_STORAGE_KEY = 'fes:sell-return-to';
 const SELLER_RETURN_TO_MAX_AGE_MS = 30 * 60 * 1000;
 const ROLE_BASED_LISTING_CAPS: Record<string, number> = {
   dealer: 50,
-  pro_dealer: 150,
+  pro_dealer: UNLIMITED_LISTING_CAP,
 };
 function normalizeRole(role?: string | null): string {
   return normalizeScopedUserRole(role);
