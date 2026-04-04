@@ -361,9 +361,9 @@ export function SellerProfile() {
       }))
       .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
   })();
-  const dealerRouteQuality = isDealerRoute
-    ? evaluateRouteQuality(categorySlug ? 'dealerCategory' : 'dealer', filteredListings.length, {
-        fallbackPath: categorySlug ? `${preferredDealerPath}/inventory` : '/dealers',
+  const dealerRouteQuality = isDealerRoute && categorySlug
+    ? evaluateRouteQuality('dealerCategory', filteredListings.length, {
+        fallbackPath: `${preferredDealerPath}/inventory`,
       })
     : null;
 

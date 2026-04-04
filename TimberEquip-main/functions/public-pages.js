@@ -400,7 +400,7 @@ async function loadSellerRecords(sellerUids) {
       id: sellerUid,
       uid: sellerUid,
       storefrontSlug: normalizeText(merged.storefrontSlug, sellerUid),
-      canonicalPath: normalizeText(merged.canonicalPath, `/dealers/${normalizeText(merged.storefrontSlug, sellerUid)}`),
+      canonicalPath: `/dealers/${normalizeText(merged.storefrontSlug, sellerUid)}`,
       storefrontName: normalizeText(merged.storefrontName || merged.displayName || merged.name, 'Dealer Storefront'),
       storefrontTagline: normalizeText(merged.storefrontTagline),
       storefrontDescription: normalizeText(merged.storefrontDescription || merged.about),

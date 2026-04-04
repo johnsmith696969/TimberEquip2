@@ -3002,7 +3002,7 @@ function serializeDealerDirectoryEntry(snapshotId, data = {}) {
     type: 'Dealer',
     role: normalizeNonEmptyString(data.role, 'dealer'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug, snapshotId),
-    canonicalPath: normalizeNonEmptyString(data.canonicalPath) || `/dealers/${normalizeNonEmptyString(data.storefrontSlug, snapshotId)}`,
+    canonicalPath: `/dealers/${normalizeNonEmptyString(data.storefrontSlug, snapshotId)}`,
     businessName: normalizeNonEmptyString(data.businessName || data.company),
     location: normalizeNonEmptyString(data.location, 'Location available on storefront'),
     street1: normalizeNonEmptyString(data.street1),
@@ -3051,9 +3051,7 @@ function buildDealerDirectorySeed(snapshotId, primaryData = {}, storefrontData =
     ...primaryData,
     role: normalizeNonEmptyString(primaryData.role || storefrontData.role || userData.role, 'member'),
     storefrontSlug,
-    canonicalPath: normalizeNonEmptyString(
-      primaryData.canonicalPath || storefrontData.canonicalPath || userData.canonicalPath
-    ) || `/dealers/${storefrontSlug}`,
+    canonicalPath: `/dealers/${storefrontSlug}`,
     storefrontName: normalizeNonEmptyString(
       primaryData.storefrontName
       || storefrontData.storefrontName
@@ -3164,6 +3162,31 @@ async function getPublicDealerDirectoryEntries() {
   publicDealerSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
   storefrontSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
   userSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+
+  const dealersMissingLogos = [...dealersByUid.values()].filter((dealer) => !normalizeNonEmptyString(dealer.logo));
+  if (dealersMissingLogos.length > 0) {
+    const authLookups = await Promise.allSettled(
+      dealersMissingLogos.map((dealer) => admin.auth().getUser(normalizeNonEmptyString(dealer.uid || dealer.id)))
+    );
+
+    authLookups.forEach((lookupResult, index) => {
+      if (lookupResult.status !== 'fulfilled') return;
+      const authRecord = lookupResult.value;
+      const authPhotoUrl = normalizeNonEmptyString(authRecord?.photoURL);
+      const authEmail = normalizeNonEmptyString(authRecord?.email);
+      const targetDealer = dealersMissingLogos[index];
+      const normalizedUid = normalizeNonEmptyString(targetDealer?.uid || targetDealer?.id);
+      const existingDealer = normalizedUid ? dealersByUid.get(normalizedUid) : null;
+      if (!existingDealer) return;
+
+      if (authPhotoUrl) {
+        existingDealer.logo = authPhotoUrl;
+      }
+      if (authEmail && !normalizeNonEmptyString(existingDealer.email)) {
+        existingDealer.email = authEmail;
+      }
+    });
+  }
 
   return sortDealerDirectoryEntries([...dealersByUid.values()]);
 }
