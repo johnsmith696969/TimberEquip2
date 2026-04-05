@@ -78,6 +78,55 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const auth = admin.auth();
 
+// ── Email Infrastructure (SendGrid via functions/) ──────────────────────────
+let emailTemplates: Record<string, (...args: any[]) => { subject: string; html: string }> | null = null;
+let sgMailModule: { setApiKey: (key: string) => void; send: (msg: Record<string, unknown>) => Promise<unknown> } | null = null;
+let emailConfigured = false;
+
+try {
+  const emailTemplatesModule = require(path.join(__dirname, 'functions', 'email-templates', 'index.js')) as {
+    templates: Record<string, (...args: any[]) => { subject: string; html: string }>;
+  };
+  emailTemplates = emailTemplatesModule.templates || null;
+} catch (emailTemplateError) {
+  console.warn('[email] Unable to load email templates from functions/email-templates:', emailTemplateError);
+}
+
+try {
+  sgMailModule = require(path.join(__dirname, 'functions', 'node_modules', '@sendgrid', 'mail')) as typeof sgMailModule;
+  const sendgridApiKey = String(process.env.SENDGRID_API_KEY || '').trim();
+  if (sgMailModule && sendgridApiKey) {
+    sgMailModule.setApiKey(sendgridApiKey);
+    emailConfigured = true;
+  } else {
+    console.warn('[email] SENDGRID_API_KEY not set; email notifications will be skipped.');
+  }
+} catch (sgError) {
+  console.warn('[email] Unable to load @sendgrid/mail from functions/node_modules:', sgError);
+}
+
+const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@forestryequipmentsales.com').trim();
+const APP_BASE_URL = String(process.env.APP_URL || 'https://timberequip.com').replace(/\/+$/, '');
+
+async function sendServerEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
+  if (!emailConfigured || !sgMailModule) {
+    console.warn(`[email] Skipping email to ${to}: email not configured.`);
+    return;
+  }
+  const recipients = (Array.isArray(to) ? to : [to]).map((r: string) => String(r || '').trim()).filter(Boolean);
+  if (recipients.length === 0) return;
+
+  for (const recipient of recipients) {
+    await sgMailModule.send({
+      to: recipient,
+      from: EMAIL_FROM_ADDRESS,
+      subject,
+      html,
+    });
+  }
+  console.log(`[email] Sent "${subject}" to ${recipients.join(', ')}`);
+}
+
 type MarketplaceStatsPayload = {
   monthlyActiveBuyers: number;
   avgEquipmentValue: number;
@@ -1429,7 +1478,7 @@ async function startServer() {
         case 'invoice.paid': {
           const invoice = event.data.object as any;
           const userUid = invoice.metadata?.userUid || invoice.subscription_details?.metadata?.userUid || invoice.subscription?.metadata?.userUid;
-          
+
           if (userUid) {
             await db.collection('invoices').doc(invoice.id).set({
               userUid,
@@ -1450,6 +1499,48 @@ async function startServer() {
               timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
           }
+
+          // Handle auction invoice payment
+          const auctionInvoiceId = invoice.metadata?.auctionInvoiceId;
+          if (auctionInvoiceId) {
+            const auctionInvoiceRef = db.collection('auctionInvoices').doc(auctionInvoiceId);
+            const auctionInvoiceSnap = await auctionInvoiceRef.get();
+
+            if (auctionInvoiceSnap.exists) {
+              // Extract payment method details from the charge
+              const paymentIntentId = typeof invoice.payment_intent === 'string'
+                ? invoice.payment_intent
+                : invoice.payment_intent?.id || null;
+
+              let paymentMethodDescription = 'stripe_invoice';
+              if (paymentIntentId && stripe) {
+                try {
+                  const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+                  const pmId = typeof pi.payment_method === 'string' ? pi.payment_method : pi.payment_method?.id;
+                  if (pmId) {
+                    const pm = await stripe.paymentMethods.retrieve(pmId);
+                    paymentMethodDescription = pm.type === 'card'
+                      ? `card ending ${pm.card?.last4 || '****'}`
+                      : pm.type || 'stripe_invoice';
+                  }
+                } catch {
+                  // Fall back to generic description
+                }
+              }
+
+              await auctionInvoiceRef.update({
+                status: 'paid',
+                paidAt: new Date().toISOString(),
+                paymentMethod: paymentMethodDescription,
+                stripePaymentIntentId: paymentIntentId,
+                updatedAt: new Date().toISOString(),
+              });
+
+              console.log(`[webhook/invoice.paid] Auction invoice ${auctionInvoiceId} marked as paid (Stripe invoice ${invoice.id}).`);
+            } else {
+              console.warn(`[webhook/invoice.paid] Auction invoice ${auctionInvoiceId} not found in Firestore.`);
+            }
+          }
           break;
         }
         case 'invoice.payment_failed': {
@@ -1469,6 +1560,24 @@ async function startServer() {
               details: `Payment failed for invoice ${invoice.id}.`,
               timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
+          }
+
+          // Handle auction invoice payment failure
+          const failedAuctionInvoiceId = invoice.metadata?.auctionInvoiceId;
+          if (failedAuctionInvoiceId) {
+            const auctionInvoiceRef = db.collection('auctionInvoices').doc(failedAuctionInvoiceId);
+            const auctionInvoiceSnap = await auctionInvoiceRef.get();
+
+            if (auctionInvoiceSnap.exists) {
+              await auctionInvoiceRef.update({
+                status: 'payment_failed',
+                updatedAt: new Date().toISOString(),
+              });
+
+              console.log(`[webhook/invoice.payment_failed] Auction invoice ${failedAuctionInvoiceId} marked as payment_failed (Stripe invoice ${invoice.id}).`);
+            } else {
+              console.warn(`[webhook/invoice.payment_failed] Auction invoice ${failedAuctionInvoiceId} not found in Firestore.`);
+            }
           }
           break;
         }
@@ -2900,11 +3009,97 @@ async function startServer() {
     return '';
   }
 
+  function formatUsdAmount(amount: number): string {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  }
+
+  /**
+   * Send invoice notification emails to the winning bidder and the seller.
+   * Called after generateAuctionInvoice produces the invoice document.
+   */
+  async function sendLotSoldEmailNotifications(
+    lot: Record<string, unknown>,
+    auction: Record<string, unknown>,
+    invoiceDoc: { winningBid: number; buyerPremium: number; salesTax: number; totalDue: number; taxExempt: boolean; dueDate: string; sellerCommission: number; sellerPayout: number },
+  ): Promise<void> {
+    if (!emailTemplates) return;
+
+    const buyerId = String(lot.winningBidderId || '');
+    const sellerId = String(lot.sellerId || '');
+    const lotTitle = String(lot.title || lot.name || 'Auction Lot');
+    const auctionTitle = String(auction.title || 'Auction');
+    const auctionSlug = String(auction.slug || '');
+    const lotId = String(lot.id || '');
+
+    const paymentDeadlineFormatted = new Date(invoiceDoc.dueDate).toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const invoiceUrl = `${APP_BASE_URL}/auctions/${encodeURIComponent(auctionSlug)}`;
+    const lotUrl = `${APP_BASE_URL}/auctions/${encodeURIComponent(auctionSlug)}?lot=${encodeURIComponent(lotId)}`;
+
+    // ── Buyer notification ──────────────────────────────────────────────
+    if (buyerId) {
+      try {
+        const buyerSnap = await db.collection('users').doc(buyerId).get();
+        const buyerData = buyerSnap.exists ? buyerSnap.data() : null;
+        const buyerEmail = String(buyerData?.email || '').trim().toLowerCase();
+        const buyerName = String(buyerData?.displayName || buyerData?.name || '').trim() || 'there';
+
+        if (buyerEmail && emailTemplates.auctionInvoiceGenerated) {
+          const { subject, html } = emailTemplates.auctionInvoiceGenerated({
+            displayName: buyerName,
+            auctionTitle,
+            lotTitle,
+            winningBid: formatUsdAmount(invoiceDoc.winningBid),
+            buyerPremium: formatUsdAmount(invoiceDoc.buyerPremium),
+            salesTax: formatUsdAmount(invoiceDoc.salesTax),
+            totalDue: formatUsdAmount(invoiceDoc.totalDue),
+            taxExempt: invoiceDoc.taxExempt,
+            paymentDeadline: paymentDeadlineFormatted,
+            invoiceUrl,
+          });
+          await sendServerEmail({ to: buyerEmail, subject, html });
+        }
+      } catch (buyerEmailError) {
+        console.error('[sendLotSoldEmailNotifications] Failed to send buyer invoice email:', buyerEmailError);
+      }
+    }
+
+    // ── Seller notification ─────────────────────────────────────────────
+    if (sellerId) {
+      try {
+        const sellerSnap = await db.collection('users').doc(sellerId).get();
+        const sellerData = sellerSnap.exists ? sellerSnap.data() : null;
+        const sellerEmail = String(sellerData?.email || '').trim().toLowerCase();
+        const sellerName = String(sellerData?.displayName || sellerData?.name || sellerData?.businessName || '').trim() || 'there';
+
+        if (sellerEmail && emailTemplates.auctionLotSoldSeller) {
+          const { subject, html } = emailTemplates.auctionLotSoldSeller({
+            sellerName,
+            auctionTitle,
+            lotTitle,
+            winningBid: formatUsdAmount(invoiceDoc.winningBid),
+            estimatedPayout: formatUsdAmount(invoiceDoc.sellerPayout),
+            commissionRate: '10%',
+            paymentDeadline: paymentDeadlineFormatted,
+            lotUrl,
+          });
+          await sendServerEmail({ to: sellerEmail, subject, html });
+        }
+      } catch (sellerEmailError) {
+        console.error('[sendLotSoldEmailNotifications] Failed to send seller lot-sold email:', sellerEmailError);
+      }
+    }
+  }
+
   async function generateAuctionInvoice(
     auctionId: string,
     lot: Record<string, unknown>,
     auction: Record<string, unknown>,
-  ): Promise<FirebaseFirestore.DocumentReference> {
+  ): Promise<{ ref: FirebaseFirestore.DocumentReference; invoiceData: { winningBid: number; buyerPremium: number; salesTax: number; totalDue: number; taxExempt: boolean; dueDate: string; sellerCommission: number; sellerPayout: number } }> {
     const winningBid = Number(lot.winningBid) || 0;
     const buyerPremiumPercent = typeof lot.buyerPremiumPercent === 'number'
       ? lot.buyerPremiumPercent
@@ -2915,9 +3110,37 @@ async function startServer() {
     // Determine sales tax rate based on lot pickup location state
     const pickupLocation = String(lot.pickupLocation || '');
     const stateKey = extractStateFromLocation(pickupLocation);
-    const salesTaxRate = STATE_TAX_RATES[stateKey] ?? 0.06875; // Default to MN rate
+    let salesTaxRate = STATE_TAX_RATES[stateKey] ?? 0.06875; // Default to MN rate
     const salesTaxState = stateKey === 'WISCONSIN' || stateKey === 'WI' ? 'WI'
       : stateKey === 'MICHIGAN' || stateKey === 'MI' ? 'MI' : 'MN';
+
+    // Check buyer's tax exemption certificate
+    let isTaxExempt = false;
+    let taxExemptCertificateId = '';
+    if (buyerId) {
+      try {
+        const bidderProfileSnap = await db.collection('users').doc(buyerId)
+          .collection('bidderProfile').doc('profile').get();
+        if (bidderProfileSnap.exists) {
+          const bidderProfile = bidderProfileSnap.data()!;
+          const profileTaxExempt = Boolean(bidderProfile.taxExempt);
+          const profileCertUrl = String(bidderProfile.taxExemptCertificateUrl || '').trim();
+          const profileExemptState = String(bidderProfile.taxExemptState || '').trim().toUpperCase();
+
+          if (profileTaxExempt && profileCertUrl && profileExemptState === salesTaxState) {
+            // MN: logging equipment qualifies under ST3 Certificate of Exemption
+            // WI: farm machinery and logging equipment exempt under Wisconsin Exemption Certificate
+            // MI: industrial processing exemption with valid Form 3372
+            isTaxExempt = true;
+            salesTaxRate = 0;
+            taxExemptCertificateId = profileCertUrl;
+            console.log(`[generateAuctionInvoice] Tax exemption applied for buyer ${buyerId} in ${salesTaxState}`);
+          }
+        }
+      } catch (taxExemptError) {
+        console.error('[generateAuctionInvoice] Error checking tax exemption, continuing with standard rate:', taxExemptError);
+      }
+    }
 
     const taxableAmount = winningBid + buyerPremium;
     const salesTax = Math.round(taxableAmount * salesTaxRate * 100) / 100;
@@ -2930,10 +3153,15 @@ async function startServer() {
       ? lot.paymentDeadlineDays
       : (typeof auction.defaultPaymentDeadlineDays === 'number' ? auction.defaultPaymentDeadlineDays : 3);
 
-    return db.collection('auctionInvoices').add({
+    const buyerId = String(lot.winningBidderId || '');
+    const lotTitle = String(lot.title || lot.name || 'Auction Lot');
+    const dueDate = addBusinessDays(new Date(), paymentDeadlineDays);
+
+    // Create Firestore invoice document
+    const invoiceRef = await db.collection('auctionInvoices').add({
       auctionId,
       lotId: String(lot.id || ''),
-      buyerId: String(lot.winningBidderId || ''),
+      buyerId,
       sellerId: String(lot.sellerId || ''),
       winningBid,
       buyerPremium,
@@ -2941,18 +3169,128 @@ async function startServer() {
       salesTax,
       salesTaxRate,
       salesTaxState,
-      taxExempt: false,
+      taxExempt: isTaxExempt,
+      ...(isTaxExempt && taxExemptCertificateId ? { taxExemptCertificateId } : {}),
       totalDue: Math.round(totalDue * 100) / 100,
       status: 'pending',
       paymentMethod: null,
       paidAt: null,
-      dueDate: addBusinessDays(new Date(), paymentDeadlineDays),
+      dueDate,
       sellerCommission,
       sellerPayout,
       sellerPaidAt: null,
+      stripeInvoiceId: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
+
+    // Create and send Stripe invoice to winning bidder
+    if (stripe && buyerId) {
+      try {
+        // Look up the winning bidder's email from their user document
+        const buyerSnap = await db.collection('users').doc(buyerId).get();
+        const buyerData = buyerSnap.exists ? buyerSnap.data() : null;
+        const buyerEmail = String(buyerData?.email || '').trim();
+        const buyerName = String(buyerData?.displayName || buyerData?.name || '').trim();
+
+        if (buyerEmail) {
+          // Create or retrieve a Stripe customer for the buyer (reuse existing pattern)
+          const stripeCustomerId = await getOrCreateStripeCustomer(buyerId, buyerEmail, buyerName || undefined);
+
+          // Calculate due date as Unix timestamp for Stripe
+          const dueDateUnix = Math.floor(new Date(dueDate).getTime() / 1000);
+
+          // Create the Stripe invoice
+          const stripeInvoice = await stripe.invoices.create({
+            customer: stripeCustomerId,
+            collection_method: 'send_invoice',
+            due_date: dueDateUnix,
+            auto_advance: true,
+            metadata: {
+              auctionInvoiceId: invoiceRef.id,
+              auctionId,
+              lotId: String(lot.id || ''),
+              buyerId,
+              platform: 'timberequip',
+            },
+          });
+
+          // Line 1: Winning Bid amount
+          await stripe.invoiceItems.create({
+            customer: stripeCustomerId,
+            invoice: stripeInvoice.id,
+            amount: Math.round(winningBid * 100), // Stripe uses cents
+            currency: 'usd',
+            description: `Winning Bid - ${lotTitle}`,
+          });
+
+          // Line 2: Buyer Premium
+          await stripe.invoiceItems.create({
+            customer: stripeCustomerId,
+            invoice: stripeInvoice.id,
+            amount: Math.round(buyerPremium * 100),
+            currency: 'usd',
+            description: 'Buyer Premium',
+          });
+
+          // Line 3: Documentation Fee
+          await stripe.invoiceItems.create({
+            customer: stripeCustomerId,
+            invoice: stripeInvoice.id,
+            amount: Math.round(documentationFee * 100),
+            currency: 'usd',
+            description: 'Documentation Fee',
+          });
+
+          // Line 4: Sales Tax (if not exempt)
+          if (salesTax > 0) {
+            const taxRateDisplay = Math.round(salesTaxRate * 10000) / 100; // e.g., 6.875 -> 6.88%
+            await stripe.invoiceItems.create({
+              customer: stripeCustomerId,
+              invoice: stripeInvoice.id,
+              amount: Math.round(salesTax * 100),
+              currency: 'usd',
+              description: `Sales Tax (${salesTaxState} ${taxRateDisplay}%)`,
+            });
+          }
+
+          // Finalize and send the invoice (auto-sends email to buyer)
+          await stripe.invoices.finalizeInvoice(stripeInvoice.id);
+          await stripe.invoices.sendInvoice(stripeInvoice.id);
+
+          // Store the Stripe invoice ID on the Firestore document
+          await invoiceRef.update({
+            stripeInvoiceId: stripeInvoice.id,
+            updatedAt: new Date().toISOString(),
+          });
+
+          console.log(`[generateAuctionInvoice] Stripe invoice ${stripeInvoice.id} created and sent for auction invoice ${invoiceRef.id}`);
+        } else {
+          console.warn(`[generateAuctionInvoice] No email found for buyer ${buyerId}, skipping Stripe invoice creation.`);
+        }
+      } catch (stripeErr: any) {
+        // Log the error but do not fail the entire invoice creation —
+        // the Firestore invoice is still valid, Stripe can be retried.
+        console.error(`[generateAuctionInvoice] Failed to create Stripe invoice for auction invoice ${invoiceRef.id}:`, stripeErr);
+        captureServerException(stripeErr, {
+          tags: { endpoint: 'generateAuctionInvoice', phase: 'stripe_invoice_creation' },
+        });
+      }
+    }
+
+    return {
+      ref: invoiceRef,
+      invoiceData: {
+        winningBid,
+        buyerPremium,
+        salesTax,
+        totalDue: Math.round(totalDue * 100) / 100,
+        taxExempt: isTaxExempt,
+        dueDate,
+        sellerCommission,
+        sellerPayout,
+      },
+    };
   }
 
   function getBidIncrement(currentBid: number): number {
@@ -3613,7 +3951,13 @@ async function startServer() {
 
           // Generate invoice if sold
           if (ctx.finalStatus === 'sold') {
-            await generateAuctionInvoice(ctx.auctionId, ctx.lotData, ctx.auctionData);
+            const { invoiceData } = await generateAuctionInvoice(ctx.auctionId, ctx.lotData, ctx.auctionData);
+
+            // Send email notifications to buyer and seller (fire and forget)
+            sendLotSoldEmailNotifications(ctx.lotData, ctx.auctionData, invoiceData).catch((emailError) => {
+              console.error('[auction/close-lot] Email notification error:', emailError);
+              captureServerException(emailError, { tags: { endpoint: 'close-lot-email' } });
+            });
           }
         } catch (postError) {
           console.error('[auction/close-lot] Post-transaction processing error:', postError);
@@ -3723,7 +4067,14 @@ async function startServer() {
 
             // Generate invoice if sold
             if (finalStatus === 'sold') {
-              await generateAuctionInvoice(auctionId, { ...lotData, ...lotUpdate, id: lotId }, auctionData);
+              const lotWithId = { ...lotData, ...lotUpdate, id: lotId };
+              const { invoiceData } = await generateAuctionInvoice(auctionId, lotWithId, auctionData);
+
+              // Send email notifications to buyer and seller (fire and forget)
+              sendLotSoldEmailNotifications(lotWithId, auctionData, invoiceData).catch((emailError) => {
+                console.error(`[auction/close-expired-lots] Email notification error for lot ${lotId}:`, emailError);
+                captureServerException(emailError, { tags: { endpoint: 'close-expired-lots-email' } });
+              });
             }
           } catch (bidError) {
             console.error(`[auction/close-expired-lots] Error processing bids for lot ${lotId}:`, bidError);
@@ -4014,6 +4365,116 @@ async function startServer() {
       console.error('[auction/create-identity-session] Error:', error);
       captureServerException(error, { tags: { endpoint: 'create-identity-session' } });
       return res.status(500).json({ error: 'An internal error occurred while creating the identity verification session.' });
+    }
+  });
+
+  // ── POST /api/auctions/process-seller-payout (admin only) ────────────────
+  app.post('/api/auctions/process-seller-payout', async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+    }
+
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Not authenticated.' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+      const claimRole = String(decodedToken.role || '').trim().toLowerCase();
+      const isAdminByClaim = canAdministrateAccountRole(claimRole);
+      if (!isPrivilegedAdminEmail(actorEmail) && !isAdminByClaim) {
+        const user = await db.collection('users').doc(decodedToken.uid).get();
+        if (!canAdministrateAccountRole(user.data()?.role)) {
+          return res.status(403).json({ error: 'Forbidden. Admin access required.' });
+        }
+      }
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+
+    const { invoiceId } = req.body || {};
+    if (!invoiceId || typeof invoiceId !== 'string') {
+      return res.status(400).json({ error: 'invoiceId is required.' });
+    }
+
+    try {
+      // Look up the auction invoice
+      const invoiceRef = db.collection('auctionInvoices').doc(invoiceId);
+      const invoiceSnap = await invoiceRef.get();
+
+      if (!invoiceSnap.exists) {
+        return res.status(404).json({ error: 'Auction invoice not found.' });
+      }
+
+      const invoiceData = invoiceSnap.data()!;
+
+      // Verify the invoice is paid
+      if (invoiceData.status !== 'paid') {
+        return res.status(409).json({ error: `Invoice status is '${invoiceData.status}', must be 'paid' to process seller payout.` });
+      }
+
+      // Check if seller has already been paid
+      if (invoiceData.sellerPaidAt) {
+        return res.status(409).json({ error: 'Seller payout has already been processed for this invoice.' });
+      }
+
+      const sellerId = String(invoiceData.sellerId || '');
+      if (!sellerId) {
+        return res.status(400).json({ error: 'No sellerId found on the invoice.' });
+      }
+
+      const sellerPayoutAmount = Number(invoiceData.sellerPayout) || 0;
+      if (sellerPayoutAmount <= 0) {
+        return res.status(400).json({ error: 'Seller payout amount is zero or invalid.' });
+      }
+
+      // Look up the seller's Stripe Connect account from their user profile
+      const sellerSnap = await db.collection('users').doc(sellerId).get();
+      if (!sellerSnap.exists) {
+        return res.status(404).json({ error: 'Seller user profile not found.' });
+      }
+
+      const sellerData = sellerSnap.data()!;
+      const sellerStripeAccountId = String(sellerData.stripeConnectAccountId || '').trim();
+
+      if (!sellerStripeAccountId) {
+        return res.status(400).json({ error: 'Seller does not have a Stripe Connect account on file. Please ask the seller to set up their payout details.' });
+      }
+
+      // Create a Stripe Transfer to the seller's connected account
+      const transfer = await stripe.transfers.create({
+        amount: Math.round(sellerPayoutAmount * 100), // Stripe uses cents
+        currency: 'usd',
+        destination: sellerStripeAccountId,
+        metadata: {
+          auctionInvoiceId: invoiceId,
+          auctionId: String(invoiceData.auctionId || ''),
+          lotId: String(invoiceData.lotId || ''),
+          sellerId,
+          platform: 'timberequip',
+        },
+        description: `Seller payout for auction invoice ${invoiceId}`,
+      });
+
+      // Update the invoice with payout details
+      await invoiceRef.update({
+        sellerPaidAt: new Date().toISOString(),
+        sellerPayoutTransferId: transfer.id,
+        updatedAt: new Date().toISOString(),
+      });
+
+      console.log(`[process-seller-payout] Transfer ${transfer.id} created for seller ${sellerId}, amount $${sellerPayoutAmount}`);
+
+      return res.json({
+        success: true,
+        transferId: transfer.id,
+        amount: sellerPayoutAmount,
+        sellerId,
+      });
+    } catch (error: any) {
+      console.error('[auction/process-seller-payout] Error:', error);
+      captureServerException(error, { tags: { endpoint: 'process-seller-payout' } });
+      return res.status(500).json({ error: 'An internal error occurred while processing the seller payout.' });
     }
   });
 

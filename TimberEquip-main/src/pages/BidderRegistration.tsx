@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { CheckCircle, CreditCard, ExternalLink, FileText, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CheckCircle, CreditCard, ExternalLink, FileText, Loader2, RefreshCw, ShieldCheck, Upload } from 'lucide-react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase';
 import { useAuth } from '../components/AuthContext';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs, type BreadcrumbItem } from '../components/Breadcrumbs';
@@ -31,6 +33,20 @@ export function BidderRegistration() {
   const [state, setState] = useState('');
   const [zip, setZip] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // Tax exemption state
+  const [taxExempt, setTaxExempt] = useState(false);
+  const [taxExemptState, setTaxExemptState] = useState('');
+  const [taxCertFile, setTaxCertFile] = useState<File | null>(null);
+  const [taxCertUploading, setTaxCertUploading] = useState(false);
+  const [taxCertUrl, setTaxCertUrl] = useState('');
+  const taxCertInputRef = useRef<HTMLInputElement>(null);
+
+  const TAX_EXEMPT_STATES: Record<string, { label: string; certName: string }> = {
+    MN: { label: 'Minnesota', certName: 'Minnesota ST3 Certificate of Exemption' },
+    WI: { label: 'Wisconsin', certName: 'Wisconsin Exemption Certificate' },
+    MI: { label: 'Michigan', certName: 'Michigan Form 3372' },
+  };
 
   const returnTo = searchParams.get('returnTo') || (auctionSlug ? `/auctions/${auctionSlug}` : '/auctions');
   const legalLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
@@ -72,6 +88,9 @@ export function BidderRegistration() {
         setState(profile?.address?.state || '');
         setZip(profile?.address?.zip || '');
         setTermsAccepted(Boolean(profile?.termsAcceptedAt));
+        setTaxExempt(Boolean(profile?.taxExempt));
+        setTaxExemptState(profile?.taxExemptState || '');
+        setTaxCertUrl(profile?.taxExemptCertificateUrl || '');
       } catch (loadError) {
         if (!cancelled) {
           console.error('Failed to load bidder registration:', loadError);
@@ -155,12 +174,51 @@ export function BidderRegistration() {
     }
   }
 
+  async function handleTaxCertUpload(file: File): Promise<string> {
+    if (!user?.uid) {
+      throw new Error('You must be signed in to upload a certificate.');
+    }
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('Certificate must be a PDF, JPEG, PNG, or WebP file.');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('Certificate file must be smaller than 10 MB.');
+    }
+
+    const ext = file.name.split('.').pop() || 'pdf';
+    const storagePath = `tax-certificates/${user.uid}/${Date.now()}_${taxExemptState}_certificate.${ext}`;
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      customMetadata: {
+        uploadedBy: user.uid,
+        uploadedAt: new Date().toISOString(),
+        exemptionState: taxExemptState,
+      },
+    });
+    return getDownloadURL(storageRef);
+  }
+
   async function handleSaveRegistration() {
     if (!auctionSlug) return;
     setSaving(true);
     setError('');
     setNotice('');
     try {
+      // Upload tax certificate if a new file was selected
+      let certificateUrl = taxCertUrl;
+      if (taxExempt && taxExemptState && taxCertFile) {
+        setTaxCertUploading(true);
+        try {
+          certificateUrl = await handleTaxCertUpload(taxCertFile);
+          setTaxCertUrl(certificateUrl);
+          setTaxCertFile(null);
+        } finally {
+          setTaxCertUploading(false);
+        }
+      }
+
       const bidderStatus = await auctionService.saveBidderProfileForAuction(auctionSlug, {
         fullName,
         phone,
@@ -172,6 +230,10 @@ export function BidderRegistration() {
           zip,
           country: 'US',
         },
+        taxExempt: taxExempt && Boolean(taxExemptState),
+        taxExemptState: taxExempt ? taxExemptState : '',
+        taxExemptCertificateUrl: taxExempt ? certificateUrl : '',
+        ...(taxExempt && certificateUrl ? { taxExemptCertificateUploadedAt: new Date().toISOString() } : {}),
         termsAcceptedAt: new Date().toISOString(),
         termsVersion: AUCTION_TERMS_VERSION,
       });
@@ -330,6 +392,109 @@ export function BidderRegistration() {
                   <label className="label-micro mb-1 block">Postal Code</label>
                   <input className={bidderInputClass} style={bidderInputStyle} value={zip} onChange={(event) => setZip(event.target.value)} />
                 </div>
+              </div>
+
+              {/* Tax Exemption Section */}
+              <div className="mt-6 rounded-sm border border-line bg-ink/[0.02] p-4">
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={taxExempt}
+                    onChange={(event) => {
+                      setTaxExempt(event.target.checked);
+                      if (!event.target.checked) {
+                        setTaxExemptState('');
+                        setTaxCertFile(null);
+                      }
+                    }}
+                  />
+                  <span className="font-semibold">
+                    I am purchasing for tax-exempt use (logging, farming, silviculture)
+                  </span>
+                </label>
+
+                {taxExempt && (
+                  <div className="mt-4 space-y-4 pl-7">
+                    <div>
+                      <label className="label-micro mb-1 block">Exemption State</label>
+                      <select
+                        className={bidderInputClass}
+                        style={bidderInputStyle}
+                        value={taxExemptState}
+                        onChange={(event) => {
+                          setTaxExemptState(event.target.value);
+                          setTaxCertFile(null);
+                        }}
+                      >
+                        <option value="">Select state...</option>
+                        {Object.entries(TAX_EXEMPT_STATES).map(([abbr, { label }]) => (
+                          <option key={abbr} value={abbr}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {taxExemptState && TAX_EXEMPT_STATES[taxExemptState] && (
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {TAX_EXEMPT_STATES[taxExemptState].certName}
+                        </p>
+                        <p className="mt-1 text-xs text-muted">
+                          Upload a copy of your exemption certificate (PDF, JPEG, PNG, or WebP, max 10 MB).
+                        </p>
+
+                        {taxCertUrl && !taxCertFile && (
+                          <div className="mt-2 flex items-center gap-2 rounded-sm border border-accent/20 bg-accent/5 px-3 py-2 text-xs">
+                            <CheckCircle size={14} className="text-accent flex-shrink-0" />
+                            <span className="truncate">Certificate on file</span>
+                            <a
+                              href={taxCertUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-auto text-accent underline"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
+
+                        <input
+                          ref={taxCertInputRef}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] || null;
+                            setTaxCertFile(file);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-industrial btn-outline mt-2 text-xs"
+                          onClick={() => taxCertInputRef.current?.click()}
+                          disabled={taxCertUploading}
+                        >
+                          {taxCertUploading ? (
+                            <>
+                              <Loader2 size={13} className="mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload size={13} className="mr-2" />
+                              {taxCertUrl ? 'Replace Certificate' : 'Upload Certificate'}
+                            </>
+                          )}
+                        </button>
+                        {taxCertFile && (
+                          <p className="mt-1 text-xs text-muted">
+                            Selected: {taxCertFile.name} — will be uploaded when you save.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <label className="mt-5 flex items-start gap-3 text-sm text-muted">

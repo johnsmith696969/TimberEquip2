@@ -922,6 +922,60 @@ const templates = {
     `);
     return { subject, html };
   },
+
+  /**
+   * Sent to the winning bidder when an invoice is generated after a lot closes.
+   */
+  auctionInvoiceGenerated({ displayName, auctionTitle, lotTitle, winningBid, buyerPremium, salesTax, totalDue, taxExempt, paymentDeadline, invoiceUrl }) {
+    const subject = `You won! Invoice for ${lotTitle} - ${auctionTitle}`;
+    const html = baseLayout(subject, 'You Won The Lot', `
+      <p class="label">Auction Invoice</p>
+      <h2>Congratulations on your winning bid</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>You are the winning bidder for <strong>${lotTitle}</strong> in <strong>${auctionTitle}</strong>. Your invoice has been generated and payment is due by the deadline below.</p>
+      ${renderInfoPanel([
+        { label: 'Lot', value: lotTitle },
+        { label: 'Auction', value: auctionTitle },
+        { label: 'Winning Bid', value: winningBid },
+        { label: 'Buyer Premium', value: buyerPremium },
+        { label: 'Sales Tax', value: taxExempt ? '$0.00 (Tax Exempt)' : salesTax },
+        { label: 'Total Due', value: totalDue },
+        { label: 'Payment Deadline', value: paymentDeadline },
+      ])}
+      ${taxExempt ? '<div class="message-box"><p>Tax exemption has been applied to this invoice based on your certificate on file.</p></div>' : ''}
+      <div class="panel">
+        <p><strong>Important:</strong> Payment is binding. Wire transfer and ACH are accepted. Card payments may incur a 3% processing fee. Storage fees may apply after the removal deadline.</p>
+      </div>
+      <a href="${invoiceUrl}" class="cta">View Invoice &amp; Pay</a>
+    `);
+    return { subject, html };
+  },
+
+  /**
+   * Sent to the seller when their lot has sold at auction.
+   */
+  auctionLotSoldSeller({ sellerName, auctionTitle, lotTitle, winningBid, estimatedPayout, commissionRate, paymentDeadline, lotUrl }) {
+    const subject = `Your lot ${lotTitle} has sold!`;
+    const html = baseLayout(subject, 'Your Lot Has Sold', `
+      <p class="label">Auction Sale Notification</p>
+      <h2>Your equipment has found a buyer</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>Great news — <strong>${lotTitle}</strong> has sold in <strong>${auctionTitle}</strong>.</p>
+      ${renderInfoPanel([
+        { label: 'Lot', value: lotTitle },
+        { label: 'Auction', value: auctionTitle },
+        { label: 'Winning Bid', value: winningBid },
+        { label: 'Commission', value: commissionRate },
+        { label: 'Estimated Payout', value: estimatedPayout },
+        { label: 'Buyer Payment Due', value: paymentDeadline },
+      ])}
+      <div class="panel">
+        <p><strong>Timeline:</strong> The buyer has until the payment deadline to submit payment. Once payment clears, the Forestry Equipment Sales team will coordinate payout to your account and equipment removal logistics.</p>
+      </div>
+      <a href="${lotUrl}" class="cta">View Lot Details</a>
+    `);
+    return { subject, html };
+  },
 };
 
 module.exports = {

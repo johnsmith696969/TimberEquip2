@@ -641,6 +641,10 @@ export interface BidderProfile {
   totalItemsWon: number;
   totalSpent: number;
   nonPaymentCount: number;
+  taxExempt?: boolean;
+  taxExemptState?: string;
+  taxExemptCertificateUrl?: string;
+  taxExemptCertificateUploadedAt?: string;
   termsAcceptedAt: string;
   termsVersion: string;
   createdAt: string;
