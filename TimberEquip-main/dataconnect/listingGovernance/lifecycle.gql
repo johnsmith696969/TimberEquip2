@@ -2,7 +2,8 @@
 # These operations are intentionally limited to lifecycle governance.
 # Updated for Data Connect SDK v3.2.1+ compatibility.
 
-query GetListingGovernance($id: UUID!) @auth(level: USER, insecureReason: "Admin/system query — role checked in application layer") {
+# Role enforcement happens in the application layer (Cloud Functions / admin SDK).
+query GetListingGovernance($id: UUID!) @auth(level: USER) {
   listing(id: $id) {
     id
     legacyFirestoreId
@@ -20,10 +21,11 @@ query GetListingGovernance($id: UUID!) @auth(level: USER, insecureReason: "Admin
   }
 }
 
+# Role enforcement happens in the application layer (Cloud Functions / admin SDK).
 query ListLifecycleQueue(
   $lifecycleStates: [String!]!
   $limit: Int! = 50
-) @auth(level: USER, insecureReason: "Admin queue — role checked in application layer") {
+) @auth(level: USER) {
   listings(
     where: { lifecycleState: { in: $lifecycleStates } }
     orderBy: { updatedAt: DESC }
@@ -41,10 +43,11 @@ query ListLifecycleQueue(
   }
 }
 
+# Role enforcement happens in the application layer (Cloud Functions / admin SDK).
 query ListListingTransitions(
   $listingId: UUID!
   $limit: Int! = 100
-) @auth(level: USER, insecureReason: "Admin audit trail — role checked in application layer") {
+) @auth(level: USER) {
   listingStateTransitions(
     where: { listingId: { eq: $listingId } }
     orderBy: { occurredAt: DESC }
@@ -70,10 +73,11 @@ query ListListingTransitions(
   }
 }
 
+# Role enforcement happens in the application layer (Cloud Functions / admin SDK).
 query ListOpenListingAnomalies(
   $listingId: UUID!
   $limit: Int! = 50
-) @auth(level: USER, insecureReason: "Admin anomaly view — role checked in application layer") {
+) @auth(level: USER) {
   listingAnomalies(
     where: {
       listingId: { eq: $listingId }

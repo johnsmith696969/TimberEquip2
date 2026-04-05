@@ -1,0 +1,177 @@
+# Firestore → PostgreSQL shadow sync operations.
+# These are intentionally permissive (no @check guards) because Firestore
+# remains the source of truth during Phase 1 dual-write. The Cloud Function
+# trigger computes the authoritative shadow and mirrors it here.
+#
+# All mutations are @auth(level: NO_ACCESS) and can only be invoked via the
+# Admin Node SDK from Cloud Functions.
+
+# Role enforcement happens in the application layer (Cloud Functions / admin SDK).
+query FindListingByFirestoreId($legacyFirestoreId: String!) @auth(level: USER) {
+  listings(
+    where: { legacyFirestoreId: { eq: $legacyFirestoreId } }
+    limit: 1
+  ) {
+    id
+    lifecycleState
+    reviewState
+    paymentState
+    inventoryState
+    visibilityState
+    updatedAt
+  }
+}
+
+mutation InsertListingShadow(
+  $legacyFirestoreId: String!
+  $sellerPartyId: String!
+  $title: String!
+  $categoryKey: String!
+  $subcategoryKey: String
+  $manufacturerKey: String
+  $modelKey: String
+  $locationText: String
+  $priceAmount: Float
+  $currencyCode: String!
+  $lifecycleState: String!
+  $reviewState: String!
+  $paymentState: String!
+  $inventoryState: String!
+  $visibilityState: String!
+  $primaryImageUrl: String
+  $publishedAt: Timestamp
+  $expiresAt: Timestamp
+  $soldAt: Timestamp
+  $sourceSystem: String!
+  $externalSourceName: String
+  $externalSourceId: String
+) @auth(level: NO_ACCESS) {
+  listing_insert(
+    data: {
+      legacyFirestoreId: $legacyFirestoreId
+      sellerPartyId: $sellerPartyId
+      title: $title
+      categoryKey: $categoryKey
+      subcategoryKey: $subcategoryKey
+      manufacturerKey: $manufacturerKey
+      modelKey: $modelKey
+      locationText: $locationText
+      priceAmount: $priceAmount
+      currencyCode: $currencyCode
+      lifecycleState: $lifecycleState
+      reviewState: $reviewState
+      paymentState: $paymentState
+      inventoryState: $inventoryState
+      visibilityState: $visibilityState
+      primaryImageUrl: $primaryImageUrl
+      publishedAt: $publishedAt
+      expiresAt: $expiresAt
+      soldAt: $soldAt
+      sourceSystem: $sourceSystem
+      externalSourceName: $externalSourceName
+      externalSourceId: $externalSourceId
+      createdAt_expr: "request.time"
+      updatedAt_expr: "request.time"
+    }
+  )
+}
+
+mutation UpdateListingShadow(
+  $id: UUID!
+  $sellerPartyId: String!
+  $title: String!
+  $categoryKey: String!
+  $subcategoryKey: String
+  $manufacturerKey: String
+  $modelKey: String
+  $locationText: String
+  $priceAmount: Float
+  $currencyCode: String!
+  $lifecycleState: String!
+  $reviewState: String!
+  $paymentState: String!
+  $inventoryState: String!
+  $visibilityState: String!
+  $primaryImageUrl: String
+  $publishedAt: Timestamp
+  $expiresAt: Timestamp
+  $soldAt: Timestamp
+  $externalSourceName: String
+  $externalSourceId: String
+) @auth(level: NO_ACCESS) {
+  listing_update(
+    id: $id
+    data: {
+      sellerPartyId: $sellerPartyId
+      title: $title
+      categoryKey: $categoryKey
+      subcategoryKey: $subcategoryKey
+      manufacturerKey: $manufacturerKey
+      modelKey: $modelKey
+      locationText: $locationText
+      priceAmount: $priceAmount
+      currencyCode: $currencyCode
+      lifecycleState: $lifecycleState
+      reviewState: $reviewState
+      paymentState: $paymentState
+      inventoryState: $inventoryState
+      visibilityState: $visibilityState
+      primaryImageUrl: $primaryImageUrl
+      publishedAt: $publishedAt
+      expiresAt: $expiresAt
+      soldAt: $soldAt
+      externalSourceName: $externalSourceName
+      externalSourceId: $externalSourceId
+      updatedAt_expr: "request.time"
+    }
+  )
+}
+
+mutation DeleteListingShadow($id: UUID!) @auth(level: NO_ACCESS) {
+  listing_delete(id: $id)
+}
+
+mutation RecordListingStateTransition(
+  $listingId: UUID!
+  $transitionAction: String!
+  $previousState: String
+  $nextState: String!
+  $previousReviewState: String
+  $nextReviewState: String
+  $previousPaymentState: String
+  $nextPaymentState: String
+  $previousInventoryState: String
+  $nextInventoryState: String
+  $previousVisibilityState: String
+  $nextVisibilityState: String
+  $actorType: String!
+  $actorId: String
+  $requestId: String
+  $reasonCode: String
+  $reasonNote: String
+) @auth(level: NO_ACCESS) {
+  listingStateTransition_insert(
+    data: {
+      listingId: $listingId
+      transitionAction: $transitionAction
+      previousState: $previousState
+      nextState: $nextState
+      previousReviewState: $previousReviewState
+      nextReviewState: $nextReviewState
+      previousPaymentState: $previousPaymentState
+      nextPaymentState: $nextPaymentState
+      previousInventoryState: $previousInventoryState
+      nextInventoryState: $nextInventoryState
+      previousVisibilityState: $previousVisibilityState
+      nextVisibilityState: $nextVisibilityState
+      actorType: $actorType
+      actorId: $actorId
+      requestId: $requestId
+      reasonCode: $reasonCode
+      reasonNote: $reasonNote
+      sourceSystem: "firestore_sync"
+      metadataJson: {}
+      occurredAt_expr: "request.time"
+    }
+  )
+}

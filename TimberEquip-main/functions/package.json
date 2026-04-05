@@ -10,6 +10,7 @@
     "serve": "firebase emulators:start --only functions"
   },
   "dependencies": {
+    "@dataconnect/admin-generated-timberequip-listing-governance": "file:generated/dataconnect/listing-governance",
     "@google-cloud/recaptcha-enterprise": "^6.4.0",
     "@sendgrid/mail": "^8.1.5",
     "@sentry/node": "^10.46.0",

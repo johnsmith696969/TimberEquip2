@@ -27,6 +27,7 @@ const {
   getFallbackMarketplaceStats,
 } = require('./public-marketplace-fallback.js');
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
+const { syncListingToDataConnect } = require('./listing-governance-dataconnect-sync.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
@@ -5005,7 +5006,7 @@ exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
     const after = event.data?.after?.data() || null;
     invalidateMarketplaceCaches();
 
-    const [seoResult, governanceResult] = await Promise.allSettled([
+    const [seoResult, governanceResult, dataConnectResult] = await Promise.allSettled([
       syncPublicSeoForListingChange({
         listingId,
         before,
@@ -5017,6 +5018,7 @@ exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
         before,
         after,
       }),
+      syncListingToDataConnect({ listingId, before, after }),
     ]);
 
     if (seoResult.status === 'rejected') {
@@ -5030,6 +5032,16 @@ exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
       logger.error('Failed to sync listing governance artifacts for listing write', {
         listingId,
         error: governanceResult.reason instanceof Error ? governanceResult.reason.message : governanceResult.reason,
+      });
+    }
+
+    // Phase 1 dual-write: Firestore → PostgreSQL via Data Connect. Failures
+    // here are logged as warnings and never block Firestore, which remains
+    // the source of truth during Phase 1.
+    if (dataConnectResult.status === 'rejected') {
+      logger.warn('Failed to dual-write listing to Data Connect (Phase 1)', {
+        listingId,
+        error: dataConnectResult.reason instanceof Error ? dataConnectResult.reason.message : dataConnectResult.reason,
       });
     }
   }
