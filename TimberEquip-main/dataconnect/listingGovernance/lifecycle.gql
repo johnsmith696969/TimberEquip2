@@ -1,5 +1,6 @@
 # Phase 1 listing governance connector
 # These operations are intentionally limited to lifecycle governance.
+# Updated for Data Connect SDK v3.2.1+ compatibility.
 
 query GetListingGovernance($id: UUID!) @auth(level: USER) {
   listing(id: $id) {
@@ -101,9 +102,7 @@ mutation SubmitListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState in ['draft', 'rejected']", message: "Only draft or rejected listings can be submitted")
-      @check(expr: "this.title != '' && this.sellerPartyId != '' && this.categoryKey != ''", message: "Listing is missing required submission fields") {
+      @check(expr: "this != null && this.lifecycleState in ['draft', 'rejected'] && this.title != '' && this.sellerPartyId != '' && this.categoryKey != ''", message: "Listing not found, not in a submittable state, or missing required fields") {
       id
       lifecycleState
       reviewState
@@ -124,9 +123,7 @@ mutation SubmitListing(
       visibilityState: "private"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -149,9 +146,7 @@ mutation SubmitListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation ApproveListing(
@@ -164,8 +159,7 @@ mutation ApproveListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState == 'submitted'", message: "Only submitted listings can be approved") {
+      @check(expr: "this != null && this.lifecycleState == 'submitted'", message: "Listing not found or not in submitted state") {
       id
       lifecycleState
       reviewState
@@ -182,9 +176,7 @@ mutation ApproveListing(
       visibilityState: "private"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -208,9 +200,7 @@ mutation ApproveListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation RejectListing(
@@ -223,8 +213,7 @@ mutation RejectListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState in ['submitted', 'approved_unpaid']", message: "Only submitted or approved_unpaid listings can be rejected") {
+      @check(expr: "this != null && this.lifecycleState in ['submitted', 'approved_unpaid']", message: "Listing not found or not in a rejectable state") {
       id
       lifecycleState
       reviewState
@@ -241,9 +230,7 @@ mutation RejectListing(
       visibilityState: "private"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -267,9 +254,7 @@ mutation RejectListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation ConfirmListingPayment(
@@ -281,9 +266,7 @@ mutation ConfirmListingPayment(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState == 'approved_unpaid'", message: "Only approved_unpaid listings can accept payment confirmation")
-      @check(expr: "this.paymentState in ['pending', 'failed']", message: "Payment confirmation expects a pending or failed payment state") {
+      @check(expr: "this != null && this.lifecycleState == 'approved_unpaid' && this.paymentState in ['pending', 'failed']", message: "Listing not found, not approved_unpaid, or payment not in pending/failed state") {
       id
       lifecycleState
       reviewState
@@ -298,9 +281,7 @@ mutation ConfirmListingPayment(
       paymentState: "paid"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -323,9 +304,7 @@ mutation ConfirmListingPayment(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation PublishListing(
@@ -336,10 +315,7 @@ mutation PublishListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState in ['approved_unpaid', 'sold']", message: "Only approved_unpaid or sold listings can be published")
-      @check(expr: "this.reviewState == 'approved'", message: "Only approved listings can be published")
-      @check(expr: "this.paymentState in ['paid', 'waived']", message: "Only paid or waived listings can be published") {
+      @check(expr: "this != null && this.lifecycleState in ['approved_unpaid', 'sold'] && this.reviewState == 'approved' && this.paymentState in ['paid', 'waived']", message: "Listing not found, not approved, or payment not confirmed") {
       id
       lifecycleState
       reviewState
@@ -357,9 +333,7 @@ mutation PublishListing(
       publishedAt_expr: "request.time"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -381,9 +355,7 @@ mutation PublishListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation ExpireListing(
@@ -395,9 +367,7 @@ mutation ExpireListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState == 'live'", message: "Only live listings can expire")
-      @check(expr: "this.visibilityState == 'public_live'", message: "Only publicly live listings can expire") {
+      @check(expr: "this != null && this.lifecycleState == 'live' && this.visibilityState == 'public_live'", message: "Listing not found or not publicly live") {
       id
       lifecycleState
       reviewState
@@ -414,9 +384,7 @@ mutation ExpireListing(
       visibilityState: "private"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -439,9 +407,7 @@ mutation ExpireListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation RelistListing(
@@ -453,10 +419,7 @@ mutation RelistListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState in ['expired', 'sold']", message: "Only expired or sold listings can be relisted")
-      @check(expr: "this.reviewState == 'approved'", message: "Only approved listings can be relisted")
-      @check(expr: "this.paymentState in ['paid', 'waived']", message: "Only paid or waived listings can be relisted") {
+      @check(expr: "this != null && this.lifecycleState in ['expired', 'sold'] && this.reviewState == 'approved' && this.paymentState in ['paid', 'waived']", message: "Listing not found, not expired/sold, not approved, or payment not confirmed") {
       id
       lifecycleState
       reviewState
@@ -473,9 +436,7 @@ mutation RelistListing(
       visibilityState: "public_live"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -498,9 +459,7 @@ mutation RelistListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation MarkListingSold(
@@ -512,9 +471,7 @@ mutation MarkListingSold(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found")
-      @check(expr: "this.lifecycleState == 'live'", message: "Only live listings can be marked sold")
-      @check(expr: "this.visibilityState == 'public_live'", message: "Only publicly live listings can be marked sold") {
+      @check(expr: "this != null && this.lifecycleState == 'live' && this.visibilityState == 'public_live'", message: "Listing not found or not publicly live") {
       id
       lifecycleState
       reviewState
@@ -532,9 +489,7 @@ mutation MarkListingSold(
       soldAt_expr: "request.time"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -557,9 +512,7 @@ mutation MarkListingSold(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation ArchiveListing(
@@ -572,7 +525,7 @@ mutation ArchiveListing(
   query {
     listing(id: $id)
       @redact
-      @check(message: "Listing not found") {
+      @check(expr: "this != null", message: "Listing not found") {
       id
       lifecycleState
       reviewState
@@ -589,9 +542,7 @@ mutation ArchiveListing(
       visibilityState: "archived"
       updatedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
   listingStateTransition_insert(
     data: {
       listingId_expr: "response.query.listing.id"
@@ -615,9 +566,7 @@ mutation ArchiveListing(
       metadataJson: {}
       occurredAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
 
 mutation ResolveListingAnomaly(
@@ -631,7 +580,5 @@ mutation ResolveListingAnomaly(
       resolutionNote: $resolutionNote
       resolvedAt_expr: "request.time"
     }
-  ) {
-    key
-  }
+  )
 }
