@@ -54,6 +54,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [quickSearchVisible, setQuickSearchVisible] = useState(false);
 
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
   const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
@@ -105,6 +106,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setHeaderLogoSrc(headerLogo);
   }, [headerLogo]);
+
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          setQuickSearchVisible(window.scrollY > 300);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,26 +384,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Persistent Quick Search Bar */}
-      <div className="sticky top-0 z-40 bg-bg border-b border-line py-2 px-4 md:px-8">
-        <div className="max-w-[900px] mx-auto flex items-center">
-          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
-            <input
-              type="text"
-              placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
-              className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
-              style={{ fontSize: '16px' }}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <button
-              type="submit"
-              aria-label="Search"
-              className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 outline-none ring-0 focus:outline-none focus:ring-0"
-            >
-              <Search size={16} />
-            </button>
-          </form>
+      {/* Persistent Quick Search Bar — fades in after 300px scroll */}
+      <div
+        className="sticky top-0 z-40 pointer-events-none"
+        style={{ height: quickSearchVisible ? undefined : 0, overflow: 'hidden' }}
+      >
+        <div
+          className="bg-bg py-2 px-4 md:px-8 pointer-events-auto"
+          style={{
+            opacity: quickSearchVisible ? 1 : 0,
+            transform: quickSearchVisible ? 'translateY(0)' : 'translateY(-100%)',
+            transition: 'opacity 200ms ease, transform 200ms ease',
+          }}
+        >
+          <div className="max-w-[900px] mx-auto flex items-center">
+            <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
+              <input
+                type="text"
+                placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
+                className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
+                style={{ fontSize: '16px' }}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <button
+                type="submit"
+                aria-label="Search"
+                className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 outline-none ring-0 focus:outline-none focus:ring-0"
+              >
+                <Search size={16} />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 

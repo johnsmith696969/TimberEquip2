@@ -59,6 +59,7 @@ const Dmca = lazy(() => import('./pages/Dmca').then((module) => ({ default: modu
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 const AuctionDetail = lazy(() => import('./pages/AuctionDetail').then((module) => ({ default: module.AuctionDetail })));
 const BidderRegistration = lazy(() => import('./pages/BidderRegistration').then((module) => ({ default: module.BidderRegistration })));
+const LotDetail = lazy(() => import('./pages/LotDetail').then((module) => ({ default: module.LotDetail })));
 
 function RouteLoadingFallback() {
   return (
@@ -156,6 +157,7 @@ function App() {
                     <Route path="/ad-programs" element={<AdPrograms />} />
                     <Route path="/subscription-success" element={<SubscriptionSuccess />} />
                     <Route path="/auctions" element={<Auctions />} />
+                    <Route path="/auctions/:auctionSlug/lots/:lotNumber" element={<Suspense fallback={<div />}><LotDetail /></Suspense>} />
                     <Route path="/auctions/:auctionSlug/register" element={<Suspense fallback={<div />}><BidderRegistration /></Suspense>} />
                     <Route path="/auctions/:auctionSlug" element={<Suspense fallback={<div />}><AuctionDetail /></Suspense>} />
                     <Route path="/privacy" element={<Privacy />} />

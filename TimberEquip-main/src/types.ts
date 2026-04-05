@@ -636,18 +636,31 @@ export interface AuctionInvoice {
   documentationFee: number;
   salesTax: number;
   salesTaxRate: number;
+  salesTaxState?: string;
   taxExempt: boolean;
+  taxExemptCertificateId?: string;
   totalDue: number;
   status: 'pending' | 'paid' | 'overdue' | 'cancelled' | 'refunded';
   paymentMethod: 'wire' | 'ach' | 'card' | 'financing' | null;
+  stripePaymentIntentId?: string;
   paidAt: string | null;
   dueDate: string;
   sellerCommission: number;
   sellerPayout: number;
+  sellerPayoutTransferId?: string;
   sellerPaidAt: string | null;
+  removalConfirmedAt?: string;
+  storageFeesAccrued?: number;
   createdAt: string;
   updatedAt: string;
 }
+
+// State sales tax rates for marketplace facilitator compliance (MN, WI, MI)
+export const STATE_SALES_TAX_RATES: Record<string, { rate: number; name: string; notes: string }> = {
+  MN: { rate: 0.06875, name: 'Minnesota', notes: 'Marketplace facilitator: collect on all taxable sales. Heavy equipment >$1K always taxable. Farm equipment at farm auctions may be exempt.' },
+  WI: { rate: 0.05, name: 'Wisconsin', notes: 'Marketplace facilitator: $100K threshold. County surtax 0.1-0.6% may apply. Farm machinery exempt if used in farming.' },
+  MI: { rate: 0.06, name: 'Michigan', notes: 'Marketplace facilitator: $100K or 200 transactions. Industrial processing equipment may qualify for exemption.' },
+};
 
 export interface UserProfile {
   uid: string;
