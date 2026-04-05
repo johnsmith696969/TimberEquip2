@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { ArrowRight, Building2 } from 'lucide-react';
 import { BreadcrumbItem, Breadcrumbs } from '../components/Breadcrumbs';
 import { ListingCard } from '../components/ListingCard';
+import { InquiryModal } from '../components/InquiryModal';
 import { Seo } from '../components/Seo';
 import { equipmentService } from '../services/equipmentService';
 import { taxonomyService } from '../services/taxonomyService';
@@ -92,7 +93,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
             name: `${listing.year} ${getListingManufacturer(listing)} ${listing.model}`.trim(),
             brand: {
               '@type': 'Brand',
-              name: getListingManufacturer(listing) || 'Forestry Equipment Sales',
+              name: getListingManufacturer(listing) || 'TimberEquip',
             },
             category: getListingCategoryLabel(listing) || 'Equipment',
             model: listing.model || undefined,
@@ -219,6 +220,7 @@ function SeoInventoryTemplate({
   emptyMessage,
 }: SeoTemplateProps) {
   const [explainerExpanded, setExplainerExpanded] = useState(false);
+  const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
   const jsonLd = useMemo(
     () => buildCollectionJsonLd(title, description, canonicalPath, listings, breadcrumbs),
     [title, description, canonicalPath, listings, breadcrumbs]
@@ -227,7 +229,7 @@ function SeoInventoryTemplate({
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={`${title} | Forestry Equipment Sales`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
+      <Seo title={`${title} | TimberEquip`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
       <Breadcrumbs items={breadcrumbs} />
 
       <section className="border-b border-line bg-surface px-4 py-20 md:px-8">
@@ -324,7 +326,11 @@ function SeoInventoryTemplate({
           {featuredListings.length ? (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {featuredListings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  onInquire={(selected) => setSelectedListingForInquiry(selected)}
+                />
               ))}
             </div>
           ) : (
@@ -332,6 +338,14 @@ function SeoInventoryTemplate({
           )}
         </section>
       </div>
+
+      {selectedListingForInquiry && (
+        <InquiryModal
+          isOpen={!!selectedListingForInquiry}
+          onClose={() => setSelectedListingForInquiry(null)}
+          listing={selectedListingForInquiry}
+        />
+      )}
     </div>
   );
 }
@@ -464,7 +478,7 @@ export function ForestryHubPage() {
       title="Forestry Equipment for Sale | New & Used Machines"
       description="Browse new and used forestry equipment for sale including logging, land clearing, firewood, sawmill, truck, trailer, and attachment inventory from dealers and owners."
       canonicalPath={`/${MARKET_ROUTE_LABELS.forestry}`}
-      intro="Browse the full Forestry Equipment Sales marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers."
+      intro="Browse the full TimberEquip marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers."
       breadcrumbs={[
         { label: 'Home', path: '/' },
         { label: 'Forestry Equipment For Sale', path: `/${MARKET_ROUTE_LABELS.forestry}` },
@@ -528,7 +542,7 @@ export function CategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={resolvedCategory}
       title={displayTitle}
-      description={`Browse ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. ${parentCategory ? `Shop ${parentCategory.toLowerCase()} inventory` : 'Shop live inventory'} from dealers and private sellers across North America.`}
+      description={`Browse ${resolvedCategory.toLowerCase()} for sale on TimberEquip. ${parentCategory ? `Shop ${parentCategory.toLowerCase()} inventory` : 'Shop live inventory'} from dealers and private sellers across North America.`}
       canonicalPath={buildCategoryPath(resolvedCategory)}
       intro={`Shop ${resolvedCategory.toLowerCase()} from trusted dealers and private sellers. Browse live inventory, compare prices, and connect directly with sellers to move fast on the equipment you need.`}
       breadcrumbs={[
@@ -569,7 +583,7 @@ export function ManufacturerLandingPage() {
     <SeoInventoryTemplate
       eyebrow={resolvedManufacturer}
       title={`${resolvedManufacturer} Equipment For Sale`}
-      description={`Browse ${resolvedManufacturer} equipment for sale by make on Forestry Equipment Sales. Shop live ${resolvedManufacturer} inventory from dealers and private sellers across North America.`}
+      description={`Browse ${resolvedManufacturer} equipment for sale by make on TimberEquip. Shop live ${resolvedManufacturer} inventory from dealers and private sellers across North America.`}
       canonicalPath={buildManufacturerPath(resolvedManufacturer)}
       intro={mfgContent.description}
       aboutContent={mfgContent}
@@ -615,7 +629,7 @@ export function ManufacturerModelLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedManufacturer} ${resolvedModel}`}
       title={`${resolvedManufacturer} ${resolvedModel} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedModel} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedModel} for sale on TimberEquip. Shop live inventory from dealers and private sellers.`}
       canonicalPath={buildManufacturerModelPath(resolvedManufacturer, resolvedModel)}
       intro={`Find ${resolvedManufacturer} ${resolvedModel} machines for sale from dealers and private sellers. Compare pricing, hours, and condition across available inventory.`}
       breadcrumbs={[
@@ -655,7 +669,7 @@ export function StateMarketLandingPage({ marketKeyOverride }: { marketKeyOverrid
     <SeoInventoryTemplate
       eyebrow={resolvedState}
       title={`${marketTitle} In ${resolvedState}`}
-      description={`Browse ${marketTitle.toLowerCase()} in ${resolvedState} on Forestry Equipment Sales. Shop live inventory from local dealers and private sellers.`}
+      description={`Browse ${marketTitle.toLowerCase()} in ${resolvedState} on TimberEquip. Shop live inventory from local dealers and private sellers.`}
       canonicalPath={buildStateMarketPath(resolvedState, marketKey)}
       intro={`Shop ${marketTitle.toLowerCase()} located in ${resolvedState}. Browse inventory from local dealers and private sellers, compare prices, and connect directly with sellers near you.`}
       breadcrumbs={[
@@ -701,7 +715,7 @@ export function StateCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedState} ${resolvedCategory}`}
       title={`${resolvedCategory} For Sale In ${resolvedState}`}
-      description={`Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} on Forestry Equipment Sales. Shop live inventory from local dealers and private sellers.`}
+      description={`Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} on TimberEquip. Shop live inventory from local dealers and private sellers.`}
       canonicalPath={buildStateCategoryPath(resolvedState, resolvedCategory)}
       intro={`Find ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} from dealers and private sellers. Browse available inventory, compare pricing, and reach out to sellers directly.`}
       breadcrumbs={[
@@ -746,7 +760,7 @@ export function ManufacturerCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedManufacturer} ${resolvedCategory}`}
       title={`${resolvedManufacturer} ${resolvedCategory} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} for sale on TimberEquip. Shop live inventory from dealers and private sellers.`}
       canonicalPath={buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory)}
       intro={`Shop ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} from dealers and private sellers. Compare available machines, pricing, and hours across live marketplace inventory.`}
       breadcrumbs={[
@@ -795,7 +809,7 @@ export function ManufacturerModelCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedManufacturer} ${resolvedModel} ${resolvedCategory}`}
       title={`${resolvedManufacturer} ${resolvedModel} ${resolvedCategory} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale on TimberEquip. Shop live inventory from dealers and private sellers.`}
       canonicalPath={buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, resolvedCategory)}
       intro={`Find ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale from dealers and private sellers. Browse pricing, hours, and condition on available inventory.`}
       breadcrumbs={[
@@ -872,7 +886,7 @@ export function DealerDirectoryPage() {
     <SeoInventoryTemplate
       eyebrow="Dealer Directory"
       title="Logging Equipment Dealers"
-      description="Browse active dealer storefronts on Forestry Equipment Sales. Find trusted dealers selling new and used logging and forestry equipment."
+      description="Browse active dealer storefronts on TimberEquip. Find trusted dealers selling new and used logging and forestry equipment."
       canonicalPath="/dealers"
       intro="Browse active dealer storefronts and find trusted sellers of new and used logging and forestry equipment. Open any storefront to view their full inventory."
       breadcrumbs={[

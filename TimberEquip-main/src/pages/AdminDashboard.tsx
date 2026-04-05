@@ -169,6 +169,7 @@ export function AdminDashboard() {
   const [listingAuditData, setListingAuditData] = useState<ListingLifecycleAuditView | null>(null);
   const [listingAuditLoading, setListingAuditLoading] = useState(false);
   const [listingAuditError, setListingAuditError] = useState('');
+  const listingAuditPanelRef = useRef<HTMLDivElement | null>(null);
   const [pendingListingLifecycleKey, setPendingListingLifecycleKey] = useState('');
   const [listingReviewFilter, setListingReviewFilter] = useState<ListingReviewFilter>('all');
   const [listingReviewSummaries, setListingReviewSummaries] = useState<Record<string, ListingReviewSummary>>({});
@@ -766,6 +767,10 @@ export function AdminDashboard() {
     setListingAuditError('');
     if (!options?.silent) {
       setListingAuditLoading(true);
+      // Defer scroll until after the panel renders so the ref is attached.
+      window.requestAnimationFrame(() => {
+        listingAuditPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
 
     try {
@@ -2680,7 +2685,7 @@ export function AdminDashboard() {
       />
 
       {selectedListingAudit && (
-        <div className="rounded-sm border border-line bg-surface shadow-sm">
+        <div ref={listingAuditPanelRef} className="rounded-sm border border-line bg-surface shadow-sm scroll-mt-24">
           <div className="flex flex-col gap-4 border-b border-line px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -4947,7 +4952,7 @@ export function AdminDashboard() {
                   <div>
                     <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Direct API Credentials</h3>
                     <p className="mt-1 text-xs text-muted">
-                      Use these values for dealer and vendor automations that push inventory directly into Forestry Equipment Sales.
+                      Use these values for dealer and vendor automations that push inventory directly into TimberEquip.
                     </p>
                   </div>
                   {dfCurrentProfileId ? (
@@ -5799,10 +5804,10 @@ export function AdminDashboard() {
     : activeTab === 'taxonomy'  ? 'Taxonomy Manager'
     : activeTab === 'users'     ? 'Operator Directory'
     : 'Profile Settings';
-  const dashboardSeoTitle = `${dashboardHeading} | Forestry Equipment Sales`;
+  const dashboardSeoTitle = `${dashboardHeading} | TimberEquip`;
   const dashboardSeoDescription = activeTab === 'overview'
-    ? 'Review live Forestry Equipment Sales marketplace operations, inventory, leads, and account activity.'
-    : `Manage ${dashboardHeading.toLowerCase()} in the Forestry Equipment Sales admin workspace.`;
+    ? 'Review live TimberEquip marketplace operations, inventory, leads, and account activity.'
+    : `Manage ${dashboardHeading.toLowerCase()} in the TimberEquip admin workspace.`;
   const dashboardCanonicalPath = activeTab === 'overview' ? '/admin' : `/admin?tab=${activeTab}`;
 
   const dashboardTabs = [
