@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Layers3, MapPin } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -151,13 +151,15 @@ export function Manufacturers() {
 
       <ImageHero imageSrc="/page-photos/john-deere-harvester.webp" imageAlt="Forestry harvester in the field">
         <div>
-          <span className="label-micro text-accent mb-4 block">Manufacturer Directory</span>
+          <div className="mb-4">
+            <span className="label-micro text-accent">Manufacturer Directory</span>
+          </div>
           <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Equipment <br />
             <span className={heroSecondaryClass}>Manufacturers</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            Browse the brands powering the marketplace. Open a manufacturer route to see live listings, related machine categories, and the regions where inventory is currently available.
+            Start with the brands buyers trust most. Open a manufacturer page to see who has that make in stock, what machine types are available, and where inventory is showing up right now.
           </p>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             <div className="border border-line bg-bg/90 p-5 backdrop-blur-sm">
@@ -183,7 +185,7 @@ export function Manufacturers() {
               <span className="label-micro text-accent mb-3 block">Route Index</span>
               <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight text-ink">Browse Brands With Live Inventory</h2>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-relaxed text-muted">
-                These manufacturer routes are React-owned marketplace pages. They link buyers into the brand, model, and category inventory paths that are already live inside the app.
+                Use these brand pages to compare current market availability, jump into matching machine categories, and find nearby inventory without digging through the full search first.
               </p>
             </div>
             <Link to="/search" className="btn-industrial btn-accent py-4 px-6 w-full md:w-auto text-center">
@@ -217,8 +219,9 @@ export function Manufacturers() {
                 className="group border border-line bg-bg p-8 transition-all duration-300 hover:-translate-y-1 hover:border-accent"
               >
                 <div className="flex items-start justify-between gap-4 mb-6">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-sm bg-accent/10 text-accent">
-                    <Building2 size={26} />
+                  <div>
+                    <span className="label-micro mb-2 block text-accent">Brand Snapshot</span>
+                    <div className="text-lg font-black uppercase tracking-tight text-ink">{manufacturer.name}</div>
                   </div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-accent">
                     {formatNumber.format(manufacturer.count)} Listings
@@ -233,23 +236,17 @@ export function Manufacturers() {
                 </p>
 
                 <div className="space-y-4 mb-8">
-                  <div className="flex items-start gap-3 text-xs text-muted">
-                    <Layers3 size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <span className="label-micro mb-1 block">Top Categories</span>
-                      <span className="font-medium">
-                        {manufacturer.topCategories.length ? manufacturer.topCategories.join(', ') : 'Inventory categories populating now'}
-                      </span>
-                    </div>
+                  <div className="text-xs text-muted">
+                    <span className="label-micro mb-1 block">Top Categories</span>
+                    <span className="font-medium">
+                      {manufacturer.topCategories.length ? manufacturer.topCategories.join(', ') : 'Inventory categories populating now'}
+                    </span>
                   </div>
-                  <div className="flex items-start gap-3 text-xs text-muted">
-                    <MapPin size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <span className="label-micro mb-1 block">Top Markets</span>
-                      <span className="font-medium">
-                        {manufacturer.topStates.length ? manufacturer.topStates.join(', ') : 'Regional inventory populating now'}
-                      </span>
-                    </div>
+                  <div className="text-xs text-muted">
+                    <span className="label-micro mb-1 block">Top Markets</span>
+                    <span className="font-medium">
+                      {manufacturer.topStates.length ? manufacturer.topStates.join(', ') : 'Regional inventory populating now'}
+                    </span>
                   </div>
                 </div>
 

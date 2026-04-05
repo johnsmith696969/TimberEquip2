@@ -15,6 +15,7 @@ import { Auction, AuctionLot, AuctionStatus, AuctionLotStatus } from '../types';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs, BreadcrumbItem } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
+import { buildAuctionLegalSummaryLines } from '../utils/auctionFees';
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -264,6 +265,7 @@ function PromotedLotCard({ lot, auctionSlug }: { lot: AuctionLot; auctionSlug: s
 export function AuctionDetail() {
   const { auctionSlug } = useParams<{ auctionSlug: string }>();
   const { theme } = useTheme();
+  const legalSummaryLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
 
   const [auction, setAuction] = useState<Auction | null>(null);
   const [lots, setLots] = useState<AuctionLot[]>([]);
@@ -429,7 +431,7 @@ export function AuctionDetail() {
                   {auction.defaultBuyerPremiumPercent > 0 && (
                     <span className="flex items-center gap-1.5">
                       <Tag size={10} />
-                      {auction.defaultBuyerPremiumPercent}% Buyer's Premium
+                      Tiered Buyer's Premium
                     </span>
                   )}
                 </div>
@@ -483,13 +485,13 @@ export function AuctionDetail() {
             <div className="flex flex-col sm:flex-row gap-3">
               {/* Search */}
               <div className="relative">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search lots..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-4 py-2 bg-surface border border-line text-sm font-medium focus:border-accent focus:outline-none w-48 placeholder:text-muted"
+                  className="w-48 bg-surface border border-line py-2 pl-11 pr-4 text-sm font-medium placeholder:text-muted focus:border-accent focus:outline-none"
                 />
               </div>
               {/* Category filter */}
@@ -553,8 +555,11 @@ export function AuctionDetail() {
                   label: 'Terms & Conditions',
                   content: (
                     <div className="text-sm font-medium text-muted leading-relaxed space-y-2">
-                      <p>All sales are final. Winning bidders are responsible for payment within {auction.defaultPaymentDeadlineDays} days of auction close.</p>
-                      <p>Equipment must be removed within {auction.defaultRemovalDeadlineDays} days of payment confirmation. Storage fees may apply after this period.</p>
+                      <ul className="space-y-2">
+                        {legalSummaryLines.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
                       {auction.termsAndConditionsUrl && (
                         <a
                           href={auction.termsAndConditionsUrl}
@@ -573,8 +578,9 @@ export function AuctionDetail() {
                   label: 'Payment Information',
                   content: (
                     <div className="text-sm font-medium text-muted leading-relaxed space-y-2">
-                      <p>Payment is due within {auction.defaultPaymentDeadlineDays} days of auction close. Accepted payment methods include wire transfer and ACH.</p>
-                      <p>A buyer's premium of {auction.defaultBuyerPremiumPercent}% is added to the winning bid amount. This is in addition to the hammer price.</p>
+                      <p>Payment is due within 7 calendar days of auction close.</p>
+                      <p>Accepted payment methods are credit card, debit card, and wire transfer.</p>
+                      <p>Card payments are limited to $50,000 total due and include a 3% processing fee.</p>
                     </div>
                   ),
                 },
@@ -583,12 +589,12 @@ export function AuctionDetail() {
                   label: "Buyer's Premium",
                   content: (
                     <div className="text-sm font-medium text-muted leading-relaxed space-y-2">
-                      <p>A buyer's premium of <strong className="text-ink">{auction.defaultBuyerPremiumPercent}%</strong> is added to each winning bid. The premium is calculated on a tiered basis for large purchases.</p>
+                      <p>The buyer premium uses a tiered schedule based on the winning bid amount.</p>
                       <ul className="list-disc list-inside space-y-1 mt-2">
-                        <li>Under $10,000: 10%</li>
-                        <li>$10,000 – $75,000: 7%</li>
-                        <li>$75,000 – $250,000: 5%</li>
-                        <li>$250,000+: 3%</li>
+                        <li>10% for bids under $25,000, with a $100 minimum.</li>
+                        <li>5% for bids from $25,001 to $75,000, with a $2,500 minimum.</li>
+                        <li>$3,500 flat for equipment over $75,000.</li>
+                        <li>$110 document fee applies to titled equipment.</li>
                       </ul>
                     </div>
                   ),

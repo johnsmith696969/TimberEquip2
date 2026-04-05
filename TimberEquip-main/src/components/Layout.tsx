@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Menu, X, Sun, Moon,
@@ -22,6 +22,9 @@ const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSE
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO = `/Logo-Transparent-sm.webp?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
+const QUICK_SEARCH_SHOW_THRESHOLD = 350;
+const QUICK_SEARCH_HIDE_THRESHOLD = 320;
+const QUICK_SEARCH_FADE_DURATION = 0.22;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -54,7 +57,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickSearchVisible, setQuickSearchVisible] = useState(false);
+  const [showFloatingQuickSearch, setShowFloatingQuickSearch] = useState(false);
+  const [floatingQuickSearchHasFocus, setFloatingQuickSearchHasFocus] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 767px)').matches
+      : false
+  );
 
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
   const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
@@ -109,18 +118,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let ticking = false;
-    const onScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          setQuickSearchVisible(window.scrollY > 300);
-          ticking = false;
-        });
-        ticking = true;
-      }
+
+    const updateFloatingQuickSearch = () => {
+      setShowFloatingQuickSearch((current) => {
+        const scrollY = window.scrollY || 0;
+        const nextVisible = current
+          ? scrollY > QUICK_SEARCH_HIDE_THRESHOLD
+          : scrollY > QUICK_SEARCH_SHOW_THRESHOLD;
+        return current === nextVisible ? current : nextVisible;
+      });
+      ticking = false;
     };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+
+    const handleViewportChange = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(updateFloatingQuickSearch);
+    };
+
+    updateFloatingQuickSearch();
+    window.addEventListener('scroll', handleViewportChange, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleViewportChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const syncViewport = () => setIsMobileViewport(mediaQuery.matches);
+    syncViewport();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncViewport);
+      return () => mediaQuery.removeEventListener('change', syncViewport);
+    }
+
+    mediaQuery.addListener(syncViewport);
+    return () => mediaQuery.removeListener(syncViewport);
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -128,6 +165,88 @@ export function Layout({ children }: { children: React.ReactNode }) {
     const normalized = searchQuery.trim();
     navigate(normalized ? `/search?q=${encodeURIComponent(normalized)}` : '/search');
   };
+
+  const shouldShowFloatingQuickSearch = showFloatingQuickSearch || floatingQuickSearchHasFocus;
+
+  const preserveMobileScrollPosition = useRef<number | null>(null);
+
+  const stabilizeMobileFloatingSearchFocus = () => {
+    if (!isMobileViewport || typeof window === 'undefined') return;
+
+    preserveMobileScrollPosition.current = window.scrollY || 0;
+    const restoreScroll = () => {
+      if (preserveMobileScrollPosition.current == null) return;
+      window.scrollTo({ top: preserveMobileScrollPosition.current, behavior: 'auto' });
+    };
+
+    window.requestAnimationFrame(restoreScroll);
+    window.setTimeout(restoreScroll, 90);
+    window.setTimeout(restoreScroll, 220);
+  };
+
+  const quickSearchTapStyle: React.CSSProperties = {
+    WebkitTapHighlightColor: 'transparent',
+  };
+
+  const renderQuickSearchBar = (floating = false) => (
+    <div
+      className={`py-2 px-4 md:px-8 ${floating
+        ? isMobileViewport
+          ? 'bg-bg border-b-0'
+          : 'bg-bg/96 border-b-0 backdrop-blur-md'
+        : 'bg-bg border-b border-line'
+      }`}
+      style={floating ? {
+        ...quickSearchTapStyle,
+        backfaceVisibility: 'hidden',
+        WebkitBackfaceVisibility: 'hidden',
+        overflowAnchor: 'none',
+      } : quickSearchTapStyle}
+    >
+      <div className="max-w-[900px] mx-auto flex items-center">
+        <form
+          onSubmit={handleSearch}
+          onFocusCapture={floating ? () => {
+            setFloatingQuickSearchHasFocus(true);
+            stabilizeMobileFloatingSearchFocus();
+          } : undefined}
+          onBlurCapture={floating ? (event) => {
+            const nextTarget = event.relatedTarget as Node | null;
+            if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+            setFloatingQuickSearchHasFocus(false);
+          } : undefined}
+          className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-none focus-within:border-line focus-within:outline-none focus-within:ring-0"
+          style={{
+            ...quickSearchTapStyle,
+            boxShadow: 'none',
+          }}
+        >
+          <input
+            type="text"
+            placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
+            className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
+            data-unstyled-input="true"
+            style={{
+              ...quickSearchTapStyle,
+              fontSize: '16px',
+              boxShadow: 'none',
+            }}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button
+            type="submit"
+            aria-label="Search"
+            className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
+            data-unstyled-input="true"
+            style={quickSearchTapStyle}
+          >
+            <Search size={16} />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 
   const LANGUAGE_OPTIONS: ReadonlyArray<{ code: Language; label: string; flag: string }> = [
     { code: 'EN', label: 'English (Default)', flag: '🇺🇸' },
@@ -384,40 +503,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Persistent Quick Search Bar — fades in after 300px scroll */}
-      <div
-        className="sticky top-0 z-40 pointer-events-none"
-        style={{ height: quickSearchVisible ? undefined : 0, overflow: 'hidden' }}
+      {/* Persistent Quick Search Bar */}
+      {renderQuickSearchBar()}
+      <motion.div
+        initial={false}
+        animate={shouldShowFloatingQuickSearch
+          ? {
+              opacity: 1,
+              ...(isMobileViewport ? {} : { y: 0 }),
+              transition: { duration: QUICK_SEARCH_FADE_DURATION, ease: [0.22, 1, 0.36, 1] },
+            }
+          : {
+              opacity: 0,
+              ...(isMobileViewport ? {} : { y: -8 }),
+              transition: { duration: QUICK_SEARCH_FADE_DURATION, ease: [0.22, 1, 0.36, 1] },
+            }}
+        className="fixed inset-x-0 top-0 z-[var(--z-sticky)] shadow-none will-change-[opacity,transform]"
+        style={{
+          ...quickSearchTapStyle,
+          boxShadow: 'none',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+          pointerEvents: shouldShowFloatingQuickSearch ? 'auto' : 'none',
+          borderBottom: '0 none transparent',
+          outline: 'none',
+        }}
+        aria-hidden={!shouldShowFloatingQuickSearch}
       >
-        <div
-          className="bg-bg py-2 px-4 md:px-8 pointer-events-auto"
-          style={{
-            opacity: quickSearchVisible ? 1 : 0,
-            transform: quickSearchVisible ? 'translateY(0)' : 'translateY(-100%)',
-            transition: 'opacity 200ms ease, transform 200ms ease',
-          }}
-        >
-          <div className="max-w-[900px] mx-auto flex items-center">
-            <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color] focus-within:border-ink/30 focus-within:outline-none focus-within:ring-0">
-              <input
-                type="text"
-                placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
-                className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
-                style={{ fontSize: '16px' }}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button
-                type="submit"
-                aria-label="Search"
-                className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 outline-none ring-0 focus:outline-none focus:ring-0"
-              >
-                <Search size={16} />
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
+        {renderQuickSearchBar(true)}
+      </motion.div>
 
       {/* Mobile Menu */}
       <AnimatePresence>

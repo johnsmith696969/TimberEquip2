@@ -44,6 +44,20 @@ const {
   isDealerSellerRole,
   supportsStorefrontRole,
 } = require('./role-scopes.js');
+const {
+  AUCTION_PAYMENT_DEADLINE_DAYS,
+  AUCTION_REMOVAL_DEADLINE_DAYS,
+  AUCTION_CARD_PROCESSING_FEE_RATE,
+  AUCTION_CARD_PAYMENT_LIMIT,
+  AUCTION_TITLED_DOCUMENT_FEE,
+  AUCTION_TERMS_VERSION,
+  calculateAuctionBuyerPremium,
+  calculateAuctionDocumentFee,
+  calculateAuctionCardProcessingFee,
+  isAuctionCardPaymentEligible,
+  buildAuctionInvoiceTotals,
+  buildAuctionLegalSummaryLines,
+} = require('./auction-fees.js');
 
 const LEGACY_RUNTIME_CONFIG = (() => {
   try {
@@ -85,6 +99,7 @@ function resolveFirestoreDatabaseId() {
 
 const FIRESTORE_DB_ID = resolveFirestoreDatabaseId();
 function getDb() { return getFirestore(resolveFirestoreDatabaseId()); }
+function getAuctionDb() { return getFirestore('(default)'); }
 const LISTING_SEQUENCE_COUNTER_COLLECTION = 'systemCounters';
 const LISTING_SEQUENCE_COUNTER_DOC = 'listingSequence';
 const FIRST_SEQUENTIAL_LISTING_ID = 12000;
@@ -960,6 +975,20 @@ function parseGooglePlaceDetails(result, placeId = '') {
   };
 }
 
+function decodeAutocompleteFallbackAddress(placeId) {
+  const normalizedPlaceId = normalizeNonEmptyString(placeId);
+  if (!normalizedPlaceId.startsWith('geocode:')) return '';
+
+  const encoded = normalizedPlaceId.slice('geocode:'.length);
+  if (!encoded) return '';
+
+  try {
+    return normalizeNonEmptyString(Buffer.from(encoded, 'base64url').toString('utf8'));
+  } catch {
+    return '';
+  }
+}
+
 function normalizeStringArray(value, maxItems = 50, maxLength = 120) {
   if (!Array.isArray(value)) return [];
   const normalized = value
@@ -1233,6 +1262,829 @@ async function sendVerificationEmailMessage({ email, displayName }) {
   });
 
   await sendEmail({ to: email, ...payload });
+}
+
+function normalizeAuctionBidderTier(profile = {}) {
+  const normalized = normalizeNonEmptyString(profile.verificationTier, 'basic').toLowerCase();
+  if (normalized === 'approved' || normalized === 'verified' || normalized === 'basic') {
+    return normalized;
+  }
+  return 'basic';
+}
+
+function normalizeAuctionBidderProfile(profile = {}, fallback = {}) {
+  const normalizedEmail = normalizeNonEmptyString(profile.email || fallback.email).toLowerCase();
+  const paymentFunding = normalizeNonEmptyString(profile.defaultPaymentMethodFunding, 'unknown').toLowerCase();
+  const verificationTier = normalizeAuctionBidderTier(profile);
+  const idVerificationStatus = normalizeNonEmptyString(profile.idVerificationStatus, 'not_started').toLowerCase();
+  const stripeSetupSessionStatus = normalizeNonEmptyString(profile.stripeSetupSessionStatus).toLowerCase();
+  const paymentMethodReady = Boolean(normalizeNonEmptyString(profile.defaultPaymentMethodId));
+  const identityVerified = idVerificationStatus === 'verified';
+  const approved = identityVerified && paymentMethodReady;
+
+  return {
+    verificationTier: approved ? 'approved' : (identityVerified ? 'verified' : verificationTier),
+    fullName: normalizeNonEmptyString(profile.fullName || fallback.fullName),
+    email: normalizedEmail,
+    phone: normalizeNonEmptyString(profile.phone || fallback.phone),
+    phoneVerified: profile.phoneVerified === true,
+    companyName: normalizeNonEmptyString(profile.companyName) || null,
+    address: {
+      street: normalizeNonEmptyString(profile.address?.street || fallback.address?.street),
+      city: normalizeNonEmptyString(profile.address?.city || fallback.address?.city),
+      state: normalizeNonEmptyString(profile.address?.state || fallback.address?.state),
+      zip: normalizeNonEmptyString(profile.address?.zip || fallback.address?.zip),
+      country: normalizeNonEmptyString(profile.address?.country || fallback.address?.country || 'US'),
+    },
+    stripeCustomerId: normalizeNonEmptyString(profile.stripeCustomerId),
+    stripeIdentityVerificationSessionId: normalizeNonEmptyString(profile.stripeIdentityVerificationSessionId) || null,
+    stripeIdentityVerificationUrl: normalizeNonEmptyString(profile.stripeIdentityVerificationUrl) || null,
+    stripeIdentityLastError: normalizeNonEmptyString(profile.stripeIdentityLastError) || null,
+    stripeSetupSessionId: normalizeNonEmptyString(profile.stripeSetupSessionId) || null,
+    stripeSetupSessionStatus: stripeSetupSessionStatus || null,
+    stripeSetupIntentId: normalizeNonEmptyString(profile.stripeSetupIntentId) || null,
+    defaultPaymentMethodId: normalizeNonEmptyString(profile.defaultPaymentMethodId) || null,
+    defaultPaymentMethodBrand: normalizeNonEmptyString(profile.defaultPaymentMethodBrand) || null,
+    defaultPaymentMethodLast4: normalizeNonEmptyString(profile.defaultPaymentMethodLast4) || null,
+    defaultPaymentMethodFunding: ['credit', 'debit', 'prepaid'].includes(paymentFunding) ? paymentFunding : 'unknown',
+    preAuthPaymentIntentId: normalizeNonEmptyString(profile.preAuthPaymentIntentId) || null,
+    preAuthAmount: normalizeFiniteNumber(profile.preAuthAmount, 0),
+    preAuthStatus: ['pending', 'held', 'captured', 'released'].includes(normalizeNonEmptyString(profile.preAuthStatus).toLowerCase())
+      ? normalizeNonEmptyString(profile.preAuthStatus).toLowerCase()
+      : 'pending',
+    idVerificationStatus: ['pending', 'verified', 'failed'].includes(idVerificationStatus) ? idVerificationStatus : 'not_started',
+    idVerifiedAt: normalizeNonEmptyString(profile.idVerifiedAt) || null,
+    bidderApprovedAt: approved
+      ? (normalizeNonEmptyString(profile.bidderApprovedAt) || new Date().toISOString())
+      : null,
+    bidderApprovedBy: approved ? (normalizeNonEmptyString(profile.bidderApprovedBy) || 'system') : null,
+    lastAuctionRegistrationAt: normalizeNonEmptyString(profile.lastAuctionRegistrationAt) || null,
+    legalAcceptedAuctionSlug: normalizeNonEmptyString(profile.legalAcceptedAuctionSlug) || null,
+    legalAcceptedAuctionId: normalizeNonEmptyString(profile.legalAcceptedAuctionId) || null,
+    totalAuctionsParticipated: normalizeFiniteNumber(profile.totalAuctionsParticipated, 0),
+    totalItemsWon: normalizeFiniteNumber(profile.totalItemsWon, 0),
+    totalSpent: normalizeFiniteNumber(profile.totalSpent, 0),
+    nonPaymentCount: normalizeFiniteNumber(profile.nonPaymentCount, 0),
+    termsAcceptedAt: normalizeNonEmptyString(profile.termsAcceptedAt) || '',
+    termsVersion: normalizeNonEmptyString(profile.termsVersion, AUCTION_TERMS_VERSION),
+    createdAt: normalizeNonEmptyString(profile.createdAt) || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildAuctionBidderStatusPayload(auction, profile) {
+  const bidderProfile = profile ? normalizeAuctionBidderProfile(profile) : null;
+  const identityVerified = bidderProfile?.idVerificationStatus === 'verified';
+  const paymentMethodReady = Boolean(normalizeNonEmptyString(bidderProfile?.defaultPaymentMethodId));
+  const legalAccepted = Boolean(normalizeNonEmptyString(bidderProfile?.termsAcceptedAt));
+  const bidderApproved = identityVerified && paymentMethodReady;
+
+  return {
+    auction,
+    profile: bidderProfile,
+    registrationComplete: Boolean(legalAccepted && bidderApproved),
+    canBid: Boolean(auction && ['active', 'extended'].includes(normalizeNonEmptyString(auction.status).toLowerCase()) && bidderApproved),
+    identityVerified,
+    paymentMethodReady,
+    bidderApproved,
+    legalAccepted,
+  };
+}
+
+function getAuctionBidIncrement(currentBid) {
+  const amount = normalizeFiniteNumber(currentBid, 0);
+  if (amount < 250) return 10;
+  if (amount < 500) return 25;
+  if (amount < 1000) return 50;
+  if (amount < 5000) return 100;
+  if (amount < 10000) return 250;
+  if (amount < 25000) return 500;
+  if (amount < 50000) return 1000;
+  if (amount < 100000) return 2500;
+  if (amount < 250000) return 5000;
+  return 10000;
+}
+
+function buildAuctionLotPublicUrl(auctionSlug, lotNumber) {
+  return `${APP_URL}/auctions/${encodeURIComponent(normalizeNonEmptyString(auctionSlug))}/lots/${encodeURIComponent(normalizeNonEmptyString(lotNumber))}`;
+}
+
+function buildAuctionInvoiceReturnUrl(auctionSlug, lotNumber, invoiceId) {
+  const baseUrl = buildAuctionLotPublicUrl(auctionSlug, lotNumber);
+  return `${baseUrl}?invoice=${encodeURIComponent(normalizeNonEmptyString(invoiceId))}`;
+}
+
+async function getAuctionBySlugFromDb(auctionSlug) {
+  const normalizedSlug = normalizeNonEmptyString(auctionSlug);
+  if (!normalizedSlug) return null;
+  const snapshot = await getAuctionDb().collection('auctions').where('slug', '==', normalizedSlug).limit(1).get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function getAuctionLotByNumberFromDb(auctionId, lotNumber) {
+  const normalizedAuctionId = normalizeNonEmptyString(auctionId);
+  const normalizedLotNumber = normalizeNonEmptyString(lotNumber);
+  if (!normalizedAuctionId || !normalizedLotNumber) return null;
+  const snapshot = await getAuctionDb().collection('auctions').doc(normalizedAuctionId).collection('lots').where('lotNumber', '==', normalizedLotNumber).limit(1).get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function getAuctionBidderProfile(userUid) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) return null;
+  const snap = await getAuctionDb().collection('users').doc(normalizedUid).collection('bidderProfile').doc('profile').get();
+  if (!snap.exists) return null;
+  return snap.data() || null;
+}
+
+async function saveAuctionBidderProfile(userUid, profile) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) {
+    throw new Error('Missing bidder uid.');
+  }
+
+  const normalizedProfile = normalizeAuctionBidderProfile(profile);
+  await getAuctionDb().collection('users').doc(normalizedUid).collection('bidderProfile').doc('profile').set(normalizedProfile, { merge: true });
+  return normalizedProfile;
+}
+
+function buildAuctionBidderAnonymousId(userUid, profile = {}) {
+  const fullName = normalizeNonEmptyString(profile.fullName);
+  if (fullName) {
+    const initials = fullName
+      .split(/\s+/u)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('');
+    if (initials) {
+      return `${initials}-${String(userUid || '').slice(-4).toUpperCase()}`;
+    }
+  }
+
+  return `BID-${String(userUid || '').slice(-6).toUpperCase()}`;
+}
+
+async function syncAuctionBidderSetupSession(stripe, sessionId, userUid) {
+  const normalizedSessionId = normalizeNonEmptyString(sessionId);
+  if (!normalizedSessionId) {
+    throw new Error('Missing setup session id.');
+  }
+
+  const checkoutSession = await stripe.checkout.sessions.retrieve(normalizedSessionId, {
+    expand: ['setup_intent.payment_method', 'customer'],
+  });
+
+  const currentProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const nextPatch = {
+    stripeCustomerId: normalizeNonEmptyString(checkoutSession.customer?.id || checkoutSession.customer || currentProfile.stripeCustomerId),
+    stripeSetupSessionId: checkoutSession.id,
+    stripeSetupSessionStatus: normalizeNonEmptyString(checkoutSession.status) || 'completed',
+    stripeSetupIntentId: normalizeNonEmptyString(checkoutSession.setup_intent?.id || checkoutSession.setup_intent),
+  };
+
+  const paymentMethod = checkoutSession.setup_intent?.payment_method && typeof checkoutSession.setup_intent.payment_method !== 'string'
+    ? checkoutSession.setup_intent.payment_method
+    : null;
+
+  if (paymentMethod?.id) {
+    nextPatch.defaultPaymentMethodId = paymentMethod.id;
+    nextPatch.defaultPaymentMethodBrand = normalizeNonEmptyString(paymentMethod.card?.brand);
+    nextPatch.defaultPaymentMethodLast4 = normalizeNonEmptyString(paymentMethod.card?.last4);
+    nextPatch.defaultPaymentMethodFunding = normalizeNonEmptyString(paymentMethod.card?.funding, 'unknown').toLowerCase();
+  }
+
+  const mergedProfile = normalizeAuctionBidderProfile({
+    ...currentProfile,
+    ...nextPatch,
+  });
+  await saveAuctionBidderProfile(userUid, mergedProfile);
+  return mergedProfile;
+}
+
+async function syncAuctionBidderIdentityStatus(stripe, verificationSessionId, userUid) {
+  const normalizedSessionId = normalizeNonEmptyString(verificationSessionId);
+  if (!normalizedSessionId) {
+    throw new Error('Missing identity verification session id.');
+  }
+
+  const identitySession = await stripe.identity.verificationSessions.retrieve(normalizedSessionId);
+  const currentProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const nextStatus = normalizeNonEmptyString(identitySession.status, 'pending').toLowerCase();
+  const verified = nextStatus === 'verified';
+  const mergedProfile = normalizeAuctionBidderProfile({
+    ...currentProfile,
+    stripeIdentityVerificationSessionId: identitySession.id,
+    idVerificationStatus: verified ? 'verified' : (nextStatus === 'canceled' ? 'failed' : 'pending'),
+    idVerifiedAt: verified ? new Date().toISOString() : currentProfile.idVerifiedAt,
+    stripeIdentityLastError: normalizeNonEmptyString(identitySession.last_error?.reason || identitySession.last_error?.code) || null,
+  });
+
+  await saveAuctionBidderProfile(userUid, mergedProfile);
+  return mergedProfile;
+}
+
+async function upsertAuctionInvoice(invoiceId, data) {
+  const normalizedInvoiceId = normalizeNonEmptyString(invoiceId);
+  if (!normalizedInvoiceId) {
+    throw new Error('Missing auction invoice id.');
+  }
+
+  const payload = stripUndefinedDeep({
+    ...data,
+    updatedAt: new Date().toISOString(),
+  });
+  await getAuctionDb().collection('invoices').doc(normalizedInvoiceId).set(payload, { merge: true });
+}
+
+async function getAuctionInvoiceRecord(invoiceId) {
+  const normalizedInvoiceId = normalizeNonEmptyString(invoiceId);
+  if (!normalizedInvoiceId) return null;
+  const snap = await getAuctionDb().collection('invoices').doc(normalizedInvoiceId).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+function normalizeAuctionLotStatus(status, fallback = 'upcoming') {
+  const normalized = normalizeNonEmptyString(status, fallback).toLowerCase();
+  if (['upcoming', 'preview', 'active', 'extended', 'closed', 'sold', 'unsold', 'cancelled'].includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function buildAuctionLotPayloadFromListing({
+  auction,
+  listing,
+  payload = {},
+  existingLot = null,
+}) {
+  const nowIso = new Date().toISOString();
+  const auctionStartTime = normalizeNonEmptyString(payload.startTime || existingLot?.startTime || auction?.startTime, nowIso);
+  const auctionEndTime = normalizeNonEmptyString(payload.endTime || existingLot?.endTime || auction?.endTime, nowIso);
+  const currentBid = Number.isFinite(Number(existingLot?.currentBid)) ? Number(existingLot.currentBid) : 0;
+  const bidCount = Number.isFinite(Number(existingLot?.bidCount)) ? Number(existingLot.bidCount) : 0;
+  const reservePrice = payload.reservePrice === null
+    ? null
+    : Number.isFinite(Number(payload.reservePrice))
+      ? Number(payload.reservePrice)
+      : (Number.isFinite(Number(existingLot?.reservePrice)) ? Number(existingLot.reservePrice) : null);
+
+  return stripUndefinedDeep({
+    auctionId: auction.id,
+    listingId: listing.id,
+    lotNumber: normalizeNonEmptyString(payload.lotNumber || existingLot?.lotNumber || listing.stockNumber || listing.id),
+    closeOrder: Number.isFinite(Number(payload.closeOrder)) ? Number(payload.closeOrder) : (Number.isFinite(Number(existingLot?.closeOrder)) ? Number(existingLot.closeOrder) : 1),
+    startingBid: Number.isFinite(Number(payload.startingBid)) ? Number(payload.startingBid) : (Number.isFinite(Number(existingLot?.startingBid)) ? Number(existingLot.startingBid) : Math.max(100, Math.round(Number(listing.price || 0) * 0.25))),
+    reservePrice,
+    reserveMet: currentBid > 0 && reservePrice != null ? currentBid >= reservePrice : Boolean(existingLot?.reserveMet),
+    buyerPremiumPercent: Number.isFinite(Number(payload.buyerPremiumPercent)) ? Number(payload.buyerPremiumPercent) : (Number.isFinite(Number(existingLot?.buyerPremiumPercent)) ? Number(existingLot.buyerPremiumPercent) : auction.defaultBuyerPremiumPercent || 10),
+    startTime: auctionStartTime,
+    endTime: auctionEndTime,
+    originalEndTime: normalizeNonEmptyString(existingLot?.originalEndTime || auctionEndTime),
+    softCloseThresholdMin: Number.isFinite(Number(existingLot?.softCloseThresholdMin))
+      ? Number(existingLot.softCloseThresholdMin)
+      : Number(auction.softCloseThresholdMin || 3),
+    softCloseExtensionMin: Number.isFinite(Number(existingLot?.softCloseExtensionMin))
+      ? Number(existingLot.softCloseExtensionMin)
+      : Number(auction.softCloseExtensionMin || 2),
+    softCloseGroupId: normalizeNonEmptyString(existingLot?.softCloseGroupId) || null,
+    extensionCount: Number.isFinite(Number(existingLot?.extensionCount)) ? Number(existingLot.extensionCount) : 0,
+    currentBid,
+    currentBidderId: normalizeNonEmptyString(existingLot?.currentBidderId) || null,
+    currentBidderAnonymousId: normalizeNonEmptyString(existingLot?.currentBidderAnonymousId),
+    bidCount,
+    uniqueBidders: Number.isFinite(Number(existingLot?.uniqueBidders)) ? Number(existingLot.uniqueBidders) : 0,
+    lastBidTime: normalizeNonEmptyString(existingLot?.lastBidTime) || null,
+    status: normalizeAuctionLotStatus(
+      existingLot?.status
+        || (auction.status === 'active'
+          ? 'active'
+          : auction.status === 'preview'
+            ? 'preview'
+            : 'upcoming')
+    ),
+    promoted: payload.promoted === true || existingLot?.promoted === true,
+    promotedOrder: Number.isFinite(Number(payload.promotedOrder)) ? Number(payload.promotedOrder) : (Number.isFinite(Number(existingLot?.promotedOrder)) ? Number(existingLot.promotedOrder) : 0),
+    winningBidderId: normalizeNonEmptyString(existingLot?.winningBidderId) || null,
+    winningBid: Number.isFinite(Number(existingLot?.winningBid)) ? Number(existingLot.winningBid) : null,
+    watcherIds: Array.isArray(existingLot?.watcherIds) ? existingLot.watcherIds : [],
+    watcherCount: Number.isFinite(Number(existingLot?.watcherCount)) ? Number(existingLot.watcherCount) : 0,
+    title: normalizeNonEmptyString(listing.title, `${normalizeNonEmptyString(listing.make || listing.manufacturer)} ${normalizeNonEmptyString(listing.model)}`.trim()),
+    manufacturer: normalizeNonEmptyString(listing.manufacturer || listing.make),
+    model: normalizeNonEmptyString(listing.model),
+    year: normalizeFiniteNumber(listing.year, 0),
+    thumbnailUrl: normalizeNonEmptyString(listing.imageVariants?.[0]?.detailUrl || listing.imageVariants?.[0]?.thumbnailUrl || listing.images?.[0]),
+    pickupLocation: normalizeNonEmptyString(listing.location, [normalizeNonEmptyString(listing.city), normalizeNonEmptyString(listing.state)].filter(Boolean).join(', ')),
+    paymentDeadlineDays: Number.isFinite(Number(payload.paymentDeadlineDays))
+      ? Number(payload.paymentDeadlineDays)
+      : (Number.isFinite(Number(existingLot?.paymentDeadlineDays)) ? Number(existingLot.paymentDeadlineDays) : Number(auction.defaultPaymentDeadlineDays || AUCTION_PAYMENT_DEADLINE_DAYS)),
+    removalDeadlineDays: Number.isFinite(Number(payload.removalDeadlineDays))
+      ? Number(payload.removalDeadlineDays)
+      : (Number.isFinite(Number(existingLot?.removalDeadlineDays)) ? Number(existingLot.removalDeadlineDays) : Number(auction.defaultRemovalDeadlineDays || AUCTION_REMOVAL_DEADLINE_DAYS)),
+    storageFeePerDay: Number.isFinite(Number(payload.storageFeePerDay)) ? Number(payload.storageFeePerDay) : (Number.isFinite(Number(existingLot?.storageFeePerDay)) ? Number(existingLot.storageFeePerDay) : 0),
+    isTitledItem: payload.isTitledItem === true || existingLot?.isTitledItem === true,
+    titleDocumentFee: payload.isTitledItem === true || existingLot?.isTitledItem === true ? AUCTION_TITLED_DOCUMENT_FEE : 0,
+  });
+}
+
+async function syncListingAuctionProjection(listingId, patch = {}) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  if (!normalizedListingId) return;
+  const payload = stripUndefinedDeep({
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  });
+  await getDb().collection('listings').doc(normalizedListingId).set(payload, { merge: true });
+}
+
+async function clearListingAuctionProjection(listingId) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  if (!normalizedListingId) return;
+  await getDb().collection('listings').doc(normalizedListingId).set({
+    auctionId: admin.firestore.FieldValue.delete(),
+    auctionSlug: admin.firestore.FieldValue.delete(),
+    auctionStatus: admin.firestore.FieldValue.delete(),
+    auctionEndTime: admin.firestore.FieldValue.delete(),
+    currentBid: admin.firestore.FieldValue.delete(),
+    bidCount: admin.firestore.FieldValue.delete(),
+    lotNumber: admin.firestore.FieldValue.delete(),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+}
+
+async function sendAuctionRegistrationEmailMessage({ email, displayName, auctionTitle, auctionUrl }) {
+  const payload = templates.auctionBidderRegistered({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    auctionUrl: String(auctionUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionIdentitySubmittedEmailMessage({ email, displayName, auctionTitle, auctionUrl }) {
+  const payload = templates.auctionIdentitySubmitted({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    auctionUrl: String(auctionUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionBidderApprovedEmailMessage({ email, displayName, auctionTitle, auctionUrl }) {
+  const payload = templates.auctionBidderApproved({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    auctionUrl: String(auctionUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionOutbidEmailMessage({ email, displayName, auctionTitle, lotTitle, bidAmount, lotUrl }) {
+  const payload = templates.auctionOutbid({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    bidAmount: formatEmailCurrencyAmount(Math.round(Number(bidAmount || 0) * 100), 'usd'),
+    lotUrl: String(lotUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionWinningBidEmailMessage({ email, displayName, auctionTitle, lotTitle, hammerPrice, invoiceUrl }) {
+  const payload = templates.auctionWinningBid({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    hammerPrice: formatEmailCurrencyAmount(Math.round(Number(hammerPrice || 0) * 100), 'usd'),
+    invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoiceNumber, amountPaid, invoiceUrl }) {
+  const payload = templates.auctionDownPaymentReceipt({
+    displayName: String(displayName || 'there').trim() || 'there',
+    invoiceNumber: String(invoiceNumber || 'Auction invoice').trim() || 'Auction invoice',
+    amountPaid: formatEmailCurrencyAmount(Math.round(Number(amountPaid || 0) * 100), 'usd'),
+    invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function resolveAuctionUserContact(userUid, fallbackProfile = null) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) {
+    return {
+      uid: '',
+      email: normalizeNonEmptyString(fallbackProfile?.email).toLowerCase(),
+      displayName: normalizeNonEmptyString(fallbackProfile?.fullName, 'there') || 'there',
+      userData: {},
+    };
+  }
+
+  let authUser = null;
+  try {
+    authUser = await admin.auth().getUser(normalizedUid);
+  } catch (_error) {
+    authUser = null;
+  }
+
+  let userData = {};
+  try {
+    const userSnap = await getDb().collection('users').doc(normalizedUid).get();
+    userData = userSnap.exists ? (userSnap.data() || {}) : {};
+  } catch (_error) {
+    userData = {};
+  }
+
+  const email = normalizeNonEmptyString(authUser?.email || userData.email || fallbackProfile?.email).toLowerCase();
+  const displayName = normalizeNonEmptyString(
+    authUser?.displayName || userData.displayName || userData.company || fallbackProfile?.fullName,
+    'there',
+  ) || 'there';
+
+  return {
+    uid: normalizedUid,
+    email,
+    displayName,
+    userData,
+  };
+}
+
+function splitAuctionContactName(fullName = '') {
+  const parts = normalizeNonEmptyString(fullName)
+    .split(/\s+/u)
+    .filter(Boolean);
+
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+async function buildAuctionAdminBidderSummary(userUid, fallbackProfile = null) {
+  const bidderProfile = normalizeAuctionBidderProfile(
+    fallbackProfile || await getAuctionBidderProfile(userUid) || {},
+  );
+  const bidderContact = await resolveAuctionUserContact(userUid, bidderProfile || {});
+  const userData = bidderContact.userData || {};
+  const fullName = normalizeNonEmptyString(
+    bidderProfile.fullName || userData.displayName || bidderContact.displayName,
+  );
+  const { firstName, lastName } = splitAuctionContactName(fullName);
+
+  return stripUndefinedDeep({
+    uid: normalizeNonEmptyString(bidderContact.uid) || null,
+    email: normalizeNonEmptyString(bidderContact.email).toLowerCase() || null,
+    displayName: normalizeNonEmptyString(bidderContact.displayName || fullName) || null,
+    fullName: fullName || null,
+    firstName: firstName || null,
+    lastName: lastName || null,
+    businessName: normalizeNonEmptyString(
+      bidderProfile.companyName
+      || userData.businessName
+      || userData.company
+      || userData.storefrontName,
+    ) || null,
+    phone: normalizeNonEmptyString(
+      bidderProfile.phone
+      || userData.phoneNumber
+      || userData.phone,
+    ) || null,
+    verificationTier: normalizeNonEmptyString(bidderProfile.verificationTier) || null,
+    idVerificationStatus: normalizeNonEmptyString(bidderProfile.idVerificationStatus) || null,
+    bidderApprovedAt: normalizeNonEmptyString(bidderProfile.bidderApprovedAt) || null,
+    defaultPaymentMethodBrand: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodBrand) || null,
+    defaultPaymentMethodLast4: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodLast4) || null,
+    defaultPaymentMethodFunding: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodFunding) || null,
+  });
+}
+
+function buildAuctionInvoiceId(auctionId, lotId) {
+  return `${normalizeNonEmptyString(auctionId)}_${normalizeNonEmptyString(lotId)}`;
+}
+
+async function createOrRefreshAuctionInvoiceForLot({
+  auction,
+  lot,
+  paymentMethod = null,
+}) {
+  const auctionId = normalizeNonEmptyString(auction?.id);
+  const lotId = normalizeNonEmptyString(lot?.id);
+  const buyerId = normalizeNonEmptyString(lot?.winningBidderId || lot?.currentBidderId);
+  if (!auctionId || !lotId || !buyerId) {
+    throw new Error('Auction lot is missing invoice requirements.');
+  }
+
+  const invoiceId = buildAuctionInvoiceId(auctionId, lotId);
+  const existingInvoice = await getAuctionInvoiceRecord(invoiceId);
+  const listingSnap = await getDb().collection('listings').doc(normalizeNonEmptyString(lot.listingId)).get();
+  const listingData = listingSnap.exists ? (listingSnap.data() || {}) : {};
+  const sellerId = normalizeNonEmptyString(listingData.sellerUid || listingData.sellerId);
+  const totals = buildAuctionInvoiceTotals({
+    winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+    isTitledItem: Boolean(lot.isTitledItem),
+    paymentMethod,
+  });
+  const dueDate = existingInvoice?.dueDate
+    || (() => {
+      const nextDueDate = new Date();
+      nextDueDate.setDate(nextDueDate.getDate() + AUCTION_PAYMENT_DEADLINE_DAYS);
+      return nextDueDate.toISOString();
+    })();
+
+  const invoiceRecord = stripUndefinedDeep({
+    id: invoiceId,
+    auctionId,
+    lotId,
+    buyerId,
+    sellerId,
+    winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+    buyerPremium: totals.buyerPremium,
+    documentationFee: totals.documentationFee,
+    cardProcessingFee: totals.cardProcessingFee,
+    isTitledItem: Boolean(lot.isTitledItem),
+    salesTax: normalizeFiniteNumber(existingInvoice?.salesTax, 0),
+    salesTaxRate: normalizeFiniteNumber(existingInvoice?.salesTaxRate, 0),
+    taxExempt: existingInvoice?.taxExempt === true,
+    totalDue: totals.totalDue,
+    status: normalizeNonEmptyString(existingInvoice?.status, 'pending'),
+    paymentMethod: paymentMethod || existingInvoice?.paymentMethod || null,
+    paymentMethodFunding: existingInvoice?.paymentMethodFunding || null,
+    stripeInvoiceId: existingInvoice?.stripeInvoiceId || null,
+    stripeCheckoutSessionId: existingInvoice?.stripeCheckoutSessionId || null,
+    stripePaymentIntentId: existingInvoice?.stripePaymentIntentId || null,
+    paymentTermsVersion: AUCTION_TERMS_VERSION,
+    paidAt: existingInvoice?.paidAt || null,
+    dueDate,
+    sellerCommission: normalizeFiniteNumber(existingInvoice?.sellerCommission, 0),
+    sellerPayout: normalizeFiniteNumber(existingInvoice?.sellerPayout, normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0)),
+    sellerPaidAt: existingInvoice?.sellerPaidAt || null,
+    createdAt: existingInvoice?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  await upsertAuctionInvoice(invoiceId, invoiceRecord);
+  return {
+    invoiceId,
+    invoice: invoiceRecord,
+    listing: listingData,
+    totals,
+  };
+}
+
+async function finalizeAuctionLotSettlement({
+  auction,
+  lot,
+}) {
+  const auctionId = normalizeNonEmptyString(auction?.id);
+  const lotId = normalizeNonEmptyString(lot?.id);
+  if (!auctionId || !lotId) return null;
+
+  const currentBid = normalizeFiniteNumber(lot.currentBid, 0);
+  const reservePrice = lot.reservePrice == null ? null : normalizeFiniteNumber(lot.reservePrice, 0);
+  const reserveMet = reservePrice == null || currentBid >= reservePrice;
+  const buyerId = normalizeNonEmptyString(lot.currentBidderId);
+  const hasWinner = currentBid > 0 && Boolean(buyerId) && reserveMet;
+  const finalStatus = hasWinner ? 'sold' : 'unsold';
+  const lotRef = getAuctionDb().collection('auctions').doc(auctionId).collection('lots').doc(lotId);
+  const lotPatch = stripUndefinedDeep({
+    status: finalStatus,
+    winningBidderId: hasWinner ? buyerId : null,
+    winningBid: hasWinner ? currentBid : null,
+    reserveMet,
+    updatedAt: new Date().toISOString(),
+  });
+  await lotRef.set(lotPatch, { merge: true });
+  await syncListingAuctionProjection(lot.listingId, {
+    auctionStatus: finalStatus,
+    currentBid,
+    bidCount: normalizeFiniteNumber(lot.bidCount, 0),
+    lotNumber: normalizeNonEmptyString(lot.lotNumber),
+  });
+
+  if (!hasWinner) {
+    return {
+      finalStatus,
+      invoice: null,
+    };
+  }
+
+  const { invoiceId, invoice } = await createOrRefreshAuctionInvoiceForLot({
+    auction,
+    lot: {
+      ...lot,
+      winningBidderId: buyerId,
+      winningBid: currentBid,
+    },
+  });
+  const invoiceUrl = buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId);
+  const bidderProfile = await getAuctionBidderProfile(buyerId);
+  const bidderContact = await resolveAuctionUserContact(buyerId, bidderProfile || {});
+
+  if (bidderContact.email) {
+    await sendAuctionWinningBidEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      lotTitle: lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim(),
+      hammerPrice: currentBid,
+      invoiceUrl,
+    });
+  }
+
+  await getAuctionDb().collection('users').doc(buyerId).collection('bidderProfile').doc('profile').set({
+    totalItemsWon: admin.firestore.FieldValue.increment(1),
+    totalSpent: admin.firestore.FieldValue.increment(invoice.totalDue || currentBid),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  await getAuctionDb().collection('auctions').doc(auctionId).set({
+    totalGMV: admin.firestore.FieldValue.increment(currentBid),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  return {
+    finalStatus,
+    invoice,
+    invoiceId,
+  };
+}
+
+async function processEndedAuctionLots({ auctionIds = null } = {}) {
+  const nowIso = new Date().toISOString();
+  const auctionDb = getAuctionDb();
+  let auctions = [];
+
+  if (Array.isArray(auctionIds) && auctionIds.length > 0) {
+    auctions = (await Promise.all(
+      auctionIds.map(async (auctionId) => {
+        const snap = await auctionDb.collection('auctions').doc(normalizeNonEmptyString(auctionId)).get();
+        return snap.exists ? { id: snap.id, ...snap.data() } : null;
+      })
+    )).filter(Boolean);
+  } else {
+    const auctionSnap = await auctionDb.collection('auctions').get();
+    auctions = auctionSnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((auction) => ['active', 'closed', 'settling', 'preview'].includes(normalizeNonEmptyString(auction.status).toLowerCase()));
+  }
+
+  const results = [];
+  for (const auction of auctions) {
+    const lotsSnap = await auctionDb
+      .collection('auctions')
+      .doc(auction.id)
+      .collection('lots')
+      .get();
+
+    for (const lotDoc of lotsSnap.docs) {
+      const lot = { id: lotDoc.id, ...lotDoc.data() };
+      const lotStatus = normalizeAuctionLotStatus(lot.status, 'upcoming');
+      const lotEndTime = normalizeNonEmptyString(lot.endTime);
+      if (!lotEndTime || lotEndTime > nowIso) continue;
+      if (!['active', 'extended', 'preview', 'upcoming'].includes(lotStatus)) continue;
+
+      const outcome = await finalizeAuctionLotSettlement({ auction, lot });
+      results.push({
+        auctionId: auction.id,
+        lotId: lot.id,
+        lotNumber: lot.lotNumber,
+        status: outcome?.finalStatus || lotStatus,
+      });
+    }
+  }
+
+  return results;
+}
+
+async function finalizeAuctionBidderSetupCheckout(stripe, session) {
+  const userUid = normalizeNonEmptyString(session?.metadata?.userUid);
+  const auctionSlug = normalizeNonEmptyString(session?.metadata?.auctionSlug);
+  if (!userUid || !auctionSlug) {
+    return { scope: 'auction_bidder_setup', completed: false };
+  }
+
+  const previousProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const syncedProfile = await syncAuctionBidderSetupSession(stripe, session.id, userUid);
+  const auction = await getAuctionBySlugFromDb(auctionSlug);
+  const bidderContact = await resolveAuctionUserContact(userUid, syncedProfile);
+  const previousApproved = Boolean(previousProfile?.bidderApprovedAt);
+  const nowApproved = Boolean(syncedProfile?.bidderApprovedAt);
+
+  if (!previousApproved && nowApproved && bidderContact.email && auction) {
+    await sendAuctionBidderApprovedEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+    });
+  }
+
+  return {
+    scope: 'auction_bidder_setup',
+    completed: true,
+    userUid,
+    auctionSlug,
+  };
+}
+
+async function finalizeAuctionInvoiceCheckout(stripe, session) {
+  const invoiceId = normalizeNonEmptyString(session?.metadata?.auctionInvoiceId);
+  if (!invoiceId) {
+    return { scope: 'auction_invoice', paid: false };
+  }
+
+  const invoice = await getAuctionInvoiceRecord(invoiceId);
+  if (!invoice) {
+    return { scope: 'auction_invoice', paid: false };
+  }
+
+  const paid = session.payment_status === 'paid';
+  if (!paid) {
+    return { scope: 'auction_invoice', paid: false, invoiceId };
+  }
+
+  const nextInvoice = stripUndefinedDeep({
+    ...invoice,
+    status: 'paid',
+    paymentMethod: 'card',
+    stripeCheckoutSessionId: normalizeNonEmptyString(session.id),
+    stripePaymentIntentId: normalizeNonEmptyString(session.payment_intent),
+    paidAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  await upsertAuctionInvoice(invoiceId, nextInvoice);
+
+  const buyerContact = await resolveAuctionUserContact(invoice.buyerId);
+  if (buyerContact.email) {
+    await sendAuctionPaymentReceiptEmailMessage({
+      email: buyerContact.email,
+      displayName: buyerContact.displayName,
+      invoiceNumber: invoiceId,
+      amountPaid: nextInvoice.totalDue,
+      invoiceUrl: `${APP_URL}/auctions`,
+    });
+  }
+
+  return {
+    scope: 'auction_invoice',
+    paid: true,
+    invoiceId,
+  };
+}
+
+async function syncAuctionIdentityVerificationEvent(stripe, verificationSession) {
+  const verificationSessionId = normalizeNonEmptyString(verificationSession?.id);
+  const userUid = normalizeNonEmptyString(verificationSession?.metadata?.userUid);
+  const auctionSlug = normalizeNonEmptyString(verificationSession?.metadata?.auctionSlug);
+  if (!verificationSessionId || !userUid) {
+    return { scope: 'auction_identity', synced: false };
+  }
+
+  const previousProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const syncedProfile = await syncAuctionBidderIdentityStatus(stripe, verificationSessionId, userUid);
+  const auction = auctionSlug ? await getAuctionBySlugFromDb(auctionSlug) : null;
+  const bidderContact = await resolveAuctionUserContact(userUid, syncedProfile);
+  const previousIdentityStatus = normalizeNonEmptyString(previousProfile.idVerificationStatus, 'not_started');
+  const currentIdentityStatus = normalizeNonEmptyString(syncedProfile.idVerificationStatus, 'not_started');
+  const previousApproved = Boolean(previousProfile.bidderApprovedAt);
+  const nowApproved = Boolean(syncedProfile.bidderApprovedAt);
+
+  if (
+    bidderContact.email
+    && auction
+    && previousIdentityStatus === 'not_started'
+    && ['pending', 'verified'].includes(currentIdentityStatus)
+  ) {
+    await sendAuctionIdentitySubmittedEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+    });
+  }
+
+  if (!previousApproved && nowApproved && bidderContact.email && auction) {
+    await sendAuctionBidderApprovedEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+    });
+  }
+
+  return {
+    scope: 'auction_identity',
+    synced: true,
+    userUid,
+    auctionSlug,
+  };
 }
 
 function normalizeImageUrls(value) {
@@ -4527,6 +5379,20 @@ exports.expireListingsByDate = onSchedule(
       });
     }
     logger.info(`expireListingsByDate: expired ${snap.size} listings`);
+  }
+);
+
+exports.processAuctionClosures = onSchedule(
+  {
+    schedule: 'every 5 minutes',
+    region: 'us-central1',
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
+  },
+  async () => {
+    const results = await processEndedAuctionLots();
+    logger.info('processAuctionClosures: processed auction lot settlements', {
+      settledCount: results.length,
+    });
   }
 );
 
@@ -11085,7 +11951,22 @@ exports.apiProxy = onRequest(
 
         try {
           if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-            await finalizeCheckoutSession(stripe, event.data.object, `webhook:${event.type}`);
+            const checkoutScope = normalizeNonEmptyString(event.data.object?.metadata?.checkoutScope);
+            if (checkoutScope === 'auction_bidder_setup') {
+              await finalizeAuctionBidderSetupCheckout(stripe, event.data.object);
+            } else if (checkoutScope === 'auction_invoice') {
+              await finalizeAuctionInvoiceCheckout(stripe, event.data.object);
+            } else {
+              await finalizeCheckoutSession(stripe, event.data.object, `webhook:${event.type}`);
+            }
+          }
+
+          if (
+            event.type === 'identity.verification_session.verified'
+            || event.type === 'identity.verification_session.processing'
+            || event.type === 'identity.verification_session.requires_input'
+          ) {
+            await syncAuctionIdentityVerificationEvent(stripe, event.data.object);
           }
 
           if (
@@ -11178,6 +12059,935 @@ exports.apiProxy = onRequest(
           recentStripeWebhookEvents.delete(String(event.id || '').trim());
           return res.status(500).json({ error: 'Webhook processing failed. Retry expected.' });
         }
+      }
+
+      const auctionBidderStatusMatch = path.match(/^\/auctions\/([^/]+)\/bidder-status$/i);
+      if (req.method === 'GET' && auctionBidderStatusMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionBidderStatusMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const stripeClient = stripe || createStripeClient();
+        let rawProfile = await getAuctionBidderProfile(userUid);
+        const previousProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+        });
+        const previousIdentityStatus = normalizeNonEmptyString(previousProfile.idVerificationStatus, 'not_started');
+        const previousApproved = Boolean(previousProfile.bidderApprovedAt);
+
+        if (rawProfile && stripeClient) {
+          if (normalizeNonEmptyString(previousProfile.stripeIdentityVerificationSessionId) && previousProfile.idVerificationStatus !== 'verified') {
+            rawProfile = await syncAuctionBidderIdentityStatus(stripeClient, previousProfile.stripeIdentityVerificationSessionId, userUid);
+          }
+
+          const syncedProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+            email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+            fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+          });
+          if (normalizeNonEmptyString(syncedProfile.stripeSetupSessionId) && !normalizeNonEmptyString(syncedProfile.defaultPaymentMethodId)) {
+            rawProfile = await syncAuctionBidderSetupSession(stripeClient, syncedProfile.stripeSetupSessionId, userUid);
+          }
+        }
+
+        const bidderProfile = rawProfile
+          ? normalizeAuctionBidderProfile(rawProfile, {
+              email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+              fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+            })
+          : null;
+        const statusPayload = buildAuctionBidderStatusPayload(auction, bidderProfile);
+        const bidderContact = await resolveAuctionUserContact(userUid, bidderProfile || {});
+
+        if (
+          bidderContact.email
+          && previousIdentityStatus === 'not_started'
+          && ['pending', 'verified'].includes(normalizeNonEmptyString(statusPayload.profile?.idVerificationStatus, 'not_started'))
+        ) {
+          await sendAuctionIdentitySubmittedEmailMessage({
+            email: bidderContact.email,
+            displayName: bidderContact.displayName,
+            auctionTitle: auction.title,
+            auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+          });
+        }
+
+        if (bidderContact.email && !previousApproved && statusPayload.bidderApproved) {
+          await sendAuctionBidderApprovedEmailMessage({
+            email: bidderContact.email,
+            displayName: bidderContact.displayName,
+            auctionTitle: auction.title,
+            auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+          });
+        }
+
+        return res.status(200).json(statusPayload);
+      }
+
+      const auctionBidderProfileMatch = path.match(/^\/auctions\/([^/]+)\/bidder-profile$/i);
+      if (req.method === 'POST' && auctionBidderProfileMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionBidderProfileMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const profilePatch = req.body || {};
+        const nowIso = new Date().toISOString();
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          fullName: normalizeNonEmptyString(profilePatch.fullName, existingProfile?.fullName || decodedToken.name || authUser?.displayName),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || profilePatch.email || existingProfile?.email).toLowerCase(),
+          phone: normalizeNonEmptyString(profilePatch.phone, existingProfile?.phone),
+          companyName: normalizeNonEmptyString(profilePatch.companyName, existingProfile?.companyName || '') || null,
+          address: {
+            street: normalizeNonEmptyString(profilePatch.address?.street, existingProfile?.address?.street),
+            city: normalizeNonEmptyString(profilePatch.address?.city, existingProfile?.address?.city),
+            state: normalizeNonEmptyString(profilePatch.address?.state, existingProfile?.address?.state),
+            zip: normalizeNonEmptyString(profilePatch.address?.zip, existingProfile?.address?.zip),
+            country: normalizeNonEmptyString(profilePatch.address?.country, existingProfile?.address?.country || 'US'),
+          },
+          termsAcceptedAt: normalizeNonEmptyString(profilePatch.termsAcceptedAt, existingProfile?.termsAcceptedAt || nowIso),
+          termsVersion: normalizeNonEmptyString(profilePatch.termsVersion, existingProfile?.termsVersion || AUCTION_TERMS_VERSION),
+          legalAcceptedAuctionSlug: auction.slug,
+          legalAcceptedAuctionId: auction.id,
+          lastAuctionRegistrationAt: nowIso,
+        });
+
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        if (!normalizeNonEmptyString(existingProfile?.termsAcceptedAt)) {
+          const bidderContact = await resolveAuctionUserContact(userUid, nextProfile);
+          if (bidderContact.email) {
+            await sendAuctionRegistrationEmailMessage({
+              email: bidderContact.email,
+              displayName: bidderContact.displayName,
+              auctionTitle: auction.title,
+              auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+            });
+          }
+        }
+
+        return res.status(200).json(buildAuctionBidderStatusPayload(auction, nextProfile));
+      }
+
+      const auctionIdentitySessionMatch = path.match(/^\/auctions\/([^/]+)\/identity-session$/i);
+      if (req.method === 'POST' && auctionIdentitySessionMatch) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionIdentitySessionMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const verificationSession = await stripe.identity.verificationSessions.create({
+          type: 'document',
+          return_url: `${getRequestBaseUrl(req)}/auctions/${encodeURIComponent(auction.slug)}/register?identity_return=1`,
+          metadata: {
+            userUid,
+            auctionId: auction.id,
+            auctionSlug: auction.slug,
+          },
+          options: {
+            document: {
+              require_matching_selfie: true,
+            },
+          },
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeIdentityVerificationSessionId: verificationSession.id,
+          stripeIdentityVerificationUrl: verificationSession.url || null,
+          idVerificationStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: verificationSession.url,
+          sessionId: verificationSession.id,
+        });
+      }
+
+      const auctionPaymentSetupSessionMatch = path.match(/^\/auctions\/([^/]+)\/payment-setup-session$/i);
+      if (req.method === 'POST' && auctionPaymentSetupSessionMatch) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionPaymentSetupSessionMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const setupSession = await stripe.checkout.sessions.create({
+          mode: 'setup',
+          customer: customerId,
+          payment_method_types: ['card'],
+          success_url: `${getRequestBaseUrl(req)}/auctions/${encodeURIComponent(auction.slug)}/register?setup_session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${getRequestBaseUrl(req)}/auctions/${encodeURIComponent(auction.slug)}/register?setup_cancelled=1`,
+          metadata: {
+            checkoutScope: 'auction_bidder_setup',
+            userUid,
+            auctionId: auction.id,
+            auctionSlug: auction.slug,
+          },
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeSetupSessionId: setupSession.id,
+          stripeSetupSessionStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: setupSession.url,
+          sessionId: setupSession.id,
+        });
+      }
+
+      const auctionBidderSetupSyncMatch = path.match(/^\/auctions\/bidder-setup-session\/([^/]+)$/i);
+      if (req.method === 'GET' && auctionBidderSetupSyncMatch) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const sessionId = decodeURIComponent(auctionBidderSetupSyncMatch[1] || '').trim();
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const currentProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+        const previousApproved = Boolean(currentProfile.bidderApprovedAt);
+        const syncedProfile = await syncAuctionBidderSetupSession(stripe, sessionId, userUid);
+        const auctionSlug = normalizeNonEmptyString(req.query?.auctionSlug || syncedProfile.legalAcceptedAuctionSlug);
+        const auction = auctionSlug ? await getAuctionBySlugFromDb(auctionSlug) : null;
+        const statusPayload = buildAuctionBidderStatusPayload(auction, syncedProfile);
+        const bidderContact = await resolveAuctionUserContact(userUid, syncedProfile);
+
+        if (bidderContact.email && !previousApproved && statusPayload.bidderApproved && auction) {
+          await sendAuctionBidderApprovedEmailMessage({
+            email: bidderContact.email,
+            displayName: bidderContact.displayName,
+            auctionTitle: auction.title,
+            auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+          });
+        }
+
+        return res.status(200).json(statusPayload);
+      }
+
+      const adminAssignableListingsMatch = path.match(/^\/admin\/auctions\/([^/]+)\/assignable-listings$/i);
+      if (req.method === 'GET' && adminAssignableListingsMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const auctionId = decodeURIComponent(adminAssignableListingsMatch[1] || '').trim();
+        const auctionSnap = await getAuctionDb().collection('auctions').doc(auctionId).get();
+        if (!auctionSnap.exists) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const lotSnap = await getAuctionDb().collection('auctions').doc(auctionId).collection('lots').get();
+        const assignedListingIds = new Set(
+          lotSnap.docs.map((doc) => normalizeNonEmptyString(doc.data()?.listingId)).filter(Boolean)
+        );
+        const searchQuery = normalizeNonEmptyString(req.query?.q).toLowerCase();
+        const listingsSnap = await getDb()
+          .collection('listings')
+          .where('approvalStatus', '==', 'approved')
+          .where('paymentStatus', '==', 'paid')
+          .limit(150)
+          .get();
+
+        const listings = listingsSnap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((listing) => !['sold', 'archived'].includes(normalizeNonEmptyString(listing.status).toLowerCase()))
+          .filter((listing) => !assignedListingIds.has(normalizeNonEmptyString(listing.id)))
+          .filter((listing) => {
+            const assignedAuctionId = normalizeNonEmptyString(listing.auctionId);
+            return !assignedAuctionId || assignedAuctionId === auctionId;
+          })
+          .filter((listing) => {
+            if (!searchQuery) return true;
+            const haystack = [
+              listing.title,
+              listing.manufacturer,
+              listing.make,
+              listing.model,
+              listing.stockNumber,
+              listing.id,
+              listing.location,
+            ]
+              .map((value) => normalizeNonEmptyString(value).toLowerCase())
+              .join(' ');
+            return haystack.includes(searchQuery);
+          })
+          .sort((a, b) => normalizeNonEmptyString(a.title).localeCompare(normalizeNonEmptyString(b.title)))
+          .slice(0, 75);
+
+        return res.status(200).json({
+          listings,
+          count: listings.length,
+        });
+      }
+
+      const adminAuctionLotsMatch = path.match(/^\/admin\/auctions\/([^/]+)\/lots$/i);
+      if (req.method === 'POST' && adminAuctionLotsMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const auctionId = decodeURIComponent(adminAuctionLotsMatch[1] || '').trim();
+        const auctionSnap = await getAuctionDb().collection('auctions').doc(auctionId).get();
+        if (!auctionSnap.exists) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const listingId = normalizeNonEmptyString(req.body?.listingId);
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const listingSnap = await getDb().collection('listings').doc(listingId).get();
+        if (!listingSnap.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+
+        const listing = { id: listingSnap.id, ...listingSnap.data() };
+        const existingLotByListing = await getAuctionDb()
+          .collection('auctions')
+          .doc(auctionId)
+          .collection('lots')
+          .where('listingId', '==', listingId)
+          .limit(1)
+          .get();
+        if (!existingLotByListing.empty) {
+          return res.status(409).json({ error: 'That listing is already assigned to this auction.' });
+        }
+
+        const existingAuctionId = normalizeNonEmptyString(listing.auctionId);
+        if (existingAuctionId && existingAuctionId !== auctionId) {
+          return res.status(409).json({ error: 'That listing is already assigned to another auction.' });
+        }
+
+        const lotsSnap = await getAuctionDb().collection('auctions').doc(auctionId).collection('lots').get();
+        const requestedLotNumber = normalizeNonEmptyString(req.body?.lotNumber);
+        const usedLotNumbers = new Set(lotsSnap.docs.map((doc) => normalizeNonEmptyString(doc.data()?.lotNumber)).filter(Boolean));
+        if (requestedLotNumber && usedLotNumbers.has(requestedLotNumber)) {
+          return res.status(409).json({ error: 'That lot number is already in use for this auction.' });
+        }
+
+        const nextCloseOrder = lotsSnap.docs.reduce((maxValue, doc) => {
+          return Math.max(maxValue, normalizeFiniteNumber(doc.data()?.closeOrder, 0));
+        }, 0) + 1;
+        const lotPayload = buildAuctionLotPayloadFromListing({
+          auction,
+          listing,
+          payload: {
+            ...req.body,
+            closeOrder: Number.isFinite(Number(req.body?.closeOrder)) ? Number(req.body.closeOrder) : nextCloseOrder,
+          },
+        });
+        const lotRef = getAuctionDb().collection('auctions').doc(auctionId).collection('lots').doc();
+        const storedLot = {
+          ...lotPayload,
+          id: lotRef.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await lotRef.set(storedLot);
+        await getAuctionDb().collection('auctions').doc(auctionId).set({
+          lotCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+        await syncListingAuctionProjection(listingId, {
+          auctionId: auction.id,
+          auctionSlug: auction.slug,
+          auctionStatus: storedLot.status,
+          auctionEndTime: storedLot.endTime,
+          currentBid: storedLot.currentBid,
+          bidCount: storedLot.bidCount,
+          lotNumber: storedLot.lotNumber,
+        });
+
+        return res.status(200).json({ lot: storedLot });
+      }
+
+      const adminAuctionLotMatch = path.match(/^\/admin\/auctions\/([^/]+)\/lots\/([^/]+)$/i);
+      if ((req.method === 'PATCH' || req.method === 'DELETE') && adminAuctionLotMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const auctionId = decodeURIComponent(adminAuctionLotMatch[1] || '').trim();
+        const lotId = decodeURIComponent(adminAuctionLotMatch[2] || '').trim();
+        const auctionRef = getAuctionDb().collection('auctions').doc(auctionId);
+        const lotRef = auctionRef.collection('lots').doc(lotId);
+        const [auctionSnap, lotSnap] = await Promise.all([auctionRef.get(), lotRef.get()]);
+        if (!auctionSnap.exists) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+        if (!lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction lot not found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const existingLot = { id: lotSnap.id, ...lotSnap.data() };
+
+        if (req.method === 'DELETE') {
+          await lotRef.delete();
+          await auctionRef.set({
+            lotCount: admin.firestore.FieldValue.increment(-1),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          await clearListingAuctionProjection(existingLot.listingId);
+          return res.status(200).json({ success: true });
+        }
+
+        const listingId = normalizeNonEmptyString(req.body?.listingId || existingLot.listingId);
+        const listingSnap = await getDb().collection('listings').doc(listingId).get();
+        if (!listingSnap.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+        const listing = { id: listingSnap.id, ...listingSnap.data() };
+
+        const requestedLotNumber = normalizeNonEmptyString(req.body?.lotNumber);
+        if (requestedLotNumber) {
+          const conflictingLotSnap = await auctionRef.collection('lots').where('lotNumber', '==', requestedLotNumber).limit(2).get();
+          const conflictingLot = conflictingLotSnap.docs.find((doc) => doc.id !== lotId);
+          if (conflictingLot) {
+            return res.status(409).json({ error: 'That lot number is already in use for this auction.' });
+          }
+        }
+
+        const updatedLot = {
+          ...buildAuctionLotPayloadFromListing({
+            auction,
+            listing,
+            payload: req.body || {},
+            existingLot,
+          }),
+          id: lotId,
+          updatedAt: new Date().toISOString(),
+        };
+        await lotRef.set(updatedLot, { merge: true });
+        await syncListingAuctionProjection(listingId, {
+          auctionId: auction.id,
+          auctionSlug: auction.slug,
+          auctionStatus: updatedLot.status,
+          auctionEndTime: updatedLot.endTime,
+          currentBid: updatedLot.currentBid,
+          bidCount: updatedLot.bidCount,
+          lotNumber: updatedLot.lotNumber,
+        });
+
+        return res.status(200).json({ lot: updatedLot });
+      }
+
+      const adminAuctionInvoiceSettlementMatch = path.match(/^\/admin\/auctions\/invoices\/([^/]+)\/settlement$/i);
+      if (req.method === 'POST' && adminAuctionInvoiceSettlementMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const invoiceId = decodeURIComponent(adminAuctionInvoiceSettlementMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const auctionId = normalizeNonEmptyString(invoice.auctionId);
+        const lotId = normalizeNonEmptyString(invoice.lotId);
+        if (!auctionId || !lotId) {
+          return res.status(400).json({ error: 'Auction invoice is missing auction or lot references.' });
+        }
+
+        const auctionRef = getAuctionDb().collection('auctions').doc(auctionId);
+        const lotRef = auctionRef.collection('lots').doc(lotId);
+        const [auctionSnap, lotSnap] = await Promise.all([auctionRef.get(), lotRef.get()]);
+        if (!auctionSnap.exists || !lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction invoice context could not be found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const lot = { id: lotSnap.id, ...lotSnap.data() };
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const nowIso = new Date().toISOString();
+        const wireTotals = buildAuctionInvoiceTotals({
+          winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+          isTitledItem: Boolean(lot.isTitledItem),
+          paymentMethod: null,
+        });
+        const wasAlreadyPaid = normalizeNonEmptyString(invoice.status).toLowerCase() === 'paid';
+        const paidAt = normalizeNonEmptyString(invoice.paidAt) || nowIso;
+        const releaseAuthorizedAt = normalizeNonEmptyString(invoice.releaseAuthorizedAt || lot.releaseAuthorizedAt || lot.releasedAt) || nowIso;
+
+        const settledInvoice = stripUndefinedDeep({
+          ...invoice,
+          buyerPremium: wireTotals.buyerPremium,
+          documentationFee: wireTotals.documentationFee,
+          cardProcessingFee: 0,
+          totalDue: wireTotals.subtotalBeforeCardFee,
+          status: 'paid',
+          paymentMethod: 'wire',
+          paymentMethodFunding: null,
+          paidAt,
+          wireReceivedAt: normalizeNonEmptyString(invoice.wireReceivedAt) || nowIso,
+          wireReceivedBy: normalizeNonEmptyString(invoice.wireReceivedBy) || actorUid,
+          releaseAuthorizedAt,
+          releaseAuthorizedBy: normalizeNonEmptyString(invoice.releaseAuthorizedBy) || actorUid,
+          updatedAt: nowIso,
+        });
+        await upsertAuctionInvoice(invoiceId, settledInvoice);
+
+        const lotPatch = stripUndefinedDeep({
+          status: 'sold',
+          releasedAt: normalizeNonEmptyString(lot.releasedAt) || nowIso,
+          releasedBy: normalizeNonEmptyString(lot.releasedBy) || actorUid,
+          releaseAuthorizedAt,
+          releaseAuthorizedBy: normalizeNonEmptyString(lot.releaseAuthorizedBy) || actorUid,
+          updatedAt: nowIso,
+        });
+        await lotRef.set(lotPatch, { merge: true });
+
+        const refreshedLotSnap = await lotRef.get();
+        const refreshedLot = refreshedLotSnap.exists
+          ? { id: refreshedLotSnap.id, ...refreshedLotSnap.data() }
+          : { ...lot, ...lotPatch };
+
+        if (!wasAlreadyPaid) {
+          const bidderProfile = await getAuctionBidderProfile(invoice.buyerId);
+          const bidderContact = await resolveAuctionUserContact(invoice.buyerId, bidderProfile || {});
+          if (bidderContact.email) {
+            await sendAuctionPaymentReceiptEmailMessage({
+              email: bidderContact.email,
+              displayName: bidderContact.displayName,
+              invoiceNumber: invoiceId,
+              amountPaid: settledInvoice.totalDue,
+              invoiceUrl: buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId),
+            });
+          }
+        }
+
+        return res.status(200).json({
+          invoice: settledInvoice,
+          lot: refreshedLot,
+        });
+      }
+
+      const auctionLotInvoiceMatch = path.match(/^\/auctions\/([^/]+)\/lots\/([^/]+)\/invoice$/i);
+      if (req.method === 'GET' && auctionLotInvoiceMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const auctionSlug = decodeURIComponent(auctionLotInvoiceMatch[1] || '').trim();
+        const lotNumber = decodeURIComponent(auctionLotInvoiceMatch[2] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+        const lot = await getAuctionLotByNumberFromDb(auction.id, lotNumber);
+        if (!lot) {
+          return res.status(404).json({ error: 'Auction lot not found.' });
+        }
+
+        const invoiceId = buildAuctionInvoiceId(auction.id, lot.id);
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+        if (!canAdministrateAccount(actorRole) && normalizeNonEmptyString(invoice.buyerId) !== userUid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(invoice.totalDue, 0));
+        const buyer = canAdministrateAccount(actorRole)
+          ? await buildAuctionAdminBidderSummary(invoice.buyerId)
+          : null;
+        return res.status(200).json({
+          invoice,
+          cardEligible,
+          paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+          buyer,
+        });
+      }
+
+      const auctionBidMatch = path.match(/^\/auctions\/([^/]+)\/lots\/([^/]+)\/bids$/i);
+      if (req.method === 'POST' && auctionBidMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const auctionSlug = decodeURIComponent(auctionBidMatch[1] || '').trim();
+        const lotNumber = decodeURIComponent(auctionBidMatch[2] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+        const lot = await getAuctionLotByNumberFromDb(auction.id, lotNumber);
+        if (!lot) {
+          return res.status(404).json({ error: 'Auction lot not found.' });
+        }
+
+        const stripeClient = stripe || createStripeClient();
+        let bidderProfile = await getAuctionBidderProfile(userUid);
+        if (bidderProfile && stripeClient) {
+          const normalizedProfile = normalizeAuctionBidderProfile(bidderProfile);
+          if (normalizeNonEmptyString(normalizedProfile.stripeIdentityVerificationSessionId) && normalizedProfile.idVerificationStatus !== 'verified') {
+            bidderProfile = await syncAuctionBidderIdentityStatus(stripeClient, normalizedProfile.stripeIdentityVerificationSessionId, userUid);
+          }
+          const normalizedSyncedProfile = normalizeAuctionBidderProfile(bidderProfile);
+          if (normalizeNonEmptyString(normalizedSyncedProfile.stripeSetupSessionId) && !normalizeNonEmptyString(normalizedSyncedProfile.defaultPaymentMethodId)) {
+            bidderProfile = await syncAuctionBidderSetupSession(stripeClient, normalizedSyncedProfile.stripeSetupSessionId, userUid);
+          }
+        }
+
+        const normalizedBidderProfile = normalizeAuctionBidderProfile(bidderProfile || {}, {
+          email: normalizeNonEmptyString(decodedToken.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name),
+        });
+        const bidderStatus = buildAuctionBidderStatusPayload(auction, normalizedBidderProfile);
+        if (!bidderStatus.bidderApproved) {
+          return res.status(403).json({ error: 'Complete bidder verification before placing a bid.' });
+        }
+
+        const submittedAmount = normalizeFiniteNumber(req.body?.amount, 0);
+        const lotRef = getAuctionDb().collection('auctions').doc(auction.id).collection('lots').doc(lot.id);
+        const hasPriorBidSnap = await lotRef.collection('bids').where('bidderId', '==', userUid).limit(1).get();
+        const bidderAnonymousId = buildAuctionBidderAnonymousId(userUid, normalizedBidderProfile);
+        const transactionResult = await getAuctionDb().runTransaction(async (transaction) => {
+          const freshLotSnap = await transaction.get(lotRef);
+          if (!freshLotSnap.exists) {
+            throw new Error('Auction lot no longer exists.');
+          }
+
+          const freshLot = { id: freshLotSnap.id, ...freshLotSnap.data() };
+          const freshStatus = normalizeAuctionLotStatus(freshLot.status, 'upcoming');
+          if (!['active', 'extended'].includes(freshStatus)) {
+            throw new Error('Bidding is not open for this lot.');
+          }
+
+          const nowMillis = Date.now();
+          const endMillis = new Date(normalizeNonEmptyString(freshLot.endTime)).getTime();
+          if (!Number.isFinite(endMillis) || endMillis <= nowMillis) {
+            throw new Error('This lot has already closed.');
+          }
+
+          const currentBid = normalizeFiniteNumber(freshLot.currentBid, 0);
+          const minimumBid = currentBid > 0
+            ? currentBid + getAuctionBidIncrement(currentBid)
+            : normalizeFiniteNumber(freshLot.startingBid, 0);
+          if (!Number.isFinite(submittedAmount) || submittedAmount < minimumBid) {
+            throw new Error(`Minimum next bid is $${minimumBid.toLocaleString()}.`);
+          }
+
+          const thresholdMinutes = normalizeFiniteNumber(freshLot.softCloseThresholdMin, normalizeFiniteNumber(auction.softCloseThresholdMin, 3));
+          const extensionMinutes = normalizeFiniteNumber(freshLot.softCloseExtensionMin, normalizeFiniteNumber(auction.softCloseExtensionMin, 2));
+          const thresholdMs = thresholdMinutes * 60 * 1000;
+          const shouldExtend = endMillis - nowMillis <= thresholdMs;
+          const nextEndTime = shouldExtend
+            ? new Date(endMillis + extensionMinutes * 60 * 1000).toISOString()
+            : normalizeNonEmptyString(freshLot.endTime);
+
+          const bidRef = lotRef.collection('bids').doc();
+          const bidPayload = {
+            id: bidRef.id,
+            lotId: freshLot.id,
+            auctionId: auction.id,
+            bidderId: userUid,
+            bidderAnonymousId,
+            amount: submittedAmount,
+            maxBid: null,
+            type: 'manual',
+            status: 'winning',
+            timestamp: new Date().toISOString(),
+            triggeredExtension: shouldExtend,
+          };
+
+          transaction.set(bidRef, bidPayload);
+          transaction.set(lotRef, {
+            currentBid: submittedAmount,
+            currentBidderId: userUid,
+            currentBidderAnonymousId: bidderAnonymousId,
+            bidCount: admin.firestore.FieldValue.increment(1),
+            uniqueBidders: hasPriorBidSnap.empty && normalizeNonEmptyString(freshLot.currentBidderId) !== userUid
+              ? admin.firestore.FieldValue.increment(1)
+              : normalizeFiniteNumber(freshLot.uniqueBidders, 0),
+            lastBidTime: bidPayload.timestamp,
+            reserveMet: freshLot.reservePrice == null ? true : submittedAmount >= normalizeFiniteNumber(freshLot.reservePrice, 0),
+            status: shouldExtend ? 'extended' : freshStatus,
+            endTime: nextEndTime,
+            extensionCount: shouldExtend ? admin.firestore.FieldValue.increment(1) : normalizeFiniteNumber(freshLot.extensionCount, 0),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          transaction.set(getAuctionDb().collection('auctions').doc(auction.id), {
+            totalBids: admin.firestore.FieldValue.increment(1),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+
+          return {
+            bid: bidPayload,
+            previousBidderId: normalizeNonEmptyString(freshLot.currentBidderId),
+          };
+        });
+
+        const updatedLot = await getAuctionLotByNumberFromDb(auction.id, lotNumber);
+        await syncListingAuctionProjection(lot.listingId, {
+          auctionId: auction.id,
+          auctionSlug: auction.slug,
+          auctionStatus: updatedLot?.status || lot.status,
+          auctionEndTime: updatedLot?.endTime || lot.endTime,
+          currentBid: updatedLot?.currentBid || submittedAmount,
+          bidCount: updatedLot?.bidCount || normalizeFiniteNumber(lot.bidCount, 0) + 1,
+          lotNumber: lot.lotNumber,
+        });
+
+        const outbidBidderId = normalizeNonEmptyString(transactionResult.previousBidderId);
+        if (outbidBidderId && outbidBidderId !== userUid) {
+          const outbidProfile = await getAuctionBidderProfile(outbidBidderId);
+          const outbidContact = await resolveAuctionUserContact(outbidBidderId, outbidProfile || {});
+          if (outbidContact.email) {
+            await sendAuctionOutbidEmailMessage({
+              email: outbidContact.email,
+              displayName: outbidContact.displayName,
+              auctionTitle: auction.title,
+              lotTitle: lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim(),
+              bidAmount: submittedAmount,
+              lotUrl: buildAuctionLotPublicUrl(auction.slug, lot.lotNumber),
+            });
+          }
+        }
+
+        return res.status(200).json({
+          lot: updatedLot,
+          bid: transactionResult.bid,
+        });
+      }
+
+      const auctionInvoicePaymentSessionMatch = path.match(/^\/auctions\/invoices\/([^/]+)\/payment-session$/i);
+      if (req.method === 'POST' && auctionInvoicePaymentSessionMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const invoiceId = decodeURIComponent(auctionInvoicePaymentSessionMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole) && normalizeNonEmptyString(invoice.buyerId) !== userUid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const paymentMethod = normalizeNonEmptyString(req.body?.paymentMethod).toLowerCase();
+        if (paymentMethod !== 'wire' && paymentMethod !== 'card') {
+          return res.status(400).json({ error: 'Unsupported payment method.' });
+        }
+
+        const auctionSnap = await getAuctionDb().collection('auctions').doc(normalizeNonEmptyString(invoice.auctionId)).get();
+        const lotSnap = await getAuctionDb().collection('auctions').doc(normalizeNonEmptyString(invoice.auctionId)).collection('lots').doc(normalizeNonEmptyString(invoice.lotId)).get();
+        if (!auctionSnap.exists || !lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction invoice context could not be found.' });
+        }
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const lot = { id: lotSnap.id, ...lotSnap.data() };
+
+        const refreshed = await createOrRefreshAuctionInvoiceForLot({
+          auction,
+          lot,
+          paymentMethod: paymentMethod === 'card' ? 'card' : null,
+        });
+        const baseInvoice = paymentMethod === 'wire'
+          ? await (async () => {
+              const wireInvoice = {
+                ...refreshed.invoice,
+                paymentMethod: 'wire',
+                cardProcessingFee: 0,
+                totalDue: refreshed.totals.subtotalBeforeCardFee,
+                updatedAt: new Date().toISOString(),
+              };
+              await upsertAuctionInvoice(invoiceId, wireInvoice);
+              return wireInvoice;
+            })()
+          : refreshed.invoice;
+
+        const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(baseInvoice.totalDue, 0));
+        if (paymentMethod === 'wire') {
+          return res.status(200).json({
+            invoice: baseInvoice,
+            cardEligible,
+            paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+          });
+        }
+
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+        if (!cardEligible) {
+          return res.status(400).json({ error: 'Card and debit payments are only available up to $50,000 total due.' });
+        }
+
+        const buyerProfile = await getAuctionBidderProfile(invoice.buyerId);
+        const buyerContact = await resolveAuctionUserContact(invoice.buyerId, buyerProfile || {});
+        const customerId = await getOrCreateStripeCustomer(stripe, invoice.buyerId, buyerContact.email, buyerContact.displayName);
+        const returnUrl = buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId);
+        const separator = returnUrl.includes('?') ? '&' : '?';
+        const checkoutSession = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          customer: customerId,
+          payment_method_types: ['card'],
+          success_url: `${getRequestBaseUrl(req)}${returnUrl}${separator}payment=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${getRequestBaseUrl(req)}${returnUrl}${separator}payment=cancelled`,
+          metadata: {
+            checkoutScope: 'auction_invoice',
+            auctionInvoiceId: invoiceId,
+            buyerId: invoice.buyerId,
+            auctionId: auction.id,
+            lotId: lot.id,
+            auctionSlug: auction.slug,
+            lotNumber: lot.lotNumber,
+          },
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                unit_amount: Math.round(normalizeFiniteNumber(baseInvoice.totalDue, 0) * 100),
+                product_data: {
+                  name: `Auction invoice for Lot ${normalizeNonEmptyString(lot.lotNumber)}`,
+                  description: `${auction.title} · ${lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim()}`,
+                },
+              },
+              quantity: 1,
+            },
+          ],
+        });
+
+        const pendingInvoice = {
+          ...baseInvoice,
+          paymentMethod: 'card',
+          stripeCheckoutSessionId: normalizeNonEmptyString(checkoutSession.id),
+          updatedAt: new Date().toISOString(),
+        };
+        await upsertAuctionInvoice(invoiceId, pendingInvoice);
+
+        return res.status(200).json({
+          invoice: pendingInvoice,
+          cardEligible,
+          paymentMethodOptions: ['wire', 'card'],
+          url: checkoutSession.url,
+          sessionId: checkoutSession.id,
+        });
+      }
+
+      const auctionInvoiceMatch = path.match(/^\/auctions\/invoices\/([^/]+)$/i);
+      if (req.method === 'GET' && auctionInvoiceMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const invoiceId = decodeURIComponent(auctionInvoiceMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole) && normalizeNonEmptyString(invoice.buyerId) !== normalizeNonEmptyString(decodedToken.uid)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(invoice.totalDue, 0));
+        return res.status(200).json({
+          invoice,
+          cardEligible,
+          paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+        });
       }
 
       if (req.method === 'POST' && path === '/billing/create-checkout-session') {
@@ -12352,12 +14162,36 @@ exports.apiProxy = onRequest(
             `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
           );
           const placesData = await placesRes.json();
-          const predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
+          let predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
             description: p.description,
             placeId: p.place_id,
             mainText: normalizeNonEmptyString(p?.structured_formatting?.main_text),
             secondaryText: normalizeNonEmptyString(p?.structured_formatting?.secondary_text),
           }));
+
+          if (!predictions.length && mode === 'address') {
+            const geocodeResponse = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(input)}&key=${encodeURIComponent(apiKey)}`
+            );
+            if (geocodeResponse.ok) {
+              const geocodePayload = await geocodeResponse.json();
+              const topResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+              if (geocodePayload?.status === 'OK' && topResult) {
+                const geocodedPlace = parseGooglePlaceDetails(topResult, normalizeNonEmptyString(topResult.place_id));
+                const placeId =
+                  geocodedPlace.placeId ||
+                  `geocode:${Buffer.from(geocodedPlace.formattedAddress || input, 'utf8').toString('base64url')}`;
+                predictions = [
+                  {
+                    description: geocodedPlace.formattedAddress || input,
+                    placeId,
+                    mainText: geocodedPlace.street1 || geocodedPlace.formattedAddress || input,
+                    secondaryText: [geocodedPlace.city, geocodedPlace.state, geocodedPlace.country].filter(Boolean).join(', '),
+                  },
+                ];
+              }
+            }
+          }
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ predictions });
         } catch {
@@ -12371,6 +14205,22 @@ exports.apiProxy = onRequest(
         const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
         if (!apiKey) return res.status(200).json({ place: null });
         try {
+          const fallbackAddress = decodeAutocompleteFallbackAddress(placeId);
+          if (fallbackAddress) {
+            const geocodeResponse = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fallbackAddress)}&key=${encodeURIComponent(apiKey)}`
+            );
+            if (geocodeResponse.ok) {
+              const geocodePayload = await geocodeResponse.json();
+              const geocodeResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+              if (geocodePayload?.status === 'OK' && geocodeResult) {
+                const geocodedPlace = parseGooglePlaceDetails(geocodeResult, placeId);
+                res.set('Cache-Control', 'public, max-age=300');
+                return res.status(200).json({ place: geocodedPlace });
+              }
+            }
+          }
+
           const placeDetailsRes = await fetch(
             `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
           );

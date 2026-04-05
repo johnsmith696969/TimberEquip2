@@ -166,6 +166,13 @@ export function ListingDetail() {
     return targetListing ? `https://timberequip.com${buildListingPath(targetListing)}` : '';
   };
 
+  const auctionLotPath = listing?.auctionSlug && auctionLot
+    ? `/auctions/${listing.auctionSlug}/lots/${auctionLot.lotNumber}`
+    : '';
+  const auctionRegistrationPath = listing?.auctionSlug
+    ? `/auctions/${listing.auctionSlug}/register?returnTo=${encodeURIComponent(auctionLotPath || `/auctions/${listing.auctionSlug}`)}`
+    : '';
+
   const formatSpecValue = (value: unknown): string => {
     if (Array.isArray(value)) {
       return value
@@ -1221,7 +1228,7 @@ export function ListingDetail() {
               <div className="flex items-center gap-4 py-3 px-4 bg-surface border border-line rounded-sm mb-4">
                 <Gavel size={16} className="text-accent flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <Link to={`/auctions/${listing.auctionSlug || ''}`} className="font-black text-xs uppercase tracking-widest hover:text-accent">
+                  <Link to={auctionLotPath || `/auctions/${listing.auctionSlug || ''}`} className="font-black text-xs uppercase tracking-widest hover:text-accent">
                     Auction Lot #{auctionLot.lotNumber}
                   </Link>
                 </div>
@@ -1357,10 +1364,12 @@ export function ListingDetail() {
                             className="btn-industrial btn-accent"
                             disabled={bidding}
                             onClick={() => {
-                              alert('Bidding will be available when the auction goes live. Register as a bidder to participate.');
+                              if (auctionLotPath) {
+                                window.location.href = auctionLotPath;
+                              }
                             }}
                           >
-                            {bidding ? 'Placing…' : 'Place Bid'}
+                            {bidding ? 'Opening…' : 'Open Lot'}
                           </button>
                         </div>
                         <p className="text-[9px] text-muted mt-1">{auctionLot.buyerPremiumPercent}% buyer premium applies</p>
@@ -1371,7 +1380,7 @@ export function ListingDetail() {
                   {(auctionLot.status === 'upcoming' || auctionLot.status === 'preview') && (
                     <div className="text-center py-2">
                       <p className="text-xs text-muted">Bidding opens {auctionLot.startTime ? new Date(auctionLot.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}</p>
-                      <Link to={`/login?redirect=/auctions/${listing.auctionSlug}/register`} className="btn-industrial btn-accent w-full mt-2">
+                      <Link to={`/login?redirect=${encodeURIComponent(auctionRegistrationPath)}`} className="btn-industrial btn-accent w-full mt-2">
                         Register to Bid
                       </Link>
                     </div>
@@ -1838,10 +1847,12 @@ export function ListingDetail() {
                               className="btn-industrial btn-accent"
                               disabled={bidding}
                               onClick={() => {
-                                alert('Bidding will be available when the auction goes live. Register as a bidder to participate.');
+                                if (auctionLotPath) {
+                                  window.location.href = auctionLotPath;
+                                }
                               }}
                             >
-                              {bidding ? 'Placing…' : 'Place Bid'}
+                              {bidding ? 'Opening…' : 'Open Lot'}
                             </button>
                           </div>
                           <p className="text-[9px] text-muted mt-1">{auctionLot.buyerPremiumPercent}% buyer premium applies</p>
@@ -1852,7 +1863,7 @@ export function ListingDetail() {
                     {(auctionLot.status === 'upcoming' || auctionLot.status === 'preview') && (
                       <div className="text-center py-2">
                         <p className="text-xs text-muted">Bidding opens {auctionLot.startTime ? new Date(auctionLot.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}</p>
-                        <Link to={`/login?redirect=/auctions/${listing.auctionSlug}/register`} className="btn-industrial btn-accent w-full mt-2">
+                        <Link to={`/login?redirect=${encodeURIComponent(auctionRegistrationPath)}`} className="btn-industrial btn-accent w-full mt-2">
                           Register to Bid
                         </Link>
                       </div>

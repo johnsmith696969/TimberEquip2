@@ -29,6 +29,7 @@ import { CmsEditor } from '../components/admin/CmsEditor';
 import { MediaLibrary } from '../components/admin/MediaLibrary';
 import { AnalyticsDashboard } from '../components/admin/AnalyticsDashboard';
 import { TaxonomyManager } from '../components/admin/TaxonomyManager';
+import { AuctionLotManager } from '../components/admin/AuctionLotManager';
 import { AccountMfaSettingsCard } from '../components/AccountMfaSettingsCard';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
@@ -99,6 +100,11 @@ export function AdminDashboard() {
   const [adminCallSearchQuery, setAdminCallSearchQuery] = useState('');
   const [adminCallDisplayCount, setAdminCallDisplayCount] = useState(20);
   const [overview, setOverview] = useState<AdminOperationsBootstrapResponse['overview']>(null);
+  const [trackingListings, setTrackingListings] = useState<Listing[]>([]);
+  const [trackingListingsLoading, setTrackingListingsLoading] = useState(false);
+  const [trackingListingsLoaded, setTrackingListingsLoaded] = useState(false);
+  const [trackingListingsError, setTrackingListingsError] = useState('');
+  const [trackingListingsTruncated, setTrackingListingsTruncated] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [billingLogs, setBillingLogs] = useState<BillingAuditLog[]>([]);
@@ -168,6 +174,7 @@ export function AdminDashboard() {
   const [listingReviewSummaries, setListingReviewSummaries] = useState<Record<string, ListingReviewSummary>>({});
   const [listingReviewSummariesLoading, setListingReviewSummariesLoading] = useState(false);
   const [listingReviewSummariesError, setListingReviewSummariesError] = useState('');
+  const [bulkApprovingListings, setBulkApprovingListings] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -217,11 +224,12 @@ export function AdminDashboard() {
   const [sendingAdminPasswordReset, setSendingAdminPasswordReset] = useState(false);
   const [adminSettingsError, setAdminSettingsError] = useState('');
   const listingsInitializedRef = useRef(false);
+  const trackingListingsLoadKeyRef = useRef('');
   const operationalLoadKeyRef = useRef('');
   const userDirectoryLoadKeyRef = useRef('');
   const listingReviewSummariesLoadKeyRef = useRef('');
   const shouldLoadListingsData = activeTab === 'overview' || activeTab === 'listings';
-  const shouldLoadAdminOperations = ['overview', 'accounts', 'users', 'inquiries', 'calls'].includes(activeTab);
+  const shouldLoadAdminOperations = ['overview', 'accounts', 'users', 'inquiries', 'calls', 'tracking'].includes(activeTab);
   const showTabContentLoader = shouldLoadListingsData && loading && !listingsInitializedRef.current && listings.length === 0;
 
   const selectAdminTab = useCallback((nextTab: DashboardTab) => {
@@ -393,7 +401,7 @@ export function AdminDashboard() {
   };
 
   const fetchUsers = async (force = false) => {
-    const shouldRequestOverview = activeTab === 'overview';
+    const shouldRequestOverview = activeTab === 'overview' || activeTab === 'tracking';
     if (!authUser?.uid || usersLoading || (adminOperationsLoaded && !force && (!shouldRequestOverview || overview))) {
       return;
     }
@@ -434,6 +442,54 @@ export function AdminDashboard() {
         userDirectoryLoadKeyRef.current = '';
       }
       setUsersLoading(false);
+    }
+  };
+
+  const loadTrackingListings = async (force = false) => {
+    if (!authUser?.uid) {
+      setTrackingListings([]);
+      setTrackingListingsLoaded(false);
+      setTrackingListingsError('');
+      setTrackingListingsTruncated(false);
+      trackingListingsLoadKeyRef.current = '';
+      return;
+    }
+
+    if (trackingListingsLoading || (trackingListingsLoaded && !force)) {
+      return;
+    }
+
+    const requestKey = `${authUser.uid}:tracking_listings:${showDemoListings ? 'demo' : 'live'}`;
+    if (trackingListingsLoadKeyRef.current === requestKey) {
+      return;
+    }
+
+    trackingListingsLoadKeyRef.current = requestKey;
+    setTrackingListingsLoading(true);
+    setTrackingListingsError('');
+
+    try {
+      const result = await equipmentService.getAllAdminListings({
+        includeDemoListings: showDemoListings,
+        pageSize: 100,
+        maxListings: 5000,
+      });
+      setTrackingListings(result.listings);
+      setTrackingListingsTruncated(result.truncated);
+      setTrackingListingsLoaded(true);
+    } catch (error) {
+      console.error('Error loading full tracking listings:', error);
+      setTrackingListingsError(
+        error instanceof Error ? error.message : 'Unable to load complete inventory analytics right now.'
+      );
+      setTrackingListings([]);
+      setTrackingListingsTruncated(false);
+      setTrackingListingsLoaded(false);
+    } finally {
+      if (trackingListingsLoadKeyRef.current === requestKey) {
+        trackingListingsLoadKeyRef.current = '';
+      }
+      setTrackingListingsLoading(false);
     }
   };
 
@@ -796,6 +852,14 @@ export function AdminDashboard() {
   }, [authUser?.uid]);
 
   useEffect(() => {
+    trackingListingsLoadKeyRef.current = '';
+    setTrackingListings([]);
+    setTrackingListingsLoaded(false);
+    setTrackingListingsError('');
+    setTrackingListingsTruncated(false);
+  }, [authUser?.uid, showDemoListings]);
+
+  useEffect(() => {
     if (activeTab === 'billing' || activeTab === 'tracking') {
       void fetchBillingData();
     }
@@ -803,7 +867,18 @@ export function AdminDashboard() {
     if (activeTab === 'content') {
       void fetchContentData();
     }
+
+    if (activeTab === 'tracking') {
+      void fetchUsers();
+      void loadTrackingListings();
+    }
   }, [activeTab, authUser?.uid]);
+
+  useEffect(() => {
+    if (activeTab === 'tracking') {
+      void loadTrackingListings(true);
+    }
+  }, [activeTab, showDemoListings]);
 
   useEffect(() => {
     if (activeTab === 'auctions') void loadAuctions();
@@ -1001,23 +1076,45 @@ export function AdminDashboard() {
     }
 
     try {
-      const nextListing = await equipmentService.transitionListingLifecycle(listing.id, action, {
-        reason,
-        metadata: {
-          triggeredFrom: 'admin_dashboard',
-          actorSurface: 'admin_listings',
-        },
-      });
+      const shouldRunRemainingGoLiveWorkflow =
+        action === 'payment_confirmed' &&
+        String(listing.approvalStatus || 'pending').trim().toLowerCase() === 'approved' &&
+        String(listing.status || 'pending').trim().toLowerCase() !== 'active';
 
-      mergeListingPatch(listing.id, nextListing);
-      const auditListing = {
-        ...listing,
-        ...nextListing,
-      } as Listing;
-      await loadListingLifecycleAudit(auditListing, { silent: true });
+      const actionsToRun = action === 'approve'
+        ? getBulkApprovalWorkflow(listing)
+        : shouldRunRemainingGoLiveWorkflow
+          ? getBulkApprovalWorkflow(listing).filter((workflowAction) => workflowAction !== 'approve')
+          : [action];
+
+      let latestListing = listing;
+
+      for (const nextAction of actionsToRun) {
+        const nextListing = await equipmentService.transitionListingLifecycle(listing.id, nextAction, {
+          reason: nextAction === 'reject' ? reason : '',
+          metadata: {
+            triggeredFrom: 'admin_dashboard',
+            actorSurface: 'admin_listings',
+            requestedAction: action,
+            automatedWorkflow: action === 'approve' && actionsToRun.length > 1,
+          },
+        });
+
+        latestListing = {
+          ...latestListing,
+          ...nextListing,
+        } as Listing;
+        mergeListingPatch(listing.id, nextListing);
+      }
+
+      await loadListingLifecycleAudit(latestListing, { silent: true });
       setUserFeedback({
         tone: 'success',
-        message: `Listing ${action.replace(/_/g, ' ')} completed successfully.`,
+        message: actionsToRun.length > 1
+          ? (action === 'approve'
+              ? 'Listing approved and published successfully.'
+              : 'Listing published successfully.')
+          : `Listing ${action.replace(/_/g, ' ')} completed successfully.`,
       });
     } catch (error) {
       console.error(`Error running lifecycle action ${action} for listing ${listing.id}:`, error);
@@ -1027,6 +1124,91 @@ export function AdminDashboard() {
       });
     } finally {
       setPendingListingLifecycleKey('');
+    }
+  };
+
+  const getBulkApprovalWorkflow = useCallback((listing: Listing): ListingLifecycleAction[] => {
+    const status = String(listing.status || 'pending').trim().toLowerCase();
+    const approvalStatus = String(listing.approvalStatus || 'pending').trim().toLowerCase();
+    const paymentStatus = String(listing.paymentStatus || 'pending').trim().toLowerCase();
+
+    if (['archived', 'sold'].includes(status)) {
+      return [];
+    }
+
+    const actions: ListingLifecycleAction[] = [];
+    if (approvalStatus !== 'approved') {
+      actions.push('approve');
+    }
+    if (paymentStatus !== 'paid') {
+      actions.push('payment_confirmed');
+    }
+    if (status !== 'active') {
+      actions.push('publish');
+    }
+
+    return actions;
+  }, []);
+
+  const handleBulkApproveListings = async (selectedListings: Listing[]) => {
+    const actionableListings = selectedListings
+      .map((listing) => ({ listing, actions: getBulkApprovalWorkflow(listing) }))
+      .filter((entry) => entry.actions.length > 0);
+
+    if (actionableListings.length === 0) {
+      setUserFeedback({
+        tone: 'warning',
+        message: 'The selected listings are already live, sold, or archived.',
+      });
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Approve Selected Listings',
+      message: `Approve and publish ${actionableListings.length} selected listing${actionableListings.length === 1 ? '' : 's'}? This will confirm payment where needed so the listings can go live.`,
+      confirmLabel: 'Approve & Go Live',
+      cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+
+    setBulkApprovingListings(true);
+
+    let approvedCount = 0;
+    let skippedCount = selectedListings.length - actionableListings.length;
+    let failedCount = 0;
+
+    try {
+      for (const entry of actionableListings) {
+        let nextListing = entry.listing;
+
+        try {
+          for (const action of entry.actions) {
+            const patch = await equipmentService.transitionListingLifecycle(nextListing.id, action, {
+              metadata: {
+                triggeredFrom: 'admin_dashboard',
+                actorSurface: 'admin_bulk_approve',
+              },
+            });
+            nextListing = { ...nextListing, ...patch } as Listing;
+            mergeListingPatch(nextListing.id, patch);
+          }
+          approvedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          console.error(`Bulk approval failed for listing ${entry.listing.id}:`, error);
+        }
+      }
+
+      await fetchData();
+
+      setUserFeedback({
+        tone: failedCount > 0 ? 'warning' : 'success',
+        message: failedCount > 0
+          ? `${approvedCount} listing${approvedCount === 1 ? '' : 's'} approved and published. ${failedCount} failed${skippedCount ? ` and ${skippedCount} did not need changes` : ''}.`
+          : `${approvedCount} listing${approvedCount === 1 ? '' : 's'} approved and published successfully${skippedCount ? `. ${skippedCount} already did not require updates` : ''}.`,
+      });
+    } finally {
+      setBulkApprovingListings(false);
     }
   };
 
@@ -1473,16 +1655,25 @@ export function AdminDashboard() {
     const status = String(listing.status || 'pending').trim().toLowerCase();
     const approvalStatus = String(listing.approvalStatus || 'pending').trim().toLowerCase();
     const paymentStatus = String(listing.paymentStatus || 'pending').trim().toLowerCase();
+    const approvalWorkflow = getBulkApprovalWorkflow(listing);
     const actions: Array<{ action: ListingLifecycleAction; label: string; tone: 'primary' | 'secondary' | 'danger' }> = [];
 
     if (approvalStatus === 'pending' || approvalStatus === 'rejected') {
-      actions.push({ action: 'approve', label: 'Approve', tone: 'primary' });
+      actions.push({
+        action: 'approve',
+        label: approvalWorkflow.length > 1 ? 'Approve & Go Live' : 'Approve',
+        tone: 'primary',
+      });
     }
     if (approvalStatus !== 'rejected' && status !== 'archived' && status !== 'sold') {
       actions.push({ action: 'reject', label: 'Reject', tone: 'danger' });
     }
     if (approvalStatus === 'approved' && paymentStatus !== 'paid' && status !== 'archived') {
-      actions.push({ action: 'payment_confirmed', label: 'Confirm Payment', tone: 'secondary' });
+      actions.push({
+        action: 'payment_confirmed',
+        label: status !== 'active' ? 'Go Live' : 'Confirm Payment',
+        tone: status !== 'active' ? 'primary' : 'secondary',
+      });
     }
     if (approvalStatus === 'approved' && paymentStatus === 'paid' && status !== 'active' && status !== 'archived') {
       actions.push({ action: 'publish', label: 'Publish', tone: 'primary' });
@@ -2355,7 +2546,7 @@ export function AdminDashboard() {
         <div className="flex items-center gap-2 w-full sm:w-96">
           <input
             type="text"
-            placeholder="Search by name, id, or seller..."
+            placeholder="Search the machine queue by title, ID, seller, make, or model..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest"
@@ -2407,18 +2598,12 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <BulkImportToolkit
-        ownerUid={authUser?.uid}
-        workspaceLabel={authUser?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
-        listingAllowanceText="Unlimited unpaid listings"
-      />
-
       <div className="rounded-sm border border-line bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">Operator Review Filters</p>
             <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-muted">
-              Loaded page filters for pending approval, paid not live, rejected, expired, sold, archived, and anomalies.
+              Search the queue above, then review pending approval, paid not live, rejected, expired, sold, archived, and anomaly states here.
             </p>
           </div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-muted">
@@ -2461,16 +2646,37 @@ export function AdminDashboard() {
         ) : null}
       </div>
 
-      <div className="overflow-x-auto -mx-4 px-4">
-        <VirtualizedListingsTable
-          listings={filteredListings}
-          onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
-          onDelete={handleDeleteListing}
-          onBulkDelete={handleBulkDeleteListings}
-          onInspect={(listing) => { void loadListingLifecycleAudit(listing); }}
-          openNativeMap={openNativeMap}
-        />
+      <div className="rounded-sm border border-line bg-surface">
+        <div className="flex flex-col gap-3 border-b border-line px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">Operator Review Queue</p>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Scroll, search, inspect, and bulk-publish loaded inventory before using imports or media mapping below.
+            </p>
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-muted">
+            {filteredListings.length.toLocaleString()} loaded listing{filteredListings.length === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="overflow-x-auto -mx-4 px-4 py-4">
+          <VirtualizedListingsTable
+            listings={filteredListings}
+            onEdit={(listing) => { setEditingListing(listing); setIsModalOpen(true); }}
+            onDelete={handleDeleteListing}
+            onBulkDelete={handleBulkDeleteListings}
+            onBulkApprove={handleBulkApproveListings}
+            bulkApproveLoading={bulkApprovingListings}
+            onInspect={(listing) => { void loadListingLifecycleAudit(listing); }}
+            openNativeMap={openNativeMap}
+          />
+        </div>
       </div>
+
+      <BulkImportToolkit
+        ownerUid={authUser?.uid}
+        workspaceLabel={authUser?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+        listingAllowanceText="Unlimited unpaid listings"
+      />
 
       {selectedListingAudit && (
         <div className="rounded-sm border border-line bg-surface shadow-sm">
@@ -2868,8 +3074,39 @@ export function AdminDashboard() {
         </button>
       </div>
 
+      {trackingListingsLoading || usersLoading || billingLoading ? (
+        <div className="flex items-center justify-center gap-3 rounded-sm border border-line bg-surface px-6 py-10">
+          <RefreshCw size={16} className="animate-spin text-accent" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-muted">
+            Building full marketplace analytics from live admin data…
+          </span>
+        </div>
+      ) : null}
+
+      {trackingListingsError ? (
+        <div className="flex items-center gap-3 rounded-sm border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-yellow-600">
+          <AlertCircle size={16} className="shrink-0" />
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Inventory Analytics Warning</p>
+            <p className="text-xs font-semibold leading-5">{trackingListingsError}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {trackingListingsTruncated ? (
+        <div className="flex items-center gap-3 rounded-sm border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-amber-700">
+          <AlertCircle size={16} className="shrink-0" />
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Partial Inventory Analytics</p>
+            <p className="text-xs font-semibold leading-5">
+              The analytics view hit the safety cap while loading inventory. Counts shown here are still broader than the paged machine table, but the full marketplace inventory exceeds the current client analytics window.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <AnalyticsDashboard
-        listings={listings}
+        listings={trackingListingsLoaded ? trackingListings : listings}
         inquiries={inquiries}
         accounts={accounts}
         invoices={invoices}
@@ -3970,7 +4207,7 @@ export function AdminDashboard() {
         </div>
         <div className="p-8 space-y-6">
           <div className="flex items-center space-x-6 pb-6 border-b border-line">
-            <div className="w-20 h-20 rounded-full bg-ink/10 flex items-center justify-center text-ink border-2 border-line overflow-hidden">
+            <div className="w-20 h-20 rounded-full bg-accent/10 border border-accent/20 shadow-sm flex items-center justify-center text-accent overflow-hidden">
               {authUser?.photoURL ? (
                 <img src={authUser.photoURL} alt={profileName} className="w-full h-full object-cover" />
               ) : (
@@ -5120,7 +5357,7 @@ export function AdminDashboard() {
           softCloseThresholdMin: auction?.softCloseThresholdMin ?? 3,
           softCloseExtensionMin: auction?.softCloseExtensionMin ?? 2,
           staggerIntervalMin: auction?.staggerIntervalMin ?? 1,
-          defaultPaymentDeadlineDays: auction?.defaultPaymentDeadlineDays ?? 3,
+          defaultPaymentDeadlineDays: auction?.defaultPaymentDeadlineDays ?? 7,
           defaultRemovalDeadlineDays: auction?.defaultRemovalDeadlineDays ?? 14,
           createdBy: auction?.createdBy || '',
         };
@@ -5467,8 +5704,11 @@ export function AdminDashboard() {
                 <p className="text-xs text-muted mt-1">Create your first auction to get started</p>
               </div>
             ) : (
-              auctionsList.map((auction) => (
-                <div key={auction.id} className="border border-line rounded-sm p-4 flex items-center justify-between">
+              auctionsList.map((auction) => {
+                const isManagingLots = managedAuctionId === auction.id;
+                return (
+                <React.Fragment key={auction.id}>
+                <div className="border border-line rounded-sm p-4 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div>
                       <span className={`inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
@@ -5486,6 +5726,10 @@ export function AdminDashboard() {
                       <p className="text-[10px] text-muted">
                         {auction.lotCount} lots · {auction.totalBids} bids
                         {auction.startTime && ` · Starts ${new Date(auction.startTime).toLocaleDateString()}`}
+                        {auction.endTime && ` · Ends ${new Date(auction.endTime).toLocaleString()}`}
+                        {Number.isFinite(Number(auction.totalGMV || 0)) && Number(auction.totalGMV || 0) > 0
+                          ? ` · GMV $${Number(auction.totalGMV || 0).toLocaleString()}`
+                          : ''}
                       </p>
                     </div>
                   </div>
@@ -5514,13 +5758,26 @@ export function AdminDashboard() {
                     </button>
                     <button
                       className="btn-industrial btn-outline text-[9px]"
+                      onClick={() => setManagedAuctionId((current) => current === auction.id ? '' : auction.id)}
+                    >
+                      {isManagingLots ? 'Hide Lots & Results' : 'Manage Lots & Results'}
+                    </button>
+                    <button
+                      className="btn-industrial btn-outline text-[9px]"
                       onClick={() => setAuctionEditing({ mode: 'edit', auction })}
                     >
                       Edit
                     </button>
                   </div>
                 </div>
-              ))
+                {isManagingLots && (
+                  <div className="border border-line border-t-0 rounded-b-sm bg-bg/40 p-4">
+                    <AuctionLotManager auction={auction} onAuctionUpdated={loadAuctions} />
+                  </div>
+                )}
+                </React.Fragment>
+                );
+              })
             )}
           </div>
         )}
@@ -5587,7 +5844,7 @@ export function AdminDashboard() {
       <aside className="w-64 bg-surface border-r border-line hidden lg:flex flex-col sticky top-0 h-screen">
         <div className="p-8 border-b border-line">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-accent/10 border border-accent/20 flex items-center justify-center rounded-sm">
+            <div className="w-8 h-8 bg-accent/10 border border-accent/20 shadow-sm flex items-center justify-center rounded-sm text-accent">
               <User className="text-accent" size={18} />
             </div>
             <span className="text-lg font-black tracking-tighter text-ink uppercase">Account</span>
@@ -5611,7 +5868,7 @@ export function AdminDashboard() {
 
         <div className="p-8 border-t border-line">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-8 h-8 rounded-full bg-ink/10 flex items-center justify-center text-ink">
+            <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 shadow-sm flex items-center justify-center text-accent">
               <User size={16} />
             </div>
             <div className="flex flex-col">

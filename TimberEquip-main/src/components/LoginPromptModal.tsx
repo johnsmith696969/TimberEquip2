@@ -120,25 +120,26 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={prefersReducedMotion ? { duration: 0 } : undefined}
-          className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 bg-black/60 backdrop-blur-sm sm:items-center"
-          onClick={handleClose}
-        >
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
+            className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
+            onClick={handleClose}
+          />
           <motion.div
             ref={trapRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="login-prompt-title"
-            initial={{ scale: 0.95, opacity: 0, y: 8 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 8 }}
-            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.18 }}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             onClick={(e) => e.stopPropagation()}
-            className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-y-auto bg-surface border border-line rounded-sm p-8 shadow-2xl"
+            className="relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-y-auto rounded-sm border border-line bg-surface p-8 shadow-2xl"
           >
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -242,7 +243,7 @@ export function LoginPromptModal({ isOpen, onClose, onDismiss, onSuccess, messag
               </Link>
             </p>
           </motion.div>
-        </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

@@ -58,6 +58,7 @@ const Bookmarks = lazy(() => import('./pages/Bookmarks').then((module) => ({ def
 const Dmca = lazy(() => import('./pages/Dmca').then((module) => ({ default: module.Dmca })));
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 const AuctionDetail = lazy(() => import('./pages/AuctionDetail').then((module) => ({ default: module.AuctionDetail })));
+const AuctionLotDetail = lazy(() => import('./pages/AuctionLotDetail').then((module) => ({ default: module.AuctionLotDetail })));
 const BidderRegistration = lazy(() => import('./pages/BidderRegistration').then((module) => ({ default: module.BidderRegistration })));
 const LotDetail = lazy(() => import('./pages/LotDetail').then((module) => ({ default: module.LotDetail })));
 
@@ -159,6 +160,7 @@ function App() {
                     <Route path="/auctions" element={<Auctions />} />
                     <Route path="/auctions/:auctionSlug/lots/:lotNumber" element={<Suspense fallback={<div />}><LotDetail /></Suspense>} />
                     <Route path="/auctions/:auctionSlug/register" element={<Suspense fallback={<div />}><BidderRegistration /></Suspense>} />
+                    <Route path="/auctions/:auctionSlug/lots/:lotNumber" element={<Suspense fallback={<div />}><AuctionLotDetail /></Suspense>} />
                     <Route path="/auctions/:auctionSlug" element={<Suspense fallback={<div />}><AuctionDetail /></Suspense>} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/terms" element={<Terms />} />

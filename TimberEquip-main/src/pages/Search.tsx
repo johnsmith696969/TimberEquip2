@@ -1575,9 +1575,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
               />
               <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
                 className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-sm border border-line bg-bg p-8 shadow-2xl"
               >
                 <button onClick={closeAlertModal} aria-label="Close alert modal" className="absolute top-4 right-4 text-muted hover:text-ink">

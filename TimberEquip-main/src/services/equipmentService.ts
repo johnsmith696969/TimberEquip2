@@ -267,6 +267,12 @@ export interface AdminListingsPage {
   hasMore: boolean;
 }
 
+export interface AdminListingsCollectionResult {
+  listings: Listing[];
+  pageCount: number;
+  truncated: boolean;
+}
+
 export interface ListingReviewSummary {
   listingId: string;
   status: string;
@@ -1445,6 +1451,48 @@ export const equipmentService = {
         hasMore: false,
       };
     }
+  },
+
+  async getAllAdminListings(options?: {
+    includeDemoListings?: boolean;
+    pageSize?: number;
+    maxListings?: number;
+  }): Promise<AdminListingsCollectionResult> {
+    const pageSize = Math.max(1, Math.min(options?.pageSize ?? 100, 100));
+    const maxListings = Math.max(pageSize, options?.maxListings ?? 5000);
+    const listings: Listing[] = [];
+    const seenIds = new Set<string>();
+    let cursor: AdminListingsCursor = null;
+    let hasMore = true;
+    let pageCount = 0;
+
+    while (hasMore && listings.length < maxListings) {
+      const page = await this.getAdminListingsPage({
+        pageSize,
+        cursor,
+        includeDemoListings: options?.includeDemoListings,
+      });
+
+      pageCount += 1;
+
+      for (const listing of page.listings) {
+        if (seenIds.has(listing.id)) continue;
+        seenIds.add(listing.id);
+        listings.push(listing);
+        if (listings.length >= maxListings) {
+          break;
+        }
+      }
+
+      cursor = page.nextCursor;
+      hasMore = Boolean(page.hasMore && cursor);
+    }
+
+    return {
+      listings,
+      pageCount,
+      truncated: hasMore,
+    };
   },
 
   async getListingsByIds(ids: string[]): Promise<Listing[]> {

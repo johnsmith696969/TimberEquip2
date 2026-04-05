@@ -716,6 +716,12 @@ service cloud.firestore {
         (isOwner(userId) && isPrivilegedAdminEmail() && isValidUser(request.resource.data) && request.resource.data.role == 'super_admin')
       );
       allow delete: if isAdmin();
+
+      match /bidderProfile/{profileId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAdmin();
+        allow delete: if isAdmin();
+      }
     }
 
     match /storefronts/{storefrontId} {
@@ -875,15 +881,6 @@ service cloud.firestore {
         allow delete: if isAdmin();
 
         // Lots: public read, admin write only
-        match /lots/{lotId} {
-          allow read: if true;
-          allow create, update, delete: if isAdmin();
-
-          // Bids: public read (shows anonymous IDs only), NO client write
-          // All bid writes go through Cloud Functions / server endpoints
-          match /bids/{bidId} {
-            allow read: if true;
-            allow write: if false;
           }
         }
       }

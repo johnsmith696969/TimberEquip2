@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { Edit, Trash2, MapPin, ShieldAlert, ChevronUp, ChevronDown } from 'lucide-react';
+import { Edit, Trash2, MapPin, ShieldAlert, ChevronUp, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { Listing } from '../../types';
 import { useLocale } from '../LocaleContext';
 
@@ -11,6 +11,8 @@ interface VirtualizedListingsTableProps {
   onInspect: (listing: Listing) => void;
   openNativeMap: (location: string) => void;
   onBulkDelete?: (ids: string[]) => void;
+  onBulkApprove?: (listings: Listing[]) => void;
+  bulkApproveLoading?: boolean;
 }
 
 interface ListingRowData {
@@ -170,6 +172,8 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
   onInspect,
   openNativeMap,
   onBulkDelete,
+  onBulkApprove,
+  bulkApproveLoading = false,
 }) => {
   const ROW_HEIGHT = 72; // Approximate height with padding
 
@@ -235,6 +239,11 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
     }
   }, [onBulkDelete, selectedIds]);
 
+  const handleBulkApprove = useCallback(() => {
+    if (!onBulkApprove || selectedIds.size === 0) return;
+    onBulkApprove(sortedListings.filter((listing) => selectedIds.has(listing.id)));
+  }, [onBulkApprove, selectedIds, sortedListings]);
+
   return (
     <div className="overflow-x-auto">
     {/* Bulk action toolbar */}
@@ -243,6 +252,17 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
         <span className="text-[10px] font-black uppercase tracking-widest text-ink">
           {selectedIds.size} {selectedIds.size === 1 ? 'listing' : 'listings'} selected
         </span>
+        {onBulkApprove && (
+          <button
+            type="button"
+            onClick={handleBulkApprove}
+            disabled={bulkApproveLoading}
+            className="btn-industrial btn-accent py-1.5 px-3 text-[10px] flex items-center gap-1 disabled:opacity-60"
+          >
+            <CheckCircle2 size={12} />
+            {bulkApproveLoading ? 'Approving...' : 'Approve & Go Live'}
+          </button>
+        )}
         {onBulkDelete && (
           <button
             type="button"
