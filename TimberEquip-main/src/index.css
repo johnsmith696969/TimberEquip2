@@ -106,6 +106,13 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* The app intentionally focuses <main> on route changes for accessibility.
+   Suppress the browser's default outline there so mobile doesn't show a seam
+   under the quick-search bar on refresh. */
+main#main:focus {
+  outline: none;
+}
+
 /* Pre-promote card & animated image elements to GPU composite layer */
 .group {
   -webkit-backface-visibility: hidden;
