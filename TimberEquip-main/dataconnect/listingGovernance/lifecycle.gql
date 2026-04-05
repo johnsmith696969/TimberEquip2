@@ -2,7 +2,7 @@
 # These operations are intentionally limited to lifecycle governance.
 # Updated for Data Connect SDK v3.2.1+ compatibility.
 
-query GetListingGovernance($id: UUID!) @auth(level: USER) {
+query GetListingGovernance($id: UUID!) @auth(level: USER, insecureReason: "Admin/system query — role checked in application layer") {
   listing(id: $id) {
     id
     legacyFirestoreId
@@ -23,7 +23,7 @@ query GetListingGovernance($id: UUID!) @auth(level: USER) {
 query ListLifecycleQueue(
   $lifecycleStates: [String!]!
   $limit: Int! = 50
-) @auth(level: USER) {
+) @auth(level: USER, insecureReason: "Admin queue — role checked in application layer") {
   listings(
     where: { lifecycleState: { in: $lifecycleStates } }
     orderBy: { updatedAt: DESC }
@@ -44,7 +44,7 @@ query ListLifecycleQueue(
 query ListListingTransitions(
   $listingId: UUID!
   $limit: Int! = 100
-) @auth(level: USER) {
+) @auth(level: USER, insecureReason: "Admin audit trail — role checked in application layer") {
   listingStateTransitions(
     where: { listingId: { eq: $listingId } }
     orderBy: { occurredAt: DESC }
@@ -73,7 +73,7 @@ query ListListingTransitions(
 query ListOpenListingAnomalies(
   $listingId: UUID!
   $limit: Int! = 50
-) @auth(level: USER) {
+) @auth(level: USER, insecureReason: "Admin anomaly view — role checked in application layer") {
   listingAnomalies(
     where: {
       listingId: { eq: $listingId }
@@ -98,7 +98,7 @@ mutation SubmitListing(
   $actorId: String
   $requestId: String
   $reasonNote: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -155,7 +155,7 @@ mutation ApproveListing(
   $requestId: String
   $reasonCode: String
   $reasonNote: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -209,7 +209,7 @@ mutation RejectListing(
   $requestId: String
   $reasonCode: String!
   $reasonNote: String!
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -262,7 +262,7 @@ mutation ConfirmListingPayment(
   $actorId: String
   $requestId: String
   $reasonCode: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -311,7 +311,7 @@ mutation PublishListing(
   $id: UUID!
   $actorId: String
   $requestId: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -363,7 +363,7 @@ mutation ExpireListing(
   $actorId: String
   $requestId: String
   $reasonCode: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -415,7 +415,7 @@ mutation RelistListing(
   $actorId: String
   $requestId: String
   $reasonNote: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -467,7 +467,7 @@ mutation MarkListingSold(
   $actorId: String
   $requestId: String
   $reasonNote: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -521,7 +521,7 @@ mutation ArchiveListing(
   $requestId: String
   $reasonCode: String
   $reasonNote: String
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   query {
     listing(id: $id)
       @redact
@@ -572,7 +572,7 @@ mutation ArchiveListing(
 mutation ResolveListingAnomaly(
   $id: UUID!
   $resolutionNote: String!
-) @transaction @auth(level: USER) {
+) @transaction @auth(level: NO_ACCESS) {
   listingAnomaly_update(
     id: $id
     data: {

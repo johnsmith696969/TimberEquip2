@@ -1,4 +1,4 @@
-connectorId: listingGovernance
+connectorId: listing-governance
 generate:
   javascriptSdk:
     outputDir: ../../src/lib/dataconnect/generated
