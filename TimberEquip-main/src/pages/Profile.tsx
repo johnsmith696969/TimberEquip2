@@ -102,8 +102,8 @@ export function Profile() {
   );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
   const hasContentStudioProfileScope = Boolean(normalizedRole && CONTENT_STUDIO_PROFILE_ROLES.has(normalizedRole));
-  const canViewSavedEquipment = hasUser && ['member', 'individual_seller'].includes(normalizedRole);
-  const canViewSearchAlerts = hasUser && ['member', 'individual_seller'].includes(normalizedRole);
+  const canViewSavedEquipment = hasUser && ['member', 'individual_seller', 'dealer', 'pro_dealer'].includes(normalizedRole);
+  const canViewSearchAlerts = hasUser && ['member', 'individual_seller', 'dealer', 'pro_dealer'].includes(normalizedRole);
   const canViewMyListings = hasSellerWorkspaceAccess;
   const canViewSellerInquiries = hasSellerWorkspaceAccess;
   const canViewSellerCalls = canViewMyListings;
