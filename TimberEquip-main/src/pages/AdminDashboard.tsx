@@ -1168,6 +1168,7 @@ export function AdminDashboard() {
       message: `Approve and publish ${actionableListings.length} selected listing${actionableListings.length === 1 ? '' : 's'}? This will confirm payment where needed so the listings can go live.`,
       confirmLabel: 'Approve & Go Live',
       cancelLabel: 'Cancel',
+      variant: 'info',
     });
     if (!ok) return;
 

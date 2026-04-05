@@ -50,7 +50,7 @@ function ListingRow({
       style={style}
       role="row"
       aria-rowindex={index + 2}
-      className={`flex items-center hover:bg-surface/40 transition-colors border-b border-line px-6 py-4 ${isSelected ? 'bg-accent/5' : ''}`}
+      className={`flex items-center hover:bg-surface/40 transition-colors border-b border-line px-3 md:px-6 py-4 ${isSelected ? 'bg-accent/5' : ''}`}
     >
       {/* Checkbox */}
       <div role="cell" className="w-10 shrink-0 flex items-center justify-center">
@@ -63,7 +63,7 @@ function ListingRow({
         />
       </div>
       {/* Equipment */}
-      <div role="cell" className="flex items-center space-x-4 flex-1 min-w-0">
+      <div role="cell" className="flex items-center space-x-3 flex-1 min-w-0">
         <div className="w-12 h-12 bg-surface rounded-sm overflow-hidden border border-line shrink-0">
           <img
             src={thumbnailImage}
@@ -77,26 +77,27 @@ function ListingRow({
         <div className="flex flex-col min-w-0">
           <span className="text-xs font-black uppercase tracking-tight text-ink truncate" title={listing.title || '(No title)'}>{listing.title || '(No title)'}</span>
           <span className="text-[9px] font-bold text-muted uppercase truncate" title={`${listing.manufacturer || 'Unknown'} • ${listing.year || 'N/A'}`}>{listing.manufacturer || 'Unknown'} • {listing.year || 'N/A'}</span>
+          <span className="text-[9px] font-bold text-muted uppercase truncate md:hidden">{listing.category || 'Uncategorized'}</span>
         </div>
       </div>
 
-      {/* Category */}
-      <div role="cell" className="w-24 text-[10px] font-bold text-muted uppercase truncate px-2" title={listing.category || 'Uncategorized'}>
+      {/* Category — hidden on mobile */}
+      <div role="cell" className="hidden md:block w-24 text-[10px] font-bold text-muted uppercase truncate px-2" title={listing.category || 'Uncategorized'}>
         {listing.category || 'Uncategorized'}
       </div>
 
       {/* Price */}
-      <div role="cell" className="w-28 text-xs font-black tracking-tighter text-ink px-2 text-right">
+      <div role="cell" className="w-24 md:w-28 text-xs font-black tracking-tighter text-ink px-2 text-right shrink-0">
         {formatPrice(listing.price || 0, listing.currency || 'USD', 0)}
       </div>
 
-      {/* Hours */}
-      <div role="cell" className="w-20 text-xs font-black text-ink px-2 text-right">
+      {/* Hours — hidden on mobile */}
+      <div role="cell" className="hidden lg:block w-20 text-xs font-black text-ink px-2 text-right">
         {(listing.hours || 0).toLocaleString()}
       </div>
 
-      {/* Location */}
-      <div role="cell" className="w-32 px-2">
+      {/* Location — hidden on mobile */}
+      <div role="cell" className="hidden lg:block w-32 px-2">
         <button
           onClick={() => listing.location && openNativeMap(listing.location)}
           className="flex items-center text-[10px] font-bold text-accent uppercase hover:underline"
@@ -107,28 +108,28 @@ function ListingRow({
         </button>
       </div>
 
-      {/* Leads */}
-      <div role="cell" className="w-16 text-xs font-black text-ink px-2 text-right">
+      {/* Leads — hidden on mobile */}
+      <div role="cell" className="hidden lg:block w-16 text-xs font-black text-ink px-2 text-right">
         {listing.leads || 0}
       </div>
 
       {/* Lifecycle */}
-      <div role="cell" className="w-36 px-2">
+      <div role="cell" className="w-24 md:w-36 px-2 shrink-0">
         <div className="flex flex-col items-start gap-1">
           <span className="rounded-sm bg-surface px-2 py-1 text-[9px] font-black uppercase tracking-widest text-ink">
             {listing.status || 'pending'}
           </span>
-          <span className="text-[8px] font-bold uppercase tracking-widest text-muted">
+          <span className="text-[8px] font-bold uppercase tracking-widest text-muted hidden md:block">
             {listing.approvalStatus || 'pending'} / {listing.paymentStatus || 'pending'}
           </span>
         </div>
       </div>
 
       {/* Actions */}
-      <div role="cell" className="w-28 px-2 flex justify-end space-x-1 shrink-0">
+      <div role="cell" className="w-20 md:w-28 px-1 md:px-2 flex justify-end space-x-0.5 md:space-x-1 shrink-0">
         <button
           onClick={() => onInspect(listing)}
-          className="p-2 text-muted hover:text-secondary"
+          className="p-1.5 md:p-2 text-muted hover:text-secondary"
           title="Lifecycle"
           aria-label="Inspect lifecycle"
         >
@@ -136,7 +137,7 @@ function ListingRow({
         </button>
         <button
           onClick={() => onEdit(listing)}
-          className="p-2 text-muted hover:text-ink"
+          className="p-1.5 md:p-2 text-muted hover:text-ink"
           title="Edit"
           aria-label="Edit listing"
         >
@@ -144,7 +145,7 @@ function ListingRow({
         </button>
         <button
           onClick={() => onDelete(listing.id)}
-          className="p-2 text-muted hover:text-accent"
+          className="p-1.5 md:p-2 text-muted hover:text-accent"
           title="Delete"
           aria-label="Delete listing"
         >
@@ -282,10 +283,10 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
         </button>
       </div>
     )}
-    <div role="table" aria-label="Listings" className="border border-line rounded-sm overflow-hidden min-w-[800px]">
+    <div role="table" aria-label="Listings" className="border border-line rounded-sm overflow-hidden">
       {/* Header */}
       <div role="rowgroup">
-        <div role="row" className="sticky top-0 bg-surface border-b border-line px-6 py-4 flex items-center z-10">
+        <div role="row" className="sticky top-0 bg-surface border-b border-line px-3 md:px-6 py-4 flex items-center z-10">
           <div role="columnheader" className="w-10 shrink-0 flex items-center justify-center">
             <input
               type="checkbox"
@@ -295,15 +296,15 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
               className="accent-accent w-4 h-4 cursor-pointer"
             />
           </div>
-          <div role="columnheader" className="flex items-center space-x-4 flex-1 min-w-0">
-            <div className="w-12 h-12" />
+          <div role="columnheader" className="flex items-center space-x-3 flex-1 min-w-0">
+            <div className="w-12 h-12 shrink-0" />
             <div className="flex-1 text-[10px] font-black uppercase tracking-widest text-muted">Equipment</div>
           </div>
-          <div role="columnheader" className="w-24 text-[10px] font-black uppercase tracking-widest text-muted px-2">Category</div>
+          <div role="columnheader" className="hidden md:block w-24 text-[10px] font-black uppercase tracking-widest text-muted px-2">Category</div>
           <div
             role="columnheader"
             {...ariaSortAttr('price')}
-            className="w-28 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right cursor-pointer select-none"
+            className="w-24 md:w-28 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right cursor-pointer select-none shrink-0"
             onClick={() => handleSort('price')}
           >
             Price<SortIndicator column="price" sortCol={sortCol} sortDir={sortDir} />
@@ -311,22 +312,22 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
           <div
             role="columnheader"
             {...ariaSortAttr('hours')}
-            className="w-20 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right cursor-pointer select-none"
+            className="hidden lg:block w-20 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right cursor-pointer select-none"
             onClick={() => handleSort('hours')}
           >
             Hours<SortIndicator column="hours" sortCol={sortCol} sortDir={sortDir} />
           </div>
-          <div role="columnheader" className="w-32 text-[10px] font-black uppercase tracking-widest text-muted px-2">Location</div>
-          <div role="columnheader" className="w-16 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Leads</div>
+          <div role="columnheader" className="hidden lg:block w-32 text-[10px] font-black uppercase tracking-widest text-muted px-2">Location</div>
+          <div role="columnheader" className="hidden lg:block w-16 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Leads</div>
           <div
             role="columnheader"
             {...ariaSortAttr('status')}
-            className="w-36 text-[10px] font-black uppercase tracking-widest text-muted px-2 cursor-pointer select-none"
+            className="w-24 md:w-36 text-[10px] font-black uppercase tracking-widest text-muted px-2 cursor-pointer select-none shrink-0"
             onClick={() => handleSort('status')}
           >
             Lifecycle<SortIndicator column="status" sortCol={sortCol} sortDir={sortDir} />
           </div>
-          <div role="columnheader" className="w-28 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Actions</div>
+          <div role="columnheader" className="w-20 md:w-28 text-[10px] font-black uppercase tracking-widest text-muted px-1 md:px-2 text-right shrink-0">Actions</div>
         </div>
       </div>
 
