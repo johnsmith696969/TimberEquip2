@@ -76,6 +76,23 @@
     box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18);
     outline: none;
   }
+
+  input[data-unstyled-input="true"],
+  button[data-unstyled-input="true"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    border-radius: inherit !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+    outline: none !important;
+  }
+
+  input[data-unstyled-input="true"]:focus,
+  button[data-unstyled-input="true"]:focus {
+    box-shadow: none !important;
+    outline: none !important;
+  }
 }
 
 @layer base {

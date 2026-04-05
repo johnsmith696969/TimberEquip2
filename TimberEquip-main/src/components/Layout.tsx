@@ -168,6 +168,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const shouldShowFloatingQuickSearch = showFloatingQuickSearch || floatingQuickSearchHasFocus;
 
+  const preserveMobileScrollPosition = useRef<number | null>(null);
+
+  const stabilizeMobileFloatingSearchFocus = () => {
+    if (!isMobileViewport || typeof window === 'undefined') return;
+
+    preserveMobileScrollPosition.current = window.scrollY || 0;
+    const restoreScroll = () => {
+      if (preserveMobileScrollPosition.current == null) return;
+      window.scrollTo({ top: preserveMobileScrollPosition.current, behavior: 'auto' });
+    };
+
+    window.requestAnimationFrame(restoreScroll);
+    window.setTimeout(restoreScroll, 90);
+    window.setTimeout(restoreScroll, 220);
+  };
+
   const quickSearchTapStyle: React.CSSProperties = {
     WebkitTapHighlightColor: 'transparent',
   };
@@ -190,7 +206,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="max-w-[900px] mx-auto flex items-center">
         <form
           onSubmit={handleSearch}
-          onFocusCapture={floating ? () => setFloatingQuickSearchHasFocus(true) : undefined}
+          onFocusCapture={floating ? () => {
+            setFloatingQuickSearchHasFocus(true);
+            stabilizeMobileFloatingSearchFocus();
+          } : undefined}
           onBlurCapture={floating ? (event) => {
             const nextTarget = event.relatedTarget as Node | null;
             if (nextTarget && event.currentTarget.contains(nextTarget)) return;
@@ -206,6 +225,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             type="text"
             placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
             className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
+            data-unstyled-input="true"
             style={{
               ...quickSearchTapStyle,
               fontSize: '16px',
@@ -218,6 +238,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             type="submit"
             aria-label="Search"
             className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
+            data-unstyled-input="true"
             style={quickSearchTapStyle}
           >
             <Search size={16} />
@@ -484,32 +505,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Persistent Quick Search Bar */}
       {renderQuickSearchBar()}
-      <AnimatePresence initial={false}>
-        {shouldShowFloatingQuickSearch ? (
-          <motion.div
-            initial={isMobileViewport ? { opacity: 0 } : { opacity: 0, y: -8 }}
-            animate={{
+      <motion.div
+        initial={false}
+        animate={shouldShowFloatingQuickSearch
+          ? {
               opacity: 1,
               ...(isMobileViewport ? {} : { y: 0 }),
               transition: { duration: QUICK_SEARCH_FADE_DURATION, ease: [0.22, 1, 0.36, 1] },
-            }}
-            exit={{
+            }
+          : {
               opacity: 0,
               ...(isMobileViewport ? {} : { y: -8 }),
               transition: { duration: QUICK_SEARCH_FADE_DURATION, ease: [0.22, 1, 0.36, 1] },
             }}
-            className="fixed inset-x-0 top-0 z-[var(--z-sticky)] shadow-none will-change-[opacity,transform]"
-            style={{
-              ...quickSearchTapStyle,
-              boxShadow: 'none',
-              backfaceVisibility: 'hidden',
-              WebkitBackfaceVisibility: 'hidden',
-            }}
-          >
-            {renderQuickSearchBar(true)}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+        className="fixed inset-x-0 top-0 z-[var(--z-sticky)] shadow-none will-change-[opacity,transform]"
+        style={{
+          ...quickSearchTapStyle,
+          boxShadow: 'none',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+          pointerEvents: shouldShowFloatingQuickSearch ? 'auto' : 'none',
+          borderBottom: '0 none transparent',
+          outline: 'none',
+        }}
+        aria-hidden={!shouldShowFloatingQuickSearch}
+      >
+        {renderQuickSearchBar(true)}
+      </motion.div>
 
       {/* Mobile Menu */}
       <AnimatePresence>
