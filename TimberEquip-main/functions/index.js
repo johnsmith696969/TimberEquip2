@@ -340,9 +340,14 @@ function resolveConfiguredAppUrl() {
 }
 
 function getEmailPreferenceSigningSecret() {
+  const apiKey = String(SENDGRID_API_KEY.value() || '').trim();
+  const emailFrom = String(EMAIL_FROM.value() || '').trim();
+  if (!apiKey && !emailFrom) {
+    throw new Error('Email signing secret requires SENDGRID_API_KEY or EMAIL_FROM to be configured');
+  }
   const seed = [
-    String(SENDGRID_API_KEY.value() || '').trim() || String(EMAIL_FROM.value() || '').trim() || 'forestry-equipment-sales-email',
-    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'forestry-equipment-sales').trim(),
+    apiKey || emailFrom,
+    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'mobile-app-equipment-sales').trim(),
     'email-preferences',
   ].join('|');
 

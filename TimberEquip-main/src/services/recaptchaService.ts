@@ -1,4 +1,4 @@
-const SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
+const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
 const SCRIPT_SRC = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(SITE_KEY)}`;
 const PRODUCTION_RECAPTCHA_HOSTS = new Set([
   'timberequip.com',

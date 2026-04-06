@@ -19,9 +19,8 @@ describe('isPrivilegedAdminEmail', () => {
 });
 
 describe('SUPERADMIN_EMAIL', () => {
-  it('is defined as a non-empty string', () => {
+  it('is a string sourced from environment (empty in test context)', () => {
     expect(typeof SUPERADMIN_EMAIL).toBe('string');
-    expect(SUPERADMIN_EMAIL.length).toBeGreaterThan(0);
   });
 });
 

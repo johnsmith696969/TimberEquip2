@@ -19,6 +19,7 @@
 
 const { logger } = require('firebase-functions/v2');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { captureFunctionsException } = require('./sentry.js');
 
 const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 
@@ -47,6 +48,7 @@ async function guardedMutation(name, variables) {
     await fn(variables);
   } catch (err) {
     logger.error(`[dual-write-auctions] ${name} failed`, { error: err.message, variables: Object.keys(variables) });
+    captureFunctionsException(err, { mutation: name, module: 'dual-write-auctions', variableKeys: Object.keys(variables) });
   }
 }
 

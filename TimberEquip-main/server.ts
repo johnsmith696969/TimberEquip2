@@ -1061,8 +1061,6 @@ async function getManagedAccountSeatContext(ownerUid: string): Promise<{
 const TRUSTED_HOSTS = new Set([
   'timberequip.com',
   'www.timberequip.com',
-  'www.timberequip.com',
-  'timberequip.com',
   'mobile-app-equipment-sales.web.app',
   'mobile-app-equipment-sales.firebaseapp.com',
   'timberequip-staging.web.app',
@@ -1342,8 +1340,8 @@ async function startServer() {
         imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://firebasestorage.googleapis.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
         connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://*.stripe.com", "https://*.run.app", "https://ai.studio"],
-        frameAncestors: ["'self'", "https://*.run.app", "https://ai.studio"],
+        frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://*.stripe.com", "https://*.run.app"],
+        frameAncestors: ["'self'", "https://*.run.app"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
       },
@@ -1354,7 +1352,6 @@ async function startServer() {
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    frameguard: false, // Allow iframe rendering for AI Studio preview
   }));
 
   // 1b. Domain Migration — 301 redirect from legacy domain to canonical domain
@@ -1410,7 +1407,6 @@ async function startServer() {
   const ALLOWED_ORIGINS: string[] = [
     'https://timberequip.com',
     'https://www.timberequip.com',
-    'https://timberequip.com',
     'https://mobile-app-equipment-sales.web.app',
     'https://mobile-app-equipment-sales.firebaseapp.com',
     'https://timberequip-staging.web.app',
