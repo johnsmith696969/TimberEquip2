@@ -1,0 +1,11 @@
+connectorId: leads
+generate:
+  javascriptSdk:
+    outputDir: ../../src/lib/dataconnect/generated
+    package: "@dataconnect/generated-timberequip-leads"
+    packageJsonDir: ../..
+    react: true
+  adminNodeSdk:
+    outputDir: ../../functions/generated/dataconnect/leads
+    package: "@dataconnect/admin-generated-timberequip-leads"
+    packageJsonDir: ../../functions

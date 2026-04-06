@@ -1,0 +1,80 @@
+## Leads & Inquiries — Data Connect Schema
+## Phase 4 of the Firestore → PostgreSQL migration.
+
+type Inquiry @table(name: "inquiries", key: "id") @index(fields: ["sellerUid"]) @index(fields: ["buyerUid"]) @index(fields: ["listingId"]) @index(fields: ["status"]) {
+  id: String!
+  listingId: String @col(name: "listing_id")
+  sellerUid: String @col(name: "seller_uid")
+  buyerUid: String @col(name: "buyer_uid")
+  buyerName: String! @col(name: "buyer_name")
+  buyerEmail: String! @col(name: "buyer_email")
+  buyerPhone: String @col(name: "buyer_phone")
+  message: String
+  type: String! @default(value: "Inquiry")
+  status: String! @default(value: "New")
+  assignedToUid: String @col(name: "assigned_to_uid")
+  assignedToName: String @col(name: "assigned_to_name")
+  internalNotes: Any @col(name: "internal_notes") @default(sql: "'[]'::jsonb")
+  firstResponseAt: Timestamp @col(name: "first_response_at")
+  responseTimeMinutes: Int @col(name: "response_time_minutes")
+  spamScore: Float @col(name: "spam_score")
+  spamFlags: Any @col(name: "spam_flags") @default(sql: "'[]'::jsonb")
+  contactConsentAccepted: Boolean @col(name: "contact_consent_accepted") @default(value: false)
+  contactConsentVersion: String @col(name: "contact_consent_version")
+  contactConsentScope: String @col(name: "contact_consent_scope")
+  contactConsentAt: Timestamp @col(name: "contact_consent_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type FinancingRequest @table(name: "financing_requests", key: "id") @index(fields: ["sellerUid"]) @index(fields: ["buyerUid"]) {
+  id: String!
+  listingId: String @col(name: "listing_id")
+  sellerUid: String @col(name: "seller_uid")
+  buyerUid: String @col(name: "buyer_uid")
+  applicantName: String! @col(name: "applicant_name")
+  applicantEmail: String! @col(name: "applicant_email")
+  applicantPhone: String @col(name: "applicant_phone")
+  company: String
+  requestedAmount: Float @col(name: "requested_amount")
+  message: String
+  status: String! @default(value: "New")
+  contactConsentAccepted: Boolean @col(name: "contact_consent_accepted") @default(value: false)
+  contactConsentVersion: String @col(name: "contact_consent_version")
+  contactConsentScope: String @col(name: "contact_consent_scope")
+  contactConsentAt: Timestamp @col(name: "contact_consent_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type CallLog @table(name: "call_logs", key: "id") @index(fields: ["sellerUid"]) @index(fields: ["callerUid"]) @index(fields: ["listingId"]) {
+  id: String!
+  listingId: String @col(name: "listing_id")
+  listingTitle: String @col(name: "listing_title")
+  sellerUid: String @col(name: "seller_uid")
+  sellerName: String @col(name: "seller_name")
+  sellerPhone: String @col(name: "seller_phone")
+  callerUid: String @col(name: "caller_uid")
+  callerName: String @col(name: "caller_name")
+  callerEmail: String @col(name: "caller_email")
+  callerPhone: String @col(name: "caller_phone")
+  duration: Int @default(value: 0)
+  status: String!
+  source: String
+  isAuthenticated: Boolean @col(name: "is_authenticated") @default(value: false)
+  recordingUrl: String @col(name: "recording_url")
+  twilioCallSid: String @col(name: "twilio_call_sid")
+  completedAt: Timestamp @col(name: "completed_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type ContactRequest @table(name: "contact_requests", key: "id") @index(fields: ["status"]) {
+  id: String!
+  name: String
+  email: String!
+  category: String
+  message: String
+  source: String
+  status: String @default(value: "New")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}

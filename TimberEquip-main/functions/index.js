@@ -30,6 +30,8 @@ const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance
 const { syncListingToDataConnect } = require('./listing-governance-dataconnect-sync.js');
 const dualWriteUsersBilling = require('./dual-write-users-billing.js');
 const dualWriteAuctions = require('./dual-write-auctions.js');
+const dualWriteLeads = require('./dual-write-leads.js');
+const dualWriteDealers = require('./dual-write-dealers.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
@@ -4522,7 +4524,7 @@ function resolveStorageBucketName() {
 
 // ── Watermark compositing ───────────────────────────────────────────────────
 const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.png');
-const WATERMARK_LAYER_COUNT = 3;
+const WATERMARK_ALPHA_SCALE = 0.12;
 let _watermarkBuffer = null;
 
 async function getWatermarkBuffer() {
@@ -4538,8 +4540,8 @@ async function getWatermarkBuffer() {
 
 /**
  * Composite the brand watermark onto an image buffer.
- * Uses the watermark asset's native transparency and places it upright
- * in the bottom-right corner with a small margin.
+ * Uses the watermark asset's native transparency, then reduces it to roughly
+ * one-third visibility before placing it upright in the bottom-right corner.
  */
 async function applyWatermark(imageBuffer) {
   const wmSource = await getWatermarkBuffer();
@@ -4567,14 +4569,30 @@ async function applyWatermark(imageBuffer) {
 
     const wmMeta = await sharp(resizedWatermark).metadata();
     const wmH = wmMeta.height || wmWidth;
+    const softenedWatermark = await sharp(resizedWatermark)
+      .ensureAlpha()
+      .raw()
+      .toBuffer()
+      .then((rawBuf) => {
+        for (let i = 3; i < rawBuf.length; i += 4) {
+          rawBuf[i] = Math.round(rawBuf[i] * WATERMARK_ALPHA_SCALE);
+        }
+        return sharp(rawBuf, {
+          raw: {
+            width: wmMeta.width || wmWidth,
+            height: wmH,
+            channels: 4,
+          },
+        })
+          .png()
+          .toBuffer();
+      });
 
     const left = Math.max(imgWidth - wmWidth - margin, 0);
     const top = Math.max(imgHeight - wmH - margin, 0);
 
     return sharp(imageBuffer)
-      .composite(
-        Array.from({ length: WATERMARK_LAYER_COUNT }, () => ({ input: resizedWatermark, left, top }))
-      )
+      .composite([{ input: softenedWatermark, left, top }])
       .toBuffer();
   } catch (err) {
     logger.warn('Watermark compositing failed – returning unwatermarked image.', err.message);
@@ -17344,3 +17362,17 @@ exports.syncAuctionToPostgres = dualWriteAuctions.syncAuctionToPostgres;
 exports.syncAuctionLotToPostgres = dualWriteAuctions.syncAuctionLotToPostgres;
 exports.syncAuctionBidToPostgres = dualWriteAuctions.syncAuctionBidToPostgres;
 exports.syncAuctionInvoiceToPostgres = dualWriteAuctions.syncAuctionInvoiceToPostgres;
+
+// ─── Phase 4 dual-write: Firestore → PostgreSQL (Leads & Inquiries) ──
+exports.syncInquiryToPostgres = dualWriteLeads.syncInquiryToPostgres;
+exports.syncFinancingRequestToPostgres = dualWriteLeads.syncFinancingRequestToPostgres;
+exports.syncCallLogToPostgres = dualWriteLeads.syncCallLogToPostgres;
+exports.syncContactRequestToPostgres = dualWriteLeads.syncContactRequestToPostgres;
+
+// ─── Phase 5 dual-write: Firestore → PostgreSQL (Dealer System) ──────
+exports.syncDealerFeedProfileToPostgres = dualWriteDealers.syncDealerFeedProfileToPostgres;
+exports.syncDealerListingToPostgres = dualWriteDealers.syncDealerListingToPostgres;
+exports.syncDealerIngestLogToPostgres = dualWriteDealers.syncDealerIngestLogToPostgres;
+exports.syncDealerAuditLogToPostgres = dualWriteDealers.syncDealerAuditLogToPostgres;
+exports.syncDealerWebhookToPostgres = dualWriteDealers.syncDealerWebhookToPostgres;
+exports.syncDealerWidgetConfigToPostgres = dualWriteDealers.syncDealerWidgetConfigToPostgres;

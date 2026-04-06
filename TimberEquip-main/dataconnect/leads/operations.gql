@@ -1,0 +1,402 @@
+## Leads & Inquiries connector — queries and mutations.
+## Used by InquiryModal, admin lead management, and Cloud Functions.
+
+# ─── Inquiry Queries ────────────────────────────────────────────────
+
+query GetInquiryById($id: String!) @auth(level: USER) {
+  inquiry(id: $id) {
+    id
+    listingId
+    sellerUid
+    buyerUid
+    buyerName
+    buyerEmail
+    buyerPhone
+    message
+    type
+    status
+    assignedToUid
+    assignedToName
+    internalNotes
+    firstResponseAt
+    responseTimeMinutes
+    spamScore
+    spamFlags
+    contactConsentAccepted
+    contactConsentVersion
+    contactConsentScope
+    contactConsentAt
+    createdAt
+    updatedAt
+  }
+}
+
+query ListInquiriesBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+  inquiries(
+    where: { sellerUid: { eq: $sellerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    listingId
+    buyerName
+    buyerEmail
+    buyerPhone
+    message
+    type
+    status
+    assignedToName
+    firstResponseAt
+    responseTimeMinutes
+    spamScore
+    createdAt
+  }
+}
+
+query ListInquiriesByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: USER) {
+  inquiries(
+    where: { buyerUid: { eq: $buyerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    listingId
+    sellerUid
+    message
+    type
+    status
+    createdAt
+  }
+}
+
+query ListInquiriesByListing($listingId: String!, $limit: Int = 50) @auth(level: USER) {
+  inquiries(
+    where: { listingId: { eq: $listingId } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    buyerName
+    buyerEmail
+    message
+    type
+    status
+    createdAt
+  }
+}
+
+query ListInquiriesByStatus($status: String!, $limit: Int = 100) @auth(level: USER) {
+  inquiries(
+    where: { status: { eq: $status } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    listingId
+    sellerUid
+    buyerName
+    buyerEmail
+    type
+    status
+    spamScore
+    createdAt
+  }
+}
+
+# ─── Financing Request Queries ──────────────────────────────────────
+
+query GetFinancingRequestById($id: String!) @auth(level: USER) {
+  financingRequest(id: $id) {
+    id
+    listingId
+    sellerUid
+    buyerUid
+    applicantName
+    applicantEmail
+    applicantPhone
+    company
+    requestedAmount
+    message
+    status
+    contactConsentAccepted
+    contactConsentVersion
+    createdAt
+    updatedAt
+  }
+}
+
+query ListFinancingRequestsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+  financingRequests(
+    where: { sellerUid: { eq: $sellerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    listingId
+    applicantName
+    applicantEmail
+    requestedAmount
+    status
+    createdAt
+  }
+}
+
+query ListFinancingRequestsByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: USER) {
+  financingRequests(
+    where: { buyerUid: { eq: $buyerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    listingId
+    requestedAmount
+    status
+    createdAt
+  }
+}
+
+# ─── Call Log Queries ───────────────────────────────────────────────
+
+query GetCallLogById($id: String!) @auth(level: USER) {
+  callLog(id: $id) {
+    id
+    listingId
+    listingTitle
+    sellerUid
+    sellerName
+    sellerPhone
+    callerUid
+    callerName
+    callerEmail
+    callerPhone
+    duration
+    status
+    source
+    isAuthenticated
+    recordingUrl
+    twilioCallSid
+    completedAt
+    createdAt
+  }
+}
+
+query ListCallLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+  callLogs(
+    where: { sellerUid: { eq: $sellerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    listingId
+    listingTitle
+    callerName
+    callerPhone
+    duration
+    status
+    source
+    createdAt
+  }
+}
+
+query ListCallLogsByListing($listingId: String!, $limit: Int = 50) @auth(level: USER) {
+  callLogs(
+    where: { listingId: { eq: $listingId } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    callerName
+    callerPhone
+    duration
+    status
+    createdAt
+  }
+}
+
+# ─── Contact Request Queries ───────────────────────────────────────
+
+query ListContactRequestsByStatus($status: String!, $limit: Int = 100) @auth(level: USER) {
+  contactRequests(
+    where: { status: { eq: $status } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    name
+    email
+    category
+    message
+    source
+    status
+    createdAt
+  }
+}
+
+# ─── Mutations ──────────────────────────────────────────────────────
+
+mutation UpsertInquiry(
+  $id: String!,
+  $listingId: String,
+  $sellerUid: String,
+  $buyerUid: String,
+  $buyerName: String!,
+  $buyerEmail: String!,
+  $buyerPhone: String,
+  $message: String,
+  $type: String!,
+  $status: String!,
+  $assignedToUid: String,
+  $assignedToName: String,
+  $internalNotes: Any,
+  $firstResponseAt: Timestamp,
+  $responseTimeMinutes: Int,
+  $spamScore: Float,
+  $spamFlags: Any,
+  $contactConsentAccepted: Boolean,
+  $contactConsentVersion: String,
+  $contactConsentScope: String,
+  $contactConsentAt: Timestamp
+) @auth(level: USER) @transaction {
+  inquiry_upsert(data: {
+    id: $id,
+    listingId: $listingId,
+    sellerUid: $sellerUid,
+    buyerUid: $buyerUid,
+    buyerName: $buyerName,
+    buyerEmail: $buyerEmail,
+    buyerPhone: $buyerPhone,
+    message: $message,
+    type: $type,
+    status: $status,
+    assignedToUid: $assignedToUid,
+    assignedToName: $assignedToName,
+    internalNotes: $internalNotes,
+    firstResponseAt: $firstResponseAt,
+    responseTimeMinutes: $responseTimeMinutes,
+    spamScore: $spamScore,
+    spamFlags: $spamFlags,
+    contactConsentAccepted: $contactConsentAccepted,
+    contactConsentVersion: $contactConsentVersion,
+    contactConsentScope: $contactConsentScope,
+    contactConsentAt: $contactConsentAt
+  })
+}
+
+mutation UpdateInquiryStatus(
+  $id: String!,
+  $status: String!,
+  $assignedToUid: String,
+  $assignedToName: String,
+  $firstResponseAt: Timestamp,
+  $responseTimeMinutes: Int
+) @auth(level: USER) @transaction {
+  inquiry_update(id: $id, data: {
+    status: $status,
+    assignedToUid: $assignedToUid,
+    assignedToName: $assignedToName,
+    firstResponseAt: $firstResponseAt,
+    responseTimeMinutes: $responseTimeMinutes
+  })
+}
+
+mutation UpsertFinancingRequest(
+  $id: String!,
+  $listingId: String,
+  $sellerUid: String,
+  $buyerUid: String,
+  $applicantName: String!,
+  $applicantEmail: String!,
+  $applicantPhone: String,
+  $company: String,
+  $requestedAmount: Float,
+  $message: String,
+  $status: String!,
+  $contactConsentAccepted: Boolean,
+  $contactConsentVersion: String,
+  $contactConsentScope: String,
+  $contactConsentAt: Timestamp
+) @auth(level: USER) @transaction {
+  financingRequest_upsert(data: {
+    id: $id,
+    listingId: $listingId,
+    sellerUid: $sellerUid,
+    buyerUid: $buyerUid,
+    applicantName: $applicantName,
+    applicantEmail: $applicantEmail,
+    applicantPhone: $applicantPhone,
+    company: $company,
+    requestedAmount: $requestedAmount,
+    message: $message,
+    status: $status,
+    contactConsentAccepted: $contactConsentAccepted,
+    contactConsentVersion: $contactConsentVersion,
+    contactConsentScope: $contactConsentScope,
+    contactConsentAt: $contactConsentAt
+  })
+}
+
+mutation InsertCallLog(
+  $id: String!,
+  $listingId: String,
+  $listingTitle: String,
+  $sellerUid: String,
+  $sellerName: String,
+  $sellerPhone: String,
+  $callerUid: String,
+  $callerName: String,
+  $callerEmail: String,
+  $callerPhone: String,
+  $duration: Int,
+  $status: String!,
+  $source: String,
+  $isAuthenticated: Boolean,
+  $recordingUrl: String,
+  $twilioCallSid: String,
+  $completedAt: Timestamp
+) @auth(level: USER) @transaction {
+  callLog_insert(data: {
+    id: $id,
+    listingId: $listingId,
+    listingTitle: $listingTitle,
+    sellerUid: $sellerUid,
+    sellerName: $sellerName,
+    sellerPhone: $sellerPhone,
+    callerUid: $callerUid,
+    callerName: $callerName,
+    callerEmail: $callerEmail,
+    callerPhone: $callerPhone,
+    duration: $duration,
+    status: $status,
+    source: $source,
+    isAuthenticated: $isAuthenticated,
+    recordingUrl: $recordingUrl,
+    twilioCallSid: $twilioCallSid,
+    completedAt: $completedAt
+  })
+}
+
+mutation InsertContactRequest(
+  $id: String!,
+  $name: String,
+  $email: String!,
+  $category: String,
+  $message: String,
+  $source: String,
+  $status: String
+) @auth(level: USER) @transaction {
+  contactRequest_insert(data: {
+    id: $id,
+    name: $name,
+    email: $email,
+    category: $category,
+    message: $message,
+    source: $source,
+    status: $status
+  })
+}
+
+mutation UpdateContactRequestStatus($id: String!, $status: String!) @auth(level: USER) @transaction {
+  contactRequest_update(id: $id, data: {
+    status: $status
+  })
+}

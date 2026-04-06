@@ -1,0 +1,466 @@
+## Dealer System connector — queries and mutations.
+## Used by DealerOS, BulkImportToolkit, admin dashboard, and Cloud Functions.
+
+# ─── Dealer Feed Profile Queries ────────────────────────────────────
+
+query GetDealerFeedProfileById($id: String!) @auth(level: USER) {
+  dealerFeedProfile(id: $id) {
+    id
+    sellerUid
+    dealerName
+    dealerEmail
+    sourceName
+    sourceType
+    feedUrl
+    apiEndpoint
+    status
+    syncMode
+    syncFrequency
+    nightlySyncEnabled
+    autoPublish
+    fieldMapping
+    apiKeyPreview
+    totalListingsSynced
+    totalListingsActive
+    totalListingsCreated
+    totalListingsUpdated
+    totalListingsDeleted
+    lastSyncAt
+    nextSyncAt
+    lastSyncStatus
+    lastSyncMessage
+    lastResolvedType
+    createdAt
+    updatedAt
+  }
+}
+
+query ListDealerFeedProfilesBySeller($sellerUid: String!) @auth(level: USER) {
+  dealerFeedProfiles(
+    where: { sellerUid: { eq: $sellerUid } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    dealerName
+    sourceName
+    sourceType
+    status
+    syncMode
+    syncFrequency
+    nightlySyncEnabled
+    totalListingsSynced
+    totalListingsActive
+    lastSyncAt
+    lastSyncStatus
+    createdAt
+  }
+}
+
+query ListDealerFeedProfilesByStatus($status: String!, $limit: Int = 50) @auth(level: USER) {
+  dealerFeedProfiles(
+    where: { status: { eq: $status } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    sellerUid
+    dealerName
+    sourceName
+    status
+    totalListingsSynced
+    lastSyncAt
+    lastSyncStatus
+    createdAt
+  }
+}
+
+# ─── Dealer Listing Queries ─────────────────────────────────────────
+
+query ListDealerListingsByFeed($dealerFeedId: String!, $limit: Int = 100) @auth(level: USER) {
+  dealerListings(
+    where: { dealerFeedId: { eq: $dealerFeedId } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    dealerFeedId
+    sellerUid
+    externalListingId
+    timberequipListingId
+    equipmentHash
+    status
+    dealerSourceUrl
+    dataSource
+    externalData
+    mappedData
+    syncedAt
+    createdAt
+    updatedAt
+  }
+}
+
+query ListDealerListingsBySeller($sellerUid: String!, $limit: Int = 100) @auth(level: USER) {
+  dealerListings(
+    where: { sellerUid: { eq: $sellerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    dealerFeedId
+    externalListingId
+    timberequipListingId
+    status
+    syncedAt
+    createdAt
+  }
+}
+
+query GetDealerListingByHash($equipmentHash: String!) @auth(level: USER) {
+  dealerListings(
+    where: { equipmentHash: { eq: $equipmentHash } }
+    limit: 1
+  ) {
+    id
+    dealerFeedId
+    externalListingId
+    timberequipListingId
+    status
+  }
+}
+
+# ─── Ingest Log Queries ─────────────────────────────────────────────
+
+query ListIngestLogsByFeed($feedId: String!, $limit: Int = 50) @auth(level: USER) {
+  dealerFeedIngestLogs(
+    where: { feedId: { eq: $feedId } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    feedId
+    sellerUid
+    actorUid
+    actorRole
+    sourceName
+    totalReceived
+    processed
+    created
+    updated
+    upserted
+    skipped
+    archived
+    errorCount
+    errors
+    dryRun
+    processedAt
+    createdAt
+  }
+}
+
+query ListIngestLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+  dealerFeedIngestLogs(
+    where: { sellerUid: { eq: $sellerUid } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    feedId
+    sourceName
+    totalReceived
+    processed
+    created
+    updated
+    errorCount
+    dryRun
+    processedAt
+    createdAt
+  }
+}
+
+# ─── Audit Log Queries ──────────────────────────────────────────────
+
+query ListAuditLogsByFeed($dealerFeedId: String!, $limit: Int = 50) @auth(level: USER) {
+  dealerAuditLogs(
+    where: { dealerFeedId: { eq: $dealerFeedId } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    dealerFeedId
+    sellerUid
+    action
+    details
+    errorMessage
+    itemsProcessed
+    itemsSucceeded
+    itemsFailed
+    metadata
+    createdAt
+  }
+}
+
+# ─── Webhook Subscription Queries ───────────────────────────────────
+
+query ListWebhooksByDealer($dealerUid: String!) @auth(level: USER) {
+  dealerWebhookSubscriptions(
+    where: { dealerUid: { eq: $dealerUid } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    dealerUid
+    callbackUrl
+    events
+    active
+    secretMasked
+    failureCount
+    lastDeliveryAt
+    createdAt
+  }
+}
+
+# ─── Widget Config Queries ──────────────────────────────────────────
+
+query GetWidgetConfig($id: String!) @auth(level: PUBLIC) {
+  dealerWidgetConfig(id: $id) {
+    id
+    cardStyle
+    accentColor
+    fontFamily
+    darkMode
+    showInquiry
+    showCall
+    showDetails
+    pageSize
+    customCss
+    updatedAt
+  }
+}
+
+# ─── Mutations ──────────────────────────────────────────────────────
+
+mutation UpsertDealerFeedProfile(
+  $id: String!,
+  $sellerUid: String!,
+  $dealerName: String,
+  $dealerEmail: String,
+  $sourceName: String,
+  $sourceType: String,
+  $rawInput: String,
+  $feedUrl: String,
+  $apiEndpoint: String,
+  $status: String,
+  $syncMode: String,
+  $syncFrequency: String,
+  $nightlySyncEnabled: Boolean,
+  $autoPublish: Boolean,
+  $fieldMapping: Any,
+  $apiKeyPreview: String,
+  $totalListingsSynced: Int,
+  $totalListingsActive: Int,
+  $totalListingsCreated: Int,
+  $totalListingsUpdated: Int,
+  $totalListingsDeleted: Int,
+  $lastSyncAt: Timestamp,
+  $nextSyncAt: Timestamp,
+  $lastSyncStatus: String,
+  $lastSyncMessage: String,
+  $lastResolvedType: String
+) @auth(level: USER) @transaction {
+  dealerFeedProfile_upsert(data: {
+    id: $id,
+    sellerUid: $sellerUid,
+    dealerName: $dealerName,
+    dealerEmail: $dealerEmail,
+    sourceName: $sourceName,
+    sourceType: $sourceType,
+    rawInput: $rawInput,
+    feedUrl: $feedUrl,
+    apiEndpoint: $apiEndpoint,
+    status: $status,
+    syncMode: $syncMode,
+    syncFrequency: $syncFrequency,
+    nightlySyncEnabled: $nightlySyncEnabled,
+    autoPublish: $autoPublish,
+    fieldMapping: $fieldMapping,
+    apiKeyPreview: $apiKeyPreview,
+    totalListingsSynced: $totalListingsSynced,
+    totalListingsActive: $totalListingsActive,
+    totalListingsCreated: $totalListingsCreated,
+    totalListingsUpdated: $totalListingsUpdated,
+    totalListingsDeleted: $totalListingsDeleted,
+    lastSyncAt: $lastSyncAt,
+    nextSyncAt: $nextSyncAt,
+    lastSyncStatus: $lastSyncStatus,
+    lastSyncMessage: $lastSyncMessage,
+    lastResolvedType: $lastResolvedType
+  })
+}
+
+mutation UpdateDealerFeedProfileSyncStats(
+  $id: String!,
+  $totalListingsSynced: Int,
+  $totalListingsActive: Int,
+  $totalListingsCreated: Int,
+  $totalListingsUpdated: Int,
+  $totalListingsDeleted: Int,
+  $lastSyncAt: Timestamp,
+  $lastSyncStatus: String,
+  $lastSyncMessage: String
+) @auth(level: USER) @transaction {
+  dealerFeedProfile_update(id: $id, data: {
+    totalListingsSynced: $totalListingsSynced,
+    totalListingsActive: $totalListingsActive,
+    totalListingsCreated: $totalListingsCreated,
+    totalListingsUpdated: $totalListingsUpdated,
+    totalListingsDeleted: $totalListingsDeleted,
+    lastSyncAt: $lastSyncAt,
+    lastSyncStatus: $lastSyncStatus,
+    lastSyncMessage: $lastSyncMessage
+  })
+}
+
+mutation UpsertDealerListing(
+  $id: String!,
+  $dealerFeedId: String!,
+  $sellerUid: String!,
+  $externalListingId: String!,
+  $timberequipListingId: String,
+  $equipmentHash: String,
+  $status: String,
+  $dealerSourceUrl: String,
+  $dataSource: String,
+  $externalData: Any,
+  $mappedData: Any,
+  $syncedAt: Timestamp
+) @auth(level: USER) @transaction {
+  dealerListing_upsert(data: {
+    id: $id,
+    dealerFeedId: $dealerFeedId,
+    sellerUid: $sellerUid,
+    externalListingId: $externalListingId,
+    timberequipListingId: $timberequipListingId,
+    equipmentHash: $equipmentHash,
+    status: $status,
+    dealerSourceUrl: $dealerSourceUrl,
+    dataSource: $dataSource,
+    externalData: $externalData,
+    mappedData: $mappedData,
+    syncedAt: $syncedAt
+  })
+}
+
+mutation InsertDealerFeedIngestLog(
+  $id: String!,
+  $feedId: String,
+  $sellerUid: String!,
+  $actorUid: String,
+  $actorRole: String,
+  $sourceName: String,
+  $totalReceived: Int,
+  $processed: Int,
+  $created: Int,
+  $updated: Int,
+  $upserted: Int,
+  $skipped: Int,
+  $archived: Int,
+  $errorCount: Int,
+  $errors: Any,
+  $dryRun: Boolean,
+  $syncContext: Any,
+  $processedAt: Timestamp
+) @auth(level: USER) @transaction {
+  dealerFeedIngestLog_insert(data: {
+    id: $id,
+    feedId: $feedId,
+    sellerUid: $sellerUid,
+    actorUid: $actorUid,
+    actorRole: $actorRole,
+    sourceName: $sourceName,
+    totalReceived: $totalReceived,
+    processed: $processed,
+    created: $created,
+    updated: $updated,
+    upserted: $upserted,
+    skipped: $skipped,
+    archived: $archived,
+    errorCount: $errorCount,
+    errors: $errors,
+    dryRun: $dryRun,
+    syncContext: $syncContext,
+    processedAt: $processedAt
+  })
+}
+
+mutation InsertDealerAuditLog(
+  $id: String!,
+  $dealerFeedId: String,
+  $sellerUid: String!,
+  $action: String!,
+  $details: String,
+  $errorMessage: String,
+  $itemsProcessed: Int,
+  $itemsSucceeded: Int,
+  $itemsFailed: Int,
+  $metadata: Any
+) @auth(level: USER) @transaction {
+  dealerAuditLog_insert(data: {
+    id: $id,
+    dealerFeedId: $dealerFeedId,
+    sellerUid: $sellerUid,
+    action: $action,
+    details: $details,
+    errorMessage: $errorMessage,
+    itemsProcessed: $itemsProcessed,
+    itemsSucceeded: $itemsSucceeded,
+    itemsFailed: $itemsFailed,
+    metadata: $metadata
+  })
+}
+
+mutation UpsertDealerWebhookSubscription(
+  $id: String!,
+  $dealerUid: String!,
+  $callbackUrl: String!,
+  $events: Any,
+  $active: Boolean,
+  $secretMasked: String,
+  $failureCount: Int,
+  $lastDeliveryAt: Timestamp
+) @auth(level: USER) @transaction {
+  dealerWebhookSubscription_upsert(data: {
+    id: $id,
+    dealerUid: $dealerUid,
+    callbackUrl: $callbackUrl,
+    events: $events,
+    active: $active,
+    secretMasked: $secretMasked,
+    failureCount: $failureCount,
+    lastDeliveryAt: $lastDeliveryAt
+  })
+}
+
+mutation UpsertDealerWidgetConfig(
+  $id: String!,
+  $cardStyle: String,
+  $accentColor: String,
+  $fontFamily: String,
+  $darkMode: Boolean,
+  $showInquiry: Boolean,
+  $showCall: Boolean,
+  $showDetails: Boolean,
+  $pageSize: Int,
+  $customCss: String
+) @auth(level: USER) @transaction {
+  dealerWidgetConfig_upsert(data: {
+    id: $id,
+    cardStyle: $cardStyle,
+    accentColor: $accentColor,
+    fontFamily: $fontFamily,
+    darkMode: $darkMode,
+    showInquiry: $showInquiry,
+    showCall: $showCall,
+    showDetails: $showDetails,
+    pageSize: $pageSize,
+    customCss: $customCss
+  })
+}

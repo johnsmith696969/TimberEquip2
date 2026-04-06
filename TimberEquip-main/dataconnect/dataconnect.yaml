@@ -14,3 +14,5 @@ connectorDirs:
   - ./marketplace
   - ./billing
   - ./auctions
+  - ./leads
+  - ./dealers
