@@ -38,6 +38,41 @@ export interface ArchiveListingVariables {
   reasonNote?: string | null;
 }
 
+export interface AuctionBid_Key {
+  id: string;
+  __typename?: 'AuctionBid_Key';
+}
+
+export interface AuctionInvoice_Key {
+  id: string;
+  __typename?: 'AuctionInvoice_Key';
+}
+
+export interface AuctionLot_Key {
+  id: string;
+  __typename?: 'AuctionLot_Key';
+}
+
+export interface Auction_Key {
+  id: string;
+  __typename?: 'Auction_Key';
+}
+
+export interface BidderProfile_Key {
+  id: string;
+  __typename?: 'BidderProfile_Key';
+}
+
+export interface BillingSubscription_Key {
+  id: string;
+  __typename?: 'BillingSubscription_Key';
+}
+
+export interface CallLog_Key {
+  id: string;
+  __typename?: 'CallLog_Key';
+}
+
 export interface ConfirmListingPaymentData {
   query?: {
   };
@@ -50,6 +85,41 @@ export interface ConfirmListingPaymentVariables {
   actorId?: string | null;
   requestId?: string | null;
   reasonCode?: string | null;
+}
+
+export interface ContactRequest_Key {
+  id: string;
+  __typename?: 'ContactRequest_Key';
+}
+
+export interface DealerAuditLog_Key {
+  id: string;
+  __typename?: 'DealerAuditLog_Key';
+}
+
+export interface DealerFeedIngestLog_Key {
+  id: string;
+  __typename?: 'DealerFeedIngestLog_Key';
+}
+
+export interface DealerFeedProfile_Key {
+  id: string;
+  __typename?: 'DealerFeedProfile_Key';
+}
+
+export interface DealerListing_Key {
+  id: string;
+  __typename?: 'DealerListing_Key';
+}
+
+export interface DealerWebhookSubscription_Key {
+  id: string;
+  __typename?: 'DealerWebhookSubscription_Key';
+}
+
+export interface DealerWidgetConfig_Key {
+  id: string;
+  __typename?: 'DealerWidgetConfig_Key';
 }
 
 export interface DeleteListingShadowData {
@@ -72,6 +142,11 @@ export interface ExpireListingVariables {
   actorId?: string | null;
   requestId?: string | null;
   reasonCode?: string | null;
+}
+
+export interface FinancingRequest_Key {
+  id: string;
+  __typename?: 'FinancingRequest_Key';
 }
 
 export interface FindListingByFirestoreIdData {
@@ -112,6 +187,11 @@ export interface GetListingGovernanceVariables {
   id: UUIDString;
 }
 
+export interface Inquiry_Key {
+  id: string;
+  __typename?: 'Inquiry_Key';
+}
+
 export interface InsertListingShadowData {
   listing_insert: Listing_Key;
 }
@@ -139,6 +219,11 @@ export interface InsertListingShadowVariables {
   sourceSystem: string;
   externalSourceName?: string | null;
   externalSourceId?: string | null;
+}
+
+export interface Invoice_Key {
+  id: string;
+  __typename?: 'Invoice_Key';
 }
 
 export interface ListLifecycleQueueData {
@@ -324,6 +409,16 @@ export interface ResolveListingAnomalyVariables {
   resolutionNote: string;
 }
 
+export interface SellerProgramApplication_Key {
+  id: string;
+  __typename?: 'SellerProgramApplication_Key';
+}
+
+export interface Storefront_Key {
+  id: string;
+  __typename?: 'Storefront_Key';
+}
+
 export interface SubmitListingData {
   query?: {
   };
@@ -366,30 +461,10 @@ export interface UpdateListingShadowVariables {
   externalSourceId?: string | null;
 }
 
-/** Generated Node Admin SDK operation action function for the 'FindListingByFirestoreId' Query. Allow users to execute without passing in DataConnect. */
-export function findListingByFirestoreId(dc: DataConnect, vars: FindListingByFirestoreIdVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<FindListingByFirestoreIdData>>;
-/** Generated Node Admin SDK operation action function for the 'FindListingByFirestoreId' Query. Allow users to pass in custom DataConnect instances. */
-export function findListingByFirestoreId(vars: FindListingByFirestoreIdVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<FindListingByFirestoreIdData>>;
-
-/** Generated Node Admin SDK operation action function for the 'InsertListingShadow' Mutation. Allow users to execute without passing in DataConnect. */
-export function insertListingShadow(dc: DataConnect, vars: InsertListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<InsertListingShadowData>>;
-/** Generated Node Admin SDK operation action function for the 'InsertListingShadow' Mutation. Allow users to pass in custom DataConnect instances. */
-export function insertListingShadow(vars: InsertListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<InsertListingShadowData>>;
-
-/** Generated Node Admin SDK operation action function for the 'UpdateListingShadow' Mutation. Allow users to execute without passing in DataConnect. */
-export function updateListingShadow(dc: DataConnect, vars: UpdateListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<UpdateListingShadowData>>;
-/** Generated Node Admin SDK operation action function for the 'UpdateListingShadow' Mutation. Allow users to pass in custom DataConnect instances. */
-export function updateListingShadow(vars: UpdateListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<UpdateListingShadowData>>;
-
-/** Generated Node Admin SDK operation action function for the 'DeleteListingShadow' Mutation. Allow users to execute without passing in DataConnect. */
-export function deleteListingShadow(dc: DataConnect, vars: DeleteListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<DeleteListingShadowData>>;
-/** Generated Node Admin SDK operation action function for the 'DeleteListingShadow' Mutation. Allow users to pass in custom DataConnect instances. */
-export function deleteListingShadow(vars: DeleteListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<DeleteListingShadowData>>;
-
-/** Generated Node Admin SDK operation action function for the 'RecordListingStateTransition' Mutation. Allow users to execute without passing in DataConnect. */
-export function recordListingStateTransition(dc: DataConnect, vars: RecordListingStateTransitionVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<RecordListingStateTransitionData>>;
-/** Generated Node Admin SDK operation action function for the 'RecordListingStateTransition' Mutation. Allow users to pass in custom DataConnect instances. */
-export function recordListingStateTransition(vars: RecordListingStateTransitionVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<RecordListingStateTransitionData>>;
+export interface User_Key {
+  id: string;
+  __typename?: 'User_Key';
+}
 
 /** Generated Node Admin SDK operation action function for the 'GetListingGovernance' Query. Allow users to execute without passing in DataConnect. */
 export function getListingGovernance(dc: DataConnect, vars: GetListingGovernanceVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<GetListingGovernanceData>>;
@@ -460,4 +535,29 @@ export function archiveListing(vars: ArchiveListingVariables, options?: Operatio
 export function resolveListingAnomaly(dc: DataConnect, vars: ResolveListingAnomalyVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<ResolveListingAnomalyData>>;
 /** Generated Node Admin SDK operation action function for the 'ResolveListingAnomaly' Mutation. Allow users to pass in custom DataConnect instances. */
 export function resolveListingAnomaly(vars: ResolveListingAnomalyVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<ResolveListingAnomalyData>>;
+
+/** Generated Node Admin SDK operation action function for the 'FindListingByFirestoreId' Query. Allow users to execute without passing in DataConnect. */
+export function findListingByFirestoreId(dc: DataConnect, vars: FindListingByFirestoreIdVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<FindListingByFirestoreIdData>>;
+/** Generated Node Admin SDK operation action function for the 'FindListingByFirestoreId' Query. Allow users to pass in custom DataConnect instances. */
+export function findListingByFirestoreId(vars: FindListingByFirestoreIdVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<FindListingByFirestoreIdData>>;
+
+/** Generated Node Admin SDK operation action function for the 'InsertListingShadow' Mutation. Allow users to execute without passing in DataConnect. */
+export function insertListingShadow(dc: DataConnect, vars: InsertListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<InsertListingShadowData>>;
+/** Generated Node Admin SDK operation action function for the 'InsertListingShadow' Mutation. Allow users to pass in custom DataConnect instances. */
+export function insertListingShadow(vars: InsertListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<InsertListingShadowData>>;
+
+/** Generated Node Admin SDK operation action function for the 'UpdateListingShadow' Mutation. Allow users to execute without passing in DataConnect. */
+export function updateListingShadow(dc: DataConnect, vars: UpdateListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<UpdateListingShadowData>>;
+/** Generated Node Admin SDK operation action function for the 'UpdateListingShadow' Mutation. Allow users to pass in custom DataConnect instances. */
+export function updateListingShadow(vars: UpdateListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<UpdateListingShadowData>>;
+
+/** Generated Node Admin SDK operation action function for the 'DeleteListingShadow' Mutation. Allow users to execute without passing in DataConnect. */
+export function deleteListingShadow(dc: DataConnect, vars: DeleteListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<DeleteListingShadowData>>;
+/** Generated Node Admin SDK operation action function for the 'DeleteListingShadow' Mutation. Allow users to pass in custom DataConnect instances. */
+export function deleteListingShadow(vars: DeleteListingShadowVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<DeleteListingShadowData>>;
+
+/** Generated Node Admin SDK operation action function for the 'RecordListingStateTransition' Mutation. Allow users to execute without passing in DataConnect. */
+export function recordListingStateTransition(dc: DataConnect, vars: RecordListingStateTransitionVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<RecordListingStateTransitionData>>;
+/** Generated Node Admin SDK operation action function for the 'RecordListingStateTransition' Mutation. Allow users to pass in custom DataConnect instances. */
+export function recordListingStateTransition(vars: RecordListingStateTransitionVariables, options?: OperationOptions): Promise<ExecuteOperationResponse<RecordListingStateTransitionData>>;
 

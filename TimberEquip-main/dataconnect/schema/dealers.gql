@@ -30,8 +30,6 @@ type DealerFeedProfile @table(name: "dealer_feed_profiles", key: "id") @index(fi
   lastResolvedType: String @col(name: "last_resolved_type")
   createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
   updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
-  listings: [DealerListing!]!
-  ingestLogs: [DealerFeedIngestLog!]!
 }
 
 type DealerListing @table(name: "dealer_listings", key: "id") @index(fields: ["dealerFeedId"]) @index(fields: ["sellerUid"]) @index(fields: ["equipmentHash"]) {

@@ -4,7 +4,7 @@
 # ─── Queries ────────────────────────────────────────────────────────────
 
 query GetSubscriptionsByUser($userId: String!) @auth(level: USER) {
-  subscriptions(where: { userId: { eq: $userId } }, orderBy: [{ createdAt: DESC }]) {
+  billingSubscriptions(where: { userId: { eq: $userId } }, orderBy: [{ createdAt: DESC }]) {
     id
     userId
     listingId
@@ -21,7 +21,7 @@ query GetSubscriptionsByUser($userId: String!) @auth(level: USER) {
 }
 
 query GetActiveSubscriptionForListing($listingId: String!) @auth(level: USER) {
-  subscriptions(
+  billingSubscriptions(
     where: { listingId: { eq: $listingId }, status: { eq: "active" } }
     limit: 1
   ) {
@@ -35,7 +35,7 @@ query GetActiveSubscriptionForListing($listingId: String!) @auth(level: USER) {
 }
 
 query GetSubscriptionByStripeId($stripeId: String!) @auth(level: USER) {
-  subscriptions(where: { stripeSubscriptionId: { eq: $stripeId } }, limit: 1) {
+  billingSubscriptions(where: { stripeSubscriptionId: { eq: $stripeId } }, limit: 1) {
     id
     userId
     listingId
@@ -92,7 +92,7 @@ mutation UpsertSubscription(
   $currentPeriodEnd: Timestamp,
   $cancelAtPeriodEnd: Boolean
 ) @auth(level: USER) @transaction {
-  subscription_upsert(data: {
+  billingSubscription_upsert(data: {
     id: $id,
     userId: $userId,
     listingId: $listingId,
@@ -191,7 +191,7 @@ mutation UpsertSellerApplication(
 }
 
 mutation UpdateSubscriptionStatus($id: String!, $status: String!, $cancelAtPeriodEnd: Boolean, $currentPeriodEnd: Timestamp) @auth(level: USER) @transaction {
-  subscription_update(id: $id, data: {
+  billingSubscription_update(id: $id, data: {
     status: $status,
     cancelAtPeriodEnd: $cancelAtPeriodEnd,
     currentPeriodEnd: $currentPeriodEnd

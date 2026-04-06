@@ -10,7 +10,12 @@
     "serve": "firebase emulators:start --only functions"
   },
   "dependencies": {
+    "@dataconnect/admin-generated-timberequip-auctions": "file:generated/dataconnect/auctions",
+    "@dataconnect/admin-generated-timberequip-billing": "file:generated/dataconnect/billing",
+    "@dataconnect/admin-generated-timberequip-dealers": "file:generated/dataconnect/dealers",
+    "@dataconnect/admin-generated-timberequip-leads": "file:generated/dataconnect/leads",
     "@dataconnect/admin-generated-timberequip-listing-governance": "file:generated/dataconnect/listing-governance",
+    "@dataconnect/admin-generated-timberequip-marketplace": "file:generated/dataconnect/marketplace",
     "@google-cloud/recaptcha-enterprise": "^6.4.0",
     "@sendgrid/mail": "^8.1.5",
     "@sentry/node": "^10.46.0",

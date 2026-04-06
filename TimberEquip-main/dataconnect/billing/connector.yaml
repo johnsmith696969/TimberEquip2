@@ -1,7 +1,7 @@
 connectorId: billing
 generate:
   javascriptSdk:
-    outputDir: ../../src/lib/dataconnect/generated
+    outputDir: ../../src/lib/dataconnect/generated/billing
     package: "@dataconnect/generated-timberequip-billing"
     packageJsonDir: ../..
     react: true

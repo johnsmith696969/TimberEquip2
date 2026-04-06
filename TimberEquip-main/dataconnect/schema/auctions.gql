@@ -28,7 +28,6 @@ type Auction @table(name: "auctions", key: "id") @index(fields: ["status"]) @ind
   createdBy: String! @col(name: "created_by")
   createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
   updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
-  lots: [AuctionLot!]!
 }
 
 type AuctionLot @table(name: "auction_lots", key: "id") @index(fields: ["auctionId", "closeOrder"]) @index(fields: ["auctionId", "status"]) @index(fields: ["listingId"]) {
@@ -74,7 +73,6 @@ type AuctionLot @table(name: "auction_lots", key: "id") @index(fields: ["auction
   titleDocumentFee: Float @col(name: "title_document_fee") @default(value: 0)
   createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
   updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
-  bids: [AuctionBid!]!
 }
 
 type AuctionBid @table(name: "auction_bids", key: "id") @index(fields: ["auctionId", "lotId"]) @index(fields: ["bidderId"]) {

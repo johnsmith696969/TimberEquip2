@@ -1,10 +1,10 @@
 {
-  "name": "forestry-equipment-sales",
+  "name": "timberequip",
   "private": true,
   "version": "1.0.0",
-  "description": "Forestry Equipment Sales — Enterprise logging equipment marketplace",
-  "author": "Forestry Equipment Sales",
-  "homepage": "https://www.forestryequipmentsales.com",
+  "description": "TimberEquip - Enterprise logging equipment marketplace",
+  "author": "TimberEquip",
+  "homepage": "https://www.timberequip.com",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -48,6 +48,12 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@dataconnect/generated-timberequip-auctions": "file:src/lib/dataconnect/generated/auctions",
+    "@dataconnect/generated-timberequip-billing": "file:src/lib/dataconnect/generated/billing",
+    "@dataconnect/generated-timberequip-dealers": "file:src/lib/dataconnect/generated/dealers",
+    "@dataconnect/generated-timberequip-leads": "file:src/lib/dataconnect/generated/leads",
+    "@dataconnect/generated-timberequip-listing-governance": "file:src/lib/dataconnect/generated/listing-governance",
+    "@dataconnect/generated-timberequip-marketplace": "file:src/lib/dataconnect/generated/marketplace",
     "@sentry/node": "^10.46.0",
     "@sentry/react": "^10.46.0",
     "@tailwindcss/vite": "^4.1.14",

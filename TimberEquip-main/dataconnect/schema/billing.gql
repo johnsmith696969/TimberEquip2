@@ -1,7 +1,7 @@
 ## Subscriptions, Invoices & Seller Program Applications — Data Connect Schema
 ## Phase 2 of the Firestore → PostgreSQL migration.
 
-type Subscription @table(name: "subscriptions", key: "id") @index(fields: ["userId"]) @index(fields: ["status"]) @index(fields: ["stripeSubscriptionId"]) {
+type BillingSubscription @table(name: "subscriptions", key: "id") @index(fields: ["userId"]) @index(fields: ["status"]) @index(fields: ["stripeSubscriptionId"]) {
   id: String!
   user: User! @ref(fields: ["userId"], references: ["id"])
   userId: String! @col(name: "user_id")

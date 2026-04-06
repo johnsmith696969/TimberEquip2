@@ -7,41 +7,6 @@ const connectorConfig = {
 };
 exports.connectorConfig = connectorConfig;
 
-function findListingByFirestoreId(dcOrVarsOrOptions, varsOrOptions, options) {
-  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
-  dcInstance.useGen(true);
-  return dcInstance.executeQuery('FindListingByFirestoreId', inputVars, inputOpts);
-}
-exports.findListingByFirestoreId = findListingByFirestoreId;
-
-function insertListingShadow(dcOrVarsOrOptions, varsOrOptions, options) {
-  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
-  dcInstance.useGen(true);
-  return dcInstance.executeMutation('InsertListingShadow', inputVars, inputOpts);
-}
-exports.insertListingShadow = insertListingShadow;
-
-function updateListingShadow(dcOrVarsOrOptions, varsOrOptions, options) {
-  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
-  dcInstance.useGen(true);
-  return dcInstance.executeMutation('UpdateListingShadow', inputVars, inputOpts);
-}
-exports.updateListingShadow = updateListingShadow;
-
-function deleteListingShadow(dcOrVarsOrOptions, varsOrOptions, options) {
-  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
-  dcInstance.useGen(true);
-  return dcInstance.executeMutation('DeleteListingShadow', inputVars, inputOpts);
-}
-exports.deleteListingShadow = deleteListingShadow;
-
-function recordListingStateTransition(dcOrVarsOrOptions, varsOrOptions, options) {
-  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
-  dcInstance.useGen(true);
-  return dcInstance.executeMutation('RecordListingStateTransition', inputVars, inputOpts);
-}
-exports.recordListingStateTransition = recordListingStateTransition;
-
 function getListingGovernance(dcOrVarsOrOptions, varsOrOptions, options) {
   const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
   dcInstance.useGen(true);
@@ -139,4 +104,39 @@ function resolveListingAnomaly(dcOrVarsOrOptions, varsOrOptions, options) {
   return dcInstance.executeMutation('ResolveListingAnomaly', inputVars, inputOpts);
 }
 exports.resolveListingAnomaly = resolveListingAnomaly;
+
+function findListingByFirestoreId(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeQuery('FindListingByFirestoreId', inputVars, inputOpts);
+}
+exports.findListingByFirestoreId = findListingByFirestoreId;
+
+function insertListingShadow(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeMutation('InsertListingShadow', inputVars, inputOpts);
+}
+exports.insertListingShadow = insertListingShadow;
+
+function updateListingShadow(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeMutation('UpdateListingShadow', inputVars, inputOpts);
+}
+exports.updateListingShadow = updateListingShadow;
+
+function deleteListingShadow(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeMutation('DeleteListingShadow', inputVars, inputOpts);
+}
+exports.deleteListingShadow = deleteListingShadow;
+
+function recordListingStateTransition(dcOrVarsOrOptions, varsOrOptions, options) {
+  const { dc: dcInstance, vars: inputVars, options: inputOpts} = validateAdminArgs(connectorConfig, dcOrVarsOrOptions, varsOrOptions, options, true, true);
+  dcInstance.useGen(true);
+  return dcInstance.executeMutation('RecordListingStateTransition', inputVars, inputOpts);
+}
+exports.recordListingStateTransition = recordListingStateTransition;
 

@@ -1,7 +1,7 @@
 connectorId: marketplace
 generate:
   javascriptSdk:
-    outputDir: ../../src/lib/dataconnect/generated
+    outputDir: ../../src/lib/dataconnect/generated/marketplace
     package: "@dataconnect/generated-timberequip-marketplace"
     packageJsonDir: ../..
     react: true
