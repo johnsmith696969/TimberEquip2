@@ -19,33 +19,39 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 // The custom Firestore database used by the marketplace.
 const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 
-// ─── Placeholder SDK imports ───────────────────────────────────────────
-// Uncomment these after running `firebase dataconnect:sdk:generate`:
-//
-// const {
-//   upsertUser,
-//   upsertStorefront,
-//   deleteUser,
-// } = require('./generated/dataconnect/marketplace');
-//
-// const {
-//   upsertSubscription,
-//   upsertInvoice,
-//   upsertSellerApplication,
-//   updateSubscriptionStatus,
-//   updateInvoiceStatus,
-// } = require('./generated/dataconnect/billing');
+// ─── Data Connect Admin SDK imports ─────────────────────────────────────
+const {
+  upsertUser,
+  upsertStorefront,
+  deleteUser,
+} = require('./generated/dataconnect/marketplace');
 
-let sdkReady = false;
+const {
+  upsertSubscription,
+  upsertInvoice,
+  upsertSellerApplication,
+} = require('./generated/dataconnect/billing');
 
-function guardedMutation(name, variables) {
-  if (!sdkReady) {
-    logger.warn(`[dual-write] SDK not generated yet — skipping ${name}`, { variables: Object.keys(variables) });
-    return Promise.resolve();
+const mutations = {
+  upsertUser,
+  upsertStorefront,
+  deleteUser,
+  upsertSubscription,
+  upsertInvoice,
+  upsertSellerApplication,
+};
+
+async function guardedMutation(name, variables) {
+  const fn = mutations[name];
+  if (!fn) {
+    logger.error(`[dual-write] Unknown mutation: ${name}`);
+    return;
   }
-  // Once the SDK is imported, route to the actual function:
-  // return mutationFunctions[name](variables);
-  return Promise.resolve();
+  try {
+    await fn(variables);
+  } catch (err) {
+    logger.error(`[dual-write] ${name} failed`, { error: err.message, variables: Object.keys(variables) });
+  }
 }
 
 // ─── Utility ───────────────────────────────────────────────────────────

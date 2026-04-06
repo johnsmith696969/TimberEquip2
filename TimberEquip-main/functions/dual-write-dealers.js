@@ -25,26 +25,36 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 
 const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 
-// ─── Placeholder SDK imports ───────────────────────────────────────────
-// Uncomment these after running `firebase dataconnect:sdk:generate`:
-//
-// const {
-//   upsertDealerFeedProfile,
-//   upsertDealerListing,
-//   insertDealerFeedIngestLog,
-//   insertDealerAuditLog,
-//   upsertDealerWebhookSubscription,
-//   upsertDealerWidgetConfig,
-// } = require('./generated/dataconnect/dealers');
+// ─── Data Connect Admin SDK imports ─────────────────────────────────────
+const {
+  upsertDealerFeedProfile,
+  upsertDealerListing,
+  insertDealerFeedIngestLog,
+  insertDealerAuditLog,
+  upsertDealerWebhookSubscription,
+  upsertDealerWidgetConfig,
+} = require('./generated/dataconnect/dealers');
 
-let sdkReady = false;
+const mutations = {
+  upsertDealerFeedProfile,
+  upsertDealerListing,
+  insertDealerFeedIngestLog,
+  insertDealerAuditLog,
+  upsertDealerWebhookSubscription,
+  upsertDealerWidgetConfig,
+};
 
-function guardedMutation(name, variables) {
-  if (!sdkReady) {
-    logger.warn(`[dual-write-dealers] SDK not generated yet — skipping ${name}`, { variables: Object.keys(variables) });
-    return Promise.resolve();
+async function guardedMutation(name, variables) {
+  const fn = mutations[name];
+  if (!fn) {
+    logger.error(`[dual-write-dealers] Unknown mutation: ${name}`);
+    return;
   }
-  return Promise.resolve();
+  try {
+    await fn(variables);
+  } catch (err) {
+    logger.error(`[dual-write-dealers] ${name} failed`, { error: err.message, variables: Object.keys(variables) });
+  }
 }
 
 // ─── Utility ───────────────────────────────────────────────────────────
