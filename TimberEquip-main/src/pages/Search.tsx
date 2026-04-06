@@ -34,7 +34,9 @@ import { normalizeListingId, normalizeListingIdList } from '../utils/listingIden
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import { normalizeSeoSlug } from '../utils/seoRoutes';
 import { AlertMessage } from '../components/AlertMessage';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
+import type { GooglePlaceSelection } from '../services/placesService';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
 
@@ -68,6 +70,8 @@ interface SearchFilters {
   maxHours: string;
   condition: string;
   location: string;
+  locationCenterLat: string;
+  locationCenterLng: string;
   locationRadius: string;
   attachment: string;
   feature: string;
@@ -94,6 +98,8 @@ const DEFAULT_FILTERS: SearchFilters = {
   maxHours: '',
   condition: '',
   location: '',
+  locationCenterLat: '',
+  locationCenterLng: '',
   locationRadius: '',
   attachment: '',
   feature: '',
@@ -131,6 +137,32 @@ const parseLocationCoordinates = (value: string): { lat: number; lng: number } |
 
   return { lat, lng };
 };
+
+const getLocationFilterCenter = (
+  filters: Pick<SearchFilters, 'location' | 'locationCenterLat' | 'locationCenterLng'>
+): { lat: number; lng: number } | null => {
+  const lat = parseNumber(filters.locationCenterLat);
+  const lng = parseNumber(filters.locationCenterLng);
+
+  if (lat !== undefined && lng !== undefined && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+    return { lat, lng };
+  }
+
+  return parseLocationCoordinates(filters.location);
+};
+
+const buildLocationSelectionLabel = (place: GooglePlaceSelection): string =>
+  [place.city, place.state, place.country].filter(Boolean).join(', ') || place.formattedAddress || '';
+
+const buildLocationFilterState = (
+  location: string,
+  latitude?: number | null,
+  longitude?: number | null
+): Pick<SearchFilters, 'location' | 'locationCenterLat' | 'locationCenterLng'> => ({
+  location,
+  locationCenterLat: typeof latitude === 'number' && Number.isFinite(latitude) ? String(latitude) : '',
+  locationCenterLng: typeof longitude === 'number' && Number.isFinite(longitude) ? String(longitude) : '',
+});
 
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
@@ -226,6 +258,8 @@ const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   maxHours: params.get('maxHours') || '',
   condition: params.get('condition') || '',
   location: params.get('location') || '',
+  locationCenterLat: params.get('locationCenterLat') || '',
+  locationCenterLng: params.get('locationCenterLng') || '',
   locationRadius: params.get('locationRadius') || DEFAULT_FILTERS.locationRadius,
   attachment: params.get('attachment') || '',
   feature: params.get('feature') || '',
@@ -252,6 +286,10 @@ const applyDependentFilterResets = (
   value: string
 ): SearchFilters => {
   const next = { ...previous, [key]: value };
+  if (key === 'location') {
+    next.locationCenterLat = '';
+    next.locationCenterLng = '';
+  }
   if (key === 'category') {
     next.subcategory = '';
     next.manufacturer = '';
@@ -264,7 +302,7 @@ const applyDependentFilterResets = (
 
 const countActiveFilters = (filters: SearchFilters): number =>
   Object.entries(filters).reduce((count, [key, value]) => {
-    if (key === 'sortBy' || !value) return count;
+    if (key === 'sortBy' || key === 'locationCenterLat' || key === 'locationCenterLng' || !value) return count;
     if (MULTI_SELECT_KEYS.has(key)) return count + parseMultiValue(value).length;
     return count + 1;
   }, 0);
@@ -532,10 +570,12 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         .filter((cat) => taxonomyKeys.has(cat.toLowerCase()))
     );
   }, [allListings, taxonomy]);
-  const listingSubcategories = useMemo(
-    () => uniqueSorted(allListings.map((listing) => listing.subcategory || listing.category)),
-    [allListings]
-  );
+  const listingSubcategories = useMemo(() => {
+    const filtered = filters.category
+      ? allListings.filter((listing) => normalize(listing.category) === normalize(filters.category))
+      : allListings;
+    return uniqueSorted(filtered.map((listing) => listing.subcategory || listing.category));
+  }, [allListings, filters.category]);
 
   const manufacturerOptions = useMemo(() => {
     const listingManufacturers = uniqueSortedUpper(
@@ -606,7 +646,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     const minHours = parseNumber(filters.minHours);
     const maxHours = parseNumber(filters.maxHours);
     const radius = parseNumber(filters.locationRadius);
-    const center = parseLocationCoordinates(filters.location);
+    const center = getLocationFilterCenter(filters);
 
     return (listing: Listing, excludeKey?: keyof SearchFilters): boolean => {
       if ((listing.status || 'active') === 'sold') return false;
@@ -893,13 +933,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         const { latitude, longitude } = position.coords;
         const coords = { lat: latitude, lng: longitude };
         setUserCoords(coords);
-        const locStr = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
-        handleDraftFilterChange('location', locStr);
-        handleDraftFilterChange('locationRadius', '500');
-        handleDraftFilterChange('sortBy', 'nearest');
-        handleFilterChange('location', locStr);
-        handleFilterChange('locationRadius', '500');
-        handleFilterChange('sortBy', 'nearest');
+        const locationLabel = user?.location?.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        const nextLocationState = {
+          ...buildLocationFilterState(locationLabel, latitude, longitude),
+          locationRadius: '500',
+          sortBy: 'nearest' as SortBy,
+        };
+        setDraftFilters((prev) => ({ ...prev, ...nextLocationState }));
+        setFilters((prev) => ({ ...prev, ...nextLocationState }));
         setGeoLocating(false);
       },
       () => {
@@ -1000,13 +1041,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const visibleActiveFilterCount = countActiveFilters(filters) - (isCategoryPage ? 1 : 0);
 
   const seoTitle = isCategoryPage
-    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | Forestry Equipment Sales`
+    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | TimberEquip`
     : filters.q
-      ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
-      : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
+      ? `TimberEquip | ${filters.q} Listings (${filteredListings.length})`
+      : 'TimberEquip | New & Used Logging Equipment For Sale';
 
   const seoDescription = isCategoryPage
-    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on Forestry Equipment Sales.`
+    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on TimberEquip.`
     : 'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
 
   const seoRobots = isCategoryPage ? undefined : 'noindex, follow';
@@ -1043,7 +1084,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 sku: listing.id,
                 brand: {
                   '@type': 'Brand',
-                  name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
+                  name: listing.make || listing.manufacturer || listing.brand || 'TimberEquip',
                 },
                 offers: {
                   '@type': 'Offer',
@@ -1070,7 +1111,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             sku: listing.id,
             brand: {
               '@type': 'Brand',
-              name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
+              name: listing.make || listing.manufacturer || listing.brand || 'TimberEquip',
             },
             offers: {
               '@type': 'Offer',
@@ -1112,7 +1153,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             <span className="text-[9px] font-black uppercase tracking-widest text-muted mr-1 flex-shrink-0">Filters:</span>
             {(Object.entries(filters) as [keyof SearchFilters, string][])
               .filter(([key, value]) => {
-                if (key === 'sortBy' || !value) return false;
+                if (key === 'sortBy' || key === 'locationCenterLat' || key === 'locationCenterLng' || !value) return false;
                 if (categoryRoute?.isTopLevel && key === 'category') return false;
                 if (!categoryRoute?.isTopLevel && categoryRoute && key === 'subcategory') return false;
                 return true;
@@ -1146,7 +1187,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <button
                     key={key}
                     onClick={() => {
-                      const updated = { ...filters, [key]: '' };
+                      const updated = {
+                        ...filters,
+                        [key]: '',
+                        ...(key === 'location'
+                          ? { locationCenterLat: '', locationCenterLng: '' }
+                          : {}),
+                      };
                       setFilters(updated);
                       setDraftFilters(updated);
                     }}
@@ -1473,14 +1520,21 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <FilterSectionPanel open={openSections.location}>
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2 flex flex-col space-y-2">
-                          <label htmlFor="search-location" className="label-micro">Location / Center</label>
-                          <input
+                          <label htmlFor="search-location" className="label-micro">Location</label>
+                          <GooglePlacesInput
                             id="search-location"
-                            type="text"
-                            placeholder="City/State or lat,lng"
-                            className="input-industrial w-full"
+                            mode="address"
                             value={draftFilters.location}
-                            onChange={(e) => handleDraftFilterChange('location', e.target.value)}
+                            onChange={(value) => handleDraftFilterChange('location', value)}
+                            onSelect={(place) => {
+                              const nextLocation = buildLocationSelectionLabel(place);
+                              setDraftFilters((prev) => ({
+                                ...prev,
+                                ...buildLocationFilterState(nextLocation, place.latitude, place.longitude),
+                              }));
+                            }}
+                            placeholder="Address, city, state, or ZIP"
+                            className="space-y-0"
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
