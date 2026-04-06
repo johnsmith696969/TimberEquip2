@@ -3,7 +3,7 @@
 
 # ─── Queries ────────────────────────────────────────────────────────────
 
-query GetUserById($id: String!) @auth(level: USER) {
+query GetUserById($id: String!) @auth(level: NO_ACCESS) {
   user(id: $id) {
     id
     email
@@ -28,7 +28,7 @@ query GetUserById($id: String!) @auth(level: USER) {
   }
 }
 
-query GetUserByEmail($email: String!) @auth(level: USER) {
+query GetUserByEmail($email: String!) @auth(level: NO_ACCESS) {
   users(where: { email: { eq: $email } }, limit: 1) {
     id
     email
@@ -40,7 +40,7 @@ query GetUserByEmail($email: String!) @auth(level: USER) {
   }
 }
 
-query ListUsersByRole($role: String!, $limit: Int = 50, $offset: Int = 0) @auth(level: USER) {
+query ListUsersByRole($role: String!, $limit: Int = 50, $offset: Int = 0) @auth(level: NO_ACCESS) {
   users(where: { role: { eq: $role } }, limit: $limit, offset: $offset, orderBy: [{ createdAt: DESC }]) {
     id
     email
@@ -52,7 +52,7 @@ query ListUsersByRole($role: String!, $limit: Int = 50, $offset: Int = 0) @auth(
   }
 }
 
-query GetStorefrontBySlug($slug: String!) @auth(level: PUBLIC) {
+query GetStorefrontBySlug($slug: String!) @auth(level: NO_ACCESS) {
   storefronts(where: { storefrontSlug: { eq: $slug }, storefrontEnabled: { eq: true } }, limit: 1) {
     id
     userId
@@ -78,7 +78,7 @@ query GetStorefrontBySlug($slug: String!) @auth(level: PUBLIC) {
   }
 }
 
-query GetStorefrontByUserId($userId: String!) @auth(level: USER) {
+query GetStorefrontByUserId($userId: String!) @auth(level: NO_ACCESS) {
   storefronts(where: { userId: { eq: $userId } }, limit: 1) {
     id
     userId
@@ -99,7 +99,7 @@ query GetStorefrontByUserId($userId: String!) @auth(level: USER) {
   }
 }
 
-query ListActiveStorefronts($limit: Int = 100, $offset: Int = 0) @auth(level: PUBLIC) {
+query ListActiveStorefronts($limit: Int = 100, $offset: Int = 0) @auth(level: NO_ACCESS) {
   storefronts(
     where: { storefrontEnabled: { eq: true } }
     limit: $limit
@@ -161,7 +161,7 @@ mutation UpsertUser(
   $seoDescription: String,
   $seoKeywords: Any,
   $metadataJson: Any
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   user_upsert(data: {
     id: $id,
     email: $email,
@@ -239,7 +239,7 @@ mutation UpsertStorefront(
   $seoTitle: String,
   $seoDescription: String,
   $seoKeywords: Any
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   storefront_upsert(data: {
     id: $id,
     userId: $userId,
@@ -276,6 +276,6 @@ mutation UpsertStorefront(
   })
 }
 
-mutation DeleteUser($id: String!) @auth(level: USER) {
+mutation DeleteUser($id: String!) @auth(level: NO_ACCESS) {
   user_delete(id: $id)
 }

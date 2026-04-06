@@ -7,7 +7,7 @@
 # Admin Node SDK from Cloud Functions.
 
 # Role enforcement happens in the application layer (Cloud Functions / admin SDK).
-query FindListingByFirestoreId($legacyFirestoreId: String!) @auth(level: USER) {
+query FindListingByFirestoreId($legacyFirestoreId: String!) @auth(level: NO_ACCESS) {
   listings(
     where: { legacyFirestoreId: { eq: $legacyFirestoreId } }
     limit: 1

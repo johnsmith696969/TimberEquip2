@@ -3,7 +3,7 @@
 
 # ─── Dealer Feed Profile Queries ────────────────────────────────────
 
-query GetDealerFeedProfileById($id: String!) @auth(level: USER) {
+query GetDealerFeedProfileById($id: String!) @auth(level: NO_ACCESS) {
   dealerFeedProfile(id: $id) {
     id
     sellerUid
@@ -35,7 +35,7 @@ query GetDealerFeedProfileById($id: String!) @auth(level: USER) {
   }
 }
 
-query ListDealerFeedProfilesBySeller($sellerUid: String!) @auth(level: USER) {
+query ListDealerFeedProfilesBySeller($sellerUid: String!) @auth(level: NO_ACCESS) {
   dealerFeedProfiles(
     where: { sellerUid: { eq: $sellerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -56,7 +56,7 @@ query ListDealerFeedProfilesBySeller($sellerUid: String!) @auth(level: USER) {
   }
 }
 
-query ListDealerFeedProfilesByStatus($status: String!, $limit: Int = 50) @auth(level: USER) {
+query ListDealerFeedProfilesByStatus($status: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   dealerFeedProfiles(
     where: { status: { eq: $status } }
     orderBy: [{ createdAt: DESC }]
@@ -76,7 +76,7 @@ query ListDealerFeedProfilesByStatus($status: String!, $limit: Int = 50) @auth(l
 
 # ─── Dealer Listing Queries ─────────────────────────────────────────
 
-query ListDealerListingsByFeed($dealerFeedId: String!, $limit: Int = 100) @auth(level: USER) {
+query ListDealerListingsByFeed($dealerFeedId: String!, $limit: Int = 100) @auth(level: NO_ACCESS) {
   dealerListings(
     where: { dealerFeedId: { eq: $dealerFeedId } }
     orderBy: [{ createdAt: DESC }]
@@ -99,7 +99,7 @@ query ListDealerListingsByFeed($dealerFeedId: String!, $limit: Int = 100) @auth(
   }
 }
 
-query ListDealerListingsBySeller($sellerUid: String!, $limit: Int = 100) @auth(level: USER) {
+query ListDealerListingsBySeller($sellerUid: String!, $limit: Int = 100) @auth(level: NO_ACCESS) {
   dealerListings(
     where: { sellerUid: { eq: $sellerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -115,7 +115,7 @@ query ListDealerListingsBySeller($sellerUid: String!, $limit: Int = 100) @auth(l
   }
 }
 
-query GetDealerListingByHash($equipmentHash: String!) @auth(level: USER) {
+query GetDealerListingByHash($equipmentHash: String!) @auth(level: NO_ACCESS) {
   dealerListings(
     where: { equipmentHash: { eq: $equipmentHash } }
     limit: 1
@@ -130,7 +130,7 @@ query GetDealerListingByHash($equipmentHash: String!) @auth(level: USER) {
 
 # ─── Ingest Log Queries ─────────────────────────────────────────────
 
-query ListIngestLogsByFeed($feedId: String!, $limit: Int = 50) @auth(level: USER) {
+query ListIngestLogsByFeed($feedId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   dealerFeedIngestLogs(
     where: { feedId: { eq: $feedId } }
     orderBy: [{ createdAt: DESC }]
@@ -157,7 +157,7 @@ query ListIngestLogsByFeed($feedId: String!, $limit: Int = 50) @auth(level: USER
   }
 }
 
-query ListIngestLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+query ListIngestLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   dealerFeedIngestLogs(
     where: { sellerUid: { eq: $sellerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -179,7 +179,7 @@ query ListIngestLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level:
 
 # ─── Audit Log Queries ──────────────────────────────────────────────
 
-query ListAuditLogsByFeed($dealerFeedId: String!, $limit: Int = 50) @auth(level: USER) {
+query ListAuditLogsByFeed($dealerFeedId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   dealerAuditLogs(
     where: { dealerFeedId: { eq: $dealerFeedId } }
     orderBy: [{ createdAt: DESC }]
@@ -201,7 +201,7 @@ query ListAuditLogsByFeed($dealerFeedId: String!, $limit: Int = 50) @auth(level:
 
 # ─── Webhook Subscription Queries ───────────────────────────────────
 
-query ListWebhooksByDealer($dealerUid: String!) @auth(level: USER) {
+query ListWebhooksByDealer($dealerUid: String!) @auth(level: NO_ACCESS) {
   dealerWebhookSubscriptions(
     where: { dealerUid: { eq: $dealerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -220,7 +220,7 @@ query ListWebhooksByDealer($dealerUid: String!) @auth(level: USER) {
 
 # ─── Widget Config Queries ──────────────────────────────────────────
 
-query GetWidgetConfig($id: String!) @auth(level: PUBLIC) {
+query GetWidgetConfig($id: String!) @auth(level: NO_ACCESS) {
   dealerWidgetConfig(id: $id) {
     id
     cardStyle
@@ -265,7 +265,7 @@ mutation UpsertDealerFeedProfile(
   $lastSyncStatus: String,
   $lastSyncMessage: String,
   $lastResolvedType: String
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerFeedProfile_upsert(data: {
     id: $id,
     sellerUid: $sellerUid,
@@ -306,7 +306,7 @@ mutation UpdateDealerFeedProfileSyncStats(
   $lastSyncAt: Timestamp,
   $lastSyncStatus: String,
   $lastSyncMessage: String
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerFeedProfile_update(id: $id, data: {
     totalListingsSynced: $totalListingsSynced,
     totalListingsActive: $totalListingsActive,
@@ -332,7 +332,7 @@ mutation UpsertDealerListing(
   $externalData: Any,
   $mappedData: Any,
   $syncedAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerListing_upsert(data: {
     id: $id,
     dealerFeedId: $dealerFeedId,
@@ -368,7 +368,7 @@ mutation InsertDealerFeedIngestLog(
   $dryRun: Boolean,
   $syncContext: Any,
   $processedAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerFeedIngestLog_insert(data: {
     id: $id,
     feedId: $feedId,
@@ -402,7 +402,7 @@ mutation InsertDealerAuditLog(
   $itemsSucceeded: Int,
   $itemsFailed: Int,
   $metadata: Any
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerAuditLog_insert(data: {
     id: $id,
     dealerFeedId: $dealerFeedId,
@@ -426,7 +426,7 @@ mutation UpsertDealerWebhookSubscription(
   $secretMasked: String,
   $failureCount: Int,
   $lastDeliveryAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerWebhookSubscription_upsert(data: {
     id: $id,
     dealerUid: $dealerUid,
@@ -450,7 +450,7 @@ mutation UpsertDealerWidgetConfig(
   $showDetails: Boolean,
   $pageSize: Int,
   $customCss: String
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   dealerWidgetConfig_upsert(data: {
     id: $id,
     cardStyle: $cardStyle,

@@ -3,7 +3,7 @@
 
 # ─── Auction Queries ─────────────────────────────────────────────────
 
-query GetAuctionById($id: String!) @auth(level: PUBLIC) {
+query GetAuctionById($id: String!) @auth(level: NO_ACCESS) {
   auction(id: $id) {
     id
     title
@@ -33,7 +33,7 @@ query GetAuctionById($id: String!) @auth(level: PUBLIC) {
   }
 }
 
-query GetAuctionBySlug($slug: String!) @auth(level: PUBLIC) {
+query GetAuctionBySlug($slug: String!) @auth(level: NO_ACCESS) {
   auctions(where: { slug: { eq: $slug } }, limit: 1) {
     id
     title
@@ -51,7 +51,7 @@ query GetAuctionBySlug($slug: String!) @auth(level: PUBLIC) {
   }
 }
 
-query ListActiveAuctions($limit: Int = 20) @auth(level: PUBLIC) {
+query ListActiveAuctions($limit: Int = 20) @auth(level: NO_ACCESS) {
   auctions(
     where: { status: { in: ["preview", "active"] } }
     orderBy: [{ startTime: ASC }]
@@ -70,7 +70,7 @@ query ListActiveAuctions($limit: Int = 20) @auth(level: PUBLIC) {
   }
 }
 
-query ListAuctionsByStatus($status: String!, $limit: Int = 50) @auth(level: USER) {
+query ListAuctionsByStatus($status: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   auctions(
     where: { status: { eq: $status } }
     orderBy: [{ startTime: DESC }]
@@ -91,7 +91,7 @@ query ListAuctionsByStatus($status: String!, $limit: Int = 50) @auth(level: USER
 
 # ─── Lot Queries ─────────────────────────────────────────────────────
 
-query GetLotsByAuction($auctionId: String!) @auth(level: PUBLIC) {
+query GetLotsByAuction($auctionId: String!) @auth(level: NO_ACCESS) {
   auctionLots(
     where: { auctionId: { eq: $auctionId } }
     orderBy: [{ closeOrder: ASC }]
@@ -125,7 +125,7 @@ query GetLotsByAuction($auctionId: String!) @auth(level: PUBLIC) {
   }
 }
 
-query GetLotById($id: String!) @auth(level: PUBLIC) {
+query GetLotById($id: String!) @auth(level: NO_ACCESS) {
   auctionLot(id: $id) {
     id
     auctionId
@@ -165,7 +165,7 @@ query GetLotById($id: String!) @auth(level: PUBLIC) {
   }
 }
 
-query GetPromotedLots($auctionId: String!) @auth(level: PUBLIC) {
+query GetPromotedLots($auctionId: String!) @auth(level: NO_ACCESS) {
   auctionLots(
     where: { auctionId: { eq: $auctionId }, promoted: { eq: true } }
     orderBy: [{ promotedOrder: ASC }]
@@ -185,7 +185,7 @@ query GetPromotedLots($auctionId: String!) @auth(level: PUBLIC) {
 
 # ─── Bid Queries ─────────────────────────────────────────────────────
 
-query GetBidsByLot($auctionId: String!, $lotId: String!, $limit: Int = 100) @auth(level: USER) {
+query GetBidsByLot($auctionId: String!, $lotId: String!, $limit: Int = 100) @auth(level: NO_ACCESS) {
   auctionBids(
     where: { auctionId: { eq: $auctionId }, lotId: { eq: $lotId } }
     orderBy: [{ bidTime: DESC }]
@@ -203,7 +203,7 @@ query GetBidsByLot($auctionId: String!, $lotId: String!, $limit: Int = 100) @aut
   }
 }
 
-query GetBidsByBidder($bidderId: String!, $limit: Int = 100) @auth(level: USER) {
+query GetBidsByBidder($bidderId: String!, $limit: Int = 100) @auth(level: NO_ACCESS) {
   auctionBids(
     where: { bidderId: { eq: $bidderId } }
     orderBy: [{ bidTime: DESC }]
@@ -220,7 +220,7 @@ query GetBidsByBidder($bidderId: String!, $limit: Int = 100) @auth(level: USER) 
 
 # ─── Invoice Queries ─────────────────────────────────────────────────
 
-query GetAuctionInvoicesByBuyer($buyerId: String!, $limit: Int = 50) @auth(level: USER) {
+query GetAuctionInvoicesByBuyer($buyerId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   auctionInvoices(
     where: { buyerId: { eq: $buyerId } }
     orderBy: [{ createdAt: DESC }]
@@ -243,7 +243,7 @@ query GetAuctionInvoicesByBuyer($buyerId: String!, $limit: Int = 50) @auth(level
   }
 }
 
-query GetAuctionInvoicesByAuction($auctionId: String!) @auth(level: USER) {
+query GetAuctionInvoicesByAuction($auctionId: String!) @auth(level: NO_ACCESS) {
   auctionInvoices(
     where: { auctionId: { eq: $auctionId } }
     orderBy: [{ createdAt: DESC }]
@@ -265,7 +265,7 @@ query GetAuctionInvoicesByAuction($auctionId: String!) @auth(level: USER) {
   }
 }
 
-query GetAuctionInvoiceById($id: String!) @auth(level: USER) {
+query GetAuctionInvoiceById($id: String!) @auth(level: NO_ACCESS) {
   auctionInvoice(id: $id) {
     id
     auctionId
@@ -301,7 +301,7 @@ query GetAuctionInvoiceById($id: String!) @auth(level: USER) {
 
 # ─── Bidder Profile Queries ──────────────────────────────────────────
 
-query GetBidderProfileByUserId($userId: String!) @auth(level: USER) {
+query GetBidderProfileByUserId($userId: String!) @auth(level: NO_ACCESS) {
   bidderProfiles(where: { userId: { eq: $userId } }, limit: 1) {
     id
     userId
@@ -353,7 +353,7 @@ mutation UpsertAuction(
   $bannerEnabled: Boolean,
   $bannerImageUrl: String,
   $createdBy: String!
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   auction_upsert(data: {
     id: $id,
     title: $title,
@@ -418,7 +418,7 @@ mutation UpsertAuctionLot(
   $storageFeePerDay: Float,
   $isTitledItem: Boolean,
   $titleDocumentFee: Float
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   auctionLot_upsert(data: {
     id: $id,
     auctionId: $auctionId,
@@ -471,7 +471,7 @@ mutation InsertAuctionBid(
   $status: String!,
   $triggeredExtension: Boolean,
   $bidTime: Timestamp!
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   auctionBid_insert(data: {
     id: $id,
     auctionId: $auctionId,
@@ -487,7 +487,7 @@ mutation InsertAuctionBid(
   })
 }
 
-mutation UpdateBidStatus($id: String!, $status: String!) @auth(level: USER) @transaction {
+mutation UpdateBidStatus($id: String!, $status: String!) @auth(level: NO_ACCESS) @transaction {
   auctionBid_update(id: $id, data: {
     status: $status
   })
@@ -521,7 +521,7 @@ mutation UpsertAuctionInvoice(
   $sellerCommission: Float,
   $sellerPayout: Float,
   $sellerPaidAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   auctionInvoice_upsert(data: {
     id: $id,
     auctionId: $auctionId,
@@ -553,7 +553,7 @@ mutation UpsertAuctionInvoice(
   })
 }
 
-mutation UpdateAuctionInvoiceStatus($id: String!, $status: String!, $paidAt: Timestamp, $paymentMethod: String) @auth(level: USER) @transaction {
+mutation UpdateAuctionInvoiceStatus($id: String!, $status: String!, $paidAt: Timestamp, $paymentMethod: String) @auth(level: NO_ACCESS) @transaction {
   auctionInvoice_update(id: $id, data: {
     status: $status,
     paidAt: $paidAt,
@@ -570,7 +570,7 @@ mutation UpdateAuctionLotBidState(
   $uniqueBidders: Int,
   $lastBidTime: Timestamp,
   $reserveMet: Boolean
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   auctionLot_update(id: $id, data: {
     currentBid: $currentBid,
     currentBidderId: $currentBidderId,
@@ -582,7 +582,7 @@ mutation UpdateAuctionLotBidState(
   })
 }
 
-mutation UpdateAuctionLotStatus($id: String!, $status: String!, $winningBidderId: String, $winningBid: Float) @auth(level: USER) @transaction {
+mutation UpdateAuctionLotStatus($id: String!, $status: String!, $winningBidderId: String, $winningBid: Float) @auth(level: NO_ACCESS) @transaction {
   auctionLot_update(id: $id, data: {
     status: $status,
     winningBidderId: $winningBidderId,
@@ -620,7 +620,7 @@ mutation UpsertBidderProfile(
   $defaultPaymentMethodLast4: String,
   $termsAcceptedAt: Timestamp,
   $termsVersion: String
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   bidderProfile_upsert(data: {
     id: $id,
     userId: $userId,
@@ -654,13 +654,13 @@ mutation UpsertBidderProfile(
   })
 }
 
-mutation UpdateAuctionStatus($id: String!, $status: String!) @auth(level: USER) @transaction {
+mutation UpdateAuctionStatus($id: String!, $status: String!) @auth(level: NO_ACCESS) @transaction {
   auction_update(id: $id, data: {
     status: $status
   })
 }
 
-mutation UpdateAuctionStats($id: String!, $lotCount: Int, $totalBids: Int, $totalGmv: Float) @auth(level: USER) @transaction {
+mutation UpdateAuctionStats($id: String!, $lotCount: Int, $totalBids: Int, $totalGmv: Float) @auth(level: NO_ACCESS) @transaction {
   auction_update(id: $id, data: {
     lotCount: $lotCount,
     totalBids: $totalBids,

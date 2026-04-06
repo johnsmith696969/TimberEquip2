@@ -3,7 +3,7 @@
 # Updated for Data Connect SDK v3.2.1+ compatibility.
 
 # Role enforcement happens in the application layer (Cloud Functions / admin SDK).
-query GetListingGovernance($id: UUID!) @auth(level: USER) {
+query GetListingGovernance($id: UUID!) @auth(level: NO_ACCESS) {
   listing(id: $id) {
     id
     legacyFirestoreId
@@ -25,7 +25,7 @@ query GetListingGovernance($id: UUID!) @auth(level: USER) {
 query ListLifecycleQueue(
   $lifecycleStates: [String!]!
   $limit: Int! = 50
-) @auth(level: USER) {
+) @auth(level: NO_ACCESS) {
   listings(
     where: { lifecycleState: { in: $lifecycleStates } }
     orderBy: { updatedAt: DESC }
@@ -47,7 +47,7 @@ query ListLifecycleQueue(
 query ListListingTransitions(
   $listingId: UUID!
   $limit: Int! = 100
-) @auth(level: USER) {
+) @auth(level: NO_ACCESS) {
   listingStateTransitions(
     where: { listingId: { eq: $listingId } }
     orderBy: { occurredAt: DESC }
@@ -77,7 +77,7 @@ query ListListingTransitions(
 query ListOpenListingAnomalies(
   $listingId: UUID!
   $limit: Int! = 50
-) @auth(level: USER) {
+) @auth(level: NO_ACCESS) {
   listingAnomalies(
     where: {
       listingId: { eq: $listingId }

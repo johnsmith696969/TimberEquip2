@@ -3,7 +3,7 @@
 
 # ─── Inquiry Queries ────────────────────────────────────────────────
 
-query GetInquiryById($id: String!) @auth(level: USER) {
+query GetInquiryById($id: String!) @auth(level: NO_ACCESS) {
   inquiry(id: $id) {
     id
     listingId
@@ -31,7 +31,7 @@ query GetInquiryById($id: String!) @auth(level: USER) {
   }
 }
 
-query ListInquiriesBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+query ListInquiriesBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   inquiries(
     where: { sellerUid: { eq: $sellerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -53,7 +53,7 @@ query ListInquiriesBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: 
   }
 }
 
-query ListInquiriesByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: USER) {
+query ListInquiriesByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   inquiries(
     where: { buyerUid: { eq: $buyerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -69,7 +69,7 @@ query ListInquiriesByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: US
   }
 }
 
-query ListInquiriesByListing($listingId: String!, $limit: Int = 50) @auth(level: USER) {
+query ListInquiriesByListing($listingId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   inquiries(
     where: { listingId: { eq: $listingId } }
     orderBy: [{ createdAt: DESC }]
@@ -85,7 +85,7 @@ query ListInquiriesByListing($listingId: String!, $limit: Int = 50) @auth(level:
   }
 }
 
-query ListInquiriesByStatus($status: String!, $limit: Int = 100) @auth(level: USER) {
+query ListInquiriesByStatus($status: String!, $limit: Int = 100) @auth(level: NO_ACCESS) {
   inquiries(
     where: { status: { eq: $status } }
     orderBy: [{ createdAt: DESC }]
@@ -105,7 +105,7 @@ query ListInquiriesByStatus($status: String!, $limit: Int = 100) @auth(level: US
 
 # ─── Financing Request Queries ──────────────────────────────────────
 
-query GetFinancingRequestById($id: String!) @auth(level: USER) {
+query GetFinancingRequestById($id: String!) @auth(level: NO_ACCESS) {
   financingRequest(id: $id) {
     id
     listingId
@@ -125,7 +125,7 @@ query GetFinancingRequestById($id: String!) @auth(level: USER) {
   }
 }
 
-query ListFinancingRequestsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+query ListFinancingRequestsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   financingRequests(
     where: { sellerUid: { eq: $sellerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -141,7 +141,7 @@ query ListFinancingRequestsBySeller($sellerUid: String!, $limit: Int = 50) @auth
   }
 }
 
-query ListFinancingRequestsByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: USER) {
+query ListFinancingRequestsByBuyer($buyerUid: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   financingRequests(
     where: { buyerUid: { eq: $buyerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -157,7 +157,7 @@ query ListFinancingRequestsByBuyer($buyerUid: String!, $limit: Int = 50) @auth(l
 
 # ─── Call Log Queries ───────────────────────────────────────────────
 
-query GetCallLogById($id: String!) @auth(level: USER) {
+query GetCallLogById($id: String!) @auth(level: NO_ACCESS) {
   callLog(id: $id) {
     id
     listingId
@@ -180,7 +180,7 @@ query GetCallLogById($id: String!) @auth(level: USER) {
   }
 }
 
-query ListCallLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: USER) {
+query ListCallLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   callLogs(
     where: { sellerUid: { eq: $sellerUid } }
     orderBy: [{ createdAt: DESC }]
@@ -198,7 +198,7 @@ query ListCallLogsBySeller($sellerUid: String!, $limit: Int = 50) @auth(level: U
   }
 }
 
-query ListCallLogsByListing($listingId: String!, $limit: Int = 50) @auth(level: USER) {
+query ListCallLogsByListing($listingId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   callLogs(
     where: { listingId: { eq: $listingId } }
     orderBy: [{ createdAt: DESC }]
@@ -215,7 +215,7 @@ query ListCallLogsByListing($listingId: String!, $limit: Int = 50) @auth(level: 
 
 # ─── Contact Request Queries ───────────────────────────────────────
 
-query ListContactRequestsByStatus($status: String!, $limit: Int = 100) @auth(level: USER) {
+query ListContactRequestsByStatus($status: String!, $limit: Int = 100) @auth(level: NO_ACCESS) {
   contactRequests(
     where: { status: { eq: $status } }
     orderBy: [{ createdAt: DESC }]
@@ -256,7 +256,7 @@ mutation UpsertInquiry(
   $contactConsentVersion: String,
   $contactConsentScope: String,
   $contactConsentAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   inquiry_upsert(data: {
     id: $id,
     listingId: $listingId,
@@ -289,7 +289,7 @@ mutation UpdateInquiryStatus(
   $assignedToName: String,
   $firstResponseAt: Timestamp,
   $responseTimeMinutes: Int
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   inquiry_update(id: $id, data: {
     status: $status,
     assignedToUid: $assignedToUid,
@@ -315,7 +315,7 @@ mutation UpsertFinancingRequest(
   $contactConsentVersion: String,
   $contactConsentScope: String,
   $contactConsentAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   financingRequest_upsert(data: {
     id: $id,
     listingId: $listingId,
@@ -353,7 +353,7 @@ mutation InsertCallLog(
   $recordingUrl: String,
   $twilioCallSid: String,
   $completedAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   callLog_insert(data: {
     id: $id,
     listingId: $listingId,
@@ -383,7 +383,7 @@ mutation InsertContactRequest(
   $message: String,
   $source: String,
   $status: String
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   contactRequest_insert(data: {
     id: $id,
     name: $name,
@@ -395,7 +395,7 @@ mutation InsertContactRequest(
   })
 }
 
-mutation UpdateContactRequestStatus($id: String!, $status: String!) @auth(level: USER) @transaction {
+mutation UpdateContactRequestStatus($id: String!, $status: String!) @auth(level: NO_ACCESS) @transaction {
   contactRequest_update(id: $id, data: {
     status: $status
   })

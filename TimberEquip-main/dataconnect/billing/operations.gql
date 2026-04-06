@@ -3,7 +3,7 @@
 
 # ─── Queries ────────────────────────────────────────────────────────────
 
-query GetSubscriptionsByUser($userId: String!) @auth(level: USER) {
+query GetSubscriptionsByUser($userId: String!) @auth(level: NO_ACCESS) {
   billingSubscriptions(where: { userId: { eq: $userId } }, orderBy: [{ createdAt: DESC }]) {
     id
     userId
@@ -20,7 +20,7 @@ query GetSubscriptionsByUser($userId: String!) @auth(level: USER) {
   }
 }
 
-query GetActiveSubscriptionForListing($listingId: String!) @auth(level: USER) {
+query GetActiveSubscriptionForListing($listingId: String!) @auth(level: NO_ACCESS) {
   billingSubscriptions(
     where: { listingId: { eq: $listingId }, status: { eq: "active" } }
     limit: 1
@@ -34,7 +34,7 @@ query GetActiveSubscriptionForListing($listingId: String!) @auth(level: USER) {
   }
 }
 
-query GetSubscriptionByStripeId($stripeId: String!) @auth(level: USER) {
+query GetSubscriptionByStripeId($stripeId: String!) @auth(level: NO_ACCESS) {
   billingSubscriptions(where: { stripeSubscriptionId: { eq: $stripeId } }, limit: 1) {
     id
     userId
@@ -46,7 +46,7 @@ query GetSubscriptionByStripeId($stripeId: String!) @auth(level: USER) {
   }
 }
 
-query GetInvoicesByUser($userId: String!, $limit: Int = 50) @auth(level: USER) {
+query GetInvoicesByUser($userId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
   invoices(where: { userId: { eq: $userId } }, limit: $limit, orderBy: [{ createdAt: DESC }]) {
     id
     userId
@@ -62,7 +62,7 @@ query GetInvoicesByUser($userId: String!, $limit: Int = 50) @auth(level: USER) {
   }
 }
 
-query GetSellerApplicationsByUser($userId: String!) @auth(level: USER) {
+query GetSellerApplicationsByUser($userId: String!) @auth(level: NO_ACCESS) {
   sellerProgramApplications(where: { userId: { eq: $userId } }, orderBy: [{ createdAt: DESC }]) {
     id
     userId
@@ -91,7 +91,7 @@ mutation UpsertSubscription(
   $stripeSubscriptionId: String,
   $currentPeriodEnd: Timestamp,
   $cancelAtPeriodEnd: Boolean
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   billingSubscription_upsert(data: {
     id: $id,
     userId: $userId,
@@ -118,7 +118,7 @@ mutation UpsertInvoice(
   $items: Any,
   $source: String,
   $paidAt: Timestamp
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   invoice_upsert(data: {
     id: $id,
     userId: $userId,
@@ -160,7 +160,7 @@ mutation UpsertSellerApplication(
   $acceptedVisibilityPolicy: Boolean,
   $acceptedAuthority: Boolean,
   $source: String
-) @auth(level: USER) @transaction {
+) @auth(level: NO_ACCESS) @transaction {
   sellerProgramApplication_upsert(data: {
     id: $id,
     userId: $userId,
@@ -190,7 +190,7 @@ mutation UpsertSellerApplication(
   })
 }
 
-mutation UpdateSubscriptionStatus($id: String!, $status: String!, $cancelAtPeriodEnd: Boolean, $currentPeriodEnd: Timestamp) @auth(level: USER) @transaction {
+mutation UpdateSubscriptionStatus($id: String!, $status: String!, $cancelAtPeriodEnd: Boolean, $currentPeriodEnd: Timestamp) @auth(level: NO_ACCESS) @transaction {
   billingSubscription_update(id: $id, data: {
     status: $status,
     cancelAtPeriodEnd: $cancelAtPeriodEnd,
@@ -198,7 +198,7 @@ mutation UpdateSubscriptionStatus($id: String!, $status: String!, $cancelAtPerio
   })
 }
 
-mutation UpdateInvoiceStatus($id: String!, $status: String!, $paidAt: Timestamp) @auth(level: USER) @transaction {
+mutation UpdateInvoiceStatus($id: String!, $status: String!, $paidAt: Timestamp) @auth(level: NO_ACCESS) @transaction {
   invoice_update(id: $id, data: {
     status: $status,
     paidAt: $paidAt
