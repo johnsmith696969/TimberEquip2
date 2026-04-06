@@ -57,7 +57,7 @@ describe('ListingCard component', () => {
     expect(screen.getAllByText('Verified Seller').length).toBeGreaterThan(0);
     expect(screen.getByText('2021 Tigercat 1075B')).toBeInTheDocument();
     expect(screen.getByText('$349,000')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Details' })).toHaveAttribute('href', expect.stringContaining('/equipment/'));
+    expect(screen.getByRole('link', { name: /view details for/i })).toHaveAttribute('href', expect.stringContaining('/equipment/'));
     expect(screen.getByText('10.5% BELOW AMV')).toBeInTheDocument();
   });
 
@@ -82,7 +82,7 @@ describe('ListingCard component', () => {
     const [favoriteButton, compareButton] = screen.getAllByRole('button').slice(0, 2);
     fireEvent.click(favoriteButton);
     fireEvent.click(compareButton);
-    fireEvent.click(screen.getByRole('button', { name: 'Inquire' }));
+    fireEvent.click(screen.getByRole('button', { name: /inquire about/i }));
 
     expect(onToggleFavorite).toHaveBeenCalledWith('listing-1');
     expect(onToggleCompare).toHaveBeenCalledWith('listing-1');

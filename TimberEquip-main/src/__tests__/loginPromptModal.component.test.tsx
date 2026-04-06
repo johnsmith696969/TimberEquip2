@@ -95,7 +95,7 @@ describe('LoginPromptModal component', () => {
     );
 
     fireEvent.change(screen.getByPlaceholderText('your@email.com'), { target: { value: 'buyer@example.com' } });
-    const backdrop = container.querySelector('.fixed.inset-0');
+    const backdrop = container.querySelector('.absolute.inset-0');
     expect(backdrop).toBeTruthy();
     fireEvent.click(backdrop!);
     expect(onClose).toHaveBeenCalledTimes(1);

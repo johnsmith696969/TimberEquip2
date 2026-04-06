@@ -36,6 +36,10 @@ vi.mock('../components/Seo', () => ({
   Seo: () => null,
 }));
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
+}));
+
 vi.mock('../components/AuthContext', () => ({
   useAuth: () => ({
     register: registerMock,
@@ -113,7 +117,7 @@ describe('Register component', () => {
     const { emailInput, passwordInput } = getStepTwoInputs();
     fireEvent.change(emailInput, { target: { value: 'buyer@example.com' } });
     fireEvent.change(passwordInput, { target: { value: 'StrongPass123!' } });
-    fireEvent.click(screen.getByLabelText(/i accept the forestry equipment sales/i));
+    fireEvent.click(screen.getByLabelText(/i accept the timberequip/i));
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
@@ -142,7 +146,7 @@ describe('Register component', () => {
     const { emailInput, passwordInput } = getStepTwoInputs();
     fireEvent.change(emailInput, { target: { value: 'seller@example.com' } });
     fireEvent.change(passwordInput, { target: { value: 'StrongPass123!' } });
-    fireEvent.click(screen.getByLabelText(/i accept the forestry equipment sales/i));
+    fireEvent.click(screen.getByLabelText(/i accept the timberequip/i));
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {

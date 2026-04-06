@@ -163,7 +163,7 @@ describe('AdPrograms component', () => {
     expect(screen.getByText('$250/MO')).toBeInTheDocument();
     expect(screen.getByText('$500/MO')).toBeInTheDocument();
     expect(screen.getByText(/up to 50 active machine listings/i)).toBeInTheDocument();
-    expect(screen.getByText(/unlimited active machine listings/i)).toBeInTheDocument();
+    expect(screen.getByText(/up to 150 active machine listings/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in and continue/i })).toBeInTheDocument();
     expect(screen.getByText(/completing checkout will activate the selected plan/i)).toBeInTheDocument();
   });

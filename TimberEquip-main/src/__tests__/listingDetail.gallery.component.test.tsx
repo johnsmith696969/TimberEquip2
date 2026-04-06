@@ -108,6 +108,7 @@ vi.mock('../utils/seoRoutes', () => ({
   buildManufacturerModelPath: vi.fn(() => '/manufacturers/tigercat/1075b'),
   buildManufacturerPath: vi.fn(() => '/manufacturers/tigercat'),
   buildStateCategoryPath: vi.fn(() => '/states/minnesota/forwarders'),
+  getCityFromLocation: vi.fn(() => 'Bemidji'),
   getListingCategoryLabel: vi.fn(() => 'Forwarders'),
   getListingManufacturer: vi.fn(() => 'Tigercat'),
   getStateFromLocation: vi.fn(() => 'Minnesota'),
@@ -239,16 +240,16 @@ describe('ListingDetail gallery interactions', () => {
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fullscreen' }));
-    expect(screen.getByRole('button', { name: 'Next image' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Next image' }).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next image' })[0]);
     await waitFor(() => {
       expect(screen.getByText('2 / 3')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Close fullscreen image' }));
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Next image' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Close fullscreen image' })).not.toBeInTheDocument();
     });
   });
 
