@@ -17335,6 +17335,98 @@ exports.apiProxy = onRequest(
         }
       }
 
+      // ── PostgreSQL Analytics (Data Connect read layer) ──────────────────
+      if (req.method === 'GET' && path === '/admin/pg-analytics') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const lgSdk = require('./generated/dataconnect/listing-governance');
+          const marketplaceSdk = require('./generated/dataconnect/marketplace');
+          const billingSdk = require('./generated/dataconnect/billing');
+          const auctionsSdk = require('./generated/dataconnect/auctions');
+          const leadsSdk = require('./generated/dataconnect/leads');
+          const dealersSdk = require('./generated/dataconnect/dealers');
+
+          const results = await Promise.allSettled([
+            lgSdk.listLifecycleQueue({ limit: 500 }),
+            lgSdk.listListingTransitions({ listingId: '', limit: 20 }),
+            lgSdk.listOpenListingAnomalies({ limit: 50 }),
+            marketplaceSdk.listActiveStorefronts(),
+            marketplaceSdk.listUsersByRole({ role: 'seller' }),
+            billingSdk.getSellerApplicationsByUser({ userId: 'SUMMARY_PROBE' }),
+            auctionsSdk.listActiveAuctions(),
+            leadsSdk.listInquiriesByStatus({ status: 'New' }),
+            leadsSdk.listContactRequestsByStatus({ status: 'New' }),
+            dealersSdk.listDealerFeedProfilesByStatus({ status: 'active' }),
+          ]);
+
+          const extract = (idx) => {
+            const r = results[idx];
+            if (r.status === 'fulfilled') return { ok: true, data: r.value?.data || r.value || null };
+            return { ok: false, error: r.reason?.message || String(r.reason) };
+          };
+
+          const lifecycleQueue = extract(0);
+          const recentTransitions = extract(1);
+          const openAnomalies = extract(2);
+          const storefronts = extract(3);
+          const sellers = extract(4);
+          const sellerApps = extract(5);
+          const activeAuctions = extract(6);
+          const newInquiries = extract(7);
+          const newContactRequests = extract(8);
+          const activeDealerFeeds = extract(9);
+
+          // Aggregate lifecycle state counts from the queue
+          const stateCounts = {};
+          if (lifecycleQueue.ok && Array.isArray(lifecycleQueue.data?.listings)) {
+            for (const listing of lifecycleQueue.data.listings) {
+              const state = listing.currentState || 'unknown';
+              stateCounts[state] = (stateCounts[state] || 0) + 1;
+            }
+          }
+
+          const connectorHealth = {
+            'listing-governance': lifecycleQueue.ok && recentTransitions.ok && openAnomalies.ok,
+            'marketplace': storefronts.ok && sellers.ok,
+            'billing': sellerApps.ok,
+            'auctions': activeAuctions.ok,
+            'leads': newInquiries.ok && newContactRequests.ok,
+            'dealers': activeDealerFeeds.ok,
+          };
+
+          const allHealthy = Object.values(connectorHealth).every(Boolean);
+
+          return res.status(200).json({
+            timestamp: new Date().toISOString(),
+            status: allHealthy ? 'healthy' : 'degraded',
+            connectors: connectorHealth,
+            summary: {
+              listingsByState: stateCounts,
+              totalListingsInPg: lifecycleQueue.ok ? (lifecycleQueue.data?.listings?.length || 0) : null,
+              openAnomalies: openAnomalies.ok ? (openAnomalies.data?.anomalies?.length || 0) : null,
+              recentTransitions: recentTransitions.ok ? (recentTransitions.data?.transitions?.length || 0) : null,
+              activeStorefronts: storefronts.ok ? (storefronts.data?.storefronts?.length || 0) : null,
+              activeSellers: sellers.ok ? (sellers.data?.users?.length || 0) : null,
+              activeAuctions: activeAuctions.ok ? (activeAuctions.data?.auctions?.length || 0) : null,
+              newInquiries: newInquiries.ok ? (newInquiries.data?.inquiries?.length || 0) : null,
+              newContactRequests: newContactRequests.ok ? (newContactRequests.data?.contactRequests?.length || 0) : null,
+              activeDealerFeeds: activeDealerFeeds.ok ? (activeDealerFeeds.data?.feedProfiles?.length || 0) : null,
+            },
+            errors: Object.entries(connectorHealth)
+              .filter(([, healthy]) => !healthy)
+              .map(([connector]) => connector),
+          });
+        } catch (err) {
+          logger.error('[pg-analytics] Failed to query Data Connect', err);
+          captureFunctionsException(err, { handler: 'pg-analytics' });
+          return res.status(500).json({ error: 'Failed to query PostgreSQL analytics' });
+        }
+      }
+
       if (path.startsWith('/billing/')) {
         logger.warn('Unhandled billing route reached apiProxy fallback.', {
           method: req.method,

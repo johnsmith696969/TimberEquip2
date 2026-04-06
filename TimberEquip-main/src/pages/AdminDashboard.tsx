@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
 import { userService } from '../services/userService';
-import { adminUserService, type AdminOperationsBootstrapResponse } from '../services/adminUserService';
+import { adminUserService, type AdminOperationsBootstrapResponse, type PgAnalyticsResponse } from '../services/adminUserService';
 import { cmsService, type AdminContentBootstrapResponse } from '../services/cmsService';
 import { Listing, Inquiry, Account, CallLog, UserRole, BlogPost, MediaItem, ContentBlock } from '../types';
 import type { Auction, AuctionStatus, AuctionLot } from '../types';
@@ -169,6 +169,9 @@ export function AdminDashboard() {
   const [listingAuditData, setListingAuditData] = useState<ListingLifecycleAuditView | null>(null);
   const [listingAuditLoading, setListingAuditLoading] = useState(false);
   const [listingAuditError, setListingAuditError] = useState('');
+  const [pgAnalytics, setPgAnalytics] = useState<PgAnalyticsResponse | null>(null);
+  const [pgAnalyticsLoading, setPgAnalyticsLoading] = useState(false);
+  const [pgAnalyticsError, setPgAnalyticsError] = useState('');
   const listingAuditPanelRef = useRef<HTMLDivElement | null>(null);
   const [pendingListingLifecycleKey, setPendingListingLifecycleKey] = useState('');
   const [listingReviewFilter, setListingReviewFilter] = useState<ListingReviewFilter>('all');
@@ -445,6 +448,20 @@ export function AdminDashboard() {
       setUsersLoading(false);
     }
   };
+
+  const fetchPgAnalytics = useCallback(async () => {
+    if (!authUser?.uid || pgAnalyticsLoading) return;
+    setPgAnalyticsLoading(true);
+    setPgAnalyticsError('');
+    try {
+      const data = await adminUserService.getPgAnalytics();
+      setPgAnalytics(data);
+    } catch (err) {
+      setPgAnalyticsError(err instanceof Error ? err.message : 'Failed to load PostgreSQL analytics');
+    } finally {
+      setPgAnalyticsLoading(false);
+    }
+  }, [authUser?.uid, pgAnalyticsLoading]);
 
   const loadTrackingListings = async (force = false) => {
     if (!authUser?.uid) {
@@ -876,6 +893,10 @@ export function AdminDashboard() {
     if (activeTab === 'tracking') {
       void fetchUsers();
       void loadTrackingListings();
+    }
+
+    if (activeTab === 'overview' && hasFullAdminDashboardScope && !pgAnalytics && !pgAnalyticsLoading) {
+      void fetchPgAnalytics();
     }
   }, [activeTab, authUser?.uid]);
 
@@ -2200,6 +2221,92 @@ export function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {hasFullAdminDashboardScope && (
+        <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-line flex justify-between items-center bg-surface/50">
+            <div className="flex items-center gap-3">
+              <Database size={16} className="text-accent" />
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">PostgreSQL Data Connect</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              {pgAnalytics && (
+                <span className={`text-[9px] font-black uppercase tracking-widest ${pgAnalytics.status === 'healthy' ? 'text-data' : 'text-accent'}`}>
+                  {pgAnalytics.status}
+                </span>
+              )}
+              <button
+                onClick={() => void fetchPgAnalytics()}
+                disabled={pgAnalyticsLoading}
+                className="text-[10px] font-bold text-muted uppercase hover:text-ink disabled:opacity-50"
+              >
+                {pgAnalyticsLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              </button>
+            </div>
+          </div>
+          <div className="p-6">
+            {pgAnalyticsError && (
+              <div className="text-[10px] font-bold text-accent uppercase tracking-widest mb-4">
+                {pgAnalyticsError}
+              </div>
+            )}
+            {pgAnalyticsLoading && !pgAnalytics && (
+              <div className="text-center py-8">
+                <Loader2 size={20} className="animate-spin mx-auto text-muted" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted mt-3">Querying PostgreSQL...</p>
+              </div>
+            )}
+            {pgAnalytics && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  {[
+                    { label: 'Connectors', value: Object.keys(pgAnalytics.connectors).length, healthy: Object.values(pgAnalytics.connectors).every(Boolean) },
+                    { label: 'PG Listings', value: pgAnalytics.summary.totalListingsInPg },
+                    { label: 'Anomalies', value: pgAnalytics.summary.openAnomalies },
+                    { label: 'Storefronts', value: pgAnalytics.summary.activeStorefronts },
+                    { label: 'New Inquiries', value: pgAnalytics.summary.newInquiries },
+                    { label: 'Dealer Feeds', value: pgAnalytics.summary.activeDealerFeeds },
+                  ].map((metric) => (
+                    <div key={metric.label} className="text-center">
+                      <div className="text-[9px] font-black uppercase tracking-widest text-muted mb-1">{metric.label}</div>
+                      <div className={`text-xl font-black tracking-tighter ${'healthy' in metric ? (metric.healthy ? 'text-data' : 'text-accent') : 'text-ink'}`}>
+                        {metric.value ?? '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                  {Object.entries(pgAnalytics.connectors).map(([name, healthy]) => (
+                    <div key={name} className={`px-3 py-2 text-center border rounded-sm ${healthy ? 'border-data/30 bg-data/5' : 'border-accent/30 bg-accent/5'}`}>
+                      <div className={`text-[9px] font-black uppercase tracking-widest ${healthy ? 'text-data' : 'text-accent'}`}>
+                        {healthy ? <CheckCircle2 size={10} className="inline mr-1" /> : <AlertCircle size={10} className="inline mr-1" />}
+                        {name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(pgAnalytics.summary.listingsByState).length > 0 && (
+                  <div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-muted mb-2">Listings by Lifecycle State</div>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(pgAnalytics.summary.listingsByState)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([state, count]) => (
+                          <span key={state} className="px-3 py-1 bg-surface border border-line rounded-sm text-[10px] font-bold uppercase tracking-wider text-ink">
+                            {state}: <span className="font-black">{count}</span>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+                <div className="text-[9px] font-bold text-muted uppercase tracking-widest">
+                  Last queried: {new Date(pgAnalytics.timestamp).toLocaleString()}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 

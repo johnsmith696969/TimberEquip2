@@ -142,6 +142,25 @@ export interface AdminUserMutationResult {
   warning?: string;
 }
 
+export interface PgAnalyticsResponse {
+  timestamp: string;
+  status: 'healthy' | 'degraded';
+  connectors: Record<string, boolean>;
+  summary: {
+    listingsByState: Record<string, number>;
+    totalListingsInPg: number | null;
+    openAnomalies: number | null;
+    recentTransitions: number | null;
+    activeStorefronts: number | null;
+    activeSellers: number | null;
+    activeAuctions: number | null;
+    newInquiries: number | null;
+    newContactRequests: number | null;
+    activeDealerFeeds: number | null;
+  };
+  errors: string[];
+}
+
 function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
   if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
@@ -356,6 +375,12 @@ export const adminUserService = {
   async deleteUser(uid: string): Promise<void> {
     await getAuthorizedJson(`/api/admin/users/${encodeURIComponent(uid)}`, {
       method: 'DELETE',
+    });
+  },
+
+  async getPgAnalytics(): Promise<PgAnalyticsResponse> {
+    return getAuthorizedJson<PgAnalyticsResponse>('/api/admin/pg-analytics', {
+      method: 'GET',
     });
   },
 };
