@@ -56,6 +56,8 @@ export function Seo({
     setMetaTag({ property: 'og:url' }, canonicalHref);
     setMetaTag({ property: 'og:site_name' }, 'TimberEquip');
     setMetaTag({ property: 'og:image' }, imageUrl);
+    setMetaTag({ property: 'og:image:width' }, '1200');
+    setMetaTag({ property: 'og:image:height' }, '630');
     setMetaTag({ name: 'twitter:card' }, 'summary_large_image');
     setMetaTag({ name: 'twitter:title' }, title);
     setMetaTag({ name: 'twitter:description' }, description);

@@ -720,6 +720,7 @@ export function StateCategoryLandingPage() {
       intro={`Find ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} from dealers and private sellers. Browse available inventory, compare pricing, and reach out to sellers directly.`}
       breadcrumbs={[
         { label: 'Home', path: '/' },
+        { label: 'States', path: '/states' },
         { label: resolvedState, path: buildStateMarketPath(resolvedState, CANONICAL_MARKET_ROUTE_KEY) },
         { label: resolvedCategory, path: buildStateCategoryPath(resolvedState, resolvedCategory) },
       ]}
@@ -765,6 +766,7 @@ export function ManufacturerCategoryLandingPage() {
       intro={`Shop ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} from dealers and private sellers. Compare available machines, pricing, and hours across live marketplace inventory.`}
       breadcrumbs={[
         { label: 'Home', path: '/' },
+        { label: 'Manufacturers', path: '/manufacturers' },
         { label: resolvedManufacturer, path: buildManufacturerPath(resolvedManufacturer) },
         { label: resolvedCategory, path: buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory) },
       ]}
