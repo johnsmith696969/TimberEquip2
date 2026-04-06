@@ -1,0 +1,669 @@
+## Auction connector — queries and mutations for the auction platform.
+## Used by server.ts bid/settlement endpoints and Cloud Functions admin SDK.
+
+# ─── Auction Queries ─────────────────────────────────────────────────
+
+query GetAuctionById($id: String!) @auth(level: PUBLIC) {
+  auction(id: $id) {
+    id
+    title
+    slug
+    description
+    coverImageUrl
+    startTime
+    endTime
+    previewStartTime
+    status
+    lotCount
+    totalBids
+    totalGmv
+    defaultBuyerPremiumPercent
+    softCloseThresholdMin
+    softCloseExtensionMin
+    staggerIntervalMin
+    defaultPaymentDeadlineDays
+    defaultRemovalDeadlineDays
+    termsAndConditionsUrl
+    featured
+    bannerEnabled
+    bannerImageUrl
+    createdBy
+    createdAt
+    updatedAt
+  }
+}
+
+query GetAuctionBySlug($slug: String!) @auth(level: PUBLIC) {
+  auctions(where: { slug: { eq: $slug } }, limit: 1) {
+    id
+    title
+    slug
+    description
+    coverImageUrl
+    startTime
+    endTime
+    previewStartTime
+    status
+    lotCount
+    totalBids
+    featured
+    createdAt
+  }
+}
+
+query ListActiveAuctions($limit: Int = 20) @auth(level: PUBLIC) {
+  auctions(
+    where: { status: { in: ["preview", "active"] } }
+    orderBy: [{ startTime: ASC }]
+    limit: $limit
+  ) {
+    id
+    title
+    slug
+    coverImageUrl
+    startTime
+    endTime
+    status
+    lotCount
+    totalBids
+    featured
+  }
+}
+
+query ListAuctionsByStatus($status: String!, $limit: Int = 50) @auth(level: USER) {
+  auctions(
+    where: { status: { eq: $status } }
+    orderBy: [{ startTime: DESC }]
+    limit: $limit
+  ) {
+    id
+    title
+    slug
+    startTime
+    endTime
+    status
+    lotCount
+    totalBids
+    totalGmv
+    createdAt
+  }
+}
+
+# ─── Lot Queries ─────────────────────────────────────────────────────
+
+query GetLotsByAuction($auctionId: String!) @auth(level: PUBLIC) {
+  auctionLots(
+    where: { auctionId: { eq: $auctionId } }
+    orderBy: [{ closeOrder: ASC }]
+  ) {
+    id
+    auctionId
+    listingId
+    lotNumber
+    closeOrder
+    startingBid
+    reserveMet
+    buyerPremiumPercent
+    startTime
+    endTime
+    currentBid
+    currentBidderAnonymousId
+    bidCount
+    uniqueBidders
+    status
+    promoted
+    promotedOrder
+    winningBidderId
+    winningBid
+    title
+    manufacturer
+    model
+    year
+    thumbnailUrl
+    pickupLocation
+    isTitledItem
+  }
+}
+
+query GetLotById($id: String!) @auth(level: PUBLIC) {
+  auctionLot(id: $id) {
+    id
+    auctionId
+    listingId
+    lotNumber
+    closeOrder
+    startingBid
+    reservePrice
+    reserveMet
+    buyerPremiumPercent
+    startTime
+    endTime
+    originalEndTime
+    extensionCount
+    currentBid
+    currentBidderId
+    currentBidderAnonymousId
+    bidCount
+    uniqueBidders
+    lastBidTime
+    status
+    promoted
+    winningBidderId
+    winningBid
+    watcherCount
+    title
+    manufacturer
+    model
+    year
+    thumbnailUrl
+    pickupLocation
+    paymentDeadlineDays
+    removalDeadlineDays
+    storageFeePerDay
+    isTitledItem
+    titleDocumentFee
+  }
+}
+
+query GetPromotedLots($auctionId: String!) @auth(level: PUBLIC) {
+  auctionLots(
+    where: { auctionId: { eq: $auctionId }, promoted: { eq: true } }
+    orderBy: [{ promotedOrder: ASC }]
+  ) {
+    id
+    lotNumber
+    currentBid
+    bidCount
+    status
+    title
+    manufacturer
+    model
+    year
+    thumbnailUrl
+  }
+}
+
+# ─── Bid Queries ─────────────────────────────────────────────────────
+
+query GetBidsByLot($auctionId: String!, $lotId: String!, $limit: Int = 100) @auth(level: USER) {
+  auctionBids(
+    where: { auctionId: { eq: $auctionId }, lotId: { eq: $lotId } }
+    orderBy: [{ bidTime: DESC }]
+    limit: $limit
+  ) {
+    id
+    bidderId
+    bidderAnonymousId
+    amount
+    maxBid
+    type
+    status
+    triggeredExtension
+    bidTime
+  }
+}
+
+query GetBidsByBidder($bidderId: String!, $limit: Int = 100) @auth(level: USER) {
+  auctionBids(
+    where: { bidderId: { eq: $bidderId } }
+    orderBy: [{ bidTime: DESC }]
+    limit: $limit
+  ) {
+    id
+    auctionId
+    lotId
+    amount
+    status
+    bidTime
+  }
+}
+
+# ─── Invoice Queries ─────────────────────────────────────────────────
+
+query GetAuctionInvoicesByBuyer($buyerId: String!, $limit: Int = 50) @auth(level: USER) {
+  auctionInvoices(
+    where: { buyerId: { eq: $buyerId } }
+    orderBy: [{ createdAt: DESC }]
+    limit: $limit
+  ) {
+    id
+    auctionId
+    lotId
+    sellerId
+    hammerPrice
+    buyerPremium
+    documentationFee
+    salesTaxAmount
+    totalDue
+    status
+    paymentMethod
+    dueDate
+    paidAt
+    createdAt
+  }
+}
+
+query GetAuctionInvoicesByAuction($auctionId: String!) @auth(level: USER) {
+  auctionInvoices(
+    where: { auctionId: { eq: $auctionId } }
+    orderBy: [{ createdAt: DESC }]
+  ) {
+    id
+    lotId
+    buyerId
+    sellerId
+    hammerPrice
+    buyerPremium
+    totalDue
+    status
+    paymentMethod
+    dueDate
+    paidAt
+    sellerPayout
+    sellerPaidAt
+    createdAt
+  }
+}
+
+query GetAuctionInvoiceById($id: String!) @auth(level: USER) {
+  auctionInvoice(id: $id) {
+    id
+    auctionId
+    lotId
+    buyerId
+    sellerId
+    hammerPrice
+    buyerPremium
+    documentationFee
+    cardProcessingFee
+    salesTaxRate
+    salesTaxAmount
+    salesTaxState
+    totalDue
+    currency
+    status
+    paymentMethod
+    stripeInvoiceId
+    stripePaymentIntentId
+    buyerTaxExempt
+    buyerTaxExemptState
+    dueDate
+    paidAt
+    sellerCommission
+    sellerPayout
+    sellerPaidAt
+    removalConfirmedAt
+    storageFeesAccrued
+    createdAt
+    updatedAt
+  }
+}
+
+# ─── Bidder Profile Queries ──────────────────────────────────────────
+
+query GetBidderProfileByUserId($userId: String!) @auth(level: USER) {
+  bidderProfiles(where: { userId: { eq: $userId } }, limit: 1) {
+    id
+    userId
+    verificationTier
+    fullName
+    phone
+    phoneVerified
+    addressCity
+    addressState
+    companyName
+    stripeCustomerId
+    idVerificationStatus
+    bidderApprovedAt
+    totalAuctionsParticipated
+    totalItemsWon
+    totalSpent
+    nonPaymentCount
+    taxExempt
+    taxExemptState
+    termsAcceptedAt
+    termsVersion
+    createdAt
+  }
+}
+
+# ─── Mutations ───────────────────────────────────────────────────────
+
+mutation UpsertAuction(
+  $id: String!,
+  $title: String!,
+  $slug: String!,
+  $description: String,
+  $coverImageUrl: String,
+  $startTime: Timestamp!,
+  $endTime: Timestamp!,
+  $previewStartTime: Timestamp,
+  $status: String!,
+  $lotCount: Int,
+  $totalBids: Int,
+  $totalGmv: Float,
+  $defaultBuyerPremiumPercent: Float,
+  $softCloseThresholdMin: Int,
+  $softCloseExtensionMin: Int,
+  $staggerIntervalMin: Int,
+  $defaultPaymentDeadlineDays: Int,
+  $defaultRemovalDeadlineDays: Int,
+  $termsAndConditionsUrl: String,
+  $featured: Boolean,
+  $bannerEnabled: Boolean,
+  $bannerImageUrl: String,
+  $createdBy: String!
+) @auth(level: USER) @transaction {
+  auction_upsert(data: {
+    id: $id,
+    title: $title,
+    slug: $slug,
+    description: $description,
+    coverImageUrl: $coverImageUrl,
+    startTime: $startTime,
+    endTime: $endTime,
+    previewStartTime: $previewStartTime,
+    status: $status,
+    lotCount: $lotCount,
+    totalBids: $totalBids,
+    totalGmv: $totalGmv,
+    defaultBuyerPremiumPercent: $defaultBuyerPremiumPercent,
+    softCloseThresholdMin: $softCloseThresholdMin,
+    softCloseExtensionMin: $softCloseExtensionMin,
+    staggerIntervalMin: $staggerIntervalMin,
+    defaultPaymentDeadlineDays: $defaultPaymentDeadlineDays,
+    defaultRemovalDeadlineDays: $defaultRemovalDeadlineDays,
+    termsAndConditionsUrl: $termsAndConditionsUrl,
+    featured: $featured,
+    bannerEnabled: $bannerEnabled,
+    bannerImageUrl: $bannerImageUrl,
+    createdBy: $createdBy
+  })
+}
+
+mutation UpsertAuctionLot(
+  $id: String!,
+  $auctionId: String!,
+  $listingId: String,
+  $lotNumber: String!,
+  $closeOrder: Int!,
+  $startingBid: Float,
+  $reservePrice: Float,
+  $reserveMet: Boolean,
+  $buyerPremiumPercent: Float,
+  $startTime: Timestamp,
+  $endTime: Timestamp,
+  $originalEndTime: Timestamp,
+  $extensionCount: Int,
+  $currentBid: Float,
+  $currentBidderId: String,
+  $currentBidderAnonymousId: String,
+  $bidCount: Int,
+  $uniqueBidders: Int,
+  $lastBidTime: Timestamp,
+  $status: String!,
+  $promoted: Boolean,
+  $promotedOrder: Int,
+  $winningBidderId: String,
+  $winningBid: Float,
+  $watcherCount: Int,
+  $title: String,
+  $manufacturer: String,
+  $model: String,
+  $year: Int,
+  $thumbnailUrl: String,
+  $pickupLocation: String,
+  $paymentDeadlineDays: Int,
+  $removalDeadlineDays: Int,
+  $storageFeePerDay: Float,
+  $isTitledItem: Boolean,
+  $titleDocumentFee: Float
+) @auth(level: USER) @transaction {
+  auctionLot_upsert(data: {
+    id: $id,
+    auctionId: $auctionId,
+    listingId: $listingId,
+    lotNumber: $lotNumber,
+    closeOrder: $closeOrder,
+    startingBid: $startingBid,
+    reservePrice: $reservePrice,
+    reserveMet: $reserveMet,
+    buyerPremiumPercent: $buyerPremiumPercent,
+    startTime: $startTime,
+    endTime: $endTime,
+    originalEndTime: $originalEndTime,
+    extensionCount: $extensionCount,
+    currentBid: $currentBid,
+    currentBidderId: $currentBidderId,
+    currentBidderAnonymousId: $currentBidderAnonymousId,
+    bidCount: $bidCount,
+    uniqueBidders: $uniqueBidders,
+    lastBidTime: $lastBidTime,
+    status: $status,
+    promoted: $promoted,
+    promotedOrder: $promotedOrder,
+    winningBidderId: $winningBidderId,
+    winningBid: $winningBid,
+    watcherCount: $watcherCount,
+    title: $title,
+    manufacturer: $manufacturer,
+    model: $model,
+    year: $year,
+    thumbnailUrl: $thumbnailUrl,
+    pickupLocation: $pickupLocation,
+    paymentDeadlineDays: $paymentDeadlineDays,
+    removalDeadlineDays: $removalDeadlineDays,
+    storageFeePerDay: $storageFeePerDay,
+    isTitledItem: $isTitledItem,
+    titleDocumentFee: $titleDocumentFee
+  })
+}
+
+mutation InsertAuctionBid(
+  $id: String!,
+  $auctionId: String!,
+  $lotId: String!,
+  $bidderId: String!,
+  $bidderAnonymousId: String!,
+  $amount: Float!,
+  $maxBid: Float,
+  $type: String!,
+  $status: String!,
+  $triggeredExtension: Boolean,
+  $bidTime: Timestamp!
+) @auth(level: USER) @transaction {
+  auctionBid_insert(data: {
+    id: $id,
+    auctionId: $auctionId,
+    lotId: $lotId,
+    bidderId: $bidderId,
+    bidderAnonymousId: $bidderAnonymousId,
+    amount: $amount,
+    maxBid: $maxBid,
+    type: $type,
+    status: $status,
+    triggeredExtension: $triggeredExtension,
+    bidTime: $bidTime
+  })
+}
+
+mutation UpdateBidStatus($id: String!, $status: String!) @auth(level: USER) @transaction {
+  auctionBid_update(id: $id, data: {
+    status: $status
+  })
+}
+
+mutation UpsertAuctionInvoice(
+  $id: String!,
+  $auctionId: String!,
+  $lotId: String!,
+  $buyerId: String!,
+  $sellerId: String!,
+  $hammerPrice: Float!,
+  $buyerPremium: Float!,
+  $documentationFee: Float,
+  $cardProcessingFee: Float,
+  $salesTaxRate: Float,
+  $salesTaxAmount: Float,
+  $salesTaxState: String,
+  $totalDue: Float!,
+  $currency: String,
+  $status: String!,
+  $paymentMethod: String,
+  $stripeInvoiceId: String,
+  $stripeCheckoutSessionId: String,
+  $stripePaymentIntentId: String,
+  $buyerTaxExempt: Boolean,
+  $buyerTaxExemptState: String,
+  $buyerTaxExemptCertificateUrl: String,
+  $dueDate: Timestamp!,
+  $paidAt: Timestamp,
+  $sellerCommission: Float,
+  $sellerPayout: Float,
+  $sellerPaidAt: Timestamp
+) @auth(level: USER) @transaction {
+  auctionInvoice_upsert(data: {
+    id: $id,
+    auctionId: $auctionId,
+    lotId: $lotId,
+    buyerId: $buyerId,
+    sellerId: $sellerId,
+    hammerPrice: $hammerPrice,
+    buyerPremium: $buyerPremium,
+    documentationFee: $documentationFee,
+    cardProcessingFee: $cardProcessingFee,
+    salesTaxRate: $salesTaxRate,
+    salesTaxAmount: $salesTaxAmount,
+    salesTaxState: $salesTaxState,
+    totalDue: $totalDue,
+    currency: $currency,
+    status: $status,
+    paymentMethod: $paymentMethod,
+    stripeInvoiceId: $stripeInvoiceId,
+    stripeCheckoutSessionId: $stripeCheckoutSessionId,
+    stripePaymentIntentId: $stripePaymentIntentId,
+    buyerTaxExempt: $buyerTaxExempt,
+    buyerTaxExemptState: $buyerTaxExemptState,
+    buyerTaxExemptCertificateUrl: $buyerTaxExemptCertificateUrl,
+    dueDate: $dueDate,
+    paidAt: $paidAt,
+    sellerCommission: $sellerCommission,
+    sellerPayout: $sellerPayout,
+    sellerPaidAt: $sellerPaidAt
+  })
+}
+
+mutation UpdateAuctionInvoiceStatus($id: String!, $status: String!, $paidAt: Timestamp, $paymentMethod: String) @auth(level: USER) @transaction {
+  auctionInvoice_update(id: $id, data: {
+    status: $status,
+    paidAt: $paidAt,
+    paymentMethod: $paymentMethod
+  })
+}
+
+mutation UpdateAuctionLotBidState(
+  $id: String!,
+  $currentBid: Float!,
+  $currentBidderId: String,
+  $currentBidderAnonymousId: String,
+  $bidCount: Int!,
+  $uniqueBidders: Int,
+  $lastBidTime: Timestamp,
+  $reserveMet: Boolean
+) @auth(level: USER) @transaction {
+  auctionLot_update(id: $id, data: {
+    currentBid: $currentBid,
+    currentBidderId: $currentBidderId,
+    currentBidderAnonymousId: $currentBidderAnonymousId,
+    bidCount: $bidCount,
+    uniqueBidders: $uniqueBidders,
+    lastBidTime: $lastBidTime,
+    reserveMet: $reserveMet
+  })
+}
+
+mutation UpdateAuctionLotStatus($id: String!, $status: String!, $winningBidderId: String, $winningBid: Float) @auth(level: USER) @transaction {
+  auctionLot_update(id: $id, data: {
+    status: $status,
+    winningBidderId: $winningBidderId,
+    winningBid: $winningBid
+  })
+}
+
+mutation UpsertBidderProfile(
+  $id: String!,
+  $userId: String!,
+  $verificationTier: String!,
+  $fullName: String,
+  $phone: String,
+  $phoneVerified: Boolean,
+  $addressStreet: String,
+  $addressCity: String,
+  $addressState: String,
+  $addressZip: String,
+  $addressCountry: String,
+  $companyName: String,
+  $stripeCustomerId: String,
+  $idVerificationStatus: String,
+  $idVerifiedAt: Timestamp,
+  $bidderApprovedAt: Timestamp,
+  $bidderApprovedBy: String,
+  $totalAuctionsParticipated: Int,
+  $totalItemsWon: Int,
+  $totalSpent: Float,
+  $nonPaymentCount: Int,
+  $taxExempt: Boolean,
+  $taxExemptState: String,
+  $taxExemptCertificateUrl: String,
+  $defaultPaymentMethodId: String,
+  $defaultPaymentMethodBrand: String,
+  $defaultPaymentMethodLast4: String,
+  $termsAcceptedAt: Timestamp,
+  $termsVersion: String
+) @auth(level: USER) @transaction {
+  bidderProfile_upsert(data: {
+    id: $id,
+    userId: $userId,
+    verificationTier: $verificationTier,
+    fullName: $fullName,
+    phone: $phone,
+    phoneVerified: $phoneVerified,
+    addressStreet: $addressStreet,
+    addressCity: $addressCity,
+    addressState: $addressState,
+    addressZip: $addressZip,
+    addressCountry: $addressCountry,
+    companyName: $companyName,
+    stripeCustomerId: $stripeCustomerId,
+    idVerificationStatus: $idVerificationStatus,
+    idVerifiedAt: $idVerifiedAt,
+    bidderApprovedAt: $bidderApprovedAt,
+    bidderApprovedBy: $bidderApprovedBy,
+    totalAuctionsParticipated: $totalAuctionsParticipated,
+    totalItemsWon: $totalItemsWon,
+    totalSpent: $totalSpent,
+    nonPaymentCount: $nonPaymentCount,
+    taxExempt: $taxExempt,
+    taxExemptState: $taxExemptState,
+    taxExemptCertificateUrl: $taxExemptCertificateUrl,
+    defaultPaymentMethodId: $defaultPaymentMethodId,
+    defaultPaymentMethodBrand: $defaultPaymentMethodBrand,
+    defaultPaymentMethodLast4: $defaultPaymentMethodLast4,
+    termsAcceptedAt: $termsAcceptedAt,
+    termsVersion: $termsVersion
+  })
+}
+
+mutation UpdateAuctionStatus($id: String!, $status: String!) @auth(level: USER) @transaction {
+  auction_update(id: $id, data: {
+    status: $status
+  })
+}
+
+mutation UpdateAuctionStats($id: String!, $lotCount: Int, $totalBids: Int, $totalGmv: Float) @auth(level: USER) @transaction {
+  auction_update(id: $id, data: {
+    lotCount: $lotCount,
+    totalBids: $totalBids,
+    totalGmv: $totalGmv
+  })
+}

@@ -1,0 +1,11 @@
+connectorId: auctions
+generate:
+  javascriptSdk:
+    outputDir: ../../src/lib/dataconnect/generated
+    package: "@dataconnect/generated-timberequip-auctions"
+    packageJsonDir: ../..
+    react: true
+  adminNodeSdk:
+    outputDir: ../../functions/generated/dataconnect/auctions
+    package: "@dataconnect/admin-generated-timberequip-auctions"
+    packageJsonDir: ../../functions

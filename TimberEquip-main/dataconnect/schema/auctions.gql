@@ -1,0 +1,165 @@
+## Auction Platform — Data Connect Schema
+## Phase 3 of the Firestore → PostgreSQL migration.
+## Flattens nested auction subcollections into relational tables.
+
+type Auction @table(name: "auctions", key: "id") @index(fields: ["status"]) @index(fields: ["slug"]) {
+  id: String!
+  title: String!
+  slug: String!
+  description: String
+  coverImageUrl: String @col(name: "cover_image_url")
+  startTime: Timestamp! @col(name: "start_time")
+  endTime: Timestamp! @col(name: "end_time")
+  previewStartTime: Timestamp @col(name: "preview_start_time")
+  status: String! @default(value: "draft")
+  lotCount: Int @col(name: "lot_count") @default(value: 0)
+  totalBids: Int @col(name: "total_bids") @default(value: 0)
+  totalGmv: Float @col(name: "total_gmv") @default(value: 0)
+  defaultBuyerPremiumPercent: Float @col(name: "default_buyer_premium_percent") @default(value: 10.00)
+  softCloseThresholdMin: Int @col(name: "soft_close_threshold_min") @default(value: 5)
+  softCloseExtensionMin: Int @col(name: "soft_close_extension_min") @default(value: 3)
+  staggerIntervalMin: Int @col(name: "stagger_interval_min") @default(value: 1)
+  defaultPaymentDeadlineDays: Int @col(name: "default_payment_deadline_days") @default(value: 7)
+  defaultRemovalDeadlineDays: Int @col(name: "default_removal_deadline_days") @default(value: 14)
+  termsAndConditionsUrl: String @col(name: "terms_and_conditions_url")
+  featured: Boolean @default(value: false)
+  bannerEnabled: Boolean @col(name: "banner_enabled") @default(value: false)
+  bannerImageUrl: String @col(name: "banner_image_url")
+  createdBy: String! @col(name: "created_by")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+  lots: [AuctionLot!]!
+}
+
+type AuctionLot @table(name: "auction_lots", key: "id") @index(fields: ["auctionId", "closeOrder"]) @index(fields: ["auctionId", "status"]) @index(fields: ["listingId"]) {
+  id: String!
+  auction: Auction! @ref(fields: ["auctionId"], references: ["id"])
+  auctionId: String! @col(name: "auction_id")
+  listingId: String @col(name: "listing_id")
+  lotNumber: String! @col(name: "lot_number")
+  closeOrder: Int! @col(name: "close_order") @default(value: 0)
+  startingBid: Float @col(name: "starting_bid")
+  reservePrice: Float @col(name: "reserve_price")
+  reserveMet: Boolean @col(name: "reserve_met") @default(value: false)
+  buyerPremiumPercent: Float @col(name: "buyer_premium_percent") @default(value: 10.00)
+  startTime: Timestamp @col(name: "start_time")
+  endTime: Timestamp @col(name: "end_time")
+  originalEndTime: Timestamp @col(name: "original_end_time")
+  softCloseThresholdMin: Int @col(name: "soft_close_threshold_min") @default(value: 5)
+  softCloseExtensionMin: Int @col(name: "soft_close_extension_min") @default(value: 3)
+  softCloseGroupId: String @col(name: "soft_close_group_id")
+  extensionCount: Int @col(name: "extension_count") @default(value: 0)
+  currentBid: Float @col(name: "current_bid") @default(value: 0)
+  currentBidderId: String @col(name: "current_bidder_id")
+  currentBidderAnonymousId: String @col(name: "current_bidder_anonymous_id")
+  bidCount: Int @col(name: "bid_count") @default(value: 0)
+  uniqueBidders: Int @col(name: "unique_bidders") @default(value: 0)
+  lastBidTime: Timestamp @col(name: "last_bid_time")
+  status: String! @default(value: "upcoming")
+  promoted: Boolean @default(value: false)
+  promotedOrder: Int @col(name: "promoted_order")
+  winningBidderId: String @col(name: "winning_bidder_id")
+  winningBid: Float @col(name: "winning_bid")
+  watcherCount: Int @col(name: "watcher_count") @default(value: 0)
+  title: String
+  manufacturer: String
+  model: String
+  year: Int
+  thumbnailUrl: String @col(name: "thumbnail_url")
+  pickupLocation: String @col(name: "pickup_location")
+  paymentDeadlineDays: Int @col(name: "payment_deadline_days") @default(value: 7)
+  removalDeadlineDays: Int @col(name: "removal_deadline_days") @default(value: 14)
+  storageFeePerDay: Float @col(name: "storage_fee_per_day") @default(value: 0)
+  isTitledItem: Boolean @col(name: "is_titled_item") @default(value: false)
+  titleDocumentFee: Float @col(name: "title_document_fee") @default(value: 0)
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+  bids: [AuctionBid!]!
+}
+
+type AuctionBid @table(name: "auction_bids", key: "id") @index(fields: ["auctionId", "lotId"]) @index(fields: ["bidderId"]) {
+  id: String!
+  auction: Auction! @ref(fields: ["auctionId"], references: ["id"])
+  auctionId: String! @col(name: "auction_id")
+  lot: AuctionLot! @ref(fields: ["lotId"], references: ["id"])
+  lotId: String! @col(name: "lot_id")
+  bidderId: String! @col(name: "bidder_id")
+  bidderAnonymousId: String! @col(name: "bidder_anonymous_id")
+  amount: Float!
+  maxBid: Float @col(name: "max_bid")
+  type: String! @default(value: "manual")
+  status: String! @default(value: "active")
+  triggeredExtension: Boolean @col(name: "triggered_extension") @default(value: false)
+  bidTime: Timestamp! @col(name: "bid_time") @default(expr: "request.time")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type AuctionInvoice @table(name: "auction_invoices", key: "id") @index(fields: ["auctionId"]) @index(fields: ["buyerId"]) @index(fields: ["sellerId"]) @index(fields: ["status"]) {
+  id: String!
+  auction: Auction! @ref(fields: ["auctionId"], references: ["id"])
+  auctionId: String! @col(name: "auction_id")
+  lot: AuctionLot! @ref(fields: ["lotId"], references: ["id"])
+  lotId: String! @col(name: "lot_id")
+  buyerId: String! @col(name: "buyer_id")
+  sellerId: String! @col(name: "seller_id")
+  hammerPrice: Float! @col(name: "hammer_price")
+  buyerPremium: Float! @col(name: "buyer_premium") @default(value: 0)
+  documentationFee: Float @col(name: "documentation_fee") @default(value: 0)
+  cardProcessingFee: Float @col(name: "card_processing_fee") @default(value: 0)
+  salesTaxRate: Float @col(name: "sales_tax_rate") @default(value: 0)
+  salesTaxAmount: Float @col(name: "sales_tax_amount") @default(value: 0)
+  salesTaxState: String @col(name: "sales_tax_state")
+  totalDue: Float! @col(name: "total_due")
+  currency: String @default(value: "usd")
+  status: String! @default(value: "pending")
+  paymentMethod: String @col(name: "payment_method")
+  stripeInvoiceId: String @col(name: "stripe_invoice_id")
+  stripeCheckoutSessionId: String @col(name: "stripe_checkout_session_id")
+  stripePaymentIntentId: String @col(name: "stripe_payment_intent_id")
+  buyerTaxExempt: Boolean @col(name: "buyer_tax_exempt") @default(value: false)
+  buyerTaxExemptState: String @col(name: "buyer_tax_exempt_state")
+  buyerTaxExemptCertificateUrl: String @col(name: "buyer_tax_exempt_certificate_url")
+  dueDate: Timestamp! @col(name: "due_date")
+  paidAt: Timestamp @col(name: "paid_at")
+  sellerCommission: Float @col(name: "seller_commission")
+  sellerPayout: Float @col(name: "seller_payout")
+  sellerPaidAt: Timestamp @col(name: "seller_paid_at")
+  removalConfirmedAt: Timestamp @col(name: "removal_confirmed_at")
+  storageFeesAccrued: Float @col(name: "storage_fees_accrued") @default(value: 0)
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type BidderProfile @table(name: "bidder_profiles", key: "id") @index(fields: ["userId"]) {
+  id: String!
+  userId: String! @col(name: "user_id")
+  verificationTier: String! @col(name: "verification_tier") @default(value: "basic")
+  fullName: String @col(name: "full_name")
+  phone: String
+  phoneVerified: Boolean @col(name: "phone_verified") @default(value: false)
+  addressStreet: String @col(name: "address_street")
+  addressCity: String @col(name: "address_city")
+  addressState: String @col(name: "address_state")
+  addressZip: String @col(name: "address_zip")
+  addressCountry: String @col(name: "address_country")
+  companyName: String @col(name: "company_name")
+  stripeCustomerId: String @col(name: "stripe_customer_id")
+  idVerificationStatus: String @col(name: "id_verification_status") @default(value: "not_started")
+  idVerifiedAt: Timestamp @col(name: "id_verified_at")
+  bidderApprovedAt: Timestamp @col(name: "bidder_approved_at")
+  bidderApprovedBy: String @col(name: "bidder_approved_by")
+  totalAuctionsParticipated: Int @col(name: "total_auctions_participated") @default(value: 0)
+  totalItemsWon: Int @col(name: "total_items_won") @default(value: 0)
+  totalSpent: Float @col(name: "total_spent") @default(value: 0)
+  nonPaymentCount: Int @col(name: "non_payment_count") @default(value: 0)
+  taxExempt: Boolean @col(name: "tax_exempt") @default(value: false)
+  taxExemptState: String @col(name: "tax_exempt_state")
+  taxExemptCertificateUrl: String @col(name: "tax_exempt_certificate_url")
+  defaultPaymentMethodId: String @col(name: "default_payment_method_id")
+  defaultPaymentMethodBrand: String @col(name: "default_payment_method_brand")
+  defaultPaymentMethodLast4: String @col(name: "default_payment_method_last4")
+  termsAcceptedAt: Timestamp @col(name: "terms_accepted_at")
+  termsVersion: String @col(name: "terms_version")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}

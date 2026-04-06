@@ -13,3 +13,4 @@ connectorDirs:
   - ./listingGovernance
   - ./marketplace
   - ./billing
+  - ./auctions

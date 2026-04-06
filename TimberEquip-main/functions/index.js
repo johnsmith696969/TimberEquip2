@@ -29,6 +29,7 @@ const {
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
 const { syncListingToDataConnect } = require('./listing-governance-dataconnect-sync.js');
 const dualWriteUsersBilling = require('./dual-write-users-billing.js');
+const dualWriteAuctions = require('./dual-write-auctions.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
@@ -17337,3 +17338,9 @@ exports.syncStorefrontToPostgres = dualWriteUsersBilling.syncStorefrontToPostgre
 exports.syncSubscriptionToPostgres = dualWriteUsersBilling.syncSubscriptionToPostgres;
 exports.syncInvoiceToPostgres = dualWriteUsersBilling.syncInvoiceToPostgres;
 exports.syncSellerApplicationToPostgres = dualWriteUsersBilling.syncSellerApplicationToPostgres;
+
+// ─── Phase 3 dual-write: Firestore → PostgreSQL (Auctions) ───────────
+exports.syncAuctionToPostgres = dualWriteAuctions.syncAuctionToPostgres;
+exports.syncAuctionLotToPostgres = dualWriteAuctions.syncAuctionLotToPostgres;
+exports.syncAuctionBidToPostgres = dualWriteAuctions.syncAuctionBidToPostgres;
+exports.syncAuctionInvoiceToPostgres = dualWriteAuctions.syncAuctionInvoiceToPostgres;
