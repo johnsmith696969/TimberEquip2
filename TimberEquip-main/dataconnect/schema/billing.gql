@@ -1,0 +1,65 @@
+## Subscriptions, Invoices & Seller Program Applications — Data Connect Schema
+## Phase 2 of the Firestore → PostgreSQL migration.
+
+type Subscription @table(name: "subscriptions", key: "id") @index(fields: ["userId"]) @index(fields: ["status"]) @index(fields: ["stripeSubscriptionId"]) {
+  id: String!
+  user: User! @ref(fields: ["userId"], references: ["id"])
+  userId: String! @col(name: "user_id")
+  listingId: String @col(name: "listing_id")
+  planId: String! @col(name: "plan_id")
+  planName: String @col(name: "plan_name")
+  listingCap: Int @col(name: "listing_cap")
+  status: String! @default(value: "pending")
+  stripeSubscriptionId: String @col(name: "stripe_subscription_id")
+  currentPeriodEnd: Timestamp @col(name: "current_period_end")
+  cancelAtPeriodEnd: Boolean @col(name: "cancel_at_period_end") @default(value: false)
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type Invoice @table(name: "invoices", key: "id") @index(fields: ["userId"]) @index(fields: ["status"]) {
+  id: String!
+  user: User! @ref(fields: ["userId"], references: ["id"])
+  userId: String! @col(name: "user_id")
+  listingId: String @col(name: "listing_id")
+  stripeInvoiceId: String @col(name: "stripe_invoice_id")
+  stripeCheckoutSessionId: String @col(name: "stripe_checkout_session_id")
+  amount: Int! @default(value: 0)
+  currency: String @default(value: "usd")
+  status: String! @default(value: "pending")
+  items: Any @col(name: "items") @default(sql: "'[]'::jsonb")
+  source: String
+  paidAt: Timestamp @col(name: "paid_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type SellerProgramApplication @table(name: "seller_program_applications", key: "id") @index(fields: ["userId"]) @index(fields: ["status"]) {
+  id: String!
+  user: User! @ref(fields: ["userId"], references: ["id"])
+  userId: String! @col(name: "user_id")
+  planId: String @col(name: "plan_id")
+  status: String @default(value: "pending")
+  stripeCustomerId: String @col(name: "stripe_customer_id")
+  stripeSubscriptionId: String @col(name: "stripe_subscription_id")
+  legalFullName: String @col(name: "legal_full_name")
+  legalTitle: String @col(name: "legal_title")
+  companyName: String @col(name: "company_name")
+  billingEmail: String @col(name: "billing_email")
+  phoneNumber: String @col(name: "phone_number")
+  website: String
+  country: String
+  taxIdOrVat: String @col(name: "tax_id_or_vat")
+  notes: String
+  statementLabel: String @col(name: "statement_label")
+  legalScope: String @col(name: "legal_scope")
+  legalTermsVersion: String @col(name: "legal_terms_version")
+  legalAcceptedAtIso: String @col(name: "legal_accepted_at_iso")
+  acceptedTerms: Boolean @col(name: "accepted_terms") @default(value: false)
+  acceptedPrivacy: Boolean @col(name: "accepted_privacy") @default(value: false)
+  acceptedRecurringBilling: Boolean @col(name: "accepted_recurring_billing") @default(value: false)
+  acceptedVisibilityPolicy: Boolean @col(name: "accepted_visibility_policy") @default(value: false)
+  acceptedAuthority: Boolean @col(name: "accepted_authority") @default(value: false)
+  source: String
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}

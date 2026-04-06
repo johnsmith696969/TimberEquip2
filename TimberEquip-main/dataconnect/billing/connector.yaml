@@ -1,0 +1,11 @@
+connectorId: billing
+generate:
+  javascriptSdk:
+    outputDir: ../../src/lib/dataconnect/generated
+    package: "@dataconnect/generated-timberequip-billing"
+    packageJsonDir: ../..
+    react: true
+  adminNodeSdk:
+    outputDir: ../../functions/generated/dataconnect/billing
+    package: "@dataconnect/admin-generated-timberequip-billing"
+    packageJsonDir: ../../functions

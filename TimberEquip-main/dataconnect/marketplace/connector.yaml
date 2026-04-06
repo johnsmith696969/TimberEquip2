@@ -1,0 +1,11 @@
+connectorId: marketplace
+generate:
+  javascriptSdk:
+    outputDir: ../../src/lib/dataconnect/generated
+    package: "@dataconnect/generated-timberequip-marketplace"
+    packageJsonDir: ../..
+    react: true
+  adminNodeSdk:
+    outputDir: ../../functions/generated/dataconnect/marketplace
+    package: "@dataconnect/admin-generated-timberequip-marketplace"
+    packageJsonDir: ../../functions

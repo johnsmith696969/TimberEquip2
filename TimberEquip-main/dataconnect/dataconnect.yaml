@@ -11,3 +11,5 @@ schema:
         schemaValidation: COMPATIBLE
 connectorDirs:
   - ./listingGovernance
+  - ./marketplace
+  - ./billing

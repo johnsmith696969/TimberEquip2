@@ -28,6 +28,7 @@ const {
 } = require('./public-marketplace-fallback.js');
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
 const { syncListingToDataConnect } = require('./listing-governance-dataconnect-sync.js');
+const dualWriteUsersBilling = require('./dual-write-users-billing.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
@@ -4520,6 +4521,7 @@ function resolveStorageBucketName() {
 
 // ── Watermark compositing ───────────────────────────────────────────────────
 const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.png');
+const WATERMARK_LAYER_COUNT = 3;
 let _watermarkBuffer = null;
 
 async function getWatermarkBuffer() {
@@ -4535,10 +4537,10 @@ async function getWatermarkBuffer() {
 
 /**
  * Composite the brand watermark onto an image buffer.
- * Places an upright watermark at ~9 % of image width, ~28 % opacity,
+ * Uses the watermark asset's native transparency and places it upright
  * in the bottom-right corner with a small margin.
  */
-async function applyWatermark(imageBuffer, opacity = 0.28) {
+async function applyWatermark(imageBuffer) {
   const wmSource = await getWatermarkBuffer();
   if (!wmSource) return imageBuffer;
 
@@ -4562,27 +4564,16 @@ async function applyWatermark(imageBuffer, opacity = 0.28) {
       .png()
       .toBuffer();
 
-    // Apply opacity by reducing alpha channel
     const wmMeta = await sharp(resizedWatermark).metadata();
     const wmH = wmMeta.height || wmWidth;
-    const opacityWatermark = await sharp(resizedWatermark)
-      .ensureAlpha()
-      .raw()
-      .toBuffer()
-      .then((rawBuf) => {
-        for (let i = 3; i < rawBuf.length; i += 4) {
-          rawBuf[i] = Math.round(rawBuf[i] * opacity);
-        }
-        return sharp(rawBuf, { raw: { width: wmMeta.width || wmWidth, height: wmH, channels: 4 } })
-          .png()
-          .toBuffer();
-      });
 
     const left = Math.max(imgWidth - wmWidth - margin, 0);
     const top = Math.max(imgHeight - wmH - margin, 0);
 
     return sharp(imageBuffer)
-      .composite([{ input: opacityWatermark, left, top }])
+      .composite(
+        Array.from({ length: WATERMARK_LAYER_COUNT }, () => ({ input: resizedWatermark, left, top }))
+      )
       .toBuffer();
   } catch (err) {
     logger.warn('Watermark compositing failed – returning unwatermarked image.', err.message);
@@ -4590,7 +4581,7 @@ async function applyWatermark(imageBuffer, opacity = 0.28) {
   }
 }
 
-async function compressToAvifTarget(inputBuffer, width, targetBytes, watermarkOpacity = 0.28) {
+async function compressToAvifTarget(inputBuffer, width, targetBytes) {
   const widthSteps = [width, Math.round(width * 0.85), Math.round(width * 0.72), Math.round(width * 0.6), Math.round(width * 0.5), Math.round(width * 0.4)]
     .filter((candidate, index, array) => candidate > 0 && array.indexOf(candidate) === index);
   let best = null;
@@ -4607,7 +4598,7 @@ async function compressToAvifTarget(inputBuffer, width, targetBytes, watermarkOp
         .png()
         .toBuffer();
 
-      const watermarked = await applyWatermark(resized, watermarkOpacity);
+      const watermarked = await applyWatermark(resized);
 
       const output = await sharp(watermarked)
         .avif({ quality })
@@ -4666,8 +4657,8 @@ exports.generateListingImageVariants = onObjectFinalized(
     const [sourceBuffer] = await sourceFile.download();
 
     const [detailBuffer, thumbBuffer] = await Promise.all([
-      compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES, 0.28),
-      compressToAvifTarget(sourceBuffer, THUMB_MAX_WIDTH, THUMB_MAX_BYTES, 0.08),
+      compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES),
+      compressToAvifTarget(sourceBuffer, THUMB_MAX_WIDTH, THUMB_MAX_BYTES),
     ]);
 
     const detailToken = randomUUID();
@@ -6333,7 +6324,7 @@ function serializePublicNewsPostFromBlog(docSnapshot) {
     content: record.content,
     author: normalizeNonEmptyString(record.authorName, 'Forestry Equipment Sales Editorial'),
     date: normalizeNonEmptyString(record.updatedAt || record.createdAt, new Date().toISOString()),
-    image: normalizeNonEmptyString(record.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+    image: normalizeNonEmptyString(record.image, '/TimberEquip-Logo.png?v=20260405c'),
     category: normalizeNonEmptyString(record.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(record.seoTitle) || undefined,
     seoDescription: normalizeNonEmptyString(record.seoDescription) || undefined,
@@ -6351,7 +6342,7 @@ function serializePublicNewsPostFromLegacy(docSnapshot) {
     content: normalizeNonEmptyString(data.content),
     author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
     date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+    image: normalizeNonEmptyString(data.image, '/TimberEquip-Logo.png?v=20260405c'),
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
     seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
@@ -6389,7 +6380,7 @@ async function getPublicNewsFeedPayload() {
           content: post.content,
           author: normalizeNonEmptyString(post.authorName, 'Forestry Equipment Sales Editorial'),
           date: normalizeNonEmptyString(post.updatedAt || post.createdAt, new Date().toISOString()),
-          image: normalizeNonEmptyString(post.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+          image: normalizeNonEmptyString(post.image, '/TimberEquip-Logo.png?v=20260405c'),
           category: normalizeNonEmptyString(post.category, 'Industry News'),
           seoTitle: normalizeNonEmptyString(post.seoTitle) || undefined,
           seoDescription: normalizeNonEmptyString(post.seoDescription) || undefined,
@@ -17339,3 +17330,10 @@ exports.weeklyMarketPulse = onSchedule(
     logger.info(`Weekly market pulse: ${Object.keys(pulseData).length} subcategories analyzed.`);
   }
 );
+
+// ─── Phase 2 dual-write: Firestore → PostgreSQL ──────────────────────
+exports.syncUserToPostgres = dualWriteUsersBilling.syncUserToPostgres;
+exports.syncStorefrontToPostgres = dualWriteUsersBilling.syncStorefrontToPostgres;
+exports.syncSubscriptionToPostgres = dualWriteUsersBilling.syncSubscriptionToPostgres;
+exports.syncInvoiceToPostgres = dualWriteUsersBilling.syncInvoiceToPostgres;
+exports.syncSellerApplicationToPostgres = dualWriteUsersBilling.syncSellerApplicationToPostgres;
