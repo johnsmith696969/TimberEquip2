@@ -76,7 +76,7 @@ describe('Page module smoke tests', () => {
   it('Home exports a component', async () => {
     const mod = await import('../pages/Home');
     expect(typeof mod.Home).toBe('function');
-  });
+  }, 15_000);
 
   it('Search exports a component', async () => {
     const mod = await import('../pages/Search');

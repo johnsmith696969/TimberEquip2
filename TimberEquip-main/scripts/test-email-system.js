@@ -40,9 +40,9 @@ const TEMPLATES = [
 ];
 
 // Get test email from command line args or use default
-const testEmail = process.argv[2] || 'caleb@forestryequipmentsales.com';
+const testEmail = process.argv[2] || 'caleb@timberequip.com';
 
-console.log(`\n🧪 Forestry Equipment Sales Email System Test`);
+console.log(`\n🧪 TimberEquip Email System Test`);
 console.log(`═══════════════════════════════════════`);
 console.log(`📧 Test Email: ${testEmail}`);
 console.log(`📋 Templates to Test: ${TEMPLATES.length}`);

@@ -99,7 +99,7 @@ describe('Unsubscribe page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Stop Optional Emails' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Optional Forestry Equipment Sales emails are turned off/i)).toBeInTheDocument();
+      expect(screen.getByText(/Optional TimberEquip emails are turned off/i)).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -105,7 +105,7 @@ try {
   console.warn('[email] Unable to load @sendgrid/mail from functions/node_modules:', sgError);
 }
 
-const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@forestryequipmentsales.com').trim();
+const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@timberequip.com').trim();
 const APP_BASE_URL = String(process.env.APP_URL || 'https://timberequip.com').replace(/\/+$/, '');
 
 async function sendServerEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
@@ -341,9 +341,9 @@ function serializePublicLegacyNewsPost(id: string, data: Record<string, unknown>
     title: normalizeNonEmptyString(data.title, 'Untitled'),
     summary,
     content: normalizeNonEmptyString(data.content),
-    author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
+    author: normalizeNonEmptyString(data.author, 'TimberEquip Editorial'),
     date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image) || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    image: normalizeNonEmptyString(data.image) || '/TimberEquip-Logo.png?v=20260327c',
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
@@ -359,9 +359,9 @@ function serializePublicCmsNewsPost(id: string, data: Record<string, unknown>) {
     title: normalizeNonEmptyString(data.title, 'Untitled'),
     summary,
     content: normalizeNonEmptyString(data.content),
-    author: normalizeNonEmptyString(data.authorName, 'Forestry Equipment Sales Editorial'),
+    author: normalizeNonEmptyString(data.authorName, 'TimberEquip Editorial'),
     date: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image) || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    image: normalizeNonEmptyString(data.image) || '/TimberEquip-Logo.png?v=20260327c',
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
@@ -499,7 +499,7 @@ function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<s
   return {
     id: snapshotId,
     uid: snapshotId,
-    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'TimberEquip Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
     role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
@@ -529,7 +529,7 @@ function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string,
   return {
     id: snapshotId,
     uid: snapshotId,
-    name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
+    name: normalizeNonEmptyString(data.displayName || data.name, 'TimberEquip Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
     role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
@@ -1061,8 +1061,8 @@ async function getManagedAccountSeatContext(ownerUid: string): Promise<{
 const TRUSTED_HOSTS = new Set([
   'timberequip.com',
   'www.timberequip.com',
-  'www.forestryequipmentsales.com',
-  'forestryequipmentsales.com',
+  'www.timberequip.com',
+  'timberequip.com',
   'mobile-app-equipment-sales.web.app',
   'mobile-app-equipment-sales.firebaseapp.com',
   'timberequip-staging.web.app',
@@ -1339,7 +1339,7 @@ async function startServer() {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "https://*.googleapis.com", "https://*.firebaseio.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://firebasestorage.googleapis.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
         connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://*.stripe.com", "https://*.run.app", "https://ai.studio"],
@@ -1410,7 +1410,7 @@ async function startServer() {
   const ALLOWED_ORIGINS: string[] = [
     'https://timberequip.com',
     'https://www.timberequip.com',
-    'https://forestryequipmentsales.com',
+    'https://timberequip.com',
     'https://mobile-app-equipment-sales.web.app',
     'https://mobile-app-equipment-sales.firebaseapp.com',
     'https://timberequip-staging.web.app',

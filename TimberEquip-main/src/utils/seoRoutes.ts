@@ -45,20 +45,43 @@ const MANUFACTURER_ALIASES: Record<string, string> = {
   'PEWAG ECO-TRACKS': 'OLOFSORS ECO-TRACKS',
 };
 
+const ROMAN_NUMERAL_PATTERN = /^(?:M|CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
+
+function normalizeManufacturerWhitespace(value: string): string {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function formatManufacturerDisplayName(value: string): string {
+  return normalizeManufacturerWhitespace(value)
+    .split(/(\s+|[-/]+)/)
+    .map((segment) => {
+      if (!segment || /^(\s+|[-/]+)$/.test(segment)) {
+        return segment;
+      }
+
+      if (/\d/.test(segment) || segment.length <= 3 || ROMAN_NUMERAL_PATTERN.test(segment)) {
+        return segment.toUpperCase();
+      }
+
+      return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+    })
+    .join('');
+}
+
 /**
  * Resolve a raw manufacturer string to its canonical form.
  * Merges known aliases (e.g. "CAT" → "CATERPILLAR").
  */
 export function canonicalizeManufacturer(raw: string): string {
-  const trimmed = String(raw || '').trim();
+  const trimmed = normalizeManufacturerWhitespace(raw);
   if (!trimmed) return trimmed;
   const upper = trimmed.toUpperCase();
-  return MANUFACTURER_ALIASES[upper] || trimmed;
+  return MANUFACTURER_ALIASES[upper] || upper;
 }
 
 export function getListingManufacturer(listing: Listing): string {
-  const raw = String(listing.make || listing.manufacturer || listing.brand || '').trim();
-  return canonicalizeManufacturer(raw);
+  const raw = normalizeManufacturerWhitespace(listing.make || listing.manufacturer || listing.brand || '');
+  return formatManufacturerDisplayName(canonicalizeManufacturer(raw));
 }
 
 export function getListingCategoryLabel(listing: Listing): string {

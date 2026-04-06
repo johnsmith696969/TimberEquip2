@@ -1,4 +1,4 @@
-# Forestry Equipment Sales - Consolidated Production Checklist
+# TimberEquip - Consolidated Production Checklist
 
 **Created:** March 29, 2026
 **Source:** Merged from `final-tier-2-scope.md` + `Full_Audit_3_29_2026.md`
@@ -12,14 +12,14 @@
 
 - [x] **1.1 - Fix all TypeScript errors** - 19 errors to 0. `tsc --noEmit` passes clean.
 - [x] **1.2 - Re-enable Helmet security headers** - Uncommented in `server.ts`, CSP configured, `blob:` added to imgSrc. `X-Powered-By` removed.
-- [x] **1.3 - Lock CORS to explicit origins** - Replaced `origin: true` with allowlist (forestryequipmentsales.com, localhost, Firebase preview domains).
+- [x] **1.3 - Lock CORS to explicit origins** - Replaced `origin: true` with allowlist (timberequip.com, localhost, Firebase preview domains).
 - [x] **1.4 - Fix SUPERADMIN_EMAIL bug** - Exported from `privilegedAdmin.ts`, imported in `equipmentService.ts`. Queries and comparisons now work.
 - [x] **1.5 - Remove Gemini API key from client bundle** - Already removed before audit. `GEMINI_API_KEY` not in Vite `define`.
 - [x] **1.6 - Build 404 page** - `NotFound.tsx` already exists with noindex meta, routed at `path="*"`.
 - [x] **1.7 - Create DMCA policy page** - `Dmca.tsx` already exists at `/dmca` with footer link.
 - [x] **1.8 - Fix package.json identity** - Already `"name": "forestry-equipment-sales"` with correct metadata.
 - [x] **1.9 - Default noindex meta in index.html** - Added `<meta name="robots" content="noindex, nofollow" />` as safety net. `Seo.tsx` overrides per-page.
-- [x] **1.10 - Fix legal page contact emails** - All emails now reference `@forestryequipmentsales.com`. Verified in `Privacy.tsx`, `Cookies.tsx`, `Terms.tsx`, `Contact.tsx`.
+- [x] **1.10 - Fix legal page contact emails** - All emails now reference `@timberequip.com`. Verified in `Privacy.tsx`, `Cookies.tsx`, `Terms.tsx`, `Contact.tsx`.
 - [x] **1.11 - Expand Privacy Policy** - Already comprehensive: covers Stripe, Firebase, SendGrid, Twilio Voice, reCAPTCHA, Maps, GDPR Art 13/14, CCPA, COPPA, data breach 72h, cookie consent, data transfer.
 - [x] **1.12 - Fix Terms of Service gaps** - Already covers: IP license, indemnification, governing law (Minnesota), binding arbitration, class action waiver, force majeure.
 - [x] **1.13 - Implement consent logging** - `ConsentBanner` already logs accept/decline to Firestore `consentLogs` via `logConsentToFirestore()`. "Manage Cookies" button wired on `/cookies`.
@@ -112,7 +112,7 @@
   - Effort: 12-24 hours
 - [ ] **6.4 - Migrate hardcoded admin emails to role claims** - Remove scattered email checks from frontend/rules and centralize privilege in server-side role claims.
   - Effort: 8-20 hours
-- [ ] **6.5 - Fix storage rules hardcoded database ID** - Verified this is not a simple placeholder swap. Cloud Storage rules cross-service `get()` checks are effectively tied to the default Firestore database, while Forestry Equipment Sales app data currently lives in the named `ai-studio-206e8e62-...` database. Completing this requires an architectural change: mirror minimal auth/listing ownership data into `(default)` or move upload authorization off Firestore-dependent storage rules.
+- [ ] **6.5 - Fix storage rules hardcoded database ID** - Verified this is not a simple placeholder swap. Cloud Storage rules cross-service `get()` checks are effectively tied to the default Firestore database, while TimberEquip app data currently lives in the named `ai-studio-206e8e62-...` database. Completing this requires an architectural change: mirror minimal auth/listing ownership data into `(default)` or move upload authorization off Firestore-dependent storage rules.
   - Files: `storage.rules`, upload/auth flow
   - Effort: 8-16 hours
 
@@ -129,14 +129,14 @@
 - [x] DMCA page exists with footer link
 - [x] Gemini API key not in client bundle
 - [x] Default noindex meta in index.html
-- [x] All legal page emails reference `@forestryequipmentsales.com`
+- [x] All legal page emails reference `@timberequip.com`
 - [x] Privacy policy covers GDPR Art 13/14 + CCPA
 - [x] Terms cover IP, indemnification, governing law
 - [x] CSRF on maintained package
 - [x] Consent banner logs to Firestore
 - [x] Stripe Customer Portal configured
 - [x] Subscription dates displayed in Profile
-- [ ] DNS verified: `forestryequipmentsales.com` + `www` resolve
+- [ ] DNS verified: `timberequip.com` + `www` resolve
 - [ ] SSL certificate valid and auto-renewing
 - [ ] Firebase Hosting production channel configured
 - [ ] Stripe webhooks pointing to production URL

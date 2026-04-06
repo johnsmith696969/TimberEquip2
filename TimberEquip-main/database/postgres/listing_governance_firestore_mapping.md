@@ -1,6 +1,6 @@
 # Listing Governance Firestore Mapping
 
-This document maps the current Forestry Equipment Sales listing model into the Phase 1 PostgreSQL governance model.
+This document maps the current TimberEquip listing model into the Phase 1 PostgreSQL governance model.
 
 ## Source References
 

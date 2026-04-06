@@ -190,7 +190,7 @@ export function Login() {
 
     try {
       const verifier = await getLoginMfaRecaptcha();
-      setInfoMessage('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
+      setInfoMessage('Complete the reCAPTCHA challenge below. TimberEquip will send the SMS code as soon as the security check is passed.');
       const preferredFactor = getPreferredSmsMfaFactor(resolver);
       const { verificationId, factor } = await startSmsMfaSignIn(resolver, preferredFactor?.uid, verifier);
       // reCAPTCHA token is consumed — destroy the widget immediately
@@ -201,7 +201,7 @@ export function Login() {
       if (recaptchaContainer) recaptchaContainer.innerHTML = '';
       setMfaFactor(factor);
       setMfaVerificationId(verificationId);
-      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for ForestryEquipmentSales.com. Enter it below to finish signing in.`);
+      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for TimberEquip.com. Enter it below to finish signing in.`);
     } catch (mfaError) {
       resetRecaptchaVerifier(mfaRecaptchaRef.current);
       mfaRecaptchaRef.current = null;
@@ -377,8 +377,8 @@ export function Login() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
       <Seo
-        title="Sign In | Forestry Equipment Sales"
-        description="Sign in to your Forestry Equipment Sales account to manage listings, view saved equipment, and access dealer tools."
+        title="Sign In | TimberEquip"
+        description="Sign in to your TimberEquip account to manage listings, view saved equipment, and access dealer tools."
         robots={NOINDEX_ROBOTS}
       />
       <div className="absolute top-0 right-0 w-1/2 h-full bg-accent/5 skew-x-12 translate-x-1/2" />
@@ -392,7 +392,7 @@ export function Login() {
         <div className={`p-12 ${theme === 'dark' ? 'bg-bg text-white' : 'bg-surface text-ink border-b border-line'}`}>
           <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2 block">Member Login</span>
           <h1 className={`text-4xl font-black tracking-tighter uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
-            Forestry Equipment <br /> <span className="text-accent">Sales</span>
+            Timber<span className="text-accent">Equip</span>
           </h1>
         </div>
 
@@ -587,7 +587,7 @@ export function Login() {
 
           <div className="mt-8 pt-8 border-t border-line flex flex-col space-y-6">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to Forestry Equipment Sales?</span>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to TimberEquip?</span>
               <Link to={registerHref} className="text-[10px] font-black text-accent uppercase hover:underline">
                 Create Account
               </Link>

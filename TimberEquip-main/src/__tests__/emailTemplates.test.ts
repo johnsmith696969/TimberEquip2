@@ -37,12 +37,12 @@ describe('email templates', () => {
   it('uses the branded password reset workspace url in password reset emails', () => {
     const { subject, html } = templates.passwordReset({
       displayName: 'Dealer Admin',
-      intro: 'We received a request to reset your Forestry Equipment Sales password.',
+      intro: 'We received a request to reset your TimberEquip password.',
       resetUrl: 'https://timberequip.com/reset-password?oobCode=demo123&mode=resetPassword&continueUrl=%2Flogin',
       loginUrl: 'https://timberequip.com/login',
     });
 
-    expect(subject).toContain('Reset your Forestry Equipment Sales password');
+    expect(subject).toContain('Reset your TimberEquip password');
     expect(html).toContain('Open Secure Reset Page');
     expect(html).toContain('/reset-password?oobCode=demo123');
     expect(html).toContain('Back To Login');
@@ -82,7 +82,7 @@ describe('email templates', () => {
   it('renders account unlock emails with sign-in and support actions', () => {
     const { subject, html } = templates.accountUnlocked({
       displayName: 'Dealer Admin',
-      actorName: 'Forestry Equipment Sales Admin',
+      actorName: 'TimberEquip Admin',
       loginUrl: 'https://timberequip.com/login',
       supportUrl: 'https://timberequip.com/contact',
     });

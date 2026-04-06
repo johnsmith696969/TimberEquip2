@@ -58,8 +58,8 @@ export function Blog() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment News | Market Reports & Industry Updates | Forestry Equipment Sales"
-        description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales."
+        title="Equipment News | Market Reports & Industry Updates | TimberEquip"
+        description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from TimberEquip."
         canonicalPath="/blog"
         preloadImage="/page-photos/pine-dirt-road.webp"
         jsonLd={{
@@ -67,12 +67,12 @@ export function Blog() {
           '@graph': [
             {
               '@type': 'Blog',
-              name: 'Forestry Equipment Sales Blog',
-              description: 'Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales.',
+              name: 'TimberEquip Blog',
+              description: 'Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from TimberEquip.',
               url: 'https://timberequip.com/blog',
               publisher: {
                 '@type': 'Organization',
-                name: 'Forestry Equipment Sales',
+                name: 'TimberEquip',
                 url: 'https://timberequip.com',
               },
             },
@@ -178,7 +178,7 @@ export function Blog() {
                     </div>
                     <div className="flex items-center">
                       <ShieldCheck size={12} className="mr-2" />
-                      {post.author || 'Forestry Equipment Sales'}
+                      {post.author || 'TimberEquip'}
                     </div>
                   </div>
 

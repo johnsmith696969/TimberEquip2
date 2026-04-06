@@ -6,6 +6,7 @@ import { storage } from '../firebase';
 import { useAuth } from '../components/AuthContext';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs, type BreadcrumbItem } from '../components/Breadcrumbs';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { auctionService, type AuctionBidderStatusResponse } from '../services/auctionService';
 import { AUCTION_TERMS_VERSION, buildAuctionLegalSummaryLines } from '../utils/auctionFees';
 import type { Auction } from '../types';
@@ -32,6 +33,7 @@ export function BidderRegistration() {
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [zip, setZip] = useState('');
+  const [googleAddressQuery, setGoogleAddressQuery] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Tax exemption state
@@ -87,6 +89,12 @@ export function BidderRegistration() {
         setCity(profile?.address?.city || '');
         setState(profile?.address?.state || '');
         setZip(profile?.address?.zip || '');
+        setGoogleAddressQuery([
+          profile?.address?.street || '',
+          profile?.address?.city || '',
+          profile?.address?.state || '',
+          profile?.address?.zip || '',
+        ].filter(Boolean).join(', '));
         setTermsAccepted(Boolean(profile?.termsAcceptedAt));
         setTaxExempt(Boolean(profile?.taxExempt));
         setTaxExemptState(profile?.taxExemptState || '');
@@ -312,7 +320,7 @@ export function BidderRegistration() {
   return (
     <>
       <Seo
-        title={`${auction ? `${auction.title} | ` : ''}Register to Bid | Forestry Equipment Sales`}
+        title={`${auction ? `${auction.title} | ` : ''}Register to Bid | TimberEquip`}
         description="Complete bidder registration, identity verification, and payment setup for the auction."
       />
       <Breadcrumbs items={breadcrumbs} />
@@ -375,6 +383,24 @@ export function BidderRegistration() {
                 <div className="md:col-span-2">
                   <label className="label-micro mb-1 block">Company Name</label>
                   <input className={bidderInputClass} style={bidderInputStyle} value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label-micro mb-1 block">Google Address Lookup</label>
+                  <GooglePlacesInput
+                    id="bidder-registration-google-address"
+                    mode="address"
+                    value={googleAddressQuery}
+                    onChange={setGoogleAddressQuery}
+                    onSelect={(place) => {
+                      setGoogleAddressQuery(place.formattedAddress || '');
+                      setStreet(place.street1 || '');
+                      setCity(place.city || '');
+                      setState(place.state || '');
+                      setZip(place.postalCode || '');
+                    }}
+                    placeholder="Search address with Google"
+                    helperText="Select a Google-verified address so auction registration records stay clean and standardized."
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <label className="label-micro mb-1 block">Street Address</label>

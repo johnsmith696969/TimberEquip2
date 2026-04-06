@@ -2678,12 +2678,6 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <BulkImportToolkit
-        ownerUid={authUser?.uid}
-        workspaceLabel={authUser?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
-        listingAllowanceText="Unlimited unpaid listings"
-      />
-
       {selectedListingAudit && (
         <div ref={listingAuditPanelRef} className="rounded-sm border border-line bg-surface shadow-sm scroll-mt-24">
           <div className="flex flex-col gap-4 border-b border-line px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
@@ -2939,6 +2933,12 @@ export function AdminDashboard() {
           </div>
         </div>
       )}
+
+      <BulkImportToolkit
+        ownerUid={authUser?.uid}
+        workspaceLabel={authUser?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+        listingAllowanceText="Unlimited unpaid listings"
+      />
 
       {listingPage > 1 || listingHasMore ? (() => {
         const maxVisitedPage = listingCursorHistory.length;

@@ -335,9 +335,9 @@ const mapBlogPostToNewsPost = (postId: string, post: Record<string, unknown>): N
     title: String(post.title || 'Untitled'),
     summary: String(post.excerpt || '').trim() || stripHtml(post.content).slice(0, 220),
     content: String(post.content || ''),
-    author: String(post.authorName || 'Forestry Equipment Sales Editorial'),
+    author: String(post.authorName || 'TimberEquip Editorial'),
     date: new Date(dateMs).toISOString(),
-    image: String(post.image || '').trim() || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    image: String(post.image || '').trim() || '/TimberEquip-Logo.png?v=20260405c',
     category: String(post.category || 'Industry News'),
     seoTitle: String(post.seoTitle || '').trim(),
     seoDescription: String(post.seoDescription || '').trim(),
@@ -353,9 +353,9 @@ const normalizeLegacyNewsPost = (postId: string, post: Record<string, unknown>):
     title: String(post.title || 'Untitled'),
     summary: String(post.summary || '').trim() || stripHtml(post.content).slice(0, 220),
     content: String(post.content || ''),
-    author: String(post.author || 'Forestry Equipment Sales Editorial'),
+    author: String(post.author || 'TimberEquip Editorial'),
     date: new Date(dateMs).toISOString(),
-    image: String(post.image || '').trim() || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+    image: String(post.image || '').trim() || '/TimberEquip-Logo.png?v=20260405c',
     category: String(post.category || 'Industry News'),
     seoTitle: String(post.seoTitle || '').trim(),
     seoDescription: String(post.seoDescription || '').trim(),
@@ -438,10 +438,13 @@ function shouldValidateListingQualityOnUpdate(updates: Partial<Listing>): boolea
 
 function normalizeListingImages(listing: Listing): Listing {
   const variants = Array.isArray(listing.imageVariants) ? listing.imageVariants : [];
-  const hasImages = Array.isArray(listing.images) && listing.images.length > 0;
-  const normalizedImages = hasImages
-    ? listing.images
-    : variants.map((v) => v.detailUrl).filter(Boolean);
+  const variantImages = variants
+    .map((variant) => String(variant?.detailUrl || variant?.thumbnailUrl || '').trim())
+    .filter(Boolean);
+  const rawImages = Array.isArray(listing.images) ? listing.images : [];
+  const normalizedImages = variantImages.length > 0
+    ? variantImages
+    : rawImages;
   const rawTitles = Array.isArray(listing.imageTitles) ? listing.imageTitles : [];
   const imageTitles = normalizedImages.map((_, index) => String(rawTitles[index] || '').trim()).slice(0, normalizedImages.length);
 
@@ -600,7 +603,7 @@ function buildCatalogDemoListing(
     currency: 'USD',
     hours,
     condition,
-    description: `${year} ${titleManufacturer} ${subcategory} catalog listing generated from the Forestry Equipment Sales equipment taxonomy for full category coverage and workflow validation.`,
+    description: `${year} ${titleManufacturer} ${subcategory} catalog listing generated from the TimberEquip equipment taxonomy for full category coverage and workflow validation.`,
     images: Array.from({ length: 8 }).map((_, imageIndex) => `https://picsum.photos/seed/${seedBase}-${imageIndex}/1400/900`),
     imageVariants: Array.from({ length: 8 }).map((_, imageIndex) => ({
       detailUrl: `https://picsum.photos/seed/${seedBase}-detail-${imageIndex}/1600/1000`,
@@ -732,7 +735,7 @@ function getApiRequestUrls(input: RequestInfo | URL): string[] {
 
   const urls = [rawInput];
   const hostname = window.location.hostname.trim().toLowerCase();
-  if (hostname === 'www.forestryequipmentsales.com') {
+  if (hostname === 'www.timberequip.com') {
     urls.push(`https://timberequip.com${rawInput}`);
   }
 
@@ -2184,7 +2187,7 @@ export const equipmentService = {
         return {
           id: storefrontSnap.id,
           uid: storefrontSnap.id,
-          name: String(data.storefrontName || data.displayName || 'Forestry Equipment Sales Seller'),
+          name: String(data.storefrontName || data.displayName || 'TimberEquip Seller'),
           type: isDealerRole ? 'Dealer' : 'Private',
           role: (data.role || 'member') as any,
           storefrontSlug: String(data.storefrontSlug || ''),
@@ -2237,7 +2240,7 @@ export const equipmentService = {
         return {
           id: userSnap.id,
           uid: userSnap.id,
-          name: data.displayName || data.name || 'Forestry Equipment Sales Seller',
+          name: data.displayName || data.name || 'TimberEquip Seller',
           type: isDealerRole ? 'Dealer' : 'Private',
           role: (data.role || 'member') as any,
           storefrontSlug: data.storefrontSlug || '',
@@ -2581,7 +2584,7 @@ export const equipmentService = {
 
       Object.entries(EQUIPMENT_TAXONOMY).forEach(([topLevelCategory, subcategories], categoryIndex) => {
         Object.entries(subcategories).forEach(([subcategory, manufacturers], subcategoryIndex) => {
-          const baseManufacturer = manufacturers[0] || 'FORESTRY EQUIPMENT SALES';
+          const baseManufacturer = manufacturers[0] || 'TIMBEREQUIP';
           const baseYear = 2021 + ((categoryIndex + subcategoryIndex) % 3);
           const baseHours = 900 + categoryIndex * 140 + subcategoryIndex * 40;
           for (let variant = 1; variant <= 3; variant++) {
@@ -2613,7 +2616,7 @@ export const equipmentService = {
               currency: 'USD',
               hours,
               condition,
-              description: `${year} ${titleManufacturer} ${subcategory} demo listing built from the Forestry Equipment Sales taxonomy for browse, filter, and upload workflow validation.`,
+              description: `${year} ${titleManufacturer} ${subcategory} demo listing built from the TimberEquip taxonomy for browse, filter, and upload workflow validation.`,
               images: Array.from({ length: 10 }).map((_, imageIndex) => `https://picsum.photos/seed/${seedBase}-${imageIndex}/1200/800`),
               imageVariants: Array.from({ length: 10 }).map((_, imageIndex) => {
                 const detailUrl = `https://picsum.photos/seed/${seedBase}-detail-${imageIndex}/1600/1000`;
@@ -2678,3 +2681,4 @@ export const equipmentService = {
     }
   }
 };
+

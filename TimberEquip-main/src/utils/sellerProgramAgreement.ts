@@ -55,8 +55,8 @@ export function createDefaultSellerProgramEnrollmentForm(
 
 export function getSellerProgramStatementLabel(planId?: ListingPlanId | string | null): string {
   return planId === 'dealer' || planId === 'fleet_dealer'
-    ? 'FES-DealerOS'
-    : 'Forestry Equipment Sales';
+    ? 'TimberEquip DealerOS'
+    : 'TimberEquip';
 }
 
 export function getSellerProgramScopeLabel(planId?: ListingPlanId | string | null): string {

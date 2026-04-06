@@ -37,8 +37,8 @@ export function OurTeam() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Our Team | Forestry Equipment Sales"
-        description="Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development."
+        title="Our Team | TimberEquip"
+        description="Meet the TimberEquip team behind the marketplace, logistics coordination, customer support, and platform development."
         canonicalPath="/our-team"
         imagePath="/page-photos/john-deere-harvester.webp"
         preloadImage="/page-photos/our-team.webp"
@@ -47,16 +47,16 @@ export function OurTeam() {
           '@graph': [
             {
               '@type': 'AboutPage',
-              name: 'Our Team | Forestry Equipment Sales',
-              description: 'Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development.',
+              name: 'Our Team | TimberEquip',
+              description: 'Meet the TimberEquip team behind the marketplace, logistics coordination, customer support, and platform development.',
               url: 'https://timberequip.com/our-team',
             },
             {
               '@type': 'Organization',
-              name: 'Forestry Equipment Sales',
+              name: 'TimberEquip',
               url: 'https://timberequip.com',
-              telephone: '(218) 720-0933',
-              email: 'support@forestryequipmentsales.com',
+              telephone: '(612) 600-8268',
+              email: 'support@timberequip.com',
               member: [
                 {
                   '@type': 'Person',
@@ -86,7 +86,7 @@ export function OurTeam() {
         }}
       />
 
-      <ImageHero imageSrc="/page-photos/our-team.webp" imageAlt="The Forestry Equipment Sales team">
+      <ImageHero imageSrc="/page-photos/our-team.webp" imageAlt="The TimberEquip team">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <Users className="text-accent" size={20} />
@@ -149,18 +149,18 @@ export function OurTeam() {
           <div className={`${contactPanelClass} p-8 md:p-10`}>
             <span className="label-micro mb-4 block text-accent">Reach Us</span>
             <div className="space-y-4">
-              <a href="tel:+12187200933" className={`flex items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
+              <a href="tel:+16126008268" className={`flex items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
                 <Phone className="mt-0.5 text-accent" size={18} />
                 <div>
                   <span className={`label-micro block ${contactMetaClass}`}>Customer Support</span>
-                  <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
+                  <span className="text-sm font-black tracking-tight">(612) 600-8268</span>
                 </div>
               </a>
-              <a href="mailto:support@forestryequipmentsales.com" className={`flex min-w-0 items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
+              <a href="mailto:support@timberequip.com" className={`flex min-w-0 items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
                 <Mail className="mt-0.5 text-accent" size={18} />
                 <div className="min-w-0">
                   <span className={`label-micro block ${contactMetaClass}`}>Email</span>
-                  <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
+                  <span className="block break-all text-sm font-black tracking-tight">support@timberequip.com</span>
                 </div>
               </a>
               <div className="pt-2">

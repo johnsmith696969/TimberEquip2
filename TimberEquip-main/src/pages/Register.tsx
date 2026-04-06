@@ -155,7 +155,7 @@ export function Register() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
       <Seo
-        title="Create Account | Forestry Equipment Sales"
+        title="Create Account | TimberEquip"
         description="Register for a free account to browse, bookmark, and inquire on forestry equipment. Sellers can subscribe to list machines."
         canonicalPath="/register"
         robots="noindex, nofollow"
@@ -309,7 +309,7 @@ export function Register() {
                 <div className="flex items-center space-x-3">
                   <input type="checkbox" required className="w-4 h-4 border-line rounded-sm accent-accent" id="terms" />
                   <label htmlFor="terms" className="text-[10px] font-bold text-muted uppercase tracking-widest cursor-pointer leading-relaxed">
-                    I accept the Forestry Equipment Sales <span className="text-accent underline">Terms of Service</span> and <span className="text-accent underline">Privacy Policy</span>.
+                    I accept the TimberEquip <span className="text-accent underline">Terms of Service</span> and <span className="text-accent underline">Privacy Policy</span>.
                   </label>
                 </div>
 
@@ -347,7 +347,7 @@ export function Register() {
                 <span className="text-[9px] font-black uppercase tracking-widest mb-1">Secure Registration</span>
                 <p className="text-[9px] font-medium text-muted leading-relaxed">
                   Your identity is protected via AES-256 encryption. 
-                  Forestry Equipment Sales does not share operator data with unauthorized third parties.
+                  TimberEquip does not share operator data with unauthorized third parties.
                 </p>
               </div>
             </div>

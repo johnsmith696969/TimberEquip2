@@ -23,6 +23,7 @@
     "verify:staging": "npm run lint && npm test && npm run build:noindex",
     "verify:production": "npm run lint && npm test && npm run build:indexable",
     "governance:backfill": "node scripts/backfill-listing-governance.cjs",
+    "images:backfill:avif": "node scripts/backfill-listing-avif-source-images.cjs",
     "release:notes": "node scripts/generate-release-notes.mjs",
     "smoke:routes": "node scripts/http-smoke-check.mjs",
     "qa:dealer-feeds": "node scripts/test-dealer-feeds.mjs",

@@ -141,7 +141,7 @@ export function Manufacturers() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment Manufacturers | Forestry Equipment Sales"
+        title="Equipment Manufacturers | TimberEquip"
         description="Browse equipment manufacturers with direct paths into live marketplace inventory, top machine categories, and regional availability."
         canonicalPath="/manufacturers"
         jsonLd={jsonLd}

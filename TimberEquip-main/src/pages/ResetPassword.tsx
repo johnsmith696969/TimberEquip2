@@ -30,7 +30,7 @@ function getResetErrorMessage(input: unknown): string {
     return 'This password reset link has expired or is no longer valid. Request a fresh reset email and try again.';
   }
   if (code === 'auth/user-disabled') {
-    return 'This account is currently disabled. Contact Forestry Equipment Sales support for help.';
+    return 'This account is currently disabled. Contact TimberEquip support for help.';
   }
   if (code === 'auth/network-request-failed') {
     return 'A network error interrupted the password reset request. Check your connection and try again.';
@@ -156,8 +156,8 @@ export function ResetPassword() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 md:px-8 md:py-16">
       <Seo
-        title="Reset Password | Forestry Equipment Sales"
-        description="Securely reset your Forestry Equipment Sales account password."
+        title="Reset Password | TimberEquip"
+        description="Securely reset your TimberEquip account password."
         robots={NOINDEX_ROBOTS}
       />
 
@@ -170,7 +170,7 @@ export function ResetPassword() {
                 Reset Your Password
               </h1>
               <p className={`mt-4 max-w-2xl text-sm leading-relaxed md:text-base ${mutedClass}`}>
-                Use the Forestry Equipment Sales password recovery flow to set a new password and get back into your buyer, seller, or admin workspace.
+                Use the TimberEquip password recovery flow to set a new password and get back into your buyer, seller, or admin workspace.
               </p>
             </div>
             <div className={`flex h-16 w-16 items-center justify-center rounded-[20px] border ${isDark ? 'border-accent/30 bg-accent/10' : 'border-accent/20 bg-accent/10'} text-accent`}>
@@ -253,7 +253,7 @@ export function ResetPassword() {
                   <div>
                     <p className={`text-lg font-black tracking-tight ${isDark ? 'text-white' : 'text-ink'}`}>Password Updated</p>
                     <p className={`mt-2 text-sm leading-relaxed ${mutedClass}`}>
-                      Your Forestry Equipment Sales password has been changed successfully. Use your new password the next time you sign in.
+                      Your TimberEquip password has been changed successfully. Use your new password the next time you sign in.
                     </p>
                   </div>
                 </div>
@@ -291,7 +291,7 @@ export function ResetPassword() {
               <div className={`rounded-[18px] border px-4 py-4 ${secondaryPanelClass}`}>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">Recommended</p>
                 <p className={`mt-2 text-sm leading-relaxed ${mutedClass}`}>
-                  Use a unique password for Forestry Equipment Sales, especially for dealer, pro dealer, admin, and super admin accounts.
+                  Use a unique password for TimberEquip, especially for dealer, pro dealer, admin, and super admin accounts.
                 </p>
               </div>
 

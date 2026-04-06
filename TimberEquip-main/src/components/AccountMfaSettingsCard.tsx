@@ -159,11 +159,11 @@ export function AccountMfaSettingsCard({
 
     try {
       const verifier = await getMfaRecaptcha();
-      setMfaNotice('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
+      setMfaNotice('Complete the reCAPTCHA challenge below. TimberEquip will send the SMS code as soon as the security check is passed.');
       const verificationId = await startSmsMfaEnrollment(authUser, normalizedPhoneNumber, verifier);
       setMfaVerificationId(verificationId);
       setMfaVerificationCode('');
-      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for ForestryEquipmentSales.com. Enter the code below to finish enrollment.`);
+      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for TimberEquip.com. Enter the code below to finish enrollment.`);
     } catch (error) {
       resetMfaRecaptcha();
       setMfaError(getMfaErrorMessage(error, 'Unable to start SMS multi-factor enrollment right now.'));

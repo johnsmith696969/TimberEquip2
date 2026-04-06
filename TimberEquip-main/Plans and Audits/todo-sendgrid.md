@@ -1,21 +1,21 @@
 # SendGrid Cutover Todo
 
-This file captures what is already finished for Forestry Equipment Sales, plus the exact remaining steps to finalize SendGrid tomorrow when the permanent API key and sender identity are ready.
+This file captures what is already finished for TimberEquip, plus the exact remaining steps to finalize SendGrid tomorrow when the permanent API key and sender identity are ready.
 
 ## Completed Today
 
 - Synced all dynamic transactional templates into SendGrid from code.
 - Created `30` dynamic templates in the SendGrid account.
 - Saved the SendGrid template ID manifest in [sendgrid-template-manifest.json](./sendgrid-template-manifest.json).
-- Updated the email template code and sync script to use Forestry Equipment Sales branding and the new domain path by default.
+- Updated the email template code and sync script to use TimberEquip branding and the new domain path by default.
 - Added a reusable sync command: `npm run sendgrid:templates:sync`.
-- Updated SendGrid secret examples to Forestry Equipment Sales defaults.
+- Updated SendGrid secret examples to TimberEquip defaults.
 
 ## Remaining Tomorrow
 
 1. Finalize sender identity or sender authentication in SendGrid.
-For staging now, use `caleb@forestryequipmentsales.com`.
-Later, once inboxes are live, switch production sending/reply addresses to `info@forestryequipmentsales.com`, `support@forestryequipmentsales.com`, and `legal@forestryequipmentsales.com` as appropriate.
+For staging now, use `caleb@timberequip.com`.
+Later, once inboxes are live, switch production sending/reply addresses to `info@timberequip.com`, `support@timberequip.com`, and `legal@timberequip.com` as appropriate.
 
 2. Create the SendGrid API key.
 Recommended name: `forestry-equipment-sales-mailer`.
@@ -29,8 +29,8 @@ Use these staging-safe values first:
 
 ```bash
 printf '%s' 'REPLACE_WITH_SENDGRID_API_KEY' | npx firebase-tools functions:secrets:set SENDGRID_API_KEY --project mobile-app-equipment-sales
-printf '%s' 'Forestry Equipment Sales <caleb@forestryequipmentsales.com>' | npx firebase-tools functions:secrets:set EMAIL_FROM --project mobile-app-equipment-sales
-printf '%s' 'calebhappy@gmail.com,caleb@forestryequipmentsales.com' | npx firebase-tools functions:secrets:set ADMIN_EMAILS --project mobile-app-equipment-sales
+printf '%s' 'TimberEquip <caleb@timberequip.com>' | npx firebase-tools functions:secrets:set EMAIL_FROM --project mobile-app-equipment-sales
+printf '%s' 'calebhappy@gmail.com,caleb@timberequip.com' | npx firebase-tools functions:secrets:set ADMIN_EMAILS --project mobile-app-equipment-sales
 ```
 
 5. Deploy functions after secrets are updated.
@@ -43,7 +43,7 @@ npx firebase-tools deploy --only functions --project mobile-app-equipment-sales
 
 ```bash
 $env:SENDGRID_API_KEY='REPLACE_WITH_SENDGRID_API_KEY'
-$env:SENDGRID_APP_URL='https://www.forestryequipmentsales.com'
+$env:SENDGRID_APP_URL='https://www.timberequip.com'
 npm run sendgrid:templates:sync
 ```
 
@@ -54,7 +54,7 @@ npm run sendgrid:templates:sync
 - The sync script now supports either:
   - `SENDGRID_API_KEY` for normal long-term use
   - `SENDGRID_AUTH_HEADER` for an authenticated browser-session sync
-- The email code now defaults to Forestry Equipment Sales branding and `caleb@forestryequipmentsales.com` as the temporary sender/reply fallback.
+- The email code now defaults to TimberEquip branding and `caleb@timberequip.com` as the temporary sender/reply fallback.
 
 ## Files Updated
 

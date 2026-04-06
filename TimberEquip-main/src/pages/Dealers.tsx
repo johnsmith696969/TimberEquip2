@@ -366,10 +366,10 @@ export function Dealers() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Find Forestry Equipment Dealers & Manufacturers | Forestry Equipment Sales"
+        title="Find Forestry Equipment Dealers & Manufacturers | TimberEquip"
         description="Search forestry equipment dealers and manufacturers by name, state, country, and category. Sort by nearest location. Browse dealer and pro dealer storefronts."
         canonicalPath="/dealers"
-        imagePath="/page-photos/Forestry-Equipment-Sales-Dealers.png"
+        imagePath="/page-photos/dealers.png"
         preloadImage="/page-photos/dealers.png"
         jsonLd={{
           '@context': 'https://schema.org',
@@ -410,7 +410,7 @@ export function Dealers() {
 
       <ImageHero
         imageSrc="/page-photos/dealers.png"
-        imageAlt="Forestry Equipment Sales dealer network"
+        imageAlt="TimberEquip dealer network"
         imageClassName="object-center"
       >
         <div>

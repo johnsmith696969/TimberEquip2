@@ -710,8 +710,8 @@ export function LotDetail() {
   return (
     <div className="bg-bg min-h-screen">
       <Seo
-        title={`Lot #${lot.lotNumber} – ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title} | Forestry Equipment Sales`}
-        description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lot.model}. ${lot.pickupLocation ? `Pickup: ${lot.pickupLocation}.` : ''} Auction by Forestry Equipment Sales.`}
+        title={`Lot #${lot.lotNumber} – ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title} | TimberEquip`}
+        description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lot.model}. ${lot.pickupLocation ? `Pickup: ${lot.pickupLocation}.` : ''} Auction by TimberEquip.`}
         canonicalPath={`/auctions/${auction.slug}/lots/${lot.lotNumber}`}
         imagePath={lot.thumbnailUrl || undefined}
         jsonLd={jsonLd}

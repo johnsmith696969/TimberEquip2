@@ -108,7 +108,7 @@ describe('Financing component', () => {
     renderFinancing();
     await advanceToVerificationStep();
 
-    fireEvent.click(screen.getByLabelText(/i authorize forestry equipment sales financing/i));
+    fireEvent.click(screen.getByLabelText(/i authorize timberequip financing/i));
     fireEvent.click(screen.getByRole('button', { name: /submit application/i }));
 
     await waitFor(() => {

@@ -23,6 +23,7 @@ import { useTheme } from '../components/ThemeContext';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import WatermarkOverlay from '../components/WatermarkOverlay';
@@ -928,12 +929,12 @@ export function ListingDetail() {
     : '';
   const detailSeoHeadline = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''}`.replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
   const detailSeoTitle = safeCityState
-    ? `${detailSeoHeadline} for Sale in ${safeCityState} | Forestry Equipment Sales`
-    : `${detailSeoHeadline} for Sale | Forestry Equipment Sales`;
+    ? `${detailSeoHeadline} for Sale in ${safeCityState} | TimberEquip`
+    : `${detailSeoHeadline} for Sale | TimberEquip`;
   const detailSeoDescription = [
     `Used ${detailSeoHeadline} ${routeCategory ? `${routeCategory.toLowerCase()} ` : ''}for sale${safeCityState ? ` in ${safeCityState}` : ''}`.replace(/\s+/g, ' ').trim(),
     safeHours > 0 ? `with ${formatNumber(safeHours)} hours.` : 'View photos, specs, and pricing details.',
-    'Request pricing, financing, and logistics support from Forestry Equipment Sales.',
+    'Request pricing, financing, and logistics support from TimberEquip.',
   ].join(' ');
   const isLiveApprovedListing =
     String(listing.approvalStatus || '').toLowerCase() === 'approved' &&
@@ -1143,7 +1144,7 @@ export function ListingDetail() {
               onClick={async () => {
                 const shareData = {
                   title: `${safeYear} ${safeMake} ${safeModel} for Sale`,
-                  text: `Check out this ${safeYear} ${safeMake} ${safeModel} on Forestry Equipment Sales`,
+                  text: `Check out this ${safeYear} ${safeMake} ${safeModel} on TimberEquip`,
                   url: window.location.href,
                 };
                 if (navigator.share) {
@@ -1993,7 +1994,7 @@ export function ListingDetail() {
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black uppercase tracking-widest mb-1">{t('listingDetail.transactionPolicy', 'Transaction Policy')}</span>
                   <p className="text-[10px] font-medium text-muted leading-relaxed">
-                    {t('listingDetail.transactionPolicyCopy', 'Always use the Forestry Equipment Sales platform for inquiries. Never send funds directly to sellers without a verified escrow system.')}
+                    {t('listingDetail.transactionPolicyCopy', 'Always use the TimberEquip platform for inquiries. Never send funds directly to sellers without a verified escrow system.')}
                   </p>
                 </div>
               </div>
@@ -2204,7 +2205,7 @@ export function ListingDetail() {
                         onChange={(e) => setInquiryConsentAccepted(e.target.checked)}
                       />
                       <span>
-                        I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
+                        I consent to TimberEquip and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
                       </span>
                     </label>
                     <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
@@ -2354,7 +2355,7 @@ export function ListingDetail() {
                         onChange={(e) => setFinancingConsentAccepted(e.target.checked)}
                       />
                       <span>
-                        I authorize Forestry Equipment Sales Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
+                        I authorize TimberEquip Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
                       </span>
                     </label>
 
@@ -2436,9 +2437,33 @@ export function ListingDetail() {
                       <input required type="tel" placeholder="PHONE" className="input-industrial" value={shippingForm.phone} onChange={(e) => setShippingForm({ ...shippingForm, phone: e.target.value })} />
                     </div>
 
-                    <input required type="text" placeholder="PICKUP CITY / STATE" className="input-industrial w-full" value={shippingForm.pickupLocation} onChange={(e) => setShippingForm({ ...shippingForm, pickupLocation: e.target.value })} />
+                    <GooglePlacesInput
+                      required
+                      value={shippingForm.pickupLocation}
+                      onChange={(value) => setShippingForm({ ...shippingForm, pickupLocation: value })}
+                      onSelect={(place) =>
+                        setShippingForm((prev) => ({
+                          ...prev,
+                          pickupLocation: place.formattedAddress || prev.pickupLocation,
+                        }))
+                      }
+                      placeholder="Pickup address, city, state, or ZIP"
+                      className="space-y-0"
+                    />
 
-                    <input required type="text" placeholder="DELIVERY CITY / STATE / COUNTRY" className="input-industrial w-full" value={shippingForm.destination} onChange={(e) => setShippingForm({ ...shippingForm, destination: e.target.value })} />
+                    <GooglePlacesInput
+                      required
+                      value={shippingForm.destination}
+                      onChange={(value) => setShippingForm({ ...shippingForm, destination: value })}
+                      onSelect={(place) =>
+                        setShippingForm((prev) => ({
+                          ...prev,
+                          destination: place.formattedAddress || prev.destination,
+                        }))
+                      }
+                      placeholder="Delivery address, city, state, or ZIP"
+                      className="space-y-0"
+                    />
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <select className="input-industrial" value={shippingForm.timeline} onChange={(e) => setShippingForm({ ...shippingForm, timeline: e.target.value })}>
@@ -2470,7 +2495,7 @@ export function ListingDetail() {
 
                     <div className="pt-2 border-t border-line">
                       <button type="submit" className="btn-industrial btn-accent w-full py-4">Submit Logistics Request</button>
-                      <p className="text-[9px] font-medium text-muted text-center mt-4 uppercase tracking-widest">Sent to seller and the Forestry Equipment Sales logistics desk for quote review.</p>
+                      <p className="text-[9px] font-medium text-muted text-center mt-4 uppercase tracking-widest">Sent to seller and the TimberEquip logistics desk for quote review.</p>
                     </div>
                   </form>
                 )}

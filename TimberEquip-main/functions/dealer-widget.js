@@ -226,7 +226,7 @@ function renderNativeCard(item,cfg){
   if(cfg.showCall&&cfg.dealerPhone)h+='<a href="tel:'+esc(cfg.dealerPhone)+'" class="fes-btn fes-btn-call fes-btn-full">'+ICONS.phone+' Call Dealer</a>';
   h+='</div>';
   h+='</div>';
-  h+='<div class="fes-card-footer">'+ICONS.shield+' '+(item.sellerVerified?'Verified Seller':'Forestry Equipment Sales')+'</div>';
+  h+='<div class="fes-card-footer">'+ICONS.shield+' '+(item.sellerVerified?'Verified Seller':'TimberEquip')+'</div>';
   h+='</div>';
   return h;
 }
@@ -343,7 +343,7 @@ function renderLightbox(item,cfg){
   h+='<div class="fes-lb-actions">';
   if(cfg.showInquiry)h+='<button class="fes-btn fes-btn-accent fes-btn-inquiry-lb" data-id="'+esc(item.id)+'">Send Inquiry</button>';
   if(cfg.showCall&&cfg.dealerPhone)h+='<a href="tel:'+esc(cfg.dealerPhone)+'" class="fes-btn fes-btn-call">'+ICONS.phone+' Call Dealer</a>';
-  if(item.listingUrl)h+='<a href="'+esc(item.listingUrl)+'" target="_blank" rel="noopener noreferrer" class="fes-btn">View on FES</a>';
+  if(item.listingUrl)h+='<a href="'+esc(item.listingUrl)+'" target="_blank" rel="noopener noreferrer" class="fes-btn">View on TimberEquip</a>';
   h+='</div>';
   h+='<div class="fes-inquiry-container" data-id="'+esc(item.id)+'"></div>';
   h+='</div>';
@@ -502,7 +502,7 @@ class FESDealerInventory extends HTMLElement{
     if(self._hasMore){
       html+='<div class="fes-load-more"><button class="fes-load-more-btn">Load More</button></div>';
     }
-    html+='<div class="fes-powered">Powered by <a href="https://timberequip.com" target="_blank" rel="noopener noreferrer">Forestry Equipment Sales</a></div>';
+    html+='<div class="fes-powered">Powered by <a href="https://timberequip.com" target="_blank" rel="noopener noreferrer">TimberEquip</a></div>';
     self._wrapper.innerHTML=html;
     self._wrapper.className='fes-widget style-'+self._cfg.cardStyle;
 

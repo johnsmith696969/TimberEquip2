@@ -6,7 +6,7 @@ describe('isPrivilegedAdminEmail', () => {
   // Admin detection is now server-side only via Firebase custom claims.
 
   it('returns false for any email (deprecated - admin detection is server-side)', () => {
-    expect(isPrivilegedAdminEmail('caleb@forestryequipmentsales.com')).toBe(false);
+    expect(isPrivilegedAdminEmail('caleb@timberequip.com')).toBe(false);
     expect(isPrivilegedAdminEmail('calebhappy@gmail.com')).toBe(false);
     expect(isPrivilegedAdminEmail('random@example.com')).toBe(false);
   });

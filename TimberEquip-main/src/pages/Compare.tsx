@@ -54,7 +54,7 @@ export function Compare() {
   return (
     <div className="min-h-screen bg-bg pb-24">
       <Seo
-        title="Compare Equipment | Forestry Equipment Sales"
+        title="Compare Equipment | TimberEquip"
         description="Compare forestry equipment listings side by side. Review specs, pricing, hours, and condition to find the right machine."
         canonicalPath="/compare"
       />

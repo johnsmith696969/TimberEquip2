@@ -348,7 +348,7 @@ export function AuctionDetail() {
         image: auction.coverImageUrl || auction.image,
         organizer: {
           '@type': 'Organization',
-          name: 'Forestry Equipment Sales',
+          name: 'TimberEquip',
           url: 'https://timberequip.com',
         },
       }
@@ -377,7 +377,7 @@ export function AuctionDetail() {
     <div className="bg-bg min-h-screen">
       {auction && (
         <Seo
-          title={`${auction.title} | Auction Catalog | Forestry Equipment Sales`}
+          title={`${auction.title} | Auction Catalog | TimberEquip`}
           description={auction.description || `Browse lots and bid on ${auction.title}. Forestry equipment auction.`}
           canonicalPath={`/auctions/${auction.slug}`}
           imagePath={auction.coverImageUrl || auction.image}

@@ -98,17 +98,7 @@ const CATEGORY_SINGULAR_LABELS: Record<string, string> = {
 const toSingularCategoryLabel = (category: string) => CATEGORY_SINGULAR_LABELS[category] || category;
 
 const buildCategoryMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
-  (marketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, item) => {
-    acc[item.category] = {
-      activeCount: item.activeCount,
-      weeklyChangePercent: item.weeklyChangePercent,
-      averagePrice: item.averagePrice,
-    };
-    return acc;
-  }, {});
-
-const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
-  (marketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
+  (marketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
     acc[item.category] = {
       activeCount: item.activeCount,
       weeklyChangePercent: item.weeklyChangePercent,
@@ -165,8 +155,7 @@ export function Home() {
   const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
   const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
   const [stateSummaries, setStateSummaries] = useState<HomeStateSummary[]>([]);
-  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
-  const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildTopLevelMetricMap(cachedMarketplaceData));
+  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
   const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const currentReturnPath = `${location.pathname}${location.search}`;
@@ -190,7 +179,6 @@ export function Home() {
         setFeaturedListings(marketplaceData.featuredListings);
         setRecentSoldListings(marketplaceData.recentSoldListings);
         setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
-        setTopLevelCategoryMetrics(buildTopLevelMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
         setAllListings(inventory);
         setStateSummaries(buildHomeStateSummaries(inventory));
@@ -204,7 +192,7 @@ export function Home() {
   const tickerListings = recentSoldListings.length > 0 ? recentSoldListings : featuredListings;
 
   const categoryCards = buildMarketplaceCategoryFamilies(
-    Object.entries(topLevelCategoryMetrics).map(([category, metric]) => ({
+    Object.entries(categoryMetrics).map(([category, metric]) => ({
       category,
       activeCount: metric.activeCount,
       previousWeekCount: metric.previousWeekCount,
@@ -350,22 +338,22 @@ export function Home() {
       '@graph': [
         {
           '@type': 'Organization',
-          name: 'Forestry Equipment Sales',
-          alternateName: 'FES',
+          name: 'TimberEquip',
+          alternateName: 'TimberEquip.com',
           url: 'https://timberequip.com/',
-          logo: 'https://timberequip.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
-          email: 'info@forestryequipmentsales.com',
+          logo: 'https://timberequip.com/TimberEquip-Logo.png?v=20260405c',
+          email: 'info@timberequip.com',
           description: 'New and used logging equipment marketplace connecting buyers, sellers, and dealers across North America.',
           contactPoint: {
             '@type': 'ContactPoint',
             contactType: 'customer service',
-            email: 'support@forestryequipmentsales.com',
+            email: 'support@timberequip.com',
             availableLanguage: 'English',
           },
         },
         {
           '@type': 'WebSite',
-          name: 'Forestry Equipment Sales',
+          name: 'TimberEquip',
           url: 'https://timberequip.com/',
           inLanguage: 'en-US',
         },
@@ -527,11 +515,11 @@ export function Home() {
   return (
     <div className="flex flex-col">
       <Seo
-        title="Logging Equipment For Sale | Forestry Equipment Sales"
-        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment at forestryequipmentsales.com"
+        title="Logging Equipment For Sale | TimberEquip"
+        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment at timberequip.com"
         canonicalPath="/"
         jsonLd={homeJsonLd}
-        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
+        imagePath="/TimberEquip-Logo.png?v=20260405c"
         preloadImage={HERO_IMAGE_PATH}
       />
 
@@ -1062,3 +1050,4 @@ export function Home() {
     </div>
   );
 }
+

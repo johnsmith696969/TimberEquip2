@@ -9,11 +9,11 @@ export function Cookies() {
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
-        title="Cookie Policy | Forestry Equipment Sales"
-        description="Learn how Forestry Equipment Sales uses cookies, localStorage, and tracking technologies. Manage your preferences and understand your choices."
+        title="Cookie Policy | TimberEquip"
+        description="Learn how TimberEquip uses cookies, localStorage, and tracking technologies. Manage your preferences and understand your choices."
         canonicalPath="/cookies"
         ogType="website"
-        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
+        imagePath="/TimberEquip-Logo.png?v=20260405c"
       />
       <div className="max-w-4xl mx-auto">
         <motion.div
@@ -64,9 +64,9 @@ export function Cookies() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Introduction</h2>
               <p>
-                This Cookie Policy explains how Forestry Equipment Sales, LLC ("FES," "we," "us," or "our") uses cookies,
+                This Cookie Policy explains how TimberEquip, LLC ("TimberEquip", "we", "us", or "our") uses cookies,
                 web beacons, localStorage, and similar tracking technologies when you visit or interact with our website at
-                forestryequipmentsales.com and related services (the "Platform"). This Policy should be read alongside our
+                timberequip.com and related services (the "Platform"). This Policy should be read alongside our
                 {' '}<Link to="/privacy" className="text-accent underline">Privacy Policy</Link>.
               </p>
               <p>
@@ -131,7 +131,7 @@ export function Cookies() {
                       <tbody className="divide-y divide-line">
                         <tr><td className="py-2 pr-4">__session</td><td className="py-2 pr-4">Firebase</td><td className="py-2 pr-4">Firebase authentication session token</td><td className="py-2">Session</td></tr>
                         <tr><td className="py-2 pr-4">firebaseLocalStorageDb</td><td className="py-2 pr-4">Firebase Auth</td><td className="py-2 pr-4">Stores authentication state and user tokens in IndexedDB</td><td className="py-2">Persistent</td></tr>
-                        <tr><td className="py-2 pr-4">_csrf</td><td className="py-2 pr-4">FES</td><td className="py-2 pr-4">CSRF protection token for form submissions</td><td className="py-2">Session</td></tr>
+                        <tr><td className="py-2 pr-4">_csrf</td><td className="py-2 pr-4">TimberEquip</td><td className="py-2 pr-4">CSRF protection token for form submissions</td><td className="py-2">Session</td></tr>
                         <tr><td className="py-2 pr-4">__stripe_mid</td><td className="py-2 pr-4">Stripe</td><td className="py-2 pr-4">Stripe fraud prevention and payment security</td><td className="py-2">1 year</td></tr>
                         <tr><td className="py-2 pr-4">__stripe_sid</td><td className="py-2 pr-4">Stripe</td><td className="py-2 pr-4">Stripe session identifier for checkout</td><td className="py-2">Session</td></tr>
                       </tbody>
@@ -449,15 +449,15 @@ export function Cookies() {
                     <span className="text-sm font-black tracking-tight">+1 (800) 846-2373</span>
                   </div>
                 </a>
-                <a href="mailto:support@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="mailto:support@timberequip.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
                   <Mail className="mt-0.5 text-accent" size={18} />
                   <div className="min-w-0">
                     <span className="label-micro block text-white/60">Email</span>
-                    <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
+                    <span className="block break-all text-sm font-black tracking-tight">support@timberequip.com</span>
                   </div>
                 </a>
               </div>
-              <span className="text-white/40 text-sm font-medium block">Forestry Equipment Sales, LLC — Duluth, Minnesota, United States</span>
+              <span className="text-white/40 text-sm font-medium block">TimberEquip, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
             </section>
           </div>
         </motion.div>
@@ -465,3 +465,4 @@ export function Cookies() {
     </div>
   );
 }
+

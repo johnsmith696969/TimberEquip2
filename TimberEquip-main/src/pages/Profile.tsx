@@ -252,10 +252,10 @@ export function Profile() {
     [resolveRequestedProfileTab, searchParams]
   );
   const activeTab = resolvedRequestedProfileTab;
-  const profileSeoTitle = `${activeTab} | Forestry Equipment Sales`;
+  const profileSeoTitle = `${activeTab} | TimberEquip`;
   const profileSeoDescription = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL
-    ? 'Manage your Forestry Equipment Sales account, listings, saved equipment, and subscription settings.'
-    : `Manage ${activeTab.toLowerCase()} from your Forestry Equipment Sales account workspace.`;
+    ? 'Manage your TimberEquip account, listings, saved equipment, and subscription settings.'
+    : `Manage ${activeTab.toLowerCase()} from your TimberEquip account workspace.`;
   const profileCanonicalPath = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL ? '/profile' : `/profile?tab=${encodeURIComponent(activeTab)}`;
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
@@ -496,10 +496,10 @@ export function Profile() {
     const locationSuffix = sellerLocation ? ` in ${sellerLocation}` : '';
 
     const defaultSeoTitle = sellerName
-      ? `${sellerName} | ${roleLabel || 'Equipment Seller'} on Forestry Equipment Sales`
+      ? `${sellerName} | ${roleLabel || 'Equipment Seller'} on TimberEquip`
       : '';
     const defaultSeoDescription = sellerName
-      ? `Browse forestry and logging equipment from ${sellerName}${locationSuffix}. Verified ${roleLabel || 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery, skidders, harvesters, feller bunchers, and more.`
+      ? `Browse forestry and logging equipment from ${sellerName}${locationSuffix}. Verified ${roleLabel || 'seller'} on TimberEquip — the trusted marketplace for industrial forestry machinery, skidders, harvesters, feller bunchers, and more.`
       : '';
     const defaultSeoKeywords = [
       sellerName,
@@ -742,11 +742,11 @@ export function Profile() {
 
     try {
       const verifier = await getProfileMfaRecaptcha();
-      setMfaNotice('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
+      setMfaNotice('Complete the reCAPTCHA challenge below. TimberEquip will send the SMS code as soon as the security check is passed.');
       const verificationId = await startSmsMfaEnrollment(authUser, normalizedPhoneNumber, verifier);
       setMfaVerificationId(verificationId);
       setMfaVerificationCode('');
-      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for ForestryEquipmentSales.com. Enter the code below to finish enrollment.`);
+      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for TimberEquip.com. Enter the code below to finish enrollment.`);
     } catch (error) {
       resetProfileMfaRecaptcha();
       setMfaError(getMfaErrorMessage(error, 'Unable to start SMS multi-factor enrollment right now.'));
@@ -1031,7 +1031,7 @@ export function Profile() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `forestry-equipment-sales-data-export-${user?.uid}.json`;
+    a.download = `timberequip-data-export-${user?.uid}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2126,7 +2126,7 @@ export function Profile() {
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-black uppercase tracking-widest">Financing Applications</h3>
         <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-          Review financing forms you submitted through Forestry Equipment Sales and track their current status.
+          Review financing forms you submitted through TimberEquip and track their current status.
         </p>
       </div>
 
@@ -2974,7 +2974,7 @@ export function Profile() {
             <div>
               <p className="text-xs font-black uppercase tracking-widest">SMS Multi-Factor Authentication</p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Add a verified mobile number so Forestry Equipment Sales requires an SMS code after your password or Google sign-in.
+                Add a verified mobile number so TimberEquip requires an SMS code after your password or Google sign-in.
               </p>
               <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
                 Firebase Identity Platform must have SMS multi-factor authentication enabled and your domain authorized for this to work.

@@ -40,8 +40,8 @@ export function About() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="About Us | Forestry Equipment Sales"
-        description="Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster."
+        title="About Us | TimberEquip"
+        description="Learn why TimberEquip was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster."
         canonicalPath="/about"
         imagePath="/page-photos/pine-forest.webp"
         preloadImage="/page-photos/about-us.webp"
@@ -50,16 +50,16 @@ export function About() {
           '@graph': [
             {
               '@type': 'AboutPage',
-              name: 'About Forestry Equipment Sales',
-              description: 'Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster.',
+              name: 'About TimberEquip',
+              description: 'Learn why TimberEquip was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster.',
               url: 'https://timberequip.com/about',
             },
             {
               '@type': 'Organization',
-              name: 'Forestry Equipment Sales',
+              name: 'TimberEquip',
               url: 'https://timberequip.com',
-              telephone: '(218) 720-0933',
-              email: 'support@forestryequipmentsales.com',
+              telephone: '(612) 600-8268',
+              email: 'support@timberequip.com',
             },
             {
               '@type': 'BreadcrumbList',
@@ -76,7 +76,7 @@ export function About() {
         <div>
           <div className="mb-6 flex items-center gap-3">
             <Building className="text-accent" size={20} />
-            <span className="label-micro text-accent">About Forestry Equipment Sales</span>
+            <span className="label-micro text-accent">About TimberEquip</span>
           </div>
           <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             Built For The
@@ -85,7 +85,7 @@ export function About() {
           </h1>
           <p className={`max-w-3xl text-base font-medium leading-relaxed md:text-lg ${heroBodyClass}`}>
             Our platform was built from the ground up by people who have been in the woods, walked the job sites,
-            and marketed machines for over two decades. Forestry Equipment Sales is a modern marketplace designed
+            and marketed machines for over two decades. TimberEquip is a modern marketplace designed
             specifically for buying and selling forestry equipment.
           </p>
         </div>
@@ -106,7 +106,7 @@ export function About() {
                 needed a platform that works as hard as they do without corporate-level fees or bloated workflows.
               </p>
               <p>
-                Whether you are an owner-operator, a contractor, or a multi-location dealer, Forestry Equipment Sales
+                Whether you are an owner-operator, a contractor, or a multi-location dealer, TimberEquip
                 is built to help you connect with serious buyers and move equipment with less friction.
               </p>
             </div>

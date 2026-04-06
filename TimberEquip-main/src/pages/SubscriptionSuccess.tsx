@@ -73,8 +73,8 @@ export function SubscriptionSuccess() {
   return (
     <div className="min-h-screen bg-bg px-4 py-16 md:px-8">
       <Seo
-        title="Subscription Success | Forestry Equipment Sales"
-        description="Confirm your Forestry Equipment Sales seller subscription and continue into your account."
+        title="Subscription Success | TimberEquip"
+        description="Confirm your TimberEquip seller subscription and continue into your account."
         canonicalPath="/subscription-success"
       />
 
@@ -113,7 +113,7 @@ export function SubscriptionSuccess() {
             <ul className="space-y-2 text-sm text-muted leading-relaxed">
               <li>Your subscription remains tied to this signed-in account.</li>
               <li>If the subscription lapses or misses payment, listings remain stored but are hidden from the public marketplace until billing is restored.</li>
-              <li>Dealer and Pro Dealer billing records are labeled under FES-DealerOS.</li>
+              <li>Dealer and Pro Dealer billing records are labeled under TimberEquip DealerOS.</li>
             </ul>
           </div>
 

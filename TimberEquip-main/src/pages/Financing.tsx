@@ -99,8 +99,8 @@ export function Financing() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment Financing | Apply for Credit | Forestry Equipment Sales"
-        description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales."
+        title="Equipment Financing | Apply for Credit | TimberEquip"
+        description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through TimberEquip."
         canonicalPath="/financing"
         imagePath="/page-photos/ponsse-buffalo-loading.webp"
         preloadImage="/page-photos/ponsse-buffalo-loading.webp"
@@ -114,10 +114,10 @@ export function Financing() {
               url: 'https://timberequip.com/financing',
               provider: {
                 '@type': 'Organization',
-                name: 'Forestry Equipment Sales',
+                name: 'TimberEquip',
                 url: 'https://timberequip.com',
-                telephone: '(218) 720-0933',
-                email: 'support@forestryequipmentsales.com',
+                telephone: '(612) 600-8268',
+                email: 'support@timberequip.com',
               },
             },
             {
@@ -291,7 +291,7 @@ export function Financing() {
                           onChange={(e) => setContactConsentAccepted(e.target.checked)}
                         />
                         <label htmlFor="consent" className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest cursor-pointer">
-                          I authorize Forestry Equipment Sales Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
+                          I authorize TimberEquip Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
                         </label>
                       </div>
 
@@ -338,7 +338,7 @@ export function Financing() {
                       </div>
                       <h3 className="text-4xl font-black uppercase tracking-tighter mb-4">Application Submitted</h3>
                       <p className="text-muted font-medium max-w-md mb-12 leading-relaxed">
-                        Your credit application has been successfully submitted to the Forestry Equipment Sales Financing center. 
+                        Your credit application has been successfully submitted to the TimberEquip Financing center. 
                         A credit officer will review your entity profile and contact you within 24 hours.
                       </p>
                       <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">

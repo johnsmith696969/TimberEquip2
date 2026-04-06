@@ -5,12 +5,15 @@ import {
   Calendar,
   Clock,
   ArrowRight,
+  ExternalLink,
   ChevronDown,
   ChevronUp,
   Search,
   CheckCircle,
   UserCheck,
   DollarSign,
+  FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { auctionService } from '../services/auctionService';
@@ -19,6 +22,7 @@ import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
+import { buildAuctionLegalSummaryLines } from '../utils/auctionFees';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -59,28 +63,32 @@ function getStatusBadgeClass(status: AuctionStatus): string {
 
 const HOW_IT_WORKS_STEPS = [
   {
-    step: '01',
     icon: Search,
     title: 'Browse',
-    desc: 'Explore upcoming and active auction catalogs. View lots, photos, and starting bids.',
+    desc: 'Review live and upcoming catalogs before the closing clock matters.',
+    detail:
+      'Each catalog and lot page is meant to show the machine photos, sale window, pickup location, reserve signals when available, and the event-specific terms link so buyers can do diligence before they ever register.',
   },
   {
-    step: '02',
     icon: UserCheck,
     title: 'Register',
-    desc: 'Create an account and complete bidder verification to participate in auctions.',
+    desc: 'Create your account, save your bidder profile, and accept the auction paperwork.',
+    detail:
+      'Bidder approval runs through the registration flow, where we collect business and contact details, verify identity with Stripe Identity, and save a payment method before TimberEquip clears an account to bid.',
   },
   {
-    step: '03',
     icon: Gavel,
     title: 'Bid',
-    desc: 'Place bids on individual lots. Proxy bidding available so you never miss a closing.',
+    desc: 'Approved bidders place manual or proxy bids on individual lots.',
+    detail:
+      'All bids are binding once submitted. Timed events can use staggered closings and soft-close extensions, and reserve prices may apply even when the reserve amount is not publicly displayed.',
   },
   {
-    step: '04',
     icon: DollarSign,
     title: 'Win & Pay',
-    desc: 'Winning bidders receive an invoice. Payment is due within the deadline set per auction.',
+    desc: 'Winning bidders receive a formal invoice instead of a blind checkout screen.',
+    detail:
+      'Invoices can include hammer price, buyer premium, titled-item document fees, taxes, and card charges. Payment is due within 7 days, and removal timelines, storage charges, and title-release rules are controlled by the event terms and invoice.',
   },
 ];
 
@@ -205,12 +213,14 @@ export function Auctions() {
   }, [auctions]);
 
   const hasAuctions = auctions.length > 0;
+  const auctionLegalSummaryLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
+  const featuredTermsHref = featuredAuction?.termsAndConditionsUrl || '/terms';
 
   return (
     <div className="bg-bg min-h-screen">
       <Seo
-        title="Equipment Auctions | Forestry Equipment Sales"
-        description="Browse active and upcoming forestry equipment auctions. Bid on logging machines, land clearing equipment, trucks, and trailers."
+        title="Equipment Auctions | TimberEquip"
+        description="Browse active and upcoming forestry equipment auctions, review bidder requirements and auction terms, and bid on logging machines, land clearing equipment, trucks, and trailers."
         canonicalPath="/auctions"
         imagePath="/page-photos/john-deere-harvester.webp"
         preloadImage="/page-photos/john-deere-harvester.webp"
@@ -236,7 +246,7 @@ export function Auctions() {
             <span className={heroSecondaryClass}>Auctions</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            Verified auction events for forestry and logging equipment. Browse catalogs, register to bid, and win quality machines.
+            Verified auction events for forestry and logging equipment. Browse catalogs, review the governing terms, complete bidder approval, and compete on quality machines with clear invoice and removal rules.
           </p>
         </div>
       </ImageHero>
@@ -425,17 +435,94 @@ export function Auctions() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {HOW_IT_WORKS_STEPS.map((step) => (
-              <div key={step.step} className="bg-surface border border-line p-8 flex flex-col">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent mb-4">{step.step}</span>
+              <div key={step.title} className="bg-surface border border-line p-8 flex flex-col">
                 <div className="p-3 bg-bg border border-line w-fit mb-6">
                   <step.icon size={20} className="text-accent" />
                 </div>
                 <h3 className="text-lg font-black tracking-tighter uppercase mb-3">{step.title}</h3>
-                <p className="text-[11px] font-medium text-muted leading-relaxed uppercase tracking-wider">
+                <p className="text-sm font-semibold text-ink leading-relaxed">
                   {step.desc}
+                </p>
+                <p className="mt-4 text-sm font-medium text-muted leading-relaxed">
+                  {step.detail}
                 </p>
               </div>
             ))}
+          </div>
+
+          <div className="mt-10 grid grid-cols-1 xl:grid-cols-[1.15fr_1fr] gap-8">
+            <div className="bg-surface border border-line p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <FileText size={18} className="text-accent" />
+                <span className="label-micro text-accent">Terms &amp; Documents</span>
+              </div>
+              <h3 className="text-2xl font-black tracking-tighter uppercase mb-4">
+                Review the Governing Documents Before You Bid
+              </h3>
+              <p className="text-sm font-medium text-muted leading-relaxed">
+                Auction-specific rules are linked inside the catalog and lot pages, while bidder approval, privacy handling, and platform-wide enforcement live in the TimberEquip legal documents below. Review both the event terms and the marketplace terms before placing bids.
+              </p>
+              <div className="mt-6 grid gap-3">
+                {featuredTermsHref.startsWith('http') ? (
+                  <a
+                    href={featuredTermsHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
+                  >
+                    Current auction terms &amp; conditions
+                    <ExternalLink size={14} />
+                  </a>
+                ) : (
+                  <Link
+                    to={featuredTermsHref}
+                    className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
+                  >
+                    Current auction terms &amp; conditions
+                    <ArrowRight size={14} />
+                  </Link>
+                )}
+                <Link
+                  to="/terms"
+                  className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
+                >
+                  TimberEquip Terms of Service
+                  <ArrowRight size={14} />
+                </Link>
+                <Link
+                  to={featuredAuction ? `/login?redirect=/auctions/${featuredAuction.slug}/register` : '/login?redirect=/auctions'}
+                  className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
+                >
+                  Bidder registration, identity, and payment setup
+                  <ArrowRight size={14} />
+                </Link>
+                <Link
+                  to="/privacy"
+                  className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
+                >
+                  Privacy Policy and data handling
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </div>
+
+            <div className="bg-surface border border-line p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <ShieldCheck size={18} className="text-accent" />
+                <span className="label-micro text-accent">Legal Snapshot</span>
+              </div>
+              <h3 className="text-2xl font-black tracking-tighter uppercase mb-4">
+                Key Auction Rules at a Glance
+              </h3>
+              <ul className="space-y-3">
+                {auctionLegalSummaryLines.map((line) => (
+                  <li key={line} className="flex items-start gap-3 text-sm text-muted">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-accent flex-shrink-0" />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 
@@ -450,7 +537,7 @@ export function Auctions() {
               Register to Bid on <br className="hidden md:block" />Upcoming Auctions
             </h2>
             <p className="text-sm font-medium text-muted max-w-lg">
-              Create an account and complete verification to participate in live and timed auctions.
+              Create an account, accept the auction terms, complete identity verification, and save a payment method before you place live or proxy bids.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 flex-shrink-0">

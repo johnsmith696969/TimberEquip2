@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeSeoSlug,
   titleCaseSlug,
+  canonicalizeManufacturer,
+  getListingManufacturer,
   buildCategoryPath,
   buildManufacturerPath,
   buildManufacturerModelPath,
@@ -90,6 +92,27 @@ describe('buildStateCategoryPath', () => {
 describe('buildManufacturerCategoryPath', () => {
   it('builds correct path', () => {
     expect(buildManufacturerCategoryPath('CAT', 'Feller Bunchers')).toBe('/manufacturers/cat/feller-bunchers-for-sale');
+  });
+});
+
+describe('canonicalizeManufacturer', () => {
+  it('normalizes manufacturer aliases', () => {
+    expect(canonicalizeManufacturer('cat')).toBe('CATERPILLAR');
+  });
+
+  it('normalizes capitalization and duplicate spacing', () => {
+    expect(canonicalizeManufacturer('  john   deere  ')).toBe('JOHN DEERE');
+  });
+});
+
+describe('getListingManufacturer', () => {
+  it('returns a consistent display name across capitalization variants', () => {
+    expect(getListingManufacturer({ make: 'JOHN DEERE' } as never)).toBe('John Deere');
+    expect(getListingManufacturer({ make: 'john deere' } as never)).toBe('John Deere');
+  });
+
+  it('formats canonical aliases for display', () => {
+    expect(getListingManufacturer({ make: 'cat' } as never)).toBe('Caterpillar');
   });
 });
 

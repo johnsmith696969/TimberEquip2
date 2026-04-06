@@ -459,8 +459,8 @@ export function AdPrograms() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Seller Ad Programs | List Equipment | Forestry Equipment Sales"
-        description="Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace."
+        title="Seller Ad Programs | List Equipment | TimberEquip"
+        description="Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the TimberEquip marketplace."
         canonicalPath="/ad-programs"
         preloadImage="/page-photos/winter-log-road.webp"
         jsonLd={{
@@ -469,14 +469,14 @@ export function AdPrograms() {
             {
               '@type': 'Service',
               name: 'Seller Ad Programs',
-              description: 'Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace.',
+              description: 'Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the TimberEquip marketplace.',
               url: 'https://timberequip.com/ad-programs',
               provider: {
                 '@type': 'Organization',
-                name: 'Forestry Equipment Sales',
+                name: 'TimberEquip',
                 url: 'https://timberequip.com',
-                telephone: '(218) 720-0933',
-                email: 'support@forestryequipmentsales.com',
+                telephone: '(612) 600-8268',
+                email: 'support@timberequip.com',
               },
             },
             {
@@ -507,7 +507,7 @@ export function AdPrograms() {
               <span className={heroSecondaryClass}>AND VISIBILITY</span>
             </h1>
             <p className={`text-lg leading-relaxed mb-10 max-w-2xl ${heroBodyClass}`}>
-              Choose your Forestry Equipment Sales seller plan, complete the on-site enrollment form,
+              Choose your TimberEquip seller plan, complete the on-site enrollment form,
               agree to the seller legal terms, and continue into branded Stripe checkout.
             </p>
             <div className="flex flex-wrap gap-4">
@@ -915,7 +915,7 @@ export function AdPrograms() {
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-3">Enterprise Billing Logic</p>
                 <ul className="space-y-2 text-sm text-muted leading-relaxed">
                   <li>The subscription is tied to this logged-in account, not just the visible role string.</li>
-                  <li>Dealer and Pro Dealer subscriptions map to FES-DealerOS billing labels and invoice records.</li>
+                  <li>Dealer and Pro Dealer subscriptions map to TimberEquip DealerOS billing labels and invoice records.</li>
                   <li>If billing lapses, listings stay stored in the database but public visibility is suspended until billing is restored.</li>
                 </ul>
               </div>

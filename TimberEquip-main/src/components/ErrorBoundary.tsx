@@ -58,7 +58,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               </div>
               <h1 className="text-4xl font-black uppercase tracking-tighter mb-4">Updating <span className="text-accent">Page Assets</span></h1>
               <p className="text-muted font-medium mb-4 leading-relaxed">
-                Forestry Equipment Sales is refreshing recently deployed files so this page can reopen cleanly.
+                TimberEquip is refreshing recently deployed files so this page can reopen cleanly.
               </p>
               <p className="text-[10px] font-black uppercase tracking-widest text-muted">
                 If the refresh does not complete automatically, use the reload button below.
@@ -85,7 +85,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             </div>
             <h1 className="text-4xl font-black uppercase tracking-tighter mb-4">System <span className="text-accent">Error</span></h1>
             <p className="text-muted font-medium mb-12 leading-relaxed">
-              A critical exception has occurred in the Forestry Equipment Sales system. 
+              A critical exception has occurred in the TimberEquip system. 
               The session has been suspended to protect data integrity.
             </p>
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">

@@ -9,11 +9,11 @@
 - Validate admin approval and admin edit behavior
 
 ## Test Accounts
-- Owner-operator: `testowner@forestryequipmentsales.com`
+- Owner-operator: `testowner@timberequip.com`
   - uid: `gI7X1SmQVkhDjVt78PDZrmy9aCi2`
-- Dealer: `testdealer@forestryequipmentsales.com`
+- Dealer: `testdealer@timberequip.com`
   - uid: `is3RFBgYUrNg3LLJbtykDbp9Ef83`
-- Pro dealer: `testprodealer@forestryequipmentsales.com`
+- Pro dealer: `testprodealer@timberequip.com`
   - uid: `V4cuRvv4sFZ1M2xL2rqYiPFqTft1`
 
 ## Listings Created

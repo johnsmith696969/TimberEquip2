@@ -152,7 +152,7 @@ export function BulkImportToolkit({
           </div>
           <p className="mt-2 text-sm text-muted">
             The template includes core listing fields, media columns, and spec columns using <span className="font-black text-ink">specs.*</span>
-            headers that line up with Forestry Equipment Sales&apos;s importer.
+            headers that line up with TimberEquip&apos;s importer.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={() => void handleMachineTemplateDownload('csv')} className="btn-industrial px-4 py-2 text-[10px]">
@@ -175,7 +175,7 @@ export function BulkImportToolkit({
             <Images size={14} className="text-accent" /> Bulk Asset Uploader
           </div>
           <p className="mt-2 text-sm text-muted">
-            Upload all listing photos and walkaround videos in bulk. Forestry Equipment Sales prepares an import-ready manifest automatically.
+            Upload all listing photos and walkaround videos in bulk. TimberEquip prepares an import-ready manifest automatically.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <input
@@ -262,7 +262,7 @@ export function BulkImportToolkit({
               {generatedManifestRows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-6 text-sm text-muted">
-                    Upload bulk media to generate a manifest preview. Forestry Equipment Sales groups files by the prefix before <span className="font-black text-ink">__</span>.
+                    Upload bulk media to generate a manifest preview. TimberEquip groups files by the prefix before <span className="font-black text-ink">__</span>.
                   </td>
                 </tr>
               ) : (

@@ -174,7 +174,7 @@ service cloud.firestore {
     function isPrivilegedAdminEmail() {
       return isAuthenticated() && request.auth.token.email_verified == true && (
         request.auth.token.role == 'super_admin' ||
-        request.auth.token.email == 'caleb@forestryequipmentsales.com'
+        request.auth.token.email == 'caleb@timberequip.com'
       );
     }
 

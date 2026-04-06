@@ -34,7 +34,7 @@ export function Calculator() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment Financing Calculator | Forestry Equipment Sales"
+        title="Equipment Financing Calculator | TimberEquip"
         description="Estimate monthly payments on forestry and logging equipment. Adjust price, down payment, term, and interest rate to plan your next purchase."
         canonicalPath="/calculator"
       />

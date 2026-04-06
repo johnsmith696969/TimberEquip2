@@ -76,8 +76,8 @@ export function Contact() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Contact Forestry Equipment Sales | Sales, Support, and Dealer Help"
-        description="Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
+        title="Contact TimberEquip | Sales, Support, and Dealer Help"
+        description="Contact TimberEquip for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
         canonicalPath="/contact"
         imagePath="/page-photos/grapple-hero-image.webp"
         preloadImage="/page-photos/contact-us.webp"
@@ -86,17 +86,17 @@ export function Contact() {
           '@graph': [
             {
               '@type': 'ContactPage',
-              name: 'Contact Forestry Equipment Sales',
+              name: 'Contact TimberEquip',
               url: 'https://timberequip.com/contact',
             },
             {
               '@type': 'Organization',
-              name: 'Forestry Equipment Sales',
+              name: 'TimberEquip',
               url: 'https://timberequip.com',
-              email: 'info@forestryequipmentsales.com',
+              email: 'info@timberequip.com',
               contactPoint: [
-                { '@type': 'ContactPoint', contactType: 'customer service', email: 'support@forestryequipmentsales.com', availableLanguage: 'English' },
-                { '@type': 'ContactPoint', contactType: 'sales', email: 'info@forestryequipmentsales.com', availableLanguage: 'English' },
+                { '@type': 'ContactPoint', contactType: 'customer service', email: 'support@timberequip.com', availableLanguage: 'English' },
+                { '@type': 'ContactPoint', contactType: 'sales', email: 'info@timberequip.com', availableLanguage: 'English' },
               ],
             },
             {
@@ -109,7 +109,7 @@ export function Contact() {
           ],
         }}
       />
-      <ImageHero imageSrc="/page-photos/contact-us.webp" imageAlt="Contact Forestry Equipment Sales">
+      <ImageHero imageSrc="/page-photos/contact-us.webp" imageAlt="Contact TimberEquip">
         <div>
           <div className="mb-6 flex items-center gap-3">
             <MessageSquare size={20} className="text-accent" />
@@ -237,7 +237,7 @@ export function Contact() {
                       </div>
                       <h3 className="text-4xl font-black uppercase tracking-tighter mb-4">Message Sent</h3>
                       <p className="text-muted font-medium max-w-md mb-12 leading-relaxed">
-                        Your inquiry has been successfully sent to the Forestry Equipment Sales team. 
+                        Your inquiry has been successfully sent to the TimberEquip team. 
                         A representative will review your message and respond within 24 hours.
                       </p>
                       <button onClick={() => setStep(1)} className="btn-industrial btn-accent py-5 px-12">
@@ -256,9 +256,9 @@ export function Contact() {
               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Contact Information</h4>
               <div className="space-y-10">
                 {[
-                  { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
-                  { title: 'Email Support', desc: 'support@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com', valueClassName: 'block break-all text-sm font-black text-muted leading-relaxed normal-case tracking-tight' },
-                  { title: 'HQ', desc: '4788 RICE LAKE RD, DULUTH, MN 55803', icon: MapPin, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Support', desc: '+1 (612) 600-8268', icon: Headphones, link: 'tel:+16126008268', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Email Support', desc: 'support@timberequip.com', icon: Mail, link: 'mailto:support@timberequip.com', valueClassName: 'block break-all text-sm font-black text-muted leading-relaxed normal-case tracking-tight' },
+                  { title: 'HQ', desc: '2112 BROADWAY ST NE STE 225 #113, MINNEAPOLIS, MN 55413', icon: MapPin, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
                   { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST | EMAIL 8AM-10PM CST', icon: Clock, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' }
                 ].map((item, i) => (
                   <a 

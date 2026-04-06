@@ -4,7 +4,7 @@
  */
 export const PRIVILEGED_ADMIN_EMAILS = [] as const;
 
-export const SUPERADMIN_EMAIL: string = 'caleb@forestryequipmentsales.com';
+export const SUPERADMIN_EMAIL: string = 'caleb@timberequip.com';
 
 /** @deprecated Always returns false. Admin status comes from server-side custom claims. */
 export function isPrivilegedAdminEmail(_email?: string | null): boolean {

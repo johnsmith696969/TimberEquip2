@@ -2103,6 +2103,123 @@ function normalizeImageUrls(value) {
     .filter((entry) => /^https?:\/\//i.test(entry));
 }
 
+const DEALER_FEED_SOURCE_IMAGE_LIMIT = 6;
+const DEALER_FEED_SOURCE_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+
+function buildDealerFeedSourceImagePath(listingId, imageUrl, index) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  const imageHash = createHash('sha1')
+    .update(`${index}:${String(imageUrl || '').trim()}`)
+    .digest('hex')
+    .slice(0, 16);
+  const ordinal = String(index + 1).padStart(2, '0');
+  return `listings/${normalizedListingId}/images/source/${ordinal}_${imageHash}.orig`;
+}
+
+function isManagedListingImageUrl(listingId, imageUrl) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  const normalizedUrl = normalizeNonEmptyString(imageUrl);
+  if (!normalizedListingId || !normalizedUrl) {
+    return false;
+  }
+
+  const encodedPathFragment = encodeURIComponent(`listings/${normalizedListingId}/images/`);
+  return normalizedUrl.includes(encodedPathFragment) || normalizedUrl.includes(`/listings/${normalizedListingId}/images/`);
+}
+
+async function queueDealerFeedSourceImagesForListing({
+  listingId,
+  imageUrls,
+  sourceSystem = 'dealer-feed-sync',
+}) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  const normalizedImageUrls = normalizeImageUrls(imageUrls)
+    .filter((imageUrl) => !isManagedListingImageUrl(normalizedListingId, imageUrl))
+    .slice(0, DEALER_FEED_SOURCE_IMAGE_LIMIT);
+  if (!normalizedListingId || normalizedImageUrls.length === 0) {
+    return { queued: 0, skipped: 0, errors: [] };
+  }
+
+  const bucket = admin.storage().bucket(resolveStorageBucketName());
+  let queued = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (let index = 0; index < normalizedImageUrls.length; index += 1) {
+    const imageUrl = normalizedImageUrls[index];
+    const sourcePath = buildDealerFeedSourceImagePath(normalizedListingId, imageUrl, index);
+    const sourceFile = bucket.file(sourcePath);
+
+    try {
+      const [exists] = await sourceFile.exists();
+      if (exists) {
+        skipped += 1;
+        continue;
+      }
+
+      const response = await fetch(imageUrl, {
+        headers: {
+          Accept: 'image/avif,image/webp,image/*;q=0.9,*/*;q=0.5',
+          'User-Agent': 'TimberEquipDealerImageMirror/1.0',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`remote image request failed with ${response.status}`);
+      }
+
+      const contentType = String(response.headers.get('content-type') || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+
+      if (!contentType.startsWith('image/')) {
+        throw new Error(`remote asset is not an image (${contentType || 'unknown content type'})`);
+      }
+
+      const declaredBytes = Number(response.headers.get('content-length') || 0);
+      if (Number.isFinite(declaredBytes) && declaredBytes > DEALER_FEED_SOURCE_IMAGE_MAX_BYTES) {
+        throw new Error(`remote image exceeds ${Math.round(DEALER_FEED_SOURCE_IMAGE_MAX_BYTES / (1024 * 1024))}MB limit`);
+      }
+
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      if (!imageBuffer.byteLength) {
+        throw new Error('remote image payload was empty');
+      }
+      if (imageBuffer.byteLength > DEALER_FEED_SOURCE_IMAGE_MAX_BYTES) {
+        throw new Error(`remote image exceeds ${Math.round(DEALER_FEED_SOURCE_IMAGE_MAX_BYTES / (1024 * 1024))}MB limit`);
+      }
+
+      await sourceFile.save(imageBuffer, {
+        metadata: {
+          contentType,
+          metadata: {
+            uploadedBy: sourceSystem,
+            uploadedAt: new Date().toISOString(),
+            listingId: normalizedListingId,
+            remoteImageUrl: imageUrl,
+            sourceSystem,
+            imageIndex: String(index),
+          },
+        },
+      });
+
+      queued += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || 'unknown error');
+      errors.push({ imageUrl, message });
+      logger.warn('Unable to queue dealer feed source image for AVIF generation.', {
+        listingId: normalizedListingId,
+        imageUrl,
+        sourcePath,
+        message,
+      });
+    }
+  }
+
+  return { queued, skipped, errors };
+}
+
 function normalizeDelimitedStringList(value, maxItems = 40) {
   if (Array.isArray(value)) {
     return value
@@ -3420,6 +3537,24 @@ async function processDealerListing({
   };
 
   await listingRef.set(writePayload, { merge: true });
+
+  const sourceImages = normalizeImageUrls(normalizedListing.images);
+  if (sourceImages.length > 0) {
+    try {
+      await queueDealerFeedSourceImagesForListing({
+        listingId: listingRef.id,
+        imageUrls: sourceImages,
+        sourceSystem: normalizedFeedId ? `dealer-feed:${normalizedFeedId}` : 'dealer-feed:manual',
+      });
+    } catch (error) {
+      logger.warn('Dealer listing image variant queue failed after listing write.', {
+        listingId: listingRef.id,
+        dealerFeedId: normalizedFeedId,
+        externalId: normalizedItem.externalId,
+        message: error instanceof Error ? error.message : String(error || 'unknown error'),
+      });
+    }
+  }
 
   if (dealerListingRef) {
     await dealerListingRef.set(
@@ -6482,7 +6617,13 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     : listing.image
       ? [listing.image]
       : [];
-  const images = normalizeImageUrls(rawImages);
+  const imageVariants = sanitizeListingCreateImageVariants(listing.imageVariants);
+  const variantImages = imageVariants
+    .map((entry) => normalizeNonEmptyString(entry.detailUrl || entry.thumbnailUrl))
+    .filter(Boolean);
+  const images = variantImages.length > 0
+    ? variantImages
+    : normalizeImageUrls(rawImages);
   const make = normalizeNonEmptyString(listing.make || listing.manufacturer || listing.brand);
 
   return {
@@ -6505,7 +6646,7 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     description: normalizeNonEmptyString(listing.description),
     images,
     imageTitles: sanitizeListingCreateImageTitles(listing.imageTitles, images.length),
-    imageVariants: sanitizeListingCreateImageVariants(listing.imageVariants),
+    imageVariants,
     location: normalizeNonEmptyString(listing.location),
     stockNumber: normalizeNonEmptyString(listing.stockNumber),
     serialNumber: normalizeNonEmptyString(listing.serialNumber),

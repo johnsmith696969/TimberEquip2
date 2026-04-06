@@ -46,7 +46,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
     label: 'API / Feed URL',
     sourceType: 'auto',
     shortDesc: 'We fetch inventory from your live URL endpoint.',
-    helper: 'Point Forestry Equipment Sales at a live JSON, XML, or CSV endpoint and preview the mapped inventory before importing.',
+    helper: 'Point TimberEquip at a live JSON, XML, or CSV endpoint and preview the mapped inventory before importing.',
     placeholder: 'https://dealer.example.com/inventory-feed.json',
     accept: '',
     uploadLabel: 'Upload Feed',
@@ -55,7 +55,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
 
 const DEALER_FEED_SAMPLE_ITEMS = [
   {
-    externalId: 'fes-sample-skidder-620e',
+    externalId: 'te-sample-skidder-620e',
     title: '2021 Tigercat 620E Skidder',
     price: 189500,
     year: 2021,
@@ -65,14 +65,14 @@ const DEALER_FEED_SAMPLE_ITEMS = [
     category: 'Skidders',
     location: 'Roseburg, OR',
     hours: 3240,
-    stockNumber: 'FES-620E-21',
+    stockNumber: 'TE-620E-21',
     description: 'Clean sample dealer feed unit for onboarding and QA checks.',
     imageUrls: [
       'https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=1400&q=80',
     ],
   },
   {
-    externalId: 'fes-sample-forwarder-1110g',
+    externalId: 'te-sample-forwarder-1110g',
     title: '2019 John Deere 1110G Forwarder',
     price: 254000,
     year: 2019,
@@ -82,7 +82,7 @@ const DEALER_FEED_SAMPLE_ITEMS = [
     category: 'Forwarders',
     location: 'Bemidji, MN',
     hours: 4180,
-    stockNumber: 'FES-1110G-19',
+    stockNumber: 'TE-1110G-19',
     description: 'Sample forwarder record used to validate CSV, JSON, and API imports.',
     imageUrls: [
       'https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=1400&q=80',
@@ -94,14 +94,14 @@ export const DEALER_FEED_SAMPLE_JSON = `${JSON.stringify(DEALER_FEED_SAMPLE_ITEM
 
 export const DEALER_FEED_SAMPLE_CSV = [
   'externalId,title,price,year,manufacturer,make,model,category,location,hours,stockNumber,description,imageUrls',
-  '"fes-sample-skidder-620e","2021 Tigercat 620E Skidder","189500","2021","Tigercat","Tigercat","620E","Skidders","Roseburg, OR","3240","FES-620E-21","Clean sample dealer feed unit for onboarding and QA checks.","https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=1400&q=80"',
-  '"fes-sample-forwarder-1110g","2019 John Deere 1110G Forwarder","254000","2019","John Deere","John Deere","1110G","Forwarders","Bemidji, MN","4180","FES-1110G-19","Sample forwarder record used to validate CSV, JSON, and API imports.","https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=1400&q=80"',
+  '"te-sample-skidder-620e","2021 Tigercat 620E Skidder","189500","2021","Tigercat","Tigercat","620E","Skidders","Roseburg, OR","3240","TE-620E-21","Clean sample dealer feed unit for onboarding and QA checks.","https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=1400&q=80"',
+  '"te-sample-forwarder-1110g","2019 John Deere 1110G Forwarder","254000","2019","John Deere","John Deere","1110G","Forwarders","Bemidji, MN","4180","TE-1110G-19","Sample forwarder record used to validate CSV, JSON, and API imports.","https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=1400&q=80"',
 ].join('\n');
 
 export function getDealerFeedSamplePayload(mode: DealerFeedSetupMode): string {
   if (mode === 'csv') return DEALER_FEED_SAMPLE_CSV;
   if (mode === 'json' || mode === 'url') return DEALER_FEED_SAMPLE_JSON;
-  return `<inventory>\n  <item>\n    <externalId>fes-sample-skidder-620e</externalId>\n    <title>2021 Tigercat 620E Skidder</title>\n    <price>189500</price>\n    <year>2021</year>\n    <manufacturer>Tigercat</manufacturer>\n    <model>620E</model>\n    <category>Skidders</category>\n    <location>Roseburg, OR</location>\n  </item>\n</inventory>`;
+  return `<inventory>\n  <item>\n    <externalId>te-sample-skidder-620e</externalId>\n    <title>2021 Tigercat 620E Skidder</title>\n    <price>189500</price>\n    <year>2021</year>\n    <manufacturer>Tigercat</manufacturer>\n    <model>620E</model>\n    <category>Skidders</category>\n    <location>Roseburg, OR</location>\n  </item>\n</inventory>`;
 }
 
 export function buildDealerFeedSampleUrl(origin: string, format: DealerFeedSampleFormat = 'json'): string {

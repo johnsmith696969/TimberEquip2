@@ -131,7 +131,7 @@ export function States() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment Markets By State | Forestry Equipment Sales"
+        title="Equipment Markets By State | TimberEquip"
         description="Browse state-level market pages for forestry and logging equipment, with direct paths into live public inventory."
         canonicalPath="/states"
         jsonLd={jsonLd}

@@ -8,17 +8,17 @@ import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { appendReturnToParam, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
 
-const BRAND_ASSET_VERSION = '20260327c';
-const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
-const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
-const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
+const BRAND_ASSET_VERSION = '20260405c';
+const LIGHT_HEADER_LOGO = `/TimberEquip-Light-Mode-Logo.svg?v=${BRAND_ASSET_VERSION}`;
+const DARK_HEADER_LOGO = `/TimberEquip-Brand-Logo-Dusk-Mode.svg?v=${BRAND_ASSET_VERSION}`;
+const HEADER_LOGO_FALLBACK = `/TimberEquip-Logo.png?v=${BRAND_ASSET_VERSION}`;
 
 export function MetaLeadMachineSection() {
   const location = useLocation();
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const brandLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
-  const brandLogoAlt = 'Forestry Equipment Sales';
+  const brandLogoAlt = 'TimberEquip';
   const [brandLogoSrc, setBrandLogoSrc] = React.useState(brandLogo);
   const headingClass = theme === 'light' ? 'text-ink' : 'text-white';
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
@@ -57,11 +57,11 @@ export function MetaLeadMachineSection() {
                 Turn every machine into a traffic and lead asset.
               </h2>
               <p className="max-w-2xl text-sm leading-7 text-muted md:text-base">
-                Forestry Equipment Sales is built to do more than host listings. Dealers can manage
+                TimberEquip is built to do more than host listings. Dealers can manage
                 equipment in one place, connect Meta business assets, push inventory into
                 a catalog-ready structure, and drive buyers back to their dealer page on
-                Forestry Equipment Sales, where leads are tracked within their profile. We can also
-                feed dealer websites directly with their active Forestry Equipment Sales listings.
+                TimberEquip, where leads are tracked within their profile. We can also
+                feed dealer websites directly with their active TimberEquip listings.
               </p>
             </div>
 
@@ -94,7 +94,7 @@ export function MetaLeadMachineSection() {
               Dealer Website Syndication Ready
             </p>
             <p className="mt-2 max-w-xs text-sm leading-6 text-muted">
-              We can push each dealer's active Forestry Equipment Sales listings into their own website
+              We can push each dealer's active TimberEquip listings into their own website
               feed so inventory stays synced without duplicate work.
             </p>
           </motion.div>

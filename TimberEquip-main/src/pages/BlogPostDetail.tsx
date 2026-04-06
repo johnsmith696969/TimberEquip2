@@ -182,7 +182,7 @@ export function BlogPostDetail() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title={`${post.seoTitle || post.title} | Forestry Equipment Sales`}
+        title={`${post.seoTitle || post.title} | TimberEquip`}
         description={post.seoDescription || post.summary}
         canonicalPath={getNewsPostCanonicalPath(post)}
         ogType="article"
@@ -197,11 +197,11 @@ export function BlogPostDetail() {
               datePublished: post.publishedAt || post.createdAt || undefined,
               dateModified: post.updatedAt || post.publishedAt || post.createdAt || undefined,
               image: post.image || undefined,
-              author: { '@type': 'Organization', name: 'Forestry Equipment Sales' },
+              author: { '@type': 'Organization', name: 'TimberEquip' },
               publisher: {
                 '@type': 'Organization',
-                name: 'Forestry Equipment Sales',
-                logo: { '@type': 'ImageObject', url: 'https://timberequip.com/Forestry_Equipment_Sales_Logo.png' },
+                name: 'TimberEquip',
+                logo: { '@type': 'ImageObject', url: 'https://timberequip.com/TimberEquip-Logo.png' },
               },
               mainEntityOfPage: {
                 '@type': 'WebPage',

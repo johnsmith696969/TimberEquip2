@@ -35,7 +35,7 @@ export function Categories() {
   const { theme } = useTheme();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() =>
-    (cachedMarketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
+    (cachedMarketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
       acc[metric.category] = {
         activeCount: metric.activeCount,
         weeklyChangePercent: metric.weeklyChangePercent,
@@ -59,7 +59,7 @@ export function Categories() {
         equipmentService.getHomeMarketplaceData(),
         taxonomyService.getTaxonomy(),
       ]);
-      const metricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
+      const metricMap = marketplaceData.categoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
         acc[metric.category] = {
           activeCount: metric.activeCount,
           weeklyChangePercent: metric.weeklyChangePercent,
@@ -139,9 +139,9 @@ export function Categories() {
   );
   const inventoryChange = totalPreviousWeek > 0 ? ((totalActive - totalPreviousWeek) / totalPreviousWeek) * 100 : 0;
 
-  const seoTitle = 'Equipment Categories | Browse Marketplace Equipment Families | Forestry Equipment Sales';
+  const seoTitle = 'Equipment Categories | Browse Marketplace Equipment Families | TimberEquip';
   const seoDescription =
-    'Browse Forestry Equipment Sales inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.';
+    'Browse TimberEquip inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.';
 
   const categoriesSchemaData = {
     '@context': 'https://schema.org',
