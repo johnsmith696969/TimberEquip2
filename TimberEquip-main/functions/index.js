@@ -206,6 +206,7 @@ function htmlToText(html) {
 
 async function sendEmail({
   to,
+  cc,
   subject,
   html,
   replyTo,
@@ -247,14 +248,21 @@ async function sendEmail({
       label: emailPreferenceLabel,
     });
 
-    await sgMail.send({
+    const msg = {
       to: recipient,
       from,
       replyTo: resolvedReplyTo,
       subject,
       html: finalHtml,
       text: htmlToText(finalHtml),
-    });
+    };
+    const ccList = (Array.isArray(cc) ? cc : (cc ? [cc] : []))
+      .map((addr) => String(addr || '').trim())
+      .filter(Boolean);
+    if (ccList.length > 0) {
+      msg.cc = ccList;
+    }
+    await sgMail.send(msg);
   }));
 
   logger.info(`Email sent to ${recipients.join(', ')}: ${subject}`);
@@ -1685,7 +1693,7 @@ async function sendAuctionWinningBidEmailMessage({ email, displayName, auctionTi
     hammerPrice: formatEmailCurrencyAmount(Math.round(Number(hammerPrice || 0) * 100), 'usd'),
     invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
   });
-  await sendEmail({ to: email, ...payload });
+  await sendEmail({ to: email, cc: AUCTION_ADMIN_CC_EMAIL, ...payload });
 }
 
 async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoiceNumber, amountPaid, invoiceUrl }) {
@@ -1694,6 +1702,41 @@ async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoi
     invoiceNumber: String(invoiceNumber || 'Auction invoice').trim() || 'Auction invoice',
     amountPaid: formatEmailCurrencyAmount(Math.round(Number(amountPaid || 0) * 100), 'usd'),
     invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, cc: AUCTION_ADMIN_CC_EMAIL, ...payload });
+}
+
+const AUCTION_ADMIN_CC_EMAIL = 'caleb@forestryequipmentsales.com';
+
+async function sendAuctionInvoiceEmailMessage({ email, displayName, auctionTitle, lotTitle, invoice, invoiceUrl }) {
+  const dueDate = invoice.dueDate
+    ? new Date(invoice.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'See invoice';
+  const payload = templates.auctionInvoiceGenerated({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    winningBid: formatEmailCurrencyAmount(Math.round(Number(invoice.winningBid || 0) * 100), 'usd'),
+    buyerPremium: formatEmailCurrencyAmount(Math.round(Number(invoice.buyerPremium || 0) * 100), 'usd'),
+    salesTax: formatEmailCurrencyAmount(Math.round(Number(invoice.salesTax || 0) * 100), 'usd'),
+    totalDue: formatEmailCurrencyAmount(Math.round(Number(invoice.totalDue || 0) * 100), 'usd'),
+    taxExempt: invoice.taxExempt === true,
+    paymentDeadline: dueDate,
+    invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, cc: AUCTION_ADMIN_CC_EMAIL, ...payload });
+}
+
+async function sendAuctionLotSoldSellerEmailMessage({ email, sellerName, auctionTitle, lotTitle, winningBid, commissionRate, estimatedPayout, paymentDeadline, lotUrl }) {
+  const payload = templates.auctionLotSoldSeller({
+    sellerName: String(sellerName || 'Seller').trim() || 'Seller',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    winningBid: formatEmailCurrencyAmount(Math.round(Number(winningBid || 0) * 100), 'usd'),
+    commissionRate: commissionRate || '0%',
+    estimatedPayout: formatEmailCurrencyAmount(Math.round(Number(estimatedPayout || 0) * 100), 'usd'),
+    paymentDeadline: paymentDeadline || 'See invoice',
+    lotUrl: String(lotUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
   });
   await sendEmail({ to: email, ...payload });
 }
@@ -1910,15 +1953,44 @@ async function finalizeAuctionLotSettlement({
   const bidderProfile = await getAuctionBidderProfile(buyerId);
   const bidderContact = await resolveAuctionUserContact(buyerId, bidderProfile || {});
 
+  const lotDisplayTitle = lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim();
+
   if (bidderContact.email) {
-    await sendAuctionWinningBidEmailMessage({
+    await sendAuctionInvoiceEmailMessage({
       email: bidderContact.email,
       displayName: bidderContact.displayName,
       auctionTitle: auction.title,
-      lotTitle: lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim(),
-      hammerPrice: currentBid,
+      lotTitle: lotDisplayTitle,
+      invoice,
       invoiceUrl,
-    });
+    }).catch((err) => logger.error('Failed to send auction invoice email to buyer', { invoiceId, error: err.message }));
+  }
+
+  const listingSnap2 = await getDb().collection('listings').doc(normalizeNonEmptyString(lot.listingId)).get();
+  const listingData2 = listingSnap2.exists ? (listingSnap2.data() || {}) : {};
+  const sellerId2 = normalizeNonEmptyString(listingData2.sellerUid || listingData2.sellerId);
+  if (sellerId2) {
+    const sellerSnap = await getDb().collection('users').doc(sellerId2).get();
+    if (sellerSnap.exists) {
+      const seller = sellerSnap.data();
+      if (seller.email) {
+        const commissionRate = normalizeFiniteNumber(seller.sellerCommissionRate, 0);
+        const dueDate = invoice.dueDate
+          ? new Date(invoice.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          : 'See invoice';
+        await sendAuctionLotSoldSellerEmailMessage({
+          email: seller.email,
+          sellerName: seller.displayName || 'Seller',
+          auctionTitle: auction.title,
+          lotTitle: lotDisplayTitle,
+          winningBid: currentBid,
+          commissionRate: `${commissionRate}%`,
+          estimatedPayout: currentBid - (currentBid * commissionRate / 100),
+          paymentDeadline: dueDate,
+          lotUrl: invoiceUrl,
+        }).catch((err) => logger.error('Failed to send lot sold email to seller', { invoiceId, sellerId: sellerId2, error: err.message }));
+      }
+    }
   }
 
   await getAuctionDb().collection('users').doc(buyerId).collection('bidderProfile').doc('profile').set({
@@ -2055,8 +2127,8 @@ async function finalizeAuctionInvoiceCheckout(stripe, session) {
     });
   }
 
-  await initiateSellerPayout(stripe, nextInvoice).catch((err) =>
-    logger.error('Failed to initiate seller payout after card checkout', { invoiceId, error: err.message })
+  await markInvoiceSellerPayoutPending(nextInvoice).catch((err) =>
+    logger.error('Failed to mark seller payout pending after card checkout', { invoiceId, error: err.message })
   );
 
   return {
@@ -2066,80 +2138,31 @@ async function finalizeAuctionInvoiceCheckout(stripe, session) {
   };
 }
 
-async function initiateSellerPayout(stripe, invoice) {
+async function markInvoiceSellerPayoutPending(invoice) {
   const invoiceId = normalizeNonEmptyString(invoice?.id);
   const sellerId = normalizeNonEmptyString(invoice?.sellerId);
   const hammerPrice = normalizeFiniteNumber(invoice?.winningBid, 0);
-  if (!invoiceId || !sellerId || hammerPrice <= 0) return null;
-  if (normalizeNonEmptyString(invoice?.sellerPaidAt)) {
-    logger.info('initiateSellerPayout: seller already paid', { invoiceId });
-    return null;
-  }
+  if (!invoiceId || !sellerId || hammerPrice <= 0) return;
+  if (normalizeNonEmptyString(invoice?.sellerPaidAt)) return;
 
   const sellerSnap = await getDb().collection('users').doc(sellerId).get();
-  if (!sellerSnap.exists) {
-    logger.warn('initiateSellerPayout: seller user not found', { invoiceId, sellerId });
-    return null;
-  }
-  const seller = sellerSnap.data();
-  const stripeConnectAccountId = normalizeNonEmptyString(seller.stripeConnectAccountId);
-  if (!stripeConnectAccountId) {
-    logger.warn('initiateSellerPayout: seller has no Stripe Connect account. Payout requires manual processing.', { invoiceId, sellerId });
-    await upsertAuctionInvoice(invoiceId, {
-      sellerPayoutStatus: 'pending_manual',
-      sellerPayoutNote: 'Seller has no Stripe Connect account. Requires manual payout.',
-      updatedAt: new Date().toISOString(),
-    });
-    return null;
-  }
-
+  const seller = sellerSnap.exists ? sellerSnap.data() : {};
   const commissionRate = normalizeFiniteNumber(seller.sellerCommissionRate, 0);
   const commission = Math.round(hammerPrice * (commissionRate / 100) * 100) / 100;
-  const payoutAmount = Math.round((hammerPrice - commission) * 100);
-
-  if (payoutAmount <= 0) {
-    logger.warn('initiateSellerPayout: payout amount is zero or negative', { invoiceId, hammerPrice, commission });
-    return null;
-  }
-
-  if (!stripe) {
-    stripe = createStripeClient();
-  }
-  if (!stripe) {
-    logger.error('initiateSellerPayout: Stripe client unavailable');
-    return null;
-  }
-
-  const transfer = await stripe.transfers.create({
-    amount: payoutAmount,
-    currency: 'usd',
-    destination: stripeConnectAccountId,
-    transfer_group: invoiceId,
-    metadata: {
-      invoiceId,
-      sellerId,
-      hammerPrice: String(hammerPrice),
-      commission: String(commission),
-    },
-  });
+  const estimatedPayout = hammerPrice - commission;
 
   await upsertAuctionInvoice(invoiceId, {
     sellerCommission: commission,
-    sellerPayout: payoutAmount / 100,
-    sellerPaidAt: new Date().toISOString(),
-    sellerPayoutStatus: 'transferred',
-    stripeTransferId: transfer.id,
+    sellerPayout: estimatedPayout,
+    sellerPayoutStatus: 'pending',
     updatedAt: new Date().toISOString(),
   });
 
-  logger.info('initiateSellerPayout: transfer created', {
+  logger.info('markInvoiceSellerPayoutPending: payout pending manual processing', {
     invoiceId,
     sellerId,
-    transferId: transfer.id,
-    amount: payoutAmount / 100,
+    estimatedPayout,
   });
-
-  return transfer;
 }
 
 async function syncAuctionIdentityVerificationEvent(stripe, verificationSession) {
@@ -12511,8 +12534,8 @@ exports.apiProxy = onRequest(
             });
           }
 
-          await initiateSellerPayout(null, settledInvoice).catch((err) =>
-            logger.error('Failed to initiate seller payout after wire settlement', { invoiceId, error: err.message })
+          await markInvoiceSellerPayoutPending(settledInvoice).catch((err) =>
+            logger.error('Failed to mark seller payout pending after wire settlement', { invoiceId, error: err.message })
           );
         }
 

@@ -1323,7 +1323,7 @@ export function ListingDetail() {
                     </div>
                   )}
 
-                  {auctionLot.reservePrice != null && (
+                  {auctionLot.hasReserve && (
                     <div className={`text-[10px] font-bold ${auctionLot.reserveMet ? 'text-accent' : 'text-muted'}`}>
                       {auctionLot.reserveMet ? '✓ Reserve met' : 'Reserve not met'}
                     </div>
@@ -1788,7 +1788,7 @@ export function ListingDetail() {
                       </div>
                     )}
 
-                    {auctionLot.reservePrice != null && (
+                    {auctionLot.hasReserve && (
                       <div className={`text-[10px] font-bold ${auctionLot.reserveMet ? 'text-accent' : 'text-muted'}`}>
                         {auctionLot.reserveMet ? '✓ Reserve met' : 'Reserve not met'}
                       </div>

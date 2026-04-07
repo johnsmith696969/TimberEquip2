@@ -764,7 +764,7 @@ service cloud.firestore {
     }
 
     match /news/{postId} {
-      allow read: if true;
+      allow read: if resource.data.status == 'published' || isEditor();
       allow create, update: if isEditor() && isValidNews(request.resource.data);
       allow delete: if isAdmin();
     }

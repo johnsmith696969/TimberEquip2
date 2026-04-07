@@ -549,6 +549,7 @@ export interface AuctionLot {
   startingBid: number;
   reservePrice: number | null;
   reserveMet: boolean;
+  hasReserve?: boolean;
   buyerPremiumPercent: number;
   startTime: string;
   endTime: string;

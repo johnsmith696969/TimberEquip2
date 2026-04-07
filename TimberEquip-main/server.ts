@@ -129,21 +129,26 @@ try {
 const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@forestryequipmentsales.com').trim();
 const APP_BASE_URL = String(process.env.APP_URL || 'https://timberequip.com').replace(/\/+$/, '');
 
-async function sendServerEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
+async function sendServerEmail({ to, cc, subject, html }: { to: string; cc?: string | string[]; subject: string; html: string }): Promise<void> {
   if (!emailConfigured || !sgMailModule) {
     console.warn(`[email] Skipping email to ${to}: email not configured.`);
     return;
   }
   const recipients = (Array.isArray(to) ? to : [to]).map((r: string) => String(r || '').trim()).filter(Boolean);
   if (recipients.length === 0) return;
+  const ccList = (Array.isArray(cc) ? cc : (cc ? [cc] : []))
+    .map((addr: string) => String(addr || '').trim())
+    .filter(Boolean);
 
   for (const recipient of recipients) {
-    await sgMailModule.send({
+    const msg: Record<string, unknown> = {
       to: recipient,
       from: EMAIL_FROM_ADDRESS,
       subject,
       html,
-    });
+    };
+    if (ccList.length > 0) msg.cc = ccList;
+    await sgMailModule.send(msg);
   }
   console.log(`[email] Sent "${subject}" to ${recipients.join(', ')}`);
 }
@@ -3588,6 +3593,7 @@ async function startServer() {
             triggeredExtension,
             newEndTime: newEndTime.toISOString(),
             extensionCount: newExtensionCount,
+            previousBidderId: previousBidderId || null,
           },
           // Pass context for post-transaction proxy bid resolution
           proxyContext: previousBidderId ? {
@@ -3723,6 +3729,38 @@ async function startServer() {
         }
       }
 
+      // Send outbid notification email to previous high bidder (fire-and-forget)
+      if (result.status === 200 && (result as any)._socketPayload) {
+        const sp = (result as any)._socketPayload;
+        const prevBidderId = sp.previousBidderId;
+        if (prevBidderId && prevBidderId !== uid) {
+          (async () => {
+            try {
+              const prevUserSnap = await db.collection('users').doc(prevBidderId).get();
+              if (prevUserSnap.exists) {
+                const prevUser = prevUserSnap.data();
+                if (prevUser?.email) {
+                  const auctionSnap2 = await db.collection('auctions').doc(auctionId).get();
+                  const auctionData = auctionSnap2.exists ? auctionSnap2.data() : {};
+                  const lotSnap2 = await db.collection('auctions').doc(auctionId).collection('lots').doc(lotId).get();
+                  const lotData2 = lotSnap2.exists ? lotSnap2.data() : {};
+                  const lotTitle = lotData2?.title || `Lot ${lotData2?.lotNumber || ''}`;
+                  const auctionSlug = auctionData?.slug || auctionId;
+                  const lotUrl = `${APP_URL}/auctions/${auctionSlug}/lots/${lotData2?.lotNumber || lotId}`;
+                  await sendServerEmail({
+                    to: prevUser.email,
+                    subject: `You've been outbid on ${lotTitle}`,
+                    html: `<p>Hi ${prevUser.displayName || 'there'},</p><p>You have been outbid on <strong>${lotTitle}</strong> in <strong>${auctionData?.title || 'an auction'}</strong>. The current high bid is now <strong>$${amount.toLocaleString()}</strong>.</p><p><a href="${lotUrl}">Place a higher bid now</a></p><p>— Forestry Equipment Sales</p>`,
+                  });
+                }
+              }
+            } catch (outbidErr) {
+              console.error('[auction/place-bid] Failed to send outbid email:', outbidErr);
+            }
+          })();
+        }
+      }
+
       // Emit bid event via Socket.IO for instant updates
       if (result.status === 200 && (result as any)._socketPayload) {
         const io = (app as any).__socketIO as SocketIOServer | undefined;
@@ -3768,6 +3806,18 @@ async function startServer() {
       return res.status(500).json({ error: 'An internal error occurred while placing the bid.' });
     }
   });
+
+  // Rate limiter: 5 retractions per minute per user
+  const bidRetractionLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    keyGenerator: (req: express.Request) => {
+      const token = req.headers.authorization?.split('Bearer ')[1] || '';
+      return token ? crypto.createHash('sha256').update(token).digest('hex') : req.ip || 'unknown';
+    },
+    message: { error: 'Too many retraction requests. Please wait a moment.' },
+  });
+  app.use('/api/auctions/retract-bid', bidRetractionLimiter);
 
   // ── POST /api/auctions/retract-bid ────────────────────────────────────────
   app.post('/api/auctions/retract-bid', validateBody(retractBidSchema), async (req, res) => {

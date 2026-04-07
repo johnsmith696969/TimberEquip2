@@ -21,6 +21,13 @@ function normalizeSeoSlug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+/** Strip reservePrice from lot data — only expose hasReserve + reserveMet to public users */
+function sanitizeLot(lot: AuctionLot): AuctionLot {
+  const hasReserve = lot.reservePrice != null && lot.reservePrice > 0;
+  const { reservePrice: _rp, ...rest } = lot as AuctionLot & { reservePrice?: unknown };
+  return { ...rest, hasReserve } as AuctionLot;
+}
+
 async function getAuthorizedJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
@@ -194,13 +201,13 @@ export const auctionService = {
   async getLots(auctionId: string): Promise<AuctionLot[]> {
     const q = query(collection(db, 'auctions', auctionId, 'lots'), orderBy('closeOrder', 'asc'));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuctionLot));
+    return snap.docs.map((d) => sanitizeLot({ id: d.id, ...d.data() } as AuctionLot));
   },
 
   async getLot(auctionId: string, lotId: string): Promise<AuctionLot | null> {
     const d = await getDoc(doc(db, 'auctions', auctionId, 'lots', lotId));
     if (!d.exists()) return null;
-    return { id: d.id, ...d.data() } as AuctionLot;
+    return sanitizeLot({ id: d.id, ...d.data() } as AuctionLot);
   },
 
   async getLotByNumber(auctionId: string, lotNumber: string): Promise<AuctionLot | null> {
@@ -208,7 +215,7 @@ export const auctionService = {
     const snap = await getDocs(q);
     if (snap.empty) return null;
     const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as AuctionLot;
+    return sanitizeLot({ id: d.id, ...d.data() } as AuctionLot);
   },
 
   async getAuctionWithLot(auctionSlug: string, lotNumber: string): Promise<{ auction: Auction | null; lot: AuctionLot | null }> {
