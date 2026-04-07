@@ -10,7 +10,7 @@ function toAmount(value) {
   return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
 }
 
-function calculateAuctionBuyerPremium(hammerPrice) {
+function calculateAuctionBuyerPremiumTiered(hammerPrice) {
   const amount = toAmount(hammerPrice);
 
   if (amount <= 25000) {
@@ -22,6 +22,14 @@ function calculateAuctionBuyerPremium(hammerPrice) {
   }
 
   return 3500;
+}
+
+function calculateAuctionBuyerPremium(hammerPrice, buyerPremiumPercent) {
+  const amount = toAmount(hammerPrice);
+  if (typeof buyerPremiumPercent === 'number' && Number.isFinite(buyerPremiumPercent) && buyerPremiumPercent >= 0) {
+    return Math.round(amount * (buyerPremiumPercent / 100) * 100) / 100;
+  }
+  return calculateAuctionBuyerPremiumTiered(amount);
 }
 
 function calculateAuctionDocumentFee(isTitledItem) {
@@ -41,9 +49,10 @@ function buildAuctionInvoiceTotals({
   winningBid,
   isTitledItem = false,
   paymentMethod = null,
+  buyerPremiumPercent = null,
 }) {
   const hammerPrice = toAmount(winningBid);
-  const buyerPremium = calculateAuctionBuyerPremium(hammerPrice);
+  const buyerPremium = calculateAuctionBuyerPremium(hammerPrice, buyerPremiumPercent);
   const documentationFee = calculateAuctionDocumentFee(Boolean(isTitledItem));
   const subtotalBeforeCardFee = hammerPrice + buyerPremium + documentationFee;
   const cardProcessingFee = calculateAuctionCardProcessingFee(subtotalBeforeCardFee, paymentMethod);

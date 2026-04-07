@@ -1812,6 +1812,7 @@ async function createOrRefreshAuctionInvoiceForLot({
     winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
     isTitledItem: Boolean(lot.isTitledItem),
     paymentMethod,
+    buyerPremiumPercent: Number.isFinite(Number(lot.buyerPremiumPercent)) ? Number(lot.buyerPremiumPercent) : null,
   });
   const dueDate = existingInvoice?.dueDate
     || (() => {
@@ -2054,11 +2055,91 @@ async function finalizeAuctionInvoiceCheckout(stripe, session) {
     });
   }
 
+  await initiateSellerPayout(stripe, nextInvoice).catch((err) =>
+    logger.error('Failed to initiate seller payout after card checkout', { invoiceId, error: err.message })
+  );
+
   return {
     scope: 'auction_invoice',
     paid: true,
     invoiceId,
   };
+}
+
+async function initiateSellerPayout(stripe, invoice) {
+  const invoiceId = normalizeNonEmptyString(invoice?.id);
+  const sellerId = normalizeNonEmptyString(invoice?.sellerId);
+  const hammerPrice = normalizeFiniteNumber(invoice?.winningBid, 0);
+  if (!invoiceId || !sellerId || hammerPrice <= 0) return null;
+  if (normalizeNonEmptyString(invoice?.sellerPaidAt)) {
+    logger.info('initiateSellerPayout: seller already paid', { invoiceId });
+    return null;
+  }
+
+  const sellerSnap = await getDb().collection('users').doc(sellerId).get();
+  if (!sellerSnap.exists) {
+    logger.warn('initiateSellerPayout: seller user not found', { invoiceId, sellerId });
+    return null;
+  }
+  const seller = sellerSnap.data();
+  const stripeConnectAccountId = normalizeNonEmptyString(seller.stripeConnectAccountId);
+  if (!stripeConnectAccountId) {
+    logger.warn('initiateSellerPayout: seller has no Stripe Connect account. Payout requires manual processing.', { invoiceId, sellerId });
+    await upsertAuctionInvoice(invoiceId, {
+      sellerPayoutStatus: 'pending_manual',
+      sellerPayoutNote: 'Seller has no Stripe Connect account. Requires manual payout.',
+      updatedAt: new Date().toISOString(),
+    });
+    return null;
+  }
+
+  const commissionRate = normalizeFiniteNumber(seller.sellerCommissionRate, 0);
+  const commission = Math.round(hammerPrice * (commissionRate / 100) * 100) / 100;
+  const payoutAmount = Math.round((hammerPrice - commission) * 100);
+
+  if (payoutAmount <= 0) {
+    logger.warn('initiateSellerPayout: payout amount is zero or negative', { invoiceId, hammerPrice, commission });
+    return null;
+  }
+
+  if (!stripe) {
+    stripe = createStripeClient();
+  }
+  if (!stripe) {
+    logger.error('initiateSellerPayout: Stripe client unavailable');
+    return null;
+  }
+
+  const transfer = await stripe.transfers.create({
+    amount: payoutAmount,
+    currency: 'usd',
+    destination: stripeConnectAccountId,
+    transfer_group: invoiceId,
+    metadata: {
+      invoiceId,
+      sellerId,
+      hammerPrice: String(hammerPrice),
+      commission: String(commission),
+    },
+  });
+
+  await upsertAuctionInvoice(invoiceId, {
+    sellerCommission: commission,
+    sellerPayout: payoutAmount / 100,
+    sellerPaidAt: new Date().toISOString(),
+    sellerPayoutStatus: 'transferred',
+    stripeTransferId: transfer.id,
+    updatedAt: new Date().toISOString(),
+  });
+
+  logger.info('initiateSellerPayout: transfer created', {
+    invoiceId,
+    sellerId,
+    transferId: transfer.id,
+    amount: payoutAmount / 100,
+  });
+
+  return transfer;
 }
 
 async function syncAuctionIdentityVerificationEvent(stripe, verificationSession) {
@@ -12378,6 +12459,7 @@ exports.apiProxy = onRequest(
           winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
           isTitledItem: Boolean(lot.isTitledItem),
           paymentMethod: null,
+          buyerPremiumPercent: Number.isFinite(Number(lot.buyerPremiumPercent)) ? Number(lot.buyerPremiumPercent) : null,
         });
         const wasAlreadyPaid = normalizeNonEmptyString(invoice.status).toLowerCase() === 'paid';
         const paidAt = normalizeNonEmptyString(invoice.paidAt) || nowIso;
@@ -12428,6 +12510,10 @@ exports.apiProxy = onRequest(
               invoiceUrl: buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId),
             });
           }
+
+          await initiateSellerPayout(null, settledInvoice).catch((err) =>
+            logger.error('Failed to initiate seller payout after wire settlement', { invoiceId, error: err.message })
+          );
         }
 
         return res.status(200).json({

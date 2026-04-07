@@ -30,7 +30,7 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
   const [addingLotForListingId, setAddingLotForListingId] = useState<string | null>(null);
   const [addLotStartingBid, setAddLotStartingBid] = useState<number>(0);
   const [addLotReservePrice, setAddLotReservePrice] = useState<string>('');
-  const [lotEditForm, setLotEditForm] = useState<{ startingBid: number; reservePrice: string; status: string }>({ startingBid: 0, reservePrice: '', status: 'upcoming' });
+  const [lotEditForm, setLotEditForm] = useState<{ startingBid: number; reservePrice: string; status: string; isTitledItem: boolean; buyerPremiumPercent: string }>({ startingBid: 0, reservePrice: '', status: 'upcoming', isTitledItem: false, buyerPremiumPercent: '' });
   const [managedAuctionId, setManagedAuctionId] = useState('');
 
   // ── Data loading ───────────────────────────────────────────────────────
@@ -159,6 +159,8 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
         startingBid: lotEditForm.startingBid,
         reservePrice: lotEditForm.reservePrice ? Number(lotEditForm.reservePrice) : null,
         status: lotEditForm.status as AuctionLot['status'],
+        isTitledItem: lotEditForm.isTitledItem,
+        buyerPremiumPercent: lotEditForm.buyerPremiumPercent ? Number(lotEditForm.buyerPremiumPercent) : null,
       });
       setLotEditing(null);
       await loadLots(managingAuctionId);
@@ -174,7 +176,16 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
     const [description, setDescription] = useState(auction?.description || '');
     const [startTime, setStartTime] = useState(auction?.startTime?.slice(0, 16) || '');
     const [endTime, setEndTime] = useState(auction?.endTime?.slice(0, 16) || '');
+    const [previewStartTime, setPreviewStartTime] = useState(auction?.previewStartTime?.slice(0, 16) || '');
     const [buyerPremium, setBuyerPremium] = useState(auction?.defaultBuyerPremiumPercent ?? 10);
+    const [coverImageUrl, setCoverImageUrl] = useState(auction?.coverImageUrl || '');
+    const [termsUrl, setTermsUrl] = useState(auction?.termsAndConditionsUrl || '');
+    const [featured, setFeatured] = useState(auction?.featured ?? false);
+    const [softCloseThreshold, setSoftCloseThreshold] = useState(auction?.softCloseThresholdMin ?? 3);
+    const [softCloseExtension, setSoftCloseExtension] = useState(auction?.softCloseExtensionMin ?? 2);
+    const [staggerInterval, setStaggerInterval] = useState(auction?.staggerIntervalMin ?? 1);
+    const [paymentDeadline, setPaymentDeadline] = useState(auction?.defaultPaymentDeadlineDays ?? 7);
+    const [removalDeadline, setRemovalDeadline] = useState(auction?.defaultRemovalDeadlineDays ?? 14);
     const [saving, setSaving] = useState(false);
 
     async function handleSave() {
@@ -185,21 +196,21 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
           title: title.trim(),
           slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
           description,
-          coverImageUrl: auction?.coverImageUrl || '',
+          coverImageUrl,
           startTime: startTime ? new Date(startTime).toISOString() : '',
           endTime: endTime ? new Date(endTime).toISOString() : '',
-          previewStartTime: startTime ? new Date(startTime).toISOString() : '',
+          previewStartTime: previewStartTime ? new Date(previewStartTime).toISOString() : (startTime ? new Date(startTime).toISOString() : ''),
           status: (auction?.status || 'draft') as AuctionStatus,
           defaultBuyerPremiumPercent: buyerPremium,
-          termsAndConditionsUrl: auction?.termsAndConditionsUrl || '',
-          featured: auction?.featured ?? false,
+          termsAndConditionsUrl: termsUrl,
+          featured,
           bannerEnabled: auction?.bannerEnabled ?? false,
           bannerImageUrl: auction?.bannerImageUrl || '',
-          softCloseThresholdMin: auction?.softCloseThresholdMin ?? 3,
-          softCloseExtensionMin: auction?.softCloseExtensionMin ?? 2,
-          staggerIntervalMin: auction?.staggerIntervalMin ?? 1,
-          defaultPaymentDeadlineDays: auction?.defaultPaymentDeadlineDays ?? 7,
-          defaultRemovalDeadlineDays: auction?.defaultRemovalDeadlineDays ?? 14,
+          softCloseThresholdMin: softCloseThreshold,
+          softCloseExtensionMin: softCloseExtension,
+          staggerIntervalMin: staggerInterval,
+          defaultPaymentDeadlineDays: paymentDeadline,
+          defaultRemovalDeadlineDays: removalDeadline,
           createdBy: auction?.createdBy || '',
         };
         if (auction?.id) {
@@ -225,7 +236,11 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
           </div>
           <div>
             <label className="label-micro block mb-1">Buyer Premium %</label>
-            <input className="input-industrial w-full" type="number" value={buyerPremium} onChange={e => setBuyerPremium(Number(e.target.value))} />
+            <input className="input-industrial w-full" type="number" value={buyerPremium} onChange={e => setBuyerPremium(Number(e.target.value))} min={0} max={100} />
+          </div>
+          <div>
+            <label className="label-micro block mb-1">Preview Opens</label>
+            <input className="input-industrial w-full" type="datetime-local" value={previewStartTime} onChange={e => setPreviewStartTime(e.target.value)} />
           </div>
           <div>
             <label className="label-micro block mb-1">Bidding Opens</label>
@@ -235,11 +250,62 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
             <label className="label-micro block mb-1">First Lot Closes</label>
             <input className="input-industrial w-full" type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} />
           </div>
+          <div>
+            <label className="label-micro block mb-1">Cover Image URL</label>
+            <input className="input-industrial w-full" value={coverImageUrl} onChange={e => setCoverImageUrl(e.target.value)} placeholder="https://…" />
+          </div>
+          <div>
+            <label className="label-micro block mb-1">Terms & Conditions URL</label>
+            <input className="input-industrial w-full" value={termsUrl} onChange={e => setTermsUrl(e.target.value)} placeholder="https://…" />
+          </div>
+          <div className="flex items-center gap-3 pt-5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={featured} onChange={e => setFeatured(e.target.checked)} className="accent-accent" />
+              <span className="label-micro">Featured Auction</span>
+            </label>
+          </div>
         </div>
+
         <div>
           <label className="label-micro block mb-1">Description</label>
           <textarea className="input-industrial w-full min-h-[80px]" value={description} onChange={e => setDescription(e.target.value)} placeholder="Auction description…" />
         </div>
+
+        <div className="border border-line rounded-sm p-4 space-y-3">
+          <h4 className="font-black text-[10px] uppercase tracking-widest text-muted">Soft Close Settings</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="label-micro block mb-1">Threshold (min)</label>
+              <input className="input-industrial w-full" type="number" value={softCloseThreshold} onChange={e => setSoftCloseThreshold(Number(e.target.value))} min={1} max={30} />
+              <p className="text-[9px] text-muted mt-0.5">Bid within this many minutes of close triggers extension</p>
+            </div>
+            <div>
+              <label className="label-micro block mb-1">Extension (min)</label>
+              <input className="input-industrial w-full" type="number" value={softCloseExtension} onChange={e => setSoftCloseExtension(Number(e.target.value))} min={1} max={30} />
+              <p className="text-[9px] text-muted mt-0.5">Minutes added when soft close is triggered</p>
+            </div>
+            <div>
+              <label className="label-micro block mb-1">Stagger Interval (min)</label>
+              <input className="input-industrial w-full" type="number" value={staggerInterval} onChange={e => setStaggerInterval(Number(e.target.value))} min={0} max={10} />
+              <p className="text-[9px] text-muted mt-0.5">Minutes between consecutive lot closes</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border border-line rounded-sm p-4 space-y-3">
+          <h4 className="font-black text-[10px] uppercase tracking-widest text-muted">Post-Auction Deadlines</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label-micro block mb-1">Payment Deadline (days)</label>
+              <input className="input-industrial w-full" type="number" value={paymentDeadline} onChange={e => setPaymentDeadline(Number(e.target.value))} min={1} max={30} />
+            </div>
+            <div>
+              <label className="label-micro block mb-1">Removal Deadline (days)</label>
+              <input className="input-industrial w-full" type="number" value={removalDeadline} onChange={e => setRemovalDeadline(Number(e.target.value))} min={1} max={60} />
+            </div>
+          </div>
+        </div>
+
         <div className="flex gap-2">
           <button className="btn-industrial btn-accent" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Auction'}</button>
           <button className="btn-industrial btn-outline" onClick={onCancel}>Cancel</button>
@@ -442,8 +508,13 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
                               <option value="cancelled">Cancelled</option>
                             </select>
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center gap-1 justify-end">
+                          <td className="px-3 py-2 text-right" colSpan={1}>
+                            <div className="flex items-center gap-2 justify-end flex-wrap">
+                              <label className="flex items-center gap-1 text-[9px]">
+                                <input type="checkbox" checked={lotEditForm.isTitledItem} onChange={e => setLotEditForm({ ...lotEditForm, isTitledItem: e.target.checked })} className="accent-accent" />
+                                Titled
+                              </label>
+                              <input type="number" className="input-industrial w-16 text-[9px] text-right" value={lotEditForm.buyerPremiumPercent} onChange={e => setLotEditForm({ ...lotEditForm, buyerPremiumPercent: e.target.value })} placeholder="BP%" min={0} max={100} title="Buyer premium % override" />
                               <button className="btn-industrial btn-accent text-[9px]" onClick={() => handleUpdateLot(lot.id)}>Save</button>
                               <button className="btn-industrial btn-outline text-[9px]" onClick={() => setLotEditing(null)}>Cancel</button>
                             </div>
@@ -484,7 +555,7 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
                               <button
                                 className="p-1 text-muted hover:text-ink"
                                 title="Edit lot"
-                                onClick={() => { setLotEditing(lot); setLotEditForm({ startingBid: lot.startingBid, reservePrice: lot.reservePrice != null ? String(lot.reservePrice) : '', status: lot.status }); }}
+                                onClick={() => { setLotEditing(lot); setLotEditForm({ startingBid: lot.startingBid, reservePrice: lot.reservePrice != null ? String(lot.reservePrice) : '', status: lot.status, isTitledItem: (lot as any).isTitledItem ?? false, buyerPremiumPercent: (lot as any).buyerPremiumPercent != null ? String((lot as any).buyerPremiumPercent) : '' }); }}
                               >
                                 <Edit size={13} />
                               </button>
@@ -591,6 +662,28 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
                         onClick={() => handleAuctionStatusChange(auction.id, 'active')}
                       >
                         Go Live
+                      </button>
+                    )}
+                    {auction.status === 'active' && (
+                      <button
+                        className="btn-industrial btn-outline text-[9px] border-red-300 text-red-600 hover:bg-red-50"
+                        onClick={async () => {
+                          const ok = await confirm({ title: 'Close Auction', message: 'This will close bidding on all lots. Are you sure?', variant: 'warning' });
+                          if (ok) await handleAuctionStatusChange(auction.id, 'closed' as AuctionStatus);
+                        }}
+                      >
+                        Close Bidding
+                      </button>
+                    )}
+                    {auction.status === 'closed' && (
+                      <button
+                        className="btn-industrial btn-accent text-[9px]"
+                        onClick={async () => {
+                          const ok = await confirm({ title: 'Settle Auction', message: 'This will finalize all lots and generate invoices. Continue?', variant: 'warning' });
+                          if (ok) await handleAuctionStatusChange(auction.id, 'settled' as AuctionStatus);
+                        }}
+                      >
+                        Settle Auction
                       </button>
                     )}
                     <button

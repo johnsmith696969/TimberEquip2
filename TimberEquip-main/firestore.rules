@@ -786,7 +786,12 @@ service cloud.firestore {
     }
 
     match /invoices/{invoiceId} {
-      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.userUid ||
+        request.auth.uid == resource.data.buyerId ||
+        request.auth.uid == resource.data.sellerId
+      );
       allow write: if isAdmin();
     }
 
@@ -878,7 +883,15 @@ service cloud.firestore {
         allow create, update: if isAdmin();
         allow delete: if isAdmin();
 
-        // Lots: public read, admin write only
+        // Lots: public read, admin write via Cloud Functions
+        match /lots/{lotId} {
+          allow read: if true;
+          allow write: if false; // All writes via Cloud Functions
+
+          // Bids: authenticated users can read bids on lots they're involved in
+          match /bids/{bidId} {
+            allow read: if isAuthenticated();
+            allow write: if false; // All writes via Cloud Functions
           }
         }
       }
@@ -889,16 +902,6 @@ service cloud.firestore {
         allow create: if isAuthenticated() && request.auth.uid == userId;
         allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
         allow delete: if isAdmin();
-      }
-
-      // Auction invoices (separate from billing invoices)
-      match /auctionInvoices/{invoiceId} {
-        allow read: if isAuthenticated() && (
-          request.auth.uid == resource.data.buyerId ||
-          request.auth.uid == resource.data.sellerId ||
-          isAdmin()
-        );
-        allow write: if false; // All writes via Cloud Functions
       }
       // ── End Auction Platform ───────────────────────────────────
 
