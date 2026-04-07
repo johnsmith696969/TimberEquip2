@@ -5,13 +5,13 @@
   "templates": [
     {
       "key": "leadNotification",
-      "name": "New Lead Notification | TimberEquip",
+      "name": "New Lead Notification | Forestry Equipment Sales",
       "templateId": "d-a2635f2de92847628d6531bf5f890934",
       "status": "created"
     },
     {
       "key": "inquiryConfirmation",
-      "name": "Inquiry Received | TimberEquip",
+      "name": "Inquiry Received | Forestry Equipment Sales",
       "templateId": "d-acb606c948b24f33a1cc663e93b0c057",
       "status": "created"
     },
@@ -23,97 +23,97 @@
     },
     {
       "key": "financingInquiryConfirmation",
-      "name": "Financing Inquiry Submitted | TimberEquip",
+      "name": "Financing Inquiry Submitted | Forestry Equipment Sales",
       "templateId": "d-cbd176d4cf394266a304378914889262",
       "status": "created"
     },
     {
       "key": "welcomeVerification",
-      "name": "Verify Your Email | TimberEquip",
+      "name": "Verify Your Email | Forestry Equipment Sales",
       "templateId": "d-e6c91196b45a42dc8294a51be1544955",
       "status": "created"
     },
     {
       "key": "passwordReset",
-      "name": "Password Reset | TimberEquip",
+      "name": "Password Reset | Forestry Equipment Sales",
       "templateId": "d-8f8097ccf01d4799be04175a0112c414",
       "status": "created"
     },
     {
       "key": "passwordResetSuccess",
-      "name": "Password Reset Success | TimberEquip",
+      "name": "Password Reset Success | Forestry Equipment Sales",
       "templateId": "d-e6e107f364a1413a836b4cc960fdcc5a",
       "status": "created"
     },
     {
       "key": "subscriptionExpiring",
-      "name": "Subscription Expiring | TimberEquip",
+      "name": "Subscription Expiring | Forestry Equipment Sales",
       "templateId": "d-b236191e22dc4924b45054ce39a42d42",
       "status": "created"
     },
     {
       "key": "voicemailNotification",
-      "name": "Voicemail Notification | TimberEquip",
+      "name": "Voicemail Notification | Forestry Equipment Sales",
       "templateId": "d-da64c3b50a144187b0135ce364579f1c",
       "status": "created"
     },
     {
       "key": "dealerWidgetInquiryNotification",
-      "name": "Dealer Widget Inquiry Notification | TimberEquip",
+      "name": "Dealer Widget Inquiry Notification | Forestry Equipment Sales",
       "templateId": "d-aba55338006b4d0290a92c51b5bc6ffc",
       "status": "created"
     },
     {
       "key": "listingApproved",
-      "name": "Listing Approved | TimberEquip",
+      "name": "Listing Approved | Forestry Equipment Sales",
       "templateId": "d-94825c6178024abab5f5e1ec0916be52",
       "status": "created"
     },
     {
       "key": "listingSubmitted",
-      "name": "Listing Submitted | TimberEquip",
+      "name": "Listing Submitted | Forestry Equipment Sales",
       "templateId": "d-276cc2ecb09143c29cb001e6279e1de9",
       "status": "created"
     },
     {
       "key": "listingRejected",
-      "name": "Listing Rejected | TimberEquip",
+      "name": "Listing Rejected | Forestry Equipment Sales",
       "templateId": "d-0490121cbb204aae8e68d2d2ea17f4d3",
       "status": "created"
     },
     {
       "key": "invoicePaidReceipt",
-      "name": "Invoice Paid Receipt | TimberEquip",
+      "name": "Invoice Paid Receipt | Forestry Equipment Sales",
       "templateId": "d-2e71a3218c4844b7a573b4a969967803",
       "status": "created"
     },
     {
       "key": "subscriptionExpired",
-      "name": "Subscription Expired | TimberEquip",
+      "name": "Subscription Expired | Forestry Equipment Sales",
       "templateId": "d-93e0dd6b0249485dba9db45aa6862a88",
       "status": "created"
     },
     {
       "key": "paymentFailedPastDue",
-      "name": "Payment Failed Past Due | TimberEquip",
+      "name": "Payment Failed Past Due | Forestry Equipment Sales",
       "templateId": "d-65d11d9df93f4960845ae7f506e3ab2b",
       "status": "created"
     },
     {
       "key": "mediaKitRequest",
-      "name": "Media Kit Request Admin Alert | TimberEquip",
+      "name": "Media Kit Request Admin Alert | Forestry Equipment Sales",
       "templateId": "d-7d6a55c83a49420287adf5cbbf1af6b3",
       "status": "created"
     },
     {
       "key": "mediaKitRequestConfirmation",
-      "name": "Media Kit Download | TimberEquip",
+      "name": "Media Kit Download | Forestry Equipment Sales",
       "templateId": "d-db901dd0cac945adbafa943753e5d94b",
       "status": "created"
     },
     {
       "key": "partnerRequestConfirmation",
-      "name": "Partner Request Submitted | TimberEquip",
+      "name": "Partner Request Submitted | Forestry Equipment Sales",
       "templateId": "d-9d813c789e3046dda44c349b01e61eb3",
       "status": "created"
     },
@@ -125,85 +125,85 @@
     },
     {
       "key": "contactRequestConfirmation",
-      "name": "Contact Request Submitted | TimberEquip",
+      "name": "Contact Request Submitted | Forestry Equipment Sales",
       "templateId": "d-3e56cb0df4fd4ab39f4e10f58d98eca5",
       "status": "created"
     },
     {
       "key": "subscriptionCreated",
-      "name": "Subscription Created | TimberEquip",
+      "name": "Subscription Created | Forestry Equipment Sales",
       "templateId": "d-a30c2df84da14162a2a1aa7990cf5a24",
       "status": "created"
     },
     {
       "key": "newMatchingListing",
-      "name": "New Matching Listing Alert | TimberEquip",
+      "name": "New Matching Listing Alert | Forestry Equipment Sales",
       "templateId": "d-734a93f3d0104a02818de7a0801ceea4",
       "status": "created"
     },
     {
       "key": "matchingListingPriceDrop",
-      "name": "Matching Listing Price Drop | TimberEquip",
+      "name": "Matching Listing Price Drop | Forestry Equipment Sales",
       "templateId": "d-4f5f014b77204578bf0f5dc67007049c",
       "status": "created"
     },
     {
       "key": "matchingListingSold",
-      "name": "Matching Listing Sold | TimberEquip",
+      "name": "Matching Listing Sold | Forestry Equipment Sales",
       "templateId": "d-4512768f1b2a46d7896668ccf14cbe54",
       "status": "created"
     },
     {
       "key": "similarListingRestocked",
-      "name": "Similar Listing Restocked | TimberEquip",
+      "name": "Similar Listing Restocked | Forestry Equipment Sales",
       "templateId": "d-ebf8b1e110d94faf86d58d85bb49587f",
       "status": "created"
     },
     {
       "key": "managedAccountInvite",
-      "name": "Managed Account Invite | TimberEquip",
+      "name": "Managed Account Invite | Forestry Equipment Sales",
       "templateId": "d-0e31c3d07433464381e1af2ac0cc4ced",
       "status": "created"
     },
     {
       "key": "accountLocked",
-      "name": "Account Locked | TimberEquip",
+      "name": "Account Locked | Forestry Equipment Sales",
       "templateId": "d-1127739a7da84196a594577a487a2335",
       "status": "created"
     },
     {
       "key": "accountUnlocked",
-      "name": "Account Unlocked | TimberEquip",
+      "name": "Account Unlocked | Forestry Equipment Sales",
       "templateId": "d-601fc39e9398400785201e3281860a74",
       "status": "created"
     },
     {
       "key": "adminInquiryAlert",
-      "name": "Admin Inquiry Alert | TimberEquip",
+      "name": "Admin Inquiry Alert | Forestry Equipment Sales",
       "templateId": "d-a202509682214e90bd8c75a9b857c0d0",
       "status": "created"
     },
     {
       "key": "financingRequestAdmin",
-      "name": "Financing Request Admin Alert | TimberEquip",
+      "name": "Financing Request Admin Alert | Forestry Equipment Sales",
       "templateId": "d-2dcefb65aecc44aeb7093402850a3b75",
       "status": "created"
     },
     {
       "key": "contactRequestAdmin",
-      "name": "Contact Request Admin Alert | TimberEquip",
+      "name": "Contact Request Admin Alert | Forestry Equipment Sales",
       "templateId": "d-66db03c4f5da436caba50f4579b6c893",
       "status": "created"
     },
     {
       "key": "dealerMonthlyReport",
-      "name": "Dealer Monthly Report | TimberEquip",
+      "name": "Dealer Monthly Report | Forestry Equipment Sales",
       "templateId": "d-ca8defe2d2d34b53b8bacacfd845f9e0",
       "status": "created"
     },
     {
       "key": "dealerMonthlyReportAdminSummary",
-      "name": "Dealer Monthly Report Admin Summary | TimberEquip",
+      "name": "Dealer Monthly Report Admin Summary | Forestry Equipment Sales",
       "templateId": "d-cbe9dd3e683c4d9f83b51d455985516f",
       "status": "created"
     }

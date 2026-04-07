@@ -46,6 +46,13 @@ const MANUFACTURER_ALIASES: Record<string, string> = {
 };
 
 const ROMAN_NUMERAL_PATTERN = /^(?:M|CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
+const COUNTRY_SEGMENTS = new Set(['usa', 'us', 'united states', 'united states of america', 'canada']);
+const REGION_NAME_TO_ABBREVIATION = Object.entries(REGION_ABBREVIATIONS).reduce<Record<string, string>>((acc, [abbreviation, name]) => {
+  if (!acc[name.toLowerCase()]) {
+    acc[name.toLowerCase()] = abbreviation;
+  }
+  return acc;
+}, {});
 
 function normalizeManufacturerWhitespace(value: string): string {
   return String(value || '').trim().replace(/\s+/g, ' ');
@@ -94,7 +101,11 @@ export function getCityFromLocation(location?: string): string {
     .map((segment) => segment.trim())
     .filter(Boolean);
 
-  return parts.length >= 2 ? parts[0] : '';
+  if (parts.length >= 2 && !COUNTRY_SEGMENTS.has(parts[1].toLowerCase())) {
+    return parts[0];
+  }
+
+  return '';
 }
 
 export function getStateFromLocation(location?: string): string {
@@ -108,10 +119,45 @@ export function getStateFromLocation(location?: string): string {
   }
 
   if (parts.length === 2) {
+    if (COUNTRY_SEGMENTS.has(parts[1].toLowerCase())) {
+      return parts[0];
+    }
+
     return parts[1];
   }
 
   return parts[0] || '';
+}
+
+export function expandRegionName(value?: string): string {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return REGION_ABBREVIATIONS[normalized.toUpperCase()] || normalized;
+}
+
+export function normalizeRegionName(value?: string): string {
+  return expandRegionName(value).toLowerCase();
+}
+
+export function compareRegionNames(left: string, right: string): number {
+  return expandRegionName(left).localeCompare(expandRegionName(right));
+}
+
+export function matchesStateSlug(state: string | undefined, stateSlug: string): boolean {
+  const normalizedStateSlug = normalizeSeoSlug(stateSlug);
+  const rawState = String(state || '').trim();
+  if (!normalizedStateSlug || !rawState) {
+    return false;
+  }
+
+  const expandedState = expandRegionName(rawState);
+  const abbreviatedState = REGION_NAME_TO_ABBREVIATION[expandedState.toLowerCase()] || '';
+  return [rawState, expandedState, abbreviatedState]
+    .filter(Boolean)
+    .some((candidate) => normalizeSeoSlug(candidate) === normalizedStateSlug);
 }
 
 export function getListingStateName(listing: Pick<Listing, 'location' | 'state' | 'city'>): string {
@@ -123,7 +169,7 @@ export function getListingStateName(listing: Pick<Listing, 'location' | 'state' 
   const cityCandidate = String(listing.city || '').trim() || (locationParts.length >= 2 ? locationParts[0] : '');
 
   if (explicitState) {
-    const expandedExplicitState = REGION_ABBREVIATIONS[explicitState.toUpperCase()] || explicitState;
+    const expandedExplicitState = expandRegionName(explicitState);
     if (!cityCandidate || expandedExplicitState.toLowerCase() !== cityCandidate.toLowerCase()) {
       return expandedExplicitState;
     }
@@ -138,7 +184,26 @@ export function getListingStateName(listing: Pick<Listing, 'location' | 'state' 
     return '';
   }
 
-  return REGION_ABBREVIATIONS[parsedState.toUpperCase()] || parsedState;
+  return expandRegionName(parsedState);
+}
+
+export function getListingLocationLabel(listing: Pick<Listing, 'location' | 'state' | 'city'>): string {
+  const rawLocation = String(listing.location || '').trim();
+  if (!rawLocation) {
+    return '';
+  }
+
+  const parts = rawLocation
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const city =
+    String(listing.city || '').trim()
+    || (parts.length >= 2 && !COUNTRY_SEGMENTS.has(parts[1].toLowerCase()) ? parts[0] : '');
+  const state = getListingStateName(listing);
+  const country = parts.length >= 3 ? parts[parts.length - 1] : (parts.length === 2 && COUNTRY_SEGMENTS.has(parts[1].toLowerCase()) ? parts[1] : '');
+
+  return [city, state, country].filter(Boolean).join(', ') || state || rawLocation;
 }
 
 export function buildCategoryPath(category: string): string {

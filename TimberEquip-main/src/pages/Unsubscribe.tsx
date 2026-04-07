@@ -105,8 +105,8 @@ export function Unsubscribe() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 md:px-8 md:py-16">
       <Seo
-        title="Unsubscribe | TimberEquip"
-        description="Manage your email notification preferences for TimberEquip."
+        title="Unsubscribe | Forestry Equipment Sales"
+        description="Manage your email notification preferences for Forestry Equipment Sales."
         robots={NOINDEX_ROBOTS}
       />
       <section className={`overflow-hidden rounded-[28px] border ${isDark ? 'border-white/10 bg-zinc-950 text-white shadow-[0_30px_120px_rgba(0,0,0,0.45)]' : 'border-line bg-white text-ink shadow-[0_24px_90px_rgba(15,23,42,0.12)]'}`}>
@@ -149,7 +149,7 @@ export function Unsubscribe() {
                   <div className={`rounded-[18px] border px-4 py-4 ${isDark ? 'border-white/10 bg-black/20' : 'border-line bg-white'}`}>
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">Subscriber</p>
                     <p className={`mt-2 text-lg font-black tracking-tight ${isDark ? 'text-white' : 'text-ink'}`}>
-                      {state.displayName || 'TimberEquip subscriber'}
+                      {state.displayName || 'Forestry Equipment Sales subscriber'}
                     </p>
                     <p className={`mt-1 text-sm ${isDark ? 'text-zinc-300' : 'text-muted'}`}>{state.email}</p>
                   </div>
@@ -190,7 +190,7 @@ export function Unsubscribe() {
                   <div className={`flex items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold ${isDark ? 'border-accent/25 bg-accent/10 text-zinc-100' : 'border-accent/20 bg-accent/5 text-ink'}`}>
                     <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent" />
                     <span>
-                      Optional TimberEquip emails are turned off for {state.email}. Required security, billing, and listing-service emails may still be sent.
+                      Optional Forestry Equipment Sales emails are turned off for {state.email}. Required security, billing, and listing-service emails may still be sent.
                     </span>
                   </div>
                 ) : null}

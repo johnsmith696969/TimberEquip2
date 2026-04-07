@@ -9,6 +9,7 @@ import { Listing } from '../types';
 import { useLocale } from './LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId } from '../utils/listingIdentity';
+import { getListingLocationLabel } from '../utils/seoRoutes';
 
 interface ListingCardProps {
   listing: Listing;
@@ -56,7 +57,7 @@ export function ListingCard({
   const displayMake = listing.make || listing.manufacturer || 'Unknown Make';
   const displayModel = listing.model || 'Unknown Model';
   const displayTitle = listing.title || `${listing.year || 'Unknown Year'} ${displayMake} ${displayModel}`;
-  const displayLocation = listing.location || 'Location pending';
+  const displayLocation = getListingLocationLabel(listing) || 'Location pending';
   const displayCondition = listing.condition || 'Unspecified';
   const listingPath = buildListingPath(listing);
   const normalizedListingId = normalizeListingId(listing.id);

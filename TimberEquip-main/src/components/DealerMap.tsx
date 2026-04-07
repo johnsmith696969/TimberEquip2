@@ -14,6 +14,13 @@ function getDealerRole(role?: string): string {
   return 'Dealer';
 }
 
+function toFiniteCoordinate(value: unknown): number | null {
+  const next = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(next)) return null;
+  if (Math.abs(next) < 0.000001) return null;
+  return next;
+}
+
 export function DealerMap({ dealers }: DealerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -54,10 +61,12 @@ export function DealerMap({ dealers }: DealerMapProps) {
     let hasMarkers = false;
 
     for (const dealer of dealers) {
-      if (!dealer.latitude || !dealer.longitude) continue;
+      const lat = toFiniteCoordinate(dealer.latitude);
+      const lng = toFiniteCoordinate(dealer.longitude);
+      if (lat === null || lng === null) continue;
       hasMarkers = true;
 
-      const latlng = L.latLng(dealer.latitude, dealer.longitude);
+      const latlng = L.latLng(lat, lng);
       bounds.extend(latlng);
 
       const name = String(dealer.storefrontName || dealer.name || 'Dealer').replace(/</g, '&lt;');

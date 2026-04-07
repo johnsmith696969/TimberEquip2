@@ -66,10 +66,10 @@ function roleToCapability(role) {
 
 function resolveBillingLabel(planId, role) {
   if (planId === 'dealer' || planId === 'fleet_dealer' || role === 'dealer' || role === 'pro_dealer') {
-    return 'TimberEquip DealerOS';
+    return 'Forestry Equipment Sales DealerOS';
   }
   if (planId === 'individual_seller' || role === 'individual_seller') {
-    return 'TimberEquip';
+    return 'Forestry Equipment Sales';
   }
   return 'n/a';
 }

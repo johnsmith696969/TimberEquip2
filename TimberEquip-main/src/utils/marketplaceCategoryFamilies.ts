@@ -65,6 +65,42 @@ export function getMarketplaceSubcategories(categoryName: string, taxonomy?: Tax
   return Object.keys(categoryRecord).sort((left, right) => left.localeCompare(right));
 }
 
+function buildMarketplaceCategoryFamilyMetric(
+  categoryName: string,
+  metricsByCategory: Record<string, CategoryInventoryMetric>,
+  taxonomy?: TaxonomyLike
+): CategoryInventoryMetric {
+  const familyKeys = [categoryName, ...getMarketplaceSubcategories(categoryName, taxonomy)];
+  const familyMetrics = familyKeys
+    .map((key) => metricsByCategory[key])
+    .filter((metric): metric is CategoryInventoryMetric => Boolean(metric));
+
+  if (familyMetrics.length === 0) {
+    return getMetricForCategory(categoryName, metricsByCategory);
+  }
+
+  const activeCount = familyMetrics.reduce((sum, metric) => sum + metric.activeCount, 0);
+  const previousWeekCount = familyMetrics.reduce((sum, metric) => sum + metric.previousWeekCount, 0);
+  const totalPricedUnits = familyMetrics.reduce(
+    (sum, metric) => sum + (metric.averagePrice !== null ? metric.activeCount : 0),
+    0
+  );
+  const totalPricedValue = familyMetrics.reduce(
+    (sum, metric) => sum + (metric.averagePrice !== null ? metric.averagePrice * metric.activeCount : 0),
+    0
+  );
+  const weeklyChangePercent =
+    previousWeekCount === 0 ? 0 : Number((((activeCount - previousWeekCount) / previousWeekCount) * 100).toFixed(1));
+
+  return {
+    category: categoryName,
+    activeCount,
+    previousWeekCount,
+    weeklyChangePercent,
+    averagePrice: totalPricedUnits > 0 ? Math.round(totalPricedValue / totalPricedUnits) : null,
+  };
+}
+
 export function buildMarketplaceCategoryFamilies(
   metrics: CategoryInventoryMetric[],
   taxonomy?: TaxonomyLike
@@ -73,7 +109,7 @@ export function buildMarketplaceCategoryFamilies(
 
   return getMarketplaceCategoryFamilyNames(taxonomy)
     .map((categoryName) => {
-      const metric = getMetricForCategory(categoryName, metricsByCategory);
+      const metric = buildMarketplaceCategoryFamilyMetric(categoryName, metricsByCategory, taxonomy);
 
       return {
         name: categoryName,

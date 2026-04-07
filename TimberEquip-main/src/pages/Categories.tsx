@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Truck, Settings, Activity, Layers3,
+  Activity, Layers3,
   ArrowRight
 } from 'lucide-react';
 import { useLocale } from '../components/LocaleContext';
@@ -13,22 +13,27 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
 import { buildMarketplaceCategoryFamilies } from '../utils/marketplaceCategoryFamilies';
 import { normalizeSeoSlug } from '../utils/seoRoutes';
+import { buildSiteUrl } from '../utils/siteUrl';
 import {
   LoggingEquipmentIcon,
   LandClearingEquipmentIcon,
   FirewoodEquipmentIcon,
   TreeServiceEquipmentIcon,
+  SawmillEquipmentIcon,
+  TrailersIcon,
+  TrucksIcon,
+  PartsAndAttachmentsIcon,
 } from '../components/CategoryIcons';
 
-const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
+const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
   'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-yellow-500/10 text-yellow-500' },
   'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-red-500/10 text-red-500' },
   'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-green-600/10 text-green-600' },
-  'Sawmill Equipment': { icon: Settings, color: 'bg-amber-500/10 text-amber-500' },
-  Trailers: { icon: Truck, color: 'bg-blue-600/10 text-blue-600' },
-  Trucks: { icon: Truck, color: 'bg-slate-600/10 text-slate-600' },
-  'Parts And Attachments': { icon: Settings, color: 'bg-sky-600/10 text-sky-600' },
+  'Sawmill Equipment': { icon: SawmillEquipmentIcon, color: 'bg-amber-500/10 text-amber-500' },
+  Trailers: { icon: TrailersIcon, color: 'bg-blue-600/10 text-blue-600' },
+  Trucks: { icon: TrucksIcon, color: 'bg-slate-600/10 text-slate-600' },
+  'Parts And Attachments': { icon: PartsAndAttachmentsIcon, color: 'bg-sky-600/10 text-sky-600' },
 };
 
 export function Categories() {
@@ -139,21 +144,21 @@ export function Categories() {
   );
   const inventoryChange = totalPreviousWeek > 0 ? ((totalActive - totalPreviousWeek) / totalPreviousWeek) * 100 : 0;
 
-  const seoTitle = 'Equipment Categories | Browse Marketplace Equipment Families | TimberEquip';
+  const seoTitle = 'Equipment Categories | Browse Marketplace Equipment Families | Forestry Equipment Sales';
   const seoDescription =
-    'Browse TimberEquip inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.';
+    'Browse Forestry Equipment Sales inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.';
 
   const categoriesSchemaData = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
     name: 'Equipment Categories',
     description: seoDescription,
-    url: 'https://timberequip.com/categories',
+    url: buildSiteUrl('/categories'),
     hasPart: categoryCards.map(cat => ({
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://timberequip.com/categories/${normalizeSeoSlug(cat.name)}`
+      url: buildSiteUrl(`/categories/${normalizeSeoSlug(cat.name)}`)
     }))
   };
 

@@ -7,13 +7,11 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 const {
   loginMock,
   loginWithGoogleMock,
-  getRecaptchaTokenMock,
-  assessRecaptchaMock,
+  verifyRecaptchaActionMock,
 } = vi.hoisted(() => ({
   loginMock: vi.fn(),
   loginWithGoogleMock: vi.fn(),
-  getRecaptchaTokenMock: vi.fn(),
-  assessRecaptchaMock: vi.fn(),
+  verifyRecaptchaActionMock: vi.fn(),
 }));
 
 vi.mock('framer-motion', () => {
@@ -32,19 +30,15 @@ vi.mock('../components/AuthContext', () => ({
 }));
 
 vi.mock('../services/recaptchaService', () => ({
-  getRecaptchaToken: getRecaptchaTokenMock,
-  assessRecaptcha: assessRecaptchaMock,
+  verifyRecaptchaAction: verifyRecaptchaActionMock,
 }));
 
 describe('LoginPromptModal component', () => {
   beforeEach(() => {
     loginMock.mockReset();
     loginWithGoogleMock.mockReset();
-    getRecaptchaTokenMock.mockReset();
-    assessRecaptchaMock.mockReset();
-
-    getRecaptchaTokenMock.mockResolvedValue(null);
-    assessRecaptchaMock.mockResolvedValue(true);
+    verifyRecaptchaActionMock.mockReset();
+    verifyRecaptchaActionMock.mockResolvedValue(true);
   });
 
   it('submits email sign-in and closes on success', async () => {

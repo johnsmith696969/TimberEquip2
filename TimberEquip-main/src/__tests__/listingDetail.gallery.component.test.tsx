@@ -10,6 +10,7 @@ const {
   getSellerListingUsageMock,
   getMarketValueMock,
   getMarketMatchRecommendationsMock,
+  getMarketComparableInsightsMock,
   useAuthMock,
   useLocaleMock,
 } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const {
   getSellerListingUsageMock: vi.fn(),
   getMarketValueMock: vi.fn(),
   getMarketMatchRecommendationsMock: vi.fn(),
+  getMarketComparableInsightsMock: vi.fn(),
   useAuthMock: vi.fn(),
   useLocaleMock: vi.fn(),
 }));
@@ -45,6 +47,7 @@ vi.mock('../services/equipmentService', () => ({
     getSellerListingUsage: getSellerListingUsageMock,
     getMarketValue: getMarketValueMock,
     getMarketMatchRecommendations: getMarketMatchRecommendationsMock,
+    getMarketComparableInsights: getMarketComparableInsightsMock,
     recordListingView: vi.fn().mockResolvedValue(true),
     getCachedPublicListings: vi.fn().mockReturnValue([]),
   },
@@ -110,7 +113,9 @@ vi.mock('../utils/seoRoutes', () => ({
   buildStateCategoryPath: vi.fn(() => '/states/minnesota/forwarders'),
   getCityFromLocation: vi.fn(() => 'Bemidji'),
   getListingCategoryLabel: vi.fn(() => 'Forwarders'),
+  getListingLocationLabel: vi.fn(() => 'Bemidji, Minnesota, United States'),
   getListingManufacturer: vi.fn(() => 'Tigercat'),
+  getListingStateName: vi.fn(() => 'Minnesota'),
   getStateFromLocation: vi.fn(() => 'Minnesota'),
   isDealerRole: vi.fn(() => true),
 }));
@@ -193,6 +198,7 @@ describe('ListingDetail gallery interactions', () => {
     getSellerListingUsageMock.mockReset();
     getMarketValueMock.mockReset();
     getMarketMatchRecommendationsMock.mockReset();
+    getMarketComparableInsightsMock.mockReset();
 
     useAuthMock.mockReturnValue({
       user: null,
@@ -211,6 +217,10 @@ describe('ListingDetail gallery interactions', () => {
     getSellerListingUsageMock.mockResolvedValue(7);
     getMarketValueMock.mockResolvedValue(355000);
     getMarketMatchRecommendationsMock.mockResolvedValue([]);
+    getMarketComparableInsightsMock.mockResolvedValue({
+      marketValueEstimate: 355000,
+      recommendations: [],
+    });
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -254,14 +264,17 @@ describe('ListingDetail gallery interactions', () => {
   });
 
   it('renders technical specifications before market match recommendations', async () => {
-    getMarketMatchRecommendationsMock.mockResolvedValue([
-      makeListing({
-        id: 'listing-2',
-        title: '2020 TIGERCAT 1075B',
-        price: 335000,
-        hours: 3000,
-      }),
-    ]);
+    const matchListing = makeListing({
+      id: 'listing-2',
+      title: '2020 TIGERCAT 1075B',
+      price: 335000,
+      hours: 3000,
+    });
+    getMarketMatchRecommendationsMock.mockResolvedValue([matchListing]);
+    getMarketComparableInsightsMock.mockResolvedValue({
+      marketValueEstimate: 342000,
+      recommendations: [matchListing],
+    });
 
     render(
       <MemoryRouter initialEntries={['/equipment/test-machine--listing-1']}>

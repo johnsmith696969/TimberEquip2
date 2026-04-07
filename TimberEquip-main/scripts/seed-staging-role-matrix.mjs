@@ -313,7 +313,7 @@ async function run() {
       email: superAdminEmail,
       role: 'super_admin',
       displayName: 'Staging QA Super Admin',
-      company: 'TimberEquip',
+      company: 'Forestry Equipment Sales',
       phoneNumber: '541-555-0101',
       existing: true,
     },
@@ -322,7 +322,7 @@ async function run() {
       email: 'staging.matrix.admin.20260329@example.com',
       role: 'admin',
       displayName: 'Staging QA Admin',
-      company: 'TimberEquip',
+      company: 'Forestry Equipment Sales',
       phoneNumber: '541-555-0102',
     },
     {

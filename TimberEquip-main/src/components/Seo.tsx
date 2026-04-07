@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { PUBLIC_SITE_URL } from '../utils/siteUrl';
 
 interface SeoProps {
   title: string;
@@ -11,7 +12,7 @@ interface SeoProps {
   preloadImage?: string;
 }
 
-const BASE_URL = 'https://timberequip.com';
+const BASE_URL = PUBLIC_SITE_URL;
 const DEFAULT_ROBOTS =
   import.meta.env.VITE_ALLOW_INDEXING === 'true'
     ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
@@ -38,7 +39,7 @@ export function Seo({
   robots = DEFAULT_ROBOTS,
   jsonLd,
   ogType = 'website',
-  imagePath = '/TimberEquip-OG-Share.png?v=20260405d',
+  imagePath = '/Forestry_Equipment_Sales_Logo.png?v=20260405d',
   preloadImage,
 }: SeoProps) {
   useEffect(() => {
@@ -54,7 +55,7 @@ export function Seo({
     setMetaTag({ property: 'og:description' }, description);
     setMetaTag({ property: 'og:type' }, ogType);
     setMetaTag({ property: 'og:url' }, canonicalHref);
-    setMetaTag({ property: 'og:site_name' }, 'TimberEquip');
+    setMetaTag({ property: 'og:site_name' }, 'Forestry Equipment Sales');
     setMetaTag({ property: 'og:image' }, imageUrl);
     setMetaTag({ property: 'og:image:width' }, '1200');
     setMetaTag({ property: 'og:image:height' }, '630');

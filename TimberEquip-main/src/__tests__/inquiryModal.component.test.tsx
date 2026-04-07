@@ -57,7 +57,7 @@ describe('InquiryModal component', () => {
     const [nameInput, emailInput, phoneInput] = screen.getAllByRole('textbox');
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
     fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
-    fireEvent.change(phoneInput, { target: { value: '+16126008268' } });
+    fireEvent.change(phoneInput, { target: { value: '+12187200933' } });
     const submitButton = screen.getByRole('button', { name: /send inquiry/i });
     fireEvent.submit(submitButton.closest('form')!);
 
@@ -75,7 +75,7 @@ describe('InquiryModal component', () => {
     const [nameInput, emailInput, phoneInput] = screen.getAllByRole('textbox');
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
     fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
-    fireEvent.change(phoneInput, { target: { value: '+16126008268' } });
+    fireEvent.change(phoneInput, { target: { value: '+12187200933' } });
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /send inquiry/i }));
 

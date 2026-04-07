@@ -9,8 +9,7 @@ const {
   loginWithGoogleMock,
   sendPasswordResetMock,
   sendVerificationEmailMock,
-  getRecaptchaTokenMock,
-  assessRecaptchaMock,
+  verifyRecaptchaActionMock,
   signOutMock,
   authMock,
   authContextState,
@@ -20,8 +19,7 @@ const {
   loginWithGoogleMock: vi.fn(),
   sendPasswordResetMock: vi.fn(),
   sendVerificationEmailMock: vi.fn(),
-  getRecaptchaTokenMock: vi.fn(),
-  assessRecaptchaMock: vi.fn(),
+  verifyRecaptchaActionMock: vi.fn(),
   signOutMock: vi.fn(),
   authMock: {
     currentUser: null as null | { email?: string | null; emailVerified?: boolean },
@@ -64,8 +62,7 @@ vi.mock('../components/AuthContext', () => ({
 }));
 
 vi.mock('../services/recaptchaService', () => ({
-  getRecaptchaToken: getRecaptchaTokenMock,
-  assessRecaptcha: assessRecaptchaMock,
+  verifyRecaptchaAction: verifyRecaptchaActionMock,
 }));
 
 vi.mock('../services/mfaService', () => ({
@@ -109,12 +106,10 @@ describe('Login component', () => {
     loginWithGoogleMock.mockReset();
     sendPasswordResetMock.mockReset();
     sendVerificationEmailMock.mockReset();
-    getRecaptchaTokenMock.mockReset();
-    assessRecaptchaMock.mockReset();
+    verifyRecaptchaActionMock.mockReset();
     signOutMock.mockReset();
 
-    getRecaptchaTokenMock.mockResolvedValue(null);
-    assessRecaptchaMock.mockResolvedValue(true);
+    verifyRecaptchaActionMock.mockResolvedValue(true);
     sendPasswordResetMock.mockResolvedValue(undefined);
   });
 

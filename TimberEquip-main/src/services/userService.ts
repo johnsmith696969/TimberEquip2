@@ -342,7 +342,7 @@ export const userService = {
         uid: normalizedUid,
         favorites: [],
         email: currentUser?.email || '',
-        displayName: currentUser?.displayName || 'TimberEquip User',
+        displayName: currentUser?.displayName || 'Forestry Equipment Sales User',
         photoURL: currentUser?.photoURL || null,
         emailVerified: currentUser?.emailVerified || false,
         accountStatus: 'active',
@@ -575,7 +575,7 @@ export const userService = {
     const role = this.normalizeRole(profile.role);
     if (!this.supportsEnterpriseStorefront(role)) return;
 
-    const displayName = String(profile.displayName || profile.company || 'TimberEquip Storefront').trim();
+    const displayName = String(profile.displayName || profile.company || 'Forestry Equipment Sales Storefront').trim();
     const storefrontRef = doc(db, 'storefronts', normalizedUid);
     const requestedStorefrontSlug = String((profile as any).storefrontSlug || '').trim();
     const storefrontSlug = requestedStorefrontSlug

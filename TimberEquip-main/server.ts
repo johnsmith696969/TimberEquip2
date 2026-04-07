@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import { createServer as createHttpServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
@@ -14,6 +15,26 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import multer from 'multer';
 import { captureServerException, initializeServerSentry } from './sentry.server.js';
+import { setupAuctionSockets, emitBidPlaced, emitLotExtended, emitLotClosed } from './src/server/auctionSocketServer.js';
+import type { Server as SocketIOServer } from 'socket.io';
+import type { AuctionTimerManager } from './src/server/auctionTimerManager.js';
+import {
+  validateBody,
+  checkoutSessionSchema,
+  portalSessionSchema,
+  cancelSubscriptionSchema,
+  accountCheckoutSessionSchema,
+  placeBidSchema,
+  retractBidSchema,
+  closeLotSchema,
+  activateAuctionSchema,
+  preauthHoldSchema,
+  confirmPreauthSchema,
+  sellerPayoutSchema,
+  createManagedAccountSchema,
+  dealerFeedIngestSchema,
+  recaptchaAssessSchema,
+} from './src/utils/apiValidation.js';
 
 dotenv.config();
 initializeServerSentry();
@@ -105,7 +126,7 @@ try {
   console.warn('[email] Unable to load @sendgrid/mail from functions/node_modules:', sgError);
 }
 
-const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@timberequip.com').trim();
+const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@forestryequipmentsales.com').trim();
 const APP_BASE_URL = String(process.env.APP_URL || 'https://timberequip.com').replace(/\/+$/, '');
 
 async function sendServerEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
@@ -341,9 +362,9 @@ function serializePublicLegacyNewsPost(id: string, data: Record<string, unknown>
     title: normalizeNonEmptyString(data.title, 'Untitled'),
     summary,
     content: normalizeNonEmptyString(data.content),
-    author: normalizeNonEmptyString(data.author, 'TimberEquip Editorial'),
+    author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
     date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image) || '/TimberEquip-Logo.png?v=20260327c',
+    image: normalizeNonEmptyString(data.image) || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
@@ -359,9 +380,9 @@ function serializePublicCmsNewsPost(id: string, data: Record<string, unknown>) {
     title: normalizeNonEmptyString(data.title, 'Untitled'),
     summary,
     content: normalizeNonEmptyString(data.content),
-    author: normalizeNonEmptyString(data.authorName, 'TimberEquip Editorial'),
+    author: normalizeNonEmptyString(data.authorName, 'Forestry Equipment Sales Editorial'),
     date: timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image) || '/TimberEquip-Logo.png?v=20260327c',
+    image: normalizeNonEmptyString(data.image) || '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
@@ -499,7 +520,7 @@ function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<s
   return {
     id: snapshotId,
     uid: snapshotId,
-    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'TimberEquip Seller'),
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
     role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
@@ -529,7 +550,7 @@ function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string,
   return {
     id: snapshotId,
     uid: snapshotId,
-    name: normalizeNonEmptyString(data.displayName || data.name, 'TimberEquip Seller'),
+    name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
     role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
@@ -1344,6 +1365,7 @@ async function startServer() {
         frameAncestors: ["'self'", "https://*.run.app"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
+        reportUri: ['/api/csp-report'],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -1352,6 +1374,18 @@ async function startServer() {
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    permissionsPolicy: {
+      features: {
+        camera: [],
+        microphone: [],
+        geolocation: ['self'],
+        payment: ['self', 'https://js.stripe.com'],
+        usb: [],
+        magnetometer: [],
+        gyroscope: [],
+        accelerometer: [],
+      },
+    },
   }));
 
   // 1b. Domain Migration — 301 redirect from legacy domain to canonical domain
@@ -1402,6 +1436,27 @@ async function startServer() {
     message: { error: 'Too many billing portal requests. Please try again in a minute.' },
   });
   app.use('/api/billing/create-portal-session', portalLimiter);
+
+  // 2b. CSP Violation Reporting Endpoint
+  const cspReportLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 50,
+    message: '',
+  });
+  app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application/csp-report', 'application/json'] }), (req, res) => {
+    const report = req.body?.['csp-report'] || req.body;
+    if (report) {
+      console.warn('[CSP Violation]', JSON.stringify({
+        blockedUri: report['blocked-uri'],
+        violatedDirective: report['violated-directive'],
+        documentUri: report['document-uri'],
+        sourceFile: report['source-file'],
+        lineNumber: report['line-number'],
+      }));
+      captureServerException(new Error(`CSP Violation: ${report['violated-directive']} blocked ${report['blocked-uri']}`));
+    }
+    res.status(204).end();
+  });
 
   // 3. CORS
   const ALLOWED_ORIGINS: string[] = [
@@ -1862,7 +1917,7 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.post('/api/billing/create-checkout-session', async (req, res) => {
+  app.post('/api/billing/create-checkout-session', validateBody(checkoutSessionSchema), async (req, res) => {
     if (!stripe && isLocalBillingStubEnabled()) {
       const idToken = req.headers.authorization?.split('Bearer ')[1];
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
@@ -2057,7 +2112,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/billing/create-portal-session', async (req, res) => {
+  app.post('/api/billing/create-portal-session', validateBody(portalSessionSchema), async (req, res) => {
     if (!stripe && isLocalBillingStubEnabled()) {
       const idToken = req.headers.authorization?.split('Bearer ')[1];
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
@@ -2119,7 +2174,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/billing/cancel-subscription', async (req, res) => {
+  app.post('/api/billing/cancel-subscription', validateBody(cancelSubscriptionSchema), async (req, res) => {
     if (!stripe && isLocalBillingStubEnabled()) {
       const idToken = req.headers.authorization?.split('Bearer ')[1];
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
@@ -2164,7 +2219,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/billing/create-account-checkout-session', async (req, res) => {
+  app.post('/api/billing/create-account-checkout-session', validateBody(accountCheckoutSessionSchema), async (req, res) => {
     if (!stripe && isLocalBillingStubEnabled()) {
       const idToken = req.headers.authorization?.split('Bearer ')[1];
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
@@ -2336,7 +2391,7 @@ async function startServer() {
     message: { error: 'Too many reCAPTCHA requests. Please try again in a minute.' },
   });
 
-  app.post('/api/recaptcha-assess', recaptchaLimiter, express.json(), async (req, res) => {
+  app.post('/api/recaptcha-assess', recaptchaLimiter, express.json(), validateBody(recaptchaAssessSchema), async (req, res) => {
     const { token, action } = req.body || {};
     if (!token || !action) return res.status(400).json({ error: 'token and action required' });
 
@@ -2458,7 +2513,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/admin/users/create-managed-account', async (req, res) => {
+  app.post('/api/admin/users/create-managed-account', validateBody(createManagedAccountSchema), async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -2607,7 +2662,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/admin/dealer-feeds/ingest', async (req, res) => {
+  app.post('/api/admin/dealer-feeds/ingest', validateBody(dealerFeedIngestSchema), async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -3323,7 +3378,7 @@ async function startServer() {
   app.use('/api/auctions/place-bid', bidPlacementLimiter);
 
   // ── POST /api/auctions/place-bid ──────────────────────────────────────────
-  app.post('/api/auctions/place-bid', async (req, res) => {
+  app.post('/api/auctions/place-bid', validateBody(placeBidSchema), async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Not authenticated.' });
 
@@ -3524,6 +3579,16 @@ async function startServer() {
             triggeredExtension,
             newEndTime: newEndTime.toISOString(),
           },
+          _socketPayload: {
+            bidId: bidRef.id,
+            bidderAnonymousId,
+            bidCount: (typeof lotData.bidCount === 'number' ? lotData.bidCount : 0) + 1,
+            currentBid: amount,
+            timestamp: bidTimestamp,
+            triggeredExtension,
+            newEndTime: newEndTime.toISOString(),
+            extensionCount: newExtensionCount,
+          },
           // Pass context for post-transaction proxy bid resolution
           proxyContext: previousBidderId ? {
             previousBidderId,
@@ -3658,6 +3723,44 @@ async function startServer() {
         }
       }
 
+      // Emit bid event via Socket.IO for instant updates
+      if (result.status === 200 && (result as any)._socketPayload) {
+        const io = (app as any).__socketIO as SocketIOServer | undefined;
+        if (io) {
+          const sp = (result as any)._socketPayload;
+          emitBidPlaced(io, {
+            lotId,
+            auctionId,
+            bidId: sp.bidId,
+            amount,
+            bidderAnonymousId: sp.bidderAnonymousId,
+            bidCount: sp.bidCount,
+            currentBid: sp.currentBid,
+            timestamp: sp.timestamp,
+            triggeredExtension: sp.triggeredExtension,
+            newEndTime: sp.newEndTime,
+          });
+
+          if (sp.triggeredExtension) {
+            emitLotExtended(io, {
+              lotId,
+              auctionId,
+              newEndTime: sp.newEndTime,
+              extensionCount: sp.extensionCount,
+              status: 'extended',
+            });
+
+            // Reschedule timer for the extended endTime
+            const tm = (app as any).__timerManager as AuctionTimerManager | undefined;
+            if (tm) {
+              tm.rescheduleLotClosure(auctionId, lotId, sp.newEndTime, async (aid, lid) => {
+                await closeLotByTimer(db, aid, lid, io);
+              });
+            }
+          }
+        }
+      }
+
       return res.status(result.status).json(result.body);
     } catch (error: any) {
       console.error('[auction/place-bid] Transaction error:', error);
@@ -3667,7 +3770,7 @@ async function startServer() {
   });
 
   // ── POST /api/auctions/retract-bid ────────────────────────────────────────
-  app.post('/api/auctions/retract-bid', async (req, res) => {
+  app.post('/api/auctions/retract-bid', validateBody(retractBidSchema), async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Not authenticated.' });
 
@@ -3822,7 +3925,7 @@ async function startServer() {
   });
 
   // ── POST /api/auctions/close-lot ─────────────────────────────────────────
-  app.post('/api/auctions/close-lot', async (req, res) => {
+  app.post('/api/auctions/close-lot', validateBody(closeLotSchema), async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -3961,6 +4064,25 @@ async function startServer() {
         }
       }
 
+      // Emit lot_closed via Socket.IO and cancel timer
+      if (result.status === 200 && (result as any).needsPostProcessing) {
+        const ctx = result as any;
+        const io = (app as any).__socketIO as SocketIOServer | undefined;
+        const tm = (app as any).__timerManager as AuctionTimerManager | undefined;
+        if (io) {
+          emitLotClosed(io, {
+            lotId: ctx.lotId,
+            auctionId: ctx.auctionId,
+            finalStatus: ctx.finalStatus,
+            winningBid: ctx.finalStatus === 'sold' ? (ctx.lotData.winningBid || null) : null,
+            winningBidderAnonymousId: ctx.finalStatus === 'sold' ? (ctx.lotData.currentBidderAnonymousId || null) : null,
+          });
+        }
+        if (tm) {
+          tm.cancelLotTimer(ctx.auctionId, ctx.lotId);
+        }
+      }
+
       return res.status(result.status).json(result.body);
     } catch (error: any) {
       console.error('[auction/close-lot] Error:', error);
@@ -4077,6 +4199,22 @@ async function startServer() {
             captureServerException(bidError, { tags: { endpoint: 'close-expired-lots-bids' } });
           }
 
+          // Emit lot_closed via Socket.IO
+          const io = (app as any).__socketIO as SocketIOServer | undefined;
+          const tm = (app as any).__timerManager as AuctionTimerManager | undefined;
+          if (io) {
+            emitLotClosed(io, {
+              lotId,
+              auctionId,
+              finalStatus,
+              winningBid: finalStatus === 'sold' ? currentBid : null,
+              winningBidderAnonymousId: finalStatus === 'sold' ? (lotData.currentBidderAnonymousId || null) : null,
+            });
+          }
+          if (tm) {
+            tm.cancelLotTimer(auctionId, lotId);
+          }
+
           closedCount++;
           results.push({ auctionId, lotId, status: finalStatus, winningBid: finalStatus === 'sold' ? currentBid : null });
         }
@@ -4091,7 +4229,7 @@ async function startServer() {
   });
 
   // ── POST /api/auctions/activate ────────────────────────────────────────────
-  app.post('/api/auctions/activate', async (req, res) => {
+  app.post('/api/auctions/activate', validateBody(activateAuctionSchema), async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -4170,6 +4308,21 @@ async function startServer() {
 
       await batch.commit();
 
+      // Schedule lot closure timers via Socket.IO timer manager
+      const io = (app as any).__socketIO as SocketIOServer | undefined;
+      const tm = (app as any).__timerManager as AuctionTimerManager | undefined;
+      if (tm && io) {
+        for (const lotDoc of lotsSnap.docs) {
+          const lotData = lotDoc.data();
+          const closeOrder = typeof lotData.closeOrder === 'number' ? lotData.closeOrder : 0;
+          const lotEndTime = new Date(auctionEndTime.getTime() + (closeOrder * staggerIntervalMin * 60000));
+          tm.scheduleLotClosure(auctionId, lotDoc.id, lotEndTime.toISOString(), async (aid, lid) => {
+            await closeLotByTimer(db, aid, lid, io);
+          });
+        }
+        console.log(`[auction/activate] Scheduled ${lotsSnap.size} lot closure timers for auction ${auctionId}`);
+      }
+
       return res.json({ success: true, lotCount });
     } catch (error: any) {
       console.error('[auction/activate] Error:', error);
@@ -4179,7 +4332,7 @@ async function startServer() {
   });
 
   // ── POST /api/auctions/create-preauth-hold ─────────────────────────────────
-  app.post('/api/auctions/create-preauth-hold', async (req, res) => {
+  app.post('/api/auctions/create-preauth-hold', validateBody(preauthHoldSchema), async (req, res) => {
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -4246,7 +4399,7 @@ async function startServer() {
   });
 
   // ── POST /api/auctions/confirm-preauth ─────────────────────────────────────
-  app.post('/api/auctions/confirm-preauth', async (req, res) => {
+  app.post('/api/auctions/confirm-preauth', validateBody(confirmPreauthSchema), async (req, res) => {
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -4365,7 +4518,7 @@ async function startServer() {
   });
 
   // ── POST /api/auctions/process-seller-payout (admin only) ────────────────
-  app.post('/api/auctions/process-seller-payout', async (req, res) => {
+  app.post('/api/auctions/process-seller-payout', validateBody(sellerPayoutSchema), async (req, res) => {
     if (!stripe) {
       return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
     }
@@ -4507,6 +4660,87 @@ async function startServer() {
     });
   }
 
+  // ── closeLotByTimer: called by AuctionTimerManager when a lot's endTime arrives ──
+  async function closeLotByTimer(
+    database: admin.firestore.Firestore,
+    auctionId: string,
+    lotId: string,
+    io: SocketIOServer,
+  ): Promise<void> {
+    try {
+      const lotRef = database.collection('auctions').doc(auctionId).collection('lots').doc(lotId);
+      const lotSnap = await lotRef.get();
+      if (!lotSnap.exists) return;
+
+      const lotData = lotSnap.data()!;
+      const currentStatus = String(lotData.status || '');
+
+      // Already closed — idempotent
+      if (['closed', 'sold', 'unsold'].includes(currentStatus)) return;
+
+      // Only close if endTime has actually passed
+      const endTime = lotData.endTime ? new Date(lotData.endTime).getTime() : 0;
+      if (endTime > Date.now()) return; // Not yet expired (timer rescheduled by soft-close)
+
+      const currentBid = typeof lotData.currentBid === 'number' ? lotData.currentBid : 0;
+      const reservePrice = typeof lotData.reservePrice === 'number' ? lotData.reservePrice : null;
+
+      let finalStatus: 'sold' | 'unsold';
+      if (reservePrice !== null && currentBid < reservePrice) {
+        finalStatus = 'unsold';
+      } else if (currentBid > 0) {
+        finalStatus = 'sold';
+      } else {
+        finalStatus = 'unsold';
+      }
+
+      const lotUpdate: Record<string, unknown> = {
+        status: finalStatus,
+        finalStatus,
+        closedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (finalStatus === 'sold') {
+        lotUpdate.winningBidderId = lotData.currentBidderId || null;
+        lotUpdate.winningBid = currentBid;
+      }
+
+      await lotRef.update(lotUpdate);
+
+      // Emit via Socket.IO
+      emitLotClosed(io, {
+        lotId,
+        auctionId,
+        finalStatus,
+        winningBid: finalStatus === 'sold' ? currentBid : null,
+        winningBidderAnonymousId: finalStatus === 'sold' ? (lotData.currentBidderAnonymousId || null) : null,
+      });
+
+      // Post-close: generate invoice if sold (fire and forget)
+      if (finalStatus === 'sold') {
+        const auctionSnap = await database.collection('auctions').doc(auctionId).get();
+        if (auctionSnap.exists) {
+          try {
+            const mergedLotData = { ...lotData, ...lotUpdate, id: lotId };
+            const { invoiceData } = await generateAuctionInvoice(auctionId, mergedLotData, auctionSnap.data()!);
+            sendLotSoldEmailNotifications(mergedLotData, auctionSnap.data()!, invoiceData).catch((emailErr) => {
+              console.error('[timer/close-lot] Email error:', emailErr);
+            });
+          } catch (invoiceErr) {
+            console.error('[timer/close-lot] Invoice generation error:', invoiceErr);
+            captureServerException(invoiceErr, { tags: { handler: 'timer-close-invoice' } });
+          }
+        }
+      }
+
+      console.log(`[timer/close-lot] Lot ${auctionId}/${lotId} closed as ${finalStatus}`);
+    } catch (err) {
+      console.error(`[timer/close-lot] Error closing ${auctionId}/${lotId}:`, err);
+      captureServerException(err, { tags: { handler: 'timer-close-lot' } });
+    }
+  }
+
   app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
     captureServerException(error, {
       path: req.originalUrl,
@@ -4521,8 +4755,24 @@ async function startServer() {
     return res.status(500).json({ error: 'Internal server error' });
   });
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  // ── WebSocket: create HTTP server and attach Socket.IO ──────────────────
+  const httpServer = createHttpServer(app);
+  const { io: socketIO, timerManager } = setupAuctionSockets(httpServer, db, auth);
+
+  // Store references for use in route handlers
+  (app as any).__socketIO = socketIO;
+  (app as any).__timerManager = timerManager;
+
+  // Load active auction timers on startup
+  timerManager.loadActiveAuctions(db, async (auctionId: string, lotId: string) => {
+    await closeLotByTimer(db, auctionId, lotId, socketIO);
+  }).catch((err) => {
+    console.error('[startup] Failed to load auction timers:', err);
+    captureServerException(err, { tags: { handler: 'timer-load' } });
+  });
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT} (WebSocket enabled at /ws)`);
   });
 }
 

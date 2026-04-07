@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.timberequip.com/sitemap.xml
+Sitemap: https://timberequip.com/sitemap.xml

@@ -29,6 +29,7 @@ const {
   upsertAuctionLot,
   insertAuctionBid,
   upsertAuctionInvoice,
+  upsertBidderProfile,
 } = require('./generated/dataconnect/auctions');
 
 const mutations = {
@@ -36,6 +37,7 @@ const mutations = {
   upsertAuctionLot,
   insertAuctionBid,
   upsertAuctionInvoice,
+  upsertBidderProfile,
 };
 
 async function guardedMutation(name, variables) {
@@ -255,5 +257,53 @@ exports.syncAuctionInvoiceToPostgres = onDocumentWritten(
 
     logger.info(`[dual-write-auctions] Syncing auction invoice ${invoiceId} to PostgreSQL`);
     return guardedMutation('upsertAuctionInvoice', payload);
+  }
+);
+
+exports.syncAuctionBidderProfileToPostgres = onDocumentWritten(
+  { document: 'users/{userId}/bidderProfile/profile', database: FIRESTORE_DB_ID, region: 'us-central1' },
+  async (event) => {
+    const { userId } = event.params;
+    const after = event.data?.after?.data();
+
+    if (!after) {
+      logger.info(`[dual-write-auctions] Bidder profile for user ${userId} deleted`);
+      return;
+    }
+
+    const payload = {
+      id: userId,
+      userId,
+      verificationTier: after.verificationTier || 'basic',
+      fullName: safeStr(after.fullName),
+      phone: safeStr(after.phone),
+      phoneVerified: after.phoneVerified === true,
+      addressStreet: safeStr(after.address?.street),
+      addressCity: safeStr(after.address?.city),
+      addressState: safeStr(after.address?.state),
+      addressZip: safeStr(after.address?.zip),
+      addressCountry: safeStr(after.address?.country),
+      companyName: safeStr(after.companyName),
+      stripeCustomerId: safeStr(after.stripeCustomerId),
+      idVerificationStatus: safeStr(after.idVerificationStatus),
+      idVerifiedAt: tsToIso(after.idVerifiedAt),
+      bidderApprovedAt: tsToIso(after.bidderApprovedAt),
+      bidderApprovedBy: safeStr(after.bidderApprovedBy),
+      totalAuctionsParticipated: safeNum(after.totalAuctionsParticipated) ?? 0,
+      totalItemsWon: safeNum(after.totalItemsWon) ?? 0,
+      totalSpent: safeNum(after.totalSpent) ?? 0,
+      nonPaymentCount: safeNum(after.nonPaymentCount) ?? 0,
+      taxExempt: after.taxExempt === true,
+      taxExemptState: safeStr(after.taxExemptState),
+      taxExemptCertificateUrl: safeStr(after.taxExemptCertificateUrl),
+      defaultPaymentMethodId: safeStr(after.defaultPaymentMethodId),
+      defaultPaymentMethodBrand: safeStr(after.defaultPaymentMethodBrand),
+      defaultPaymentMethodLast4: safeStr(after.defaultPaymentMethodLast4),
+      termsAcceptedAt: tsToIso(after.termsAcceptedAt),
+      termsVersion: safeStr(after.termsVersion),
+    };
+
+    logger.info(`[dual-write-auctions] Syncing bidder profile for user ${userId} to PostgreSQL`);
+    return guardedMutation('upsertBidderProfile', payload);
   }
 );

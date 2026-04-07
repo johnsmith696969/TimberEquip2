@@ -15,7 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
-import { taxonomyService, EquipmentTaxonomy } from '../services/taxonomyService';
+import { taxonomyService, type FullEquipmentTaxonomy } from '../services/taxonomyService';
 import { Listing, AlertPreferences } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { InquiryModal } from '../components/InquiryModal';
@@ -32,11 +32,20 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
-import { normalizeSeoSlug } from '../utils/seoRoutes';
+import { expandRegionName, getListingStateName, normalizeRegionName, normalizeSeoSlug } from '../utils/seoRoutes';
 import { AlertMessage } from '../components/AlertMessage';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
 import type { GooglePlaceSelection } from '../services/placesService';
+import {
+  getTaxonomyCategoryOptions,
+  getTaxonomyManufacturerOptions,
+  getTaxonomyModelOptions,
+  getTaxonomySubcategoryOptions,
+  resolveListingTaxonomySelection,
+  type ResolvedEquipmentTaxonomySelection,
+} from '../utils/equipmentTaxonomy';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
 
@@ -47,6 +56,9 @@ const parseMultiValue = (value: string): string[] =>
 
 const joinMultiValue = (values: string[]): string =>
   values.filter(Boolean).join('|');
+
+const normalizeRegionMultiValue = (value: string): string =>
+  joinMultiValue(Array.from(new Set(parseMultiValue(value).map((entry) => expandRegionName(entry)).filter(Boolean))));
 
 export interface CategoryRouteInfo {
   categoryName: string;
@@ -106,6 +118,44 @@ const DEFAULT_FILTERS: SearchFilters = {
   stockNumber: '',
   serialNumber: '',
   sortBy: 'newest'
+};
+
+const matchesOptionValue = (candidate: string | undefined, selected: string): boolean => {
+  const normalizedCandidate = normalize(candidate);
+  const normalizedSelected = normalize(selected);
+  if (!normalizedCandidate || !normalizedSelected) return false;
+  return (
+    normalizedCandidate === normalizedSelected ||
+    normalizedCandidate.includes(normalizedSelected) ||
+    normalizedSelected.includes(normalizedCandidate)
+  );
+};
+
+const matchesEquipmentFilterSet = (
+  listing: ResolvedEquipmentTaxonomySelection,
+  activeFilters: Pick<SearchFilters, 'category' | 'subcategory' | 'manufacturer' | 'model'>,
+  excludeKey?: 'category' | 'subcategory' | 'manufacturer' | 'model'
+): boolean => {
+  if (excludeKey !== 'category' && activeFilters.category) {
+    if (!matchesOptionValue(listing.category, activeFilters.category)) return false;
+  }
+
+  if (excludeKey !== 'subcategory' && activeFilters.subcategory) {
+    const selectedSubcategories = parseMultiValue(activeFilters.subcategory);
+    if (!selectedSubcategories.some((selected) => matchesOptionValue(listing.subcategory, selected))) return false;
+  }
+
+  if (excludeKey !== 'manufacturer' && activeFilters.manufacturer) {
+    const selectedManufacturers = parseMultiValue(activeFilters.manufacturer);
+    if (!selectedManufacturers.some((selected) => matchesOptionValue(listing.manufacturer, selected))) return false;
+  }
+
+  if (excludeKey !== 'model' && activeFilters.model) {
+    const selectedModels = parseMultiValue(activeFilters.model);
+    if (!selectedModels.some((selected) => matchesOptionValue(listing.model, selected))) return false;
+  }
+
+  return true;
 };
 
 const LOCATION_RADIUS_OPTIONS = ['25', '50', '100', '250', '500', '1000'];
@@ -248,7 +298,7 @@ const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   subcategory: params.get('subcategory') || '',
   manufacturer: params.get('manufacturer') || '',
   model: params.get('model') || '',
-  state: params.get('state') || '',
+  state: normalizeRegionMultiValue(params.get('state') || ''),
   country: params.get('country') || '',
   minPrice: params.get('minPrice') || '',
   maxPrice: params.get('maxPrice') || '',
@@ -293,9 +343,14 @@ const applyDependentFilterResets = (
   if (key === 'category') {
     next.subcategory = '';
     next.manufacturer = '';
+    next.model = '';
   }
   if (key === 'subcategory') {
     next.manufacturer = '';
+    next.model = '';
+  }
+  if (key === 'manufacturer') {
+    next.model = '';
   }
   return next;
 };
@@ -365,7 +420,7 @@ function FilterSectionPanel({ open, children }: { open: boolean; children: React
 
 function getPageSize() {
   if (typeof window === 'undefined') return 21;
-  return window.innerWidth < 768 ? 15 : 21;
+  return 21;
 }
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
@@ -376,7 +431,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [allListings, setAllListings] = useState<Listing[]>(() => getInitialCachedListings());
-  const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy>({});
+  const [fullTaxonomy, setFullTaxonomy] = useState<FullEquipmentTaxonomy>({});
   const [loading, setLoading] = useState(() => getInitialCachedListings().length === 0);
   const [inventoryNotice, setInventoryNotice] = useState('');
   const [inventoryError, setInventoryError] = useState('');
@@ -458,7 +513,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       try {
         const [listingsResult, taxonomyResult] = await Promise.allSettled([
           equipmentService.getListings({ inStockOnly: false, sortBy: 'newest' }),
-          taxonomyService.getTaxonomy()
+          taxonomyService.getFullTaxonomy()
         ]);
 
         if (listingsResult.status === 'fulfilled') {
@@ -481,7 +536,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         }
 
         if (taxonomyResult.status === 'fulfilled') {
-          setTaxonomy(taxonomyResult.value);
+          setFullTaxonomy(taxonomyResult.value);
           loadTrace?.putMetric('taxonomy_category_count', Object.keys(taxonomyResult.value).length);
           loadTrace?.putAttribute('taxonomy_source', 'live');
         } else {
@@ -550,59 +605,119 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     setSearchParams(params, { replace: true, preventScrollReset: true });
   }, [filters, setSearchParams]);
 
-  const taxonomyCategories = useMemo(() => Object.keys(taxonomy).sort((a, b) => a.localeCompare(b)), [taxonomy]);
+  const equipmentDraftFilters = useMemo(
+    () => ({
+      category: draftFilters.category,
+      subcategory: draftFilters.subcategory,
+      manufacturer: draftFilters.manufacturer,
+      model: draftFilters.model,
+    }),
+    [draftFilters.category, draftFilters.subcategory, draftFilters.manufacturer, draftFilters.model]
+  );
 
-  const taxonomySubcategories = useMemo(() => {
-    if (!filters.category || !taxonomy[filters.category]) return [];
-    return Object.keys(taxonomy[filters.category]).sort((a, b) => a.localeCompare(b));
-  }, [filters.category, taxonomy]);
-
-  const taxonomyManufacturers = useMemo(() => {
-    if (!filters.category || !filters.subcategory) return [];
-    return [...(taxonomy[filters.category]?.[filters.subcategory] || [])].sort((a, b) => a.localeCompare(b));
-  }, [filters.category, filters.subcategory, taxonomy]);
-
-  const listingCategories = useMemo(() => {
-    const taxonomyKeys = new Set(Object.keys(taxonomy).map((k) => k.toLowerCase()));
-    return uniqueSorted(
-      allListings
-        .map((listing) => listing.category)
-        .filter((cat) => taxonomyKeys.has(cat.toLowerCase()))
-    );
-  }, [allListings, taxonomy]);
-  const listingSubcategories = useMemo(() => {
-    const filtered = filters.category
-      ? allListings.filter((listing) => normalize(listing.category) === normalize(filters.category))
-      : allListings;
-    return uniqueSorted(filtered.map((listing) => listing.subcategory || listing.category));
-  }, [allListings, filters.category]);
-
-  const manufacturerOptions = useMemo(() => {
-    const listingManufacturers = uniqueSortedUpper(
-      allListings.map((listing) => listing.make || listing.manufacturer || listing.brand)
-    );
-    return uniqueSortedUpper([...taxonomyManufacturers, ...listingManufacturers]);
-  }, [allListings, taxonomyManufacturers]);
-
-  const modelOptions = useMemo(() => {
-    const narrowed = allListings.filter((listing) => {
-      if (!filters.manufacturer) return true;
-      return normalize(listing.make || listing.manufacturer || listing.brand).includes(normalize(filters.manufacturer));
+  const resolvedListingEquipment = useMemo(() => {
+    const byId = new Map<string, ResolvedEquipmentTaxonomySelection>();
+    const byReference = new WeakMap<Listing, ResolvedEquipmentTaxonomySelection>();
+    const items = allListings.map((listing) => {
+      const resolved = resolveListingTaxonomySelection(fullTaxonomy, listing);
+      byReference.set(listing, resolved);
+      if (listing.id) {
+        byId.set(String(listing.id), resolved);
+      }
+      return { listing, resolved };
     });
-    return uniqueSortedUpper(narrowed.map((listing) => listing.model));
-  }, [allListings, filters.manufacturer]);
+
+    return {
+      items,
+      get(listing: Listing): ResolvedEquipmentTaxonomySelection {
+        return (
+          byReference.get(listing) ||
+          byId.get(String(listing.id || '')) ||
+          resolveListingTaxonomySelection(fullTaxonomy, listing)
+        );
+      },
+    };
+  }, [allListings, fullTaxonomy]);
+
+  const categoryOptions = useMemo(
+    () => {
+      const inventoryCategories = uniqueSorted(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'category'))
+          .map(({ resolved }) => resolved.category)
+      );
+      return inventoryCategories.length ? inventoryCategories : getTaxonomyCategoryOptions(fullTaxonomy);
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
+
+  const subcategoryOptions = useMemo(
+    () => {
+      const inventorySubcategories = uniqueSorted(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'subcategory'))
+          .map(({ resolved }) => resolved.subcategory)
+      );
+      return inventorySubcategories.length
+        ? inventorySubcategories
+        : getTaxonomySubcategoryOptions(fullTaxonomy, equipmentDraftFilters.category);
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
+
+  const manufacturerOptions = useMemo(
+    () => {
+      const inventoryManufacturers = uniqueSortedUpper(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'manufacturer'))
+          .map(({ resolved }) => resolved.manufacturer)
+      );
+      return inventoryManufacturers.length
+        ? inventoryManufacturers
+        : uniqueSortedUpper(
+            getTaxonomyManufacturerOptions(
+              fullTaxonomy,
+              equipmentDraftFilters.category,
+              parseMultiValue(equipmentDraftFilters.subcategory)
+            )
+          );
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
+
+  const modelOptions = useMemo(
+    () => {
+      const inventoryModels = uniqueSortedUpper(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'model'))
+          .map(({ resolved }) => resolved.model)
+      );
+      return inventoryModels.length
+        ? inventoryModels
+        : uniqueSortedUpper(
+            getTaxonomyModelOptions(
+              fullTaxonomy,
+              equipmentDraftFilters.category,
+              parseMultiValue(equipmentDraftFilters.subcategory),
+              parseMultiValue(equipmentDraftFilters.manufacturer)
+            )
+          );
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
 
   const attachmentOptions = useMemo(() => {
     const narrowed = allListings.filter((listing) => {
-      if (filters.category && normalize(listing.category) !== normalize(filters.category)) return false;
+      const resolved = resolvedListingEquipment.get(listing);
+      if (filters.category && !matchesOptionValue(resolved.category, filters.category)) return false;
       if (filters.subcategory) {
-        const selected = parseMultiValue(filters.subcategory).map(normalize);
-        if (!selected.some((s) => normalize(listing.subcategory) === s)) return false;
+        const selected = parseMultiValue(filters.subcategory);
+        if (!selected.some((value) => matchesOptionValue(resolved.subcategory, value))) return false;
       }
       return true;
     });
     return uniqueSortedUpper(narrowed.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [])));
-  }, [allListings, filters.category, filters.subcategory]);
+  }, [allListings, filters.category, filters.subcategory, resolvedListingEquipment]);
 
   const locationParts = useMemo(() => {
     return allListings.map((listing) => {
@@ -611,7 +726,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       // 2-part: "City, State" → state=parts[1], country defaults to "United States"
       // 3+-part: "City, State, Country" → state=parts[-2], country=parts[-1]
       const country = parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : '');
-      const state = parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : '');
+      const state = getListingStateName(listing);
       return { state, country };
     });
   }, [allListings]);
@@ -649,6 +764,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     const center = getLocationFilterCenter(filters);
 
     return (listing: Listing, excludeKey?: keyof SearchFilters): boolean => {
+      const resolvedEquipment = resolvedListingEquipment.get(listing);
       if ((listing.status || 'active') === 'sold') return false;
 
       if (excludeKey !== 'q' && filters.q) {
@@ -665,33 +781,28 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       }
 
       if (excludeKey !== 'category' && filters.category) {
-        if (normalize(listing.category) !== normalize(filters.category)) return false;
+        if (!matchesOptionValue(resolvedEquipment.category, filters.category)) return false;
       }
 
       if (excludeKey !== 'subcategory' && filters.subcategory) {
-        const selected = parseMultiValue(filters.subcategory).map(normalize);
-        if (!selected.some((s) => normalize(listing.subcategory) === s)) return false;
+        const selected = parseMultiValue(filters.subcategory);
+        if (!selected.some((value) => matchesOptionValue(resolvedEquipment.subcategory, value))) return false;
       }
 
       if (excludeKey !== 'manufacturer' && filters.manufacturer) {
-        const selected = parseMultiValue(filters.manufacturer).map(normalize);
-        const make = normalize(listing.make || listing.manufacturer || listing.brand);
-        if (!selected.some((s) => make.includes(s))) return false;
+        const selected = parseMultiValue(filters.manufacturer);
+        if (!selected.some((value) => matchesOptionValue(resolvedEquipment.manufacturer, value))) return false;
       }
 
       if (excludeKey !== 'model' && filters.model) {
-        const selected = parseMultiValue(filters.model).map(normalize);
-        const model = normalize(listing.model);
-        if (!selected.some((s) => model.includes(s))) return false;
+        const selected = parseMultiValue(filters.model);
+        if (!selected.some((value) => matchesOptionValue(resolvedEquipment.model, value))) return false;
       }
 
       if (excludeKey !== 'state' && filters.state) {
-        const selected = parseMultiValue(filters.state).map(normalize);
-        const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
-        const listingState = normalize(
-          locationParts.length >= 3 ? locationParts[locationParts.length - 2] : (locationParts.length === 2 ? locationParts[1] : '')
-        );
-        if (!selected.some((s) => listingState.includes(s))) return false;
+        const selected = parseMultiValue(filters.state).map(normalizeRegionName);
+        const listingState = normalizeRegionName(getListingStateName(listing));
+        if (!selected.some((state) => listingState === state)) return false;
       }
 
       if (excludeKey !== 'country' && filters.country) {
@@ -746,7 +857,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
       return true;
     };
-  }, [allListings, filters]);
+  }, [filters, resolvedListingEquipment]);
 
   // Faceted counts: for each multi-select field, count matches excluding that field
   const facetedCounts = useMemo(() => {
@@ -766,10 +877,12 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       const map = new Map<string, number>();
       for (const listing of allListings) {
         if (!matchesFilters(listing, excludeKey)) continue;
-        const parts = (listing.location || '').split(',').map((p) => p.trim()).filter(Boolean);
         const val = partIndex === 'state'
-          ? (parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : ''))
-          : (parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : ''));
+          ? getListingStateName(listing)
+          : (() => {
+            const parts = (listing.location || '').split(',').map((p) => p.trim()).filter(Boolean);
+            return parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : '');
+          })();
         if (val) map.set(val, (map.get(val) || 0) + 1);
       }
       return map;
@@ -789,16 +902,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     };
 
     return {
-      subcategory: countField('subcategory', (l) => l.subcategory || l.category),
-      manufacturer: countField('manufacturer', (l) => l.make || l.manufacturer || l.brand, true),
-      model: countField('model', (l) => l.model, true),
+      subcategory: countField('subcategory', (l) => resolvedListingEquipment.get(l).subcategory),
+      manufacturer: countField('manufacturer', (l) => resolvedListingEquipment.get(l).manufacturer, true),
+      model: countField('model', (l) => resolvedListingEquipment.get(l).model, true),
       condition: countField('condition', (l) => l.condition),
       state: countLocationField('state', 'state'),
       country: countLocationField('country', 'country'),
       attachment: countArrayField('attachment', (l) => Array.isArray(l.specs?.attachments) ? l.specs.attachments : [], true),
       feature: countArrayField('feature', (l) => [...(Array.isArray(l.features) ? l.features : []), ...(Array.isArray(l.specs?.features) ? l.specs.features : [])], true),
     };
-  }, [allListings, matchesFilters]);
+  }, [allListings, matchesFilters, resolvedListingEquipment]);
 
   // Build MultiSelectOption arrays from options + faceted counts
   const manufacturerMultiOptions: MultiSelectOption[] = useMemo(
@@ -1041,13 +1154,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const visibleActiveFilterCount = countActiveFilters(filters) - (isCategoryPage ? 1 : 0);
 
   const seoTitle = isCategoryPage
-    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | TimberEquip`
+    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | Forestry Equipment Sales`
     : filters.q
-      ? `TimberEquip | ${filters.q} Listings (${filteredListings.length})`
-      : 'TimberEquip | New & Used Logging Equipment For Sale';
+      ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
+      : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
 
   const seoDescription = isCategoryPage
-    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on TimberEquip.`
+    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on Forestry Equipment Sales.`
     : 'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
 
   const seoRobots = isCategoryPage ? undefined : 'noindex, follow';
@@ -1061,14 +1174,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             '@type': 'CollectionPage',
             name: `${categoryLabel} for Sale`,
             description: seoDescription,
-            url: `https://timberequip.com${categorySlugPath}`,
+            url: buildSiteUrl(categorySlugPath),
           },
           {
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
-              { '@type': 'ListItem', position: 2, name: 'Categories', item: 'https://timberequip.com/categories' },
-              { '@type': 'ListItem', position: 3, name: categoryLabel, item: `https://timberequip.com${categorySlugPath}` },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+              { '@type': 'ListItem', position: 2, name: 'Categories', item: buildSiteUrl('/categories') },
+              { '@type': 'ListItem', position: 3, name: categoryLabel, item: buildSiteUrl(categorySlugPath) },
             ],
           },
           {
@@ -1077,14 +1190,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
               '@type': 'ListItem',
               position: index + 1,
-              url: `https://timberequip.com${buildListingPath(listing)}`,
+              url: buildSiteUrl(buildListingPath(listing)),
               item: {
                 '@type': 'Product',
                 name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
                 sku: listing.id,
                 brand: {
                   '@type': 'Brand',
-                  name: listing.make || listing.manufacturer || listing.brand || 'TimberEquip',
+                  name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
                 },
                 offers: {
                   '@type': 'Offer',
@@ -1104,14 +1217,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://timberequip.com${buildListingPath(listing)}`,
+          url: buildSiteUrl(buildListingPath(listing)),
           item: {
             '@type': 'Product',
             name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
             sku: listing.id,
             brand: {
               '@type': 'Brand',
-              name: listing.make || listing.manufacturer || listing.brand || 'TimberEquip',
+              name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
             },
             offers: {
               '@type': 'Offer',
@@ -1282,7 +1395,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           className="select-industrial w-full"
                         >
                           <option value="">All Categories</option>
-                          {uniqueSorted([...taxonomyCategories, ...listingCategories]).map((category) => (
+                          {categoryOptions.map((category) => (
                             <option key={category} value={category}>
                               {category}
                             </option>
@@ -1299,7 +1412,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           className="select-industrial w-full"
                         >
                           <option value="">All Subcategories</option>
-                          {uniqueSorted([...taxonomySubcategories, ...listingSubcategories]).map((sub) => (
+                          {subcategoryOptions.map((sub) => (
                             <option key={sub} value={sub}>
                               {sub}
                             </option>
@@ -1741,13 +1854,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         </AnimatePresence>
 
         <div className="flex-1" aria-live="polite" aria-busy={loading}>
-          <div className="flex justify-between items-center mb-10 border-b border-line pb-6">
-            <div className="flex items-center space-x-4">
+          <div className="mb-10 flex flex-col gap-4 border-b border-line pb-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
               <span className="text-sm font-black uppercase tracking-tighter">
                 {formatNumber(filteredListings.length)}{filters.category ? ` ${filters.category}` : ` ${t('search.machines', 'Machines')}`} {t('search.available', 'Available')}
               </span>
               <div className="h-4 w-px bg-line"></div>
-              <div className="flex items-center text-muted text-[10px] font-bold uppercase tracking-widest">
+              <div className="flex min-w-0 items-center text-muted text-[10px] font-bold uppercase tracking-widest">
                 <ArrowUpDown size={12} className="mr-2" />
                 {t('search.sortBy', 'Sort By')}:
                 <select
@@ -1758,7 +1871,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     handleDraftFilterChange('sortBy', nextSort);
                   }}
                   aria-label="Sort by"
-                  className="bg-bg border-none focus:ring-0 cursor-pointer text-ink ml-1 pl-2 font-bold"
+                  className="ml-1 min-w-0 bg-bg border-none pl-2 font-bold text-ink cursor-pointer focus:ring-0"
                 >
                   <option value="newest">{t('search.sortNewest', 'Newest')}</option>
                   <option value="price_asc">{t('search.sortPriceLowHigh', 'Price: Low to High')}</option>
@@ -1769,7 +1882,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 </select>
               </div>
               <button
-                className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm border transition-colors ${
+                className={`w-full shrink-0 whitespace-nowrap rounded-sm border px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-colors sm:w-auto sm:px-2 sm:py-1 ${
                   auctionOnly ? 'bg-accent text-white border-accent' : 'bg-transparent text-muted border-line hover:border-ink'
                 }`}
                 onClick={() => setAuctionOnly(!auctionOnly)}

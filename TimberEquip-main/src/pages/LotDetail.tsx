@@ -15,6 +15,7 @@ import {
   MapPin,
   Hash,
   Calendar,
+  Users,
 } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 import { auctionService } from '../services/auctionService';
@@ -23,6 +24,8 @@ import { Seo } from '../components/Seo';
 import { Breadcrumbs, BreadcrumbItem } from '../components/Breadcrumbs';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
+import { buildSiteUrl } from '../utils/siteUrl';
+import { useAuctionSocket } from '../hooks/useAuctionSocket';
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -53,6 +56,20 @@ function relativeTime(timestamp: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+/** Server-corrected time remaining (accounts for clock drift via serverTimeOffset). */
+function formatTimeRemainingWithOffset(endTime: string, offset: number): string {
+  const remaining = new Date(endTime).getTime() - (Date.now() + offset);
+  if (remaining <= 0) return 'Ended';
+  const days = Math.floor(remaining / 86400000);
+  const hours = Math.floor((remaining % 86400000) / 3600000);
+  const minutes = Math.floor((remaining % 3600000) / 60000);
+  const seconds = Math.floor((remaining % 60000) / 1000);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 // ── Status helpers (matching AuctionDetail) ──────────────────────────────────
@@ -139,6 +156,48 @@ export function LotDetail() {
 
   // Track if we initialized the bid amount from lot data
   const bidInitRef = useRef(false);
+
+  // ── WebSocket real-time updates ──────────────────────────────────────────
+  const { isConnected, watcherCount, serverTimeOffset } = useAuctionSocket({
+    auctionId: auction?.id || '',
+    lotId: lot?.id,
+    onBidPlaced: (payload) => {
+      setLot((prev) => {
+        if (!prev || prev.bidCount >= payload.bidCount) return prev;
+        return {
+          ...prev,
+          currentBid: payload.currentBid,
+          bidCount: payload.bidCount,
+          currentBidderAnonymousId: payload.bidderAnonymousId,
+          lastBidTime: payload.timestamp,
+        };
+      });
+    },
+    onLotExtended: (payload) => {
+      setLot((prev) =>
+        prev
+          ? {
+              ...prev,
+              endTime: payload.newEndTime,
+              extensionCount: payload.extensionCount,
+              status: 'extended' as AuctionLotStatus,
+            }
+          : prev,
+      );
+    },
+    onLotClosed: (payload) => {
+      setLot((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: payload.finalStatus as AuctionLotStatus,
+              winningBid: payload.winningBid,
+              currentBidderAnonymousId: payload.winningBidderAnonymousId,
+            }
+          : prev,
+      );
+    },
+  });
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const currentBidAmount = lot
@@ -233,17 +292,17 @@ export function LotDetail() {
     return () => unsubscribe();
   }, [auction?.id, lot?.id]);
 
-  // ── Time remaining countdown ───────────────────────────────────────────────
+  // ── Time remaining countdown (server-corrected) ────────────────────────────
   useEffect(() => {
     if (!lot?.endTime || !isActive) {
       setTimeRemaining('');
       return;
     }
-    const tick = () => setTimeRemaining(auctionService.formatTimeRemaining(lot.endTime));
+    const tick = () => setTimeRemaining(formatTimeRemainingWithOffset(lot.endTime, serverTimeOffset));
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [lot?.endTime, isActive, lot?.status]);
+  }, [lot?.endTime, isActive, lot?.status, serverTimeOffset]);
 
   // ── Initialize bid amount when lot data arrives ────────────────────────────
   useEffect(() => {
@@ -376,7 +435,7 @@ export function LotDetail() {
       '@type': 'Product',
       name: `Lot #${lot.lotNumber} – ${lot.title}`,
       description: `${lot.year} ${lot.manufacturer} ${lot.model}. Auction lot in ${auction.title}.`,
-      url: `https://timberequip.com/auctions/${auction.slug}/lots/${lot.lotNumber}`,
+      url: buildSiteUrl(`/auctions/${auction.slug}/lots/${lot.lotNumber}`),
       image: lot.thumbnailUrl || undefined,
       offers: {
         '@type': 'Offer',
@@ -710,8 +769,8 @@ export function LotDetail() {
   return (
     <div className="bg-bg min-h-screen">
       <Seo
-        title={`Lot #${lot.lotNumber} – ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title} | TimberEquip`}
-        description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lot.model}. ${lot.pickupLocation ? `Pickup: ${lot.pickupLocation}.` : ''} Auction by TimberEquip.`}
+        title={`Lot #${lot.lotNumber} – ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title} | Forestry Equipment Sales`}
+        description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lot.model}. ${lot.pickupLocation ? `Pickup: ${lot.pickupLocation}.` : ''} Auction by Forestry Equipment Sales.`}
         canonicalPath={`/auctions/${auction.slug}/lots/${lot.lotNumber}`}
         imagePath={lot.thumbnailUrl || undefined}
         jsonLd={jsonLd}
@@ -915,6 +974,12 @@ export function LotDetail() {
                     {lot.bidCount > 0 && (
                       <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
                         {lot.bidCount} {lot.bidCount === 1 ? 'bid' : 'bids'}
+                      </span>
+                    )}
+                    {isConnected && watcherCount > 1 && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-muted uppercase tracking-widest">
+                        <Users size={10} />
+                        {watcherCount} watching
                       </span>
                     )}
                     {isHighBidder && (

@@ -11,8 +11,10 @@ import {
   buildManufacturerCategoryPath,
   buildDealerPath,
   isDealerRole,
+  expandRegionName,
   getStateFromLocation,
   getListingStateName,
+  matchesStateSlug,
   MARKET_ROUTE_LABELS,
   CANONICAL_MARKET_ROUTE_KEY,
 } from '../utils/seoRoutes';
@@ -158,6 +160,10 @@ describe('getStateFromLocation', () => {
     expect(getStateFromLocation('Macon, Georgia')).toBe('Georgia');
   });
 
+  it('extracts state from state, country format', () => {
+    expect(getStateFromLocation('Minnesota, USA')).toBe('Minnesota');
+  });
+
   it('extracts state from state-only', () => {
     expect(getStateFromLocation('Wisconsin')).toBe('Wisconsin');
   });
@@ -182,6 +188,26 @@ describe('getListingStateName', () => {
 
   it('does not treat the city as the state when only a city is present', () => {
     expect(getListingStateName({ location: 'Macon', city: 'Macon' })).toBe('');
+  });
+});
+
+describe('expandRegionName', () => {
+  it('expands abbreviations to full names', () => {
+    expect(expandRegionName('MN')).toBe('Minnesota');
+  });
+
+  it('preserves full state names', () => {
+    expect(expandRegionName('Oregon')).toBe('Oregon');
+  });
+});
+
+describe('matchesStateSlug', () => {
+  it('matches full-name slugs against abbreviations', () => {
+    expect(matchesStateSlug('MN', 'minnesota')).toBe(true);
+  });
+
+  it('matches abbreviation slugs against full names', () => {
+    expect(matchesStateSlug('Minnesota', 'mn')).toBe(true);
   });
 });
 

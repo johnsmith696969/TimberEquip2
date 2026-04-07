@@ -22,7 +22,7 @@ import {
 
 import { AlertMessage } from '../components/AlertMessage';
 import { useAuth } from '../components/AuthContext';
-import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { verifyRecaptchaAction } from '../services/recaptchaService';
 import {
   completeSmsMfaSignIn,
   createVisibleRecaptchaVerifier,
@@ -190,7 +190,7 @@ export function Login() {
 
     try {
       const verifier = await getLoginMfaRecaptcha();
-      setInfoMessage('Complete the reCAPTCHA challenge below. TimberEquip will send the SMS code as soon as the security check is passed.');
+      setInfoMessage('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
       const preferredFactor = getPreferredSmsMfaFactor(resolver);
       const { verificationId, factor } = await startSmsMfaSignIn(resolver, preferredFactor?.uid, verifier);
       // reCAPTCHA token is consumed — destroy the widget immediately
@@ -201,7 +201,7 @@ export function Login() {
       if (recaptchaContainer) recaptchaContainer.innerHTML = '';
       setMfaFactor(factor);
       setMfaVerificationId(verificationId);
-      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for TimberEquip.com. Enter it below to finish signing in.`);
+      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for Forestry Equipment Sales.com. Enter it below to finish signing in.`);
     } catch (mfaError) {
       resetRecaptchaVerifier(mfaRecaptchaRef.current);
       mfaRecaptchaRef.current = null;
@@ -249,8 +249,11 @@ export function Login() {
     setResetError('');
 
     try {
-      const rcToken = await getRecaptchaToken('PASSWORD_RESET');
-      if (rcToken) await assessRecaptcha(rcToken, 'PASSWORD_RESET');
+      const recaptchaPassed = await verifyRecaptchaAction('PASSWORD_RESET');
+      if (!recaptchaPassed) {
+        setResetError('Security check failed. Please refresh and try again.');
+        return;
+      }
       await sendPasswordReset(resetEmail.trim());
       setResetSent(true);
     } catch (resetFailure: any) {
@@ -280,18 +283,15 @@ export function Login() {
     setInfoMessage('');
 
     try {
-      const rcToken = await getRecaptchaToken('LOGIN');
-      if (rcToken) {
-        const pass = await assessRecaptcha(rcToken, 'LOGIN');
-        if (!pass) {
-          setError('Security check failed. Please try again.');
-          setLoading(false);
-          return;
-        }
+      const recaptchaPassed = await verifyRecaptchaAction('LOGIN');
+      if (!recaptchaPassed) {
+        setError('Security check failed. Please refresh and try again.');
+        setLoading(false);
+        return;
       }
 
       await setPersistence(auth, stayLoggedIn ? browserLocalPersistence : browserSessionPersistence);
-      await login(email, password);
+      await login(email.trim(), password);
       const currentUser = auth.currentUser;
       if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
         const verificationEmailSent = await sendVerificationEmail();
@@ -311,11 +311,11 @@ export function Login() {
       if (code === 'auth/multi-factor-auth-required') {
         await startLoginMfaChallenge(getSmsMultiFactorResolver(loginFailure));
       } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        setError('Invalid email or password. Try signing in with Google below.');
+        setError('Invalid email or password. Use your Forestry Equipment Sales password or reset it if you need a new one.');
       } else if (code === 'auth/too-many-requests') {
         setError('Too many failed attempts. Please wait a moment and try again.');
       } else {
-        setError('Login failed. Please try again or use Google sign-in.');
+        setError('Sign-in failed. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -361,7 +361,8 @@ export function Login() {
       } else if (code === 'auth/account-exists-with-different-credential') {
         setError('This email already exists with a different sign-in method. Use your password login first.');
       } else {
-        setError('Google sign-in failed. Please try again.');
+        console.error('Google sign-in error:', code, googleFailure);
+        setError(code ? `Google sign-in failed (${code}). Please try again.` : 'Google sign-in failed. Please try again.');
       }
     } finally {
       setGoogleLoading(false);
@@ -377,8 +378,8 @@ export function Login() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
       <Seo
-        title="Sign In | TimberEquip"
-        description="Sign in to your TimberEquip account to manage listings, view saved equipment, and access dealer tools."
+        title="Sign In | Forestry Equipment Sales"
+        description="Sign in to your Forestry Equipment Sales account to manage listings, view saved equipment, and access dealer tools."
         robots={NOINDEX_ROBOTS}
       />
       <div className="absolute top-0 right-0 w-1/2 h-full bg-accent/5 skew-x-12 translate-x-1/2" />
@@ -560,8 +561,11 @@ export function Login() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-line" />
               </div>
-              <span className="relative bg-bg px-4 text-[10px] font-bold text-muted uppercase tracking-widest">Or continue with</span>
+              <span className="relative bg-bg px-4 text-[10px] font-bold text-muted uppercase tracking-widest">Google is optional</span>
             </div>
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-muted">
+              Use email and password for Forestry Equipment Sales-native accounts. Google sign-in is only for accounts that were started with Google.
+            </p>
             <button
               type="button"
               onClick={handleGoogleLogin}
@@ -587,7 +591,7 @@ export function Login() {
 
           <div className="mt-8 pt-8 border-t border-line flex flex-col space-y-6">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to TimberEquip?</span>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">New to Forestry Equipment Sales?</span>
               <Link to={registerHref} className="text-[10px] font-black text-accent uppercase hover:underline">
                 Create Account
               </Link>

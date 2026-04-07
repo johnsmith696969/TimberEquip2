@@ -19,14 +19,17 @@ import {
   buildManufacturerPath,
   buildStateCategoryPath,
   buildStateMarketPath,
+  expandRegionName,
   getListingCategoryLabel,
   getListingManufacturer,
-  getStateFromLocation,
+  getListingStateName,
+  matchesStateSlug,
   normalizeSeoSlug,
   titleCaseSlug,
 } from '../utils/seoRoutes';
 import { evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } from '../utils/seoRouteQuality';
 import { buildListingPath } from '../utils/listingPath';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { getManufacturerContent } from '../constants/manufacturerContent';
 import { getSubcategoryContent, getParentCategory } from '../constants/subcategoryContent';
 
@@ -65,7 +68,7 @@ function buildBreadcrumbJsonLd(breadcrumbs: BreadcrumbItem[]) {
       '@type': 'ListItem',
       position: index + 1,
       name: item.label,
-      item: `https://timberequip.com${item.path || '/'}`,
+      item: buildSiteUrl(item.path || '/'),
     })),
   };
 }
@@ -78,7 +81,7 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
         '@type': 'CollectionPage',
         name,
         description,
-        url: `https://timberequip.com${canonicalPath}`,
+        url: buildSiteUrl(canonicalPath),
       },
       buildBreadcrumbJsonLd(breadcrumbs),
       {
@@ -87,13 +90,13 @@ function buildCollectionJsonLd(name: string, description: string, canonicalPath:
         itemListElement: listings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://timberequip.com${buildListingPath(listing)}`,
+          url: buildSiteUrl(buildListingPath(listing)),
           item: {
             '@type': 'Product',
             name: `${listing.year} ${getListingManufacturer(listing)} ${listing.model}`.trim(),
             brand: {
               '@type': 'Brand',
-              name: getListingManufacturer(listing) || 'TimberEquip',
+              name: getListingManufacturer(listing) || 'Forestry Equipment Sales',
             },
             category: getListingCategoryLabel(listing) || 'Equipment',
             model: listing.model || undefined,
@@ -114,7 +117,7 @@ function SectionLinks({ title, links }: { title: string; links: CountLink[] }) {
   if (!links.length) return null;
 
   return (
-    <section className="border border-line bg-surface/50 p-6 md:p-8">
+    <section className="rounded-sm border border-line bg-surface/60 p-6 md:p-8">
       <div className="mb-5">
         <h2 className="text-lg font-black uppercase tracking-tight">{title}</h2>
       </div>
@@ -138,7 +141,7 @@ function DealerGrid({ dealers }: { dealers: SellerSummary[] }) {
   if (!dealers.length) return null;
 
   return (
-    <section className="border border-line bg-surface/50 p-6 md:p-8">
+    <section className="rounded-sm border border-line bg-surface/60 p-6 md:p-8">
       <div className="mb-5">
         <h2 className="text-lg font-black uppercase tracking-tight">Featured Dealers</h2>
       </div>
@@ -147,7 +150,7 @@ function DealerGrid({ dealers }: { dealers: SellerSummary[] }) {
           <Link
             key={seller.id}
             to={buildDealerPath(seller)}
-            className="border border-line bg-bg p-5 transition-colors hover:border-accent"
+            className="rounded-sm border border-line bg-bg p-5 transition-all duration-200 hover:-translate-y-1 hover:border-accent/35 hover:shadow-xl"
           >
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -229,15 +232,17 @@ function SeoInventoryTemplate({
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={`${title} | TimberEquip`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
+      <Seo title={`${title} | Forestry Equipment Sales`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
       <Breadcrumbs items={breadcrumbs} />
 
-      <section className="border-b border-line bg-surface px-4 py-20 md:px-8">
+      <section className="border-b border-line bg-surface/85 px-4 py-20 md:px-8">
         <div className="mx-auto max-w-[1600px]">
-          <span className="label-micro mb-4 block text-accent">{eyebrow}</span>
-          <h1 className="max-w-5xl text-4xl font-black uppercase tracking-tighter md:text-6xl">{title}</h1>
-          <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-muted md:text-base">{intro}</p>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
+          <div className="max-w-5xl border border-line bg-bg/75 p-8 md:p-10">
+            <span className="label-micro mb-4 block text-accent">{eyebrow}</span>
+            <h1 className="text-4xl font-black uppercase tracking-tighter md:text-6xl">{title}</h1>
+            <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-muted md:text-base">{intro}</p>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="border border-line bg-bg p-5">
               <div className="label-micro mb-2">Active Listings</div>
               <div className="text-3xl font-black tracking-tight text-ink">{listings.length}</div>
@@ -256,7 +261,7 @@ function SeoInventoryTemplate({
 
       <div className="mx-auto flex max-w-[1600px] flex-col gap-10 px-4 py-12 md:px-8">
         {aboutContent && (
-          <section className="border border-line bg-surface/50 p-6 md:p-8">
+          <section className="rounded-sm border border-line bg-surface/60 p-6 md:p-8">
             <h2 className="text-lg font-black uppercase tracking-tight mb-4">About {eyebrow}</h2>
             <p className="text-sm font-medium leading-relaxed text-muted max-w-4xl">{aboutContent.description}</p>
             {(aboutContent.founded || aboutContent.headquarters) && (
@@ -279,7 +284,7 @@ function SeoInventoryTemplate({
         )}
 
         {subcategoryExplainer && (
-          <section className="border border-line bg-surface/50 p-6 md:p-8">
+          <section className="rounded-sm border border-line bg-surface/60 p-6 md:p-8">
             <h2 className="text-lg font-black uppercase tracking-tight mb-4">What Are {eyebrow}?</h2>
             <div className={`text-sm font-medium leading-relaxed text-muted max-w-4xl ${!explainerExpanded ? 'line-clamp-3' : ''}`}>
               <p>{subcategoryExplainer.overview}</p>
@@ -309,7 +314,7 @@ function SeoInventoryTemplate({
         {topStates.length > 0 && <SectionLinks title="Top States" links={topStates} />}
         {featuredDealers.length > 0 && <DealerGrid dealers={featuredDealers} />}
 
-        <section>
+        <section className="rounded-sm border border-line bg-surface/35 p-6 md:p-8">
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
               <span className="label-micro mb-2 block">Live Inventory</span>
@@ -460,7 +465,7 @@ export function LoggingHubPage() {
       listings={listings}
       topCategories={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath), 'category')}
       topManufacturers={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingStateName), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       searchPath="/search"
       emptyMessage="No active logging inventory is available on this route yet."
     />
@@ -478,7 +483,7 @@ export function ForestryHubPage() {
       title="Forestry Equipment for Sale | New & Used Machines"
       description="Browse new and used forestry equipment for sale including logging, land clearing, firewood, sawmill, truck, trailer, and attachment inventory from dealers and owners."
       canonicalPath={`/${MARKET_ROUTE_LABELS.forestry}`}
-      intro="Browse the full TimberEquip marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers."
+      intro="Browse the full Forestry Equipment Sales marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers."
       breadcrumbs={[
         { label: 'Home', path: '/' },
         { label: 'Forestry Equipment For Sale', path: `/${MARKET_ROUTE_LABELS.forestry}` },
@@ -486,7 +491,7 @@ export function ForestryHubPage() {
       listings={listings}
       topCategories={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingCategoryLabel), buildCategoryPath), 'category')}
       topManufacturers={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(listings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(listings.map(getListingStateName), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       searchPath="/search"
       emptyMessage="No active forestry inventory is available on this route yet."
     />
@@ -542,7 +547,7 @@ export function CategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={resolvedCategory}
       title={displayTitle}
-      description={`Browse ${resolvedCategory.toLowerCase()} for sale on TimberEquip. ${parentCategory ? `Shop ${parentCategory.toLowerCase()} inventory` : 'Shop live inventory'} from dealers and private sellers across North America.`}
+      description={`Browse ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. ${parentCategory ? `Shop ${parentCategory.toLowerCase()} inventory` : 'Shop live inventory'} from dealers and private sellers across North America.`}
       canonicalPath={buildCategoryPath(resolvedCategory)}
       intro={`Shop ${resolvedCategory.toLowerCase()} from trusted dealers and private sellers. Browse live inventory, compare prices, and connect directly with sellers to move fast on the equipment you need.`}
       breadcrumbs={[
@@ -554,7 +559,7 @@ export function CategoryLandingPage() {
       robots={quality.robots}
       listings={categoryListings}
       topManufacturers={filterLinksByRouteThreshold(buildCountLinks(categoryListings.map(getListingManufacturer), buildManufacturerPath), 'manufacturer')}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(categoryListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(categoryListings.map(getListingStateName), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
       featuredDealers={featuredDealers}
       subcategoryExplainer={explainerContent}
       searchPath={`/search?subcategory=${encodeURIComponent(resolvedCategory)}`}
@@ -583,7 +588,7 @@ export function ManufacturerLandingPage() {
     <SeoInventoryTemplate
       eyebrow={resolvedManufacturer}
       title={`${resolvedManufacturer} Equipment For Sale`}
-      description={`Browse ${resolvedManufacturer} equipment for sale by make on TimberEquip. Shop live ${resolvedManufacturer} inventory from dealers and private sellers across North America.`}
+      description={`Browse ${resolvedManufacturer} equipment for sale by make on Forestry Equipment Sales. Shop live ${resolvedManufacturer} inventory from dealers and private sellers across North America.`}
       canonicalPath={buildManufacturerPath(resolvedManufacturer)}
       intro={mfgContent.description}
       aboutContent={mfgContent}
@@ -596,7 +601,7 @@ export function ManufacturerLandingPage() {
       listings={mfgListings}
       topCategories={filterLinksByRouteThreshold(buildCountLinks(mfgListings.map(getListingCategoryLabel), (category) => buildManufacturerCategoryPath(resolvedManufacturer, category)), 'manufacturerCategory')}
       topModels={filterLinksByRouteThreshold(buildCountLinks(mfgListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelPath(resolvedManufacturer, model)), 'manufacturerModel')}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(mfgListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(mfgListings.map(getListingStateName), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       featuredDealers={featuredDealers}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}`}
       emptyMessage={`No active ${resolvedManufacturer} listings are available right now.`}
@@ -629,7 +634,7 @@ export function ManufacturerModelLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedManufacturer} ${resolvedModel}`}
       title={`${resolvedManufacturer} ${resolvedModel} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedModel} for sale on TimberEquip. Shop live inventory from dealers and private sellers.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedModel} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.`}
       canonicalPath={buildManufacturerModelPath(resolvedManufacturer, resolvedModel)}
       intro={`Find ${resolvedManufacturer} ${resolvedModel} machines for sale from dealers and private sellers. Compare pricing, hours, and condition across available inventory.`}
       breadcrumbs={[
@@ -641,7 +646,7 @@ export function ManufacturerModelLandingPage() {
       robots={quality.robots}
       listings={filteredListings}
       topCategories={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingCategoryLabel), (category) => buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, category)), 'manufacturerModelCategory')}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingStateName), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&model=${encodeURIComponent(resolvedModel)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedModel} inventory is available right now.`}
     />
@@ -651,14 +656,14 @@ export function ManufacturerModelLandingPage() {
 export function StateMarketLandingPage({ marketKeyOverride }: { marketKeyOverride?: 'logging' | 'forestry' }) {
   const { stateSlug = '', marketSlug = '' } = useParams<{ stateSlug: string; marketSlug?: string }>();
   const { listings, loading } = useSeoListings();
-  const stateListings = useMemo(() => listings.filter((listing) => normalizeSeoSlug(getStateFromLocation(listing.location)) === stateSlug), [listings, stateSlug]);
+  const stateListings = useMemo(() => listings.filter((listing) => matchesStateSlug(getListingStateName(listing), stateSlug)), [listings, stateSlug]);
   const featuredDealers = useFeaturedDealers(stateListings, loading);
 
   if (loading) return <LoadingState />;
 
   const resolvedState = listings
-    .map((listing) => getStateFromLocation(listing.location))
-    .find((state) => normalizeSeoSlug(state) === stateSlug) || titleCaseSlug(stateSlug);
+    .map(getListingStateName)
+    .find((state) => matchesStateSlug(state, stateSlug)) || expandRegionName(titleCaseSlug(stateSlug));
   const marketKey = marketKeyOverride || (marketSlug === MARKET_ROUTE_LABELS.logging ? 'logging' : CANONICAL_MARKET_ROUTE_KEY);
   const marketTitle = marketKey === 'forestry' ? 'Forestry Equipment For Sale' : 'Logging Equipment For Sale';
   const quality = evaluateRouteQuality('stateMarket', stateListings.length, { fallbackPath: '/states' });
@@ -669,7 +674,7 @@ export function StateMarketLandingPage({ marketKeyOverride }: { marketKeyOverrid
     <SeoInventoryTemplate
       eyebrow={resolvedState}
       title={`${marketTitle} In ${resolvedState}`}
-      description={`Browse ${marketTitle.toLowerCase()} in ${resolvedState} on TimberEquip. Shop live inventory from local dealers and private sellers.`}
+      description={`Browse ${marketTitle.toLowerCase()} in ${resolvedState} on Forestry Equipment Sales. Shop live inventory from local dealers and private sellers.`}
       canonicalPath={buildStateMarketPath(resolvedState, marketKey)}
       intro={`Shop ${marketTitle.toLowerCase()} located in ${resolvedState}. Browse inventory from local dealers and private sellers, compare prices, and connect directly with sellers near you.`}
       breadcrumbs={[
@@ -697,12 +702,12 @@ export function StateCategoryLandingPage() {
   const categorySlug = parseForSaleSlug(categorySaleSlug);
 
   const resolvedState = listings
-    .map((listing) => getStateFromLocation(listing.location))
-    .find((state) => normalizeSeoSlug(state) === stateSlug) || titleCaseSlug(stateSlug);
+    .map(getListingStateName)
+    .find((state) => matchesStateSlug(state, stateSlug)) || expandRegionName(titleCaseSlug(stateSlug));
   const resolvedCategory = titleCaseSlug(categorySlug);
   const filteredListings = listings.filter(
     (listing) =>
-      normalizeSeoSlug(getStateFromLocation(listing.location)) === stateSlug &&
+      matchesStateSlug(getListingStateName(listing), stateSlug) &&
       normalizeSeoSlug(getListingCategoryLabel(listing)) === categorySlug
   );
   const quality = evaluateRouteQuality('stateCategory', filteredListings.length, {
@@ -715,7 +720,7 @@ export function StateCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedState} ${resolvedCategory}`}
       title={`${resolvedCategory} For Sale In ${resolvedState}`}
-      description={`Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} on TimberEquip. Shop live inventory from local dealers and private sellers.`}
+      description={`Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} on Forestry Equipment Sales. Shop live inventory from local dealers and private sellers.`}
       canonicalPath={buildStateCategoryPath(resolvedState, resolvedCategory)}
       intro={`Find ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} from dealers and private sellers. Browse available inventory, compare pricing, and reach out to sellers directly.`}
       breadcrumbs={[
@@ -761,7 +766,7 @@ export function ManufacturerCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedManufacturer} ${resolvedCategory}`}
       title={`${resolvedManufacturer} ${resolvedCategory} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} for sale on TimberEquip. Shop live inventory from dealers and private sellers.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.`}
       canonicalPath={buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory)}
       intro={`Shop ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} from dealers and private sellers. Compare available machines, pricing, and hours across live marketplace inventory.`}
       breadcrumbs={[
@@ -773,7 +778,7 @@ export function ManufacturerCategoryLandingPage() {
       robots={quality.robots}
       listings={filteredListings}
       topModels={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelCategoryPath(resolvedManufacturer, model, resolvedCategory)), 'manufacturerModelCategory')}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingStateName), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
       subcategoryExplainer={getSubcategoryContent(resolvedCategory)}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} inventory is available right now.`}
@@ -811,7 +816,7 @@ export function ManufacturerModelCategoryLandingPage() {
     <SeoInventoryTemplate
       eyebrow={`${resolvedManufacturer} ${resolvedModel} ${resolvedCategory}`}
       title={`${resolvedManufacturer} ${resolvedModel} ${resolvedCategory} For Sale`}
-      description={`Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale on TimberEquip. Shop live inventory from dealers and private sellers.`}
+      description={`Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.`}
       canonicalPath={buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, resolvedCategory)}
       intro={`Find ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale from dealers and private sellers. Browse pricing, hours, and condition on available inventory.`}
       breadcrumbs={[
@@ -823,7 +828,7 @@ export function ManufacturerModelCategoryLandingPage() {
       ]}
       robots={quality.robots}
       listings={filteredListings}
-      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map((listing) => getStateFromLocation(listing.location)), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
+      topStates={filterLinksByRouteThreshold(buildCountLinks(filteredListings.map(getListingStateName), (state) => buildStateCategoryPath(state, resolvedCategory)), 'stateCategory')}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}&model=${encodeURIComponent(resolvedModel)}&subcategory=${encodeURIComponent(resolvedCategory)}`}
       emptyMessage={`No active ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} inventory is available right now.`}
     />
@@ -888,7 +893,7 @@ export function DealerDirectoryPage() {
     <SeoInventoryTemplate
       eyebrow="Dealer Directory"
       title="Logging Equipment Dealers"
-      description="Browse active dealer storefronts on TimberEquip. Find trusted dealers selling new and used logging and forestry equipment."
+      description="Browse active dealer storefronts on Forestry Equipment Sales. Find trusted dealers selling new and used logging and forestry equipment."
       canonicalPath="/dealers"
       intro="Browse active dealer storefronts and find trusted sellers of new and used logging and forestry equipment. Open any storefront to view their full inventory."
       breadcrumbs={[

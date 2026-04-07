@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# TimberEquip runtime secrets bootstrap template.
+# Forestry Equipment Sales runtime secrets bootstrap template.
 #
 # Usage:
 # 1. Copy this file to a local private file that is NOT committed.

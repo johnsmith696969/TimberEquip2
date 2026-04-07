@@ -5,10 +5,12 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
+import { getPlaceDetails, getPlacePredictions, type GooglePlacesMode } from '../services/placesService';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { useAuth } from '../components/AuthContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seller } from '../types';
-import { buildDealerPath } from '../utils/seoRoutes';
+import { buildDealerPath, compareRegionNames, expandRegionName, getStateFromLocation, normalizeRegionName } from '../utils/seoRoutes';
 import { DealerMap } from '../components/DealerMap';
 
 /* ── helpers ───────────────────────────────────────────────── */
@@ -40,8 +42,120 @@ function norm(value?: string): string {
   return String(value || '').trim().toLowerCase();
 }
 
+function toFiniteCoordinate(value: unknown): number | null {
+  const next = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+function getCoordinatePair(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
+  const normalizedLat = toFiniteCoordinate(lat);
+  const normalizedLng = toFiniteCoordinate(lng);
+  if (normalizedLat === null || normalizedLng === null) {
+    return null;
+  }
+  if (Math.abs(normalizedLat) < 0.000001 && Math.abs(normalizedLng) < 0.000001) {
+    return null;
+  }
+  return { lat: normalizedLat, lng: normalizedLng };
+}
+
+function getDealerStateName(dealer: Seller): string {
+  const explicitState = expandRegionName(dealer.state);
+  if (explicitState) {
+    return explicitState;
+  }
+
+  return expandRegionName(getStateFromLocation(dealer.location));
+}
+
+function getDealerLocationLabel(dealer: Seller): string {
+  const rawLocation = String(dealer.location || '').trim();
+  if (!rawLocation) {
+    return '';
+  }
+
+  const parts = rawLocation
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const city = parts.length >= 2 ? parts[0] : '';
+  const state = getDealerStateName(dealer);
+  const country = parts.length >= 3 ? parts[parts.length - 1] : '';
+
+  return [city, state, country].filter(Boolean).join(', ') || state || rawLocation;
+}
+
 function getWebsiteLabel(website?: string): string {
   return String(website || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+}
+
+function buildDealerCoordinateLookup(dealer: Seller): { query: string; mode: GooglePlacesMode } | null {
+  const preciseAddress = [
+    String(dealer.street1 || '').trim(),
+    String(dealer.city || '').trim(),
+    String(dealer.state || '').trim(),
+    String(dealer.postalCode || '').trim(),
+    String(dealer.country || '').trim(),
+  ].filter(Boolean).join(', ');
+
+  if (preciseAddress) {
+    return { query: preciseAddress, mode: 'address' };
+  }
+
+  const location = String(dealer.location || '').trim();
+  if (location && !/^location available on storefront$/i.test(location)) {
+    return { query: location, mode: 'address' };
+  }
+
+  const fallbackLocation = [
+    String(dealer.city || '').trim(),
+    String(dealer.state || '').trim(),
+    String(dealer.country || '').trim(),
+  ].filter(Boolean).join(', ');
+
+  if (fallbackLocation) {
+    return { query: fallbackLocation, mode: 'address' };
+  }
+
+  return null;
+}
+
+const dealerCoordinateLookupCache = new Map<string, Promise<{ lat: number; lng: number; formattedAddress?: string } | null>>();
+
+async function lookupDealerCoordinates(
+  dealer: Seller
+): Promise<{ lat: number; lng: number; formattedAddress?: string } | null> {
+  const lookup = buildDealerCoordinateLookup(dealer);
+  if (!lookup) {
+    return null;
+  }
+
+  const cacheKey = `${lookup.mode}:${norm(lookup.query)}`;
+  if (!dealerCoordinateLookupCache.has(cacheKey)) {
+    dealerCoordinateLookupCache.set(
+      cacheKey,
+      (async () => {
+        const predictions = await getPlacePredictions(lookup.query, lookup.mode);
+        const bestMatch = predictions[0];
+        if (!bestMatch) {
+          return null;
+        }
+
+        const details = await getPlaceDetails(bestMatch.placeId);
+        const coords = getCoordinatePair(details?.latitude, details?.longitude);
+        if (!coords) {
+          return null;
+        }
+
+        return {
+          ...coords,
+          formattedAddress: String(details?.formattedAddress || '').trim() || undefined,
+        };
+      })().catch(() => null)
+    );
+  }
+
+  return await dealerCoordinateLookupCache.get(cacheKey)!;
 }
 
 const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -183,6 +297,11 @@ export function Dealers() {
   const [locationError, setLocationError] = useState('');
   const [displayCount, setDisplayCount] = useState(20);
   const [showMap, setShowMap] = useState(true);
+  const hydratedDealerIdsRef = useRef<Set<string>>(new Set());
+  const profileCoords = useMemo(
+    () => getCoordinatePair(user?.latitude, user?.longitude),
+    [user?.latitude, user?.longitude]
+  );
 
   /* ── data fetch ──────────────────────────────────────────── */
   useEffect(() => {
@@ -198,17 +317,102 @@ export function Dealers() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const dealersNeedingCoords = dealers.filter((dealer) => {
+      const dealerId = String(dealer.id || dealer.uid || '').trim();
+      return Boolean(
+        dealerId &&
+        SELLER_ROLES.has(norm(dealer.role)) &&
+        !getCoordinatePair(dealer.latitude, dealer.longitude) &&
+        !hydratedDealerIdsRef.current.has(dealerId)
+      );
+    });
+
+    if (!dealersNeedingCoords.length) {
+      return () => {
+        active = false;
+      };
+    }
+
+    dealersNeedingCoords.forEach((dealer) => {
+      hydratedDealerIdsRef.current.add(String(dealer.id || dealer.uid || '').trim());
+    });
+
+    const hydrateMissingCoordinates = async () => {
+      const resolvedEntries = await Promise.all(
+        dealersNeedingCoords.map(async (dealer) => {
+          const dealerId = String(dealer.id || dealer.uid || '').trim();
+          const resolved = await lookupDealerCoordinates(dealer);
+          if (!dealerId || !resolved) {
+            return null;
+          }
+          return { dealerId, ...resolved };
+        })
+      );
+
+      if (!active) {
+        return;
+      }
+
+      const resolvedMap = new Map(
+        resolvedEntries
+          .filter((entry): entry is { dealerId: string; lat: number; lng: number; formattedAddress?: string } => Boolean(entry))
+          .map((entry) => [entry.dealerId, entry])
+      );
+
+      if (!resolvedMap.size) {
+        return;
+      }
+
+      setDealers((currentDealers) =>
+        currentDealers.map((dealer) => {
+          const dealerId = String(dealer.id || dealer.uid || '').trim();
+          const resolved = resolvedMap.get(dealerId);
+          if (!resolved || getCoordinatePair(dealer.latitude, dealer.longitude)) {
+            return dealer;
+          }
+
+          const fallbackLocation = String(dealer.location || '').trim();
+          const shouldUpdateLocation =
+            !fallbackLocation || /^location available on storefront$/i.test(fallbackLocation);
+
+          return {
+            ...dealer,
+            latitude: resolved.lat,
+            longitude: resolved.lng,
+            location: shouldUpdateLocation ? resolved.formattedAddress || fallbackLocation : fallbackLocation,
+          };
+        })
+      );
+    };
+
+    void hydrateMissingCoordinates();
+
+    return () => {
+      active = false;
+    };
+  }, [dealers]);
+
   /* ── user profile location as fallback ───────────────────── */
   useEffect(() => {
     if (userCoords) return;
-    if (user?.latitude && user?.longitude) {
-      setUserCoords({ lat: user.latitude, lng: user.longitude });
+    if (profileCoords) {
+      setUserCoords(profileCoords);
     }
-  }, [user, userCoords]);
+  }, [profileCoords, userCoords]);
 
   /* ── geolocation request ─────────────────────────────────── */
   const requestLocation = useCallback(() => {
+    const fallbackCoords = userCoords || profileCoords;
+
     if (!navigator.geolocation) {
+      if (fallbackCoords) {
+        setUserCoords(fallbackCoords);
+        setSortMode('nearest');
+        setLocationError('Live location is unavailable in this browser. Using your saved location instead.');
+        return;
+      }
       setLocationError('Geolocation is not supported by your browser.');
       return;
     }
@@ -221,22 +425,28 @@ export function Dealers() {
         setLocationRequested(false);
       },
       (err) => {
-        setLocationError(err.code === 1 ? 'Location permission denied.' : 'Unable to get your location.');
+        const baseMessage = err.code === 1 ? 'Location permission denied.' : 'Unable to get your location.';
+        if (fallbackCoords) {
+          setUserCoords(fallbackCoords);
+          setSortMode('nearest');
+          setLocationError(`${baseMessage} Using your saved location instead.`);
+        } else {
+          setLocationError(baseMessage);
+        }
         setLocationRequested(false);
       },
-      { enableHighAccuracy: false, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
     );
-  }, []);
+  }, [profileCoords, userCoords]);
 
   /* ── derived filter option lists ─────────────────────────── */
   const stateOptions = useMemo(() => {
     const set = new Set<string>();
     dealers.forEach((d) => {
-      if (d.state) set.add(d.state);
-      const parts = (d.location || '').split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 2) set.add(parts[parts.length >= 3 ? parts.length - 2 : 1]);
+      const state = getDealerStateName(d);
+      if (state) set.add(state);
     });
-    return [...set].filter(Boolean).sort();
+    return [...set].filter(Boolean).sort(compareRegionNames);
   }, [dealers]);
 
   const countryOptions = useMemo(() => {
@@ -276,10 +486,7 @@ export function Dealers() {
 
     if (stateFilter) {
       result = result.filter((d) => {
-        if (norm(d.state) === norm(stateFilter)) return true;
-        const parts = (d.location || '').split(',').map((p) => p.trim());
-        const locState = parts.length >= 3 ? parts[parts.length - 2] : (parts.length === 2 ? parts[1] : '');
-        return norm(locState) === norm(stateFilter);
+        return normalizeRegionName(getDealerStateName(d)) === normalizeRegionName(stateFilter);
       });
     }
 
@@ -316,8 +523,10 @@ export function Dealers() {
 
     if (sortMode === 'nearest' && userCoords) {
       result = [...result].sort((a, b) => {
-        const aDist = (a.latitude && a.longitude) ? distanceMiles(userCoords.lat, userCoords.lng, a.latitude, a.longitude) : Infinity;
-        const bDist = (b.latitude && b.longitude) ? distanceMiles(userCoords.lat, userCoords.lng, b.latitude, b.longitude) : Infinity;
+        const aCoords = getCoordinatePair(a.latitude, a.longitude);
+        const bCoords = getCoordinatePair(b.latitude, b.longitude);
+        const aDist = aCoords ? distanceMiles(userCoords.lat, userCoords.lng, aCoords.lat, aCoords.lng) : Infinity;
+        const bDist = bCoords ? distanceMiles(userCoords.lat, userCoords.lng, bCoords.lat, bCoords.lng) : Infinity;
         return aDist - bDist;
       });
     } else {
@@ -329,7 +538,7 @@ export function Dealers() {
 
   /* ── map-visible dealers (those with coordinates) ────────── */
   const mappableDealers = useMemo(
-    () => filteredDealers.filter((d) => d.latitude && d.longitude),
+    () => filteredDealers.filter((d) => Boolean(getCoordinatePair(d.latitude, d.longitude))),
     [filteredDealers]
   );
 
@@ -343,8 +552,9 @@ export function Dealers() {
   /* ── distance label ──────────────────────────────────────── */
   const getDealerDistance = useCallback(
     (dealer: Seller): string | null => {
-      if (!userCoords || !dealer.latitude || !dealer.longitude) return null;
-      const d = distanceMiles(userCoords.lat, userCoords.lng, dealer.latitude, dealer.longitude);
+      const dealerCoords = getCoordinatePair(dealer.latitude, dealer.longitude);
+      if (!userCoords || !dealerCoords) return null;
+      const d = distanceMiles(userCoords.lat, userCoords.lng, dealerCoords.lat, dealerCoords.lng);
       if (d < 1) return '< 1 mi';
       return `${Math.round(d)} mi`;
     },
@@ -366,7 +576,7 @@ export function Dealers() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Find Forestry Equipment Dealers & Manufacturers | TimberEquip"
+        title="Find Forestry Equipment Dealers & Manufacturers | Forestry Equipment Sales"
         description="Search forestry equipment dealers and manufacturers by name, state, country, and category. Sort by nearest location. Browse dealer and pro dealer storefronts."
         canonicalPath="/dealers"
         imagePath="/page-photos/dealers.png"
@@ -378,13 +588,13 @@ export function Dealers() {
               '@type': 'CollectionPage',
               name: 'Find Forestry Equipment Dealers & Manufacturers',
               description: 'Search forestry equipment dealers and manufacturers by name, state, country, and category.',
-              url: 'https://timberequip.com/dealers',
+              url: buildSiteUrl('/dealers'),
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
-                { '@type': 'ListItem', position: 2, name: 'Dealers', item: 'https://timberequip.com/dealers' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Dealers', item: buildSiteUrl('/dealers') },
               ],
             },
             {
@@ -394,11 +604,11 @@ export function Dealers() {
               itemListElement: filteredDealers.slice(0, 50).map((dealer, index) => ({
                 '@type': 'ListItem',
                 position: index + 1,
-                url: `https://timberequip.com${buildDealerPath(dealer)}`,
+                url: buildSiteUrl(buildDealerPath(dealer)),
                 item: {
                   '@type': 'Organization',
                   name: getDealerDisplayName(dealer),
-                  address: dealer.location || undefined,
+                  address: getDealerLocationLabel(dealer) || dealer.location || undefined,
                 },
               })),
             },
@@ -410,7 +620,7 @@ export function Dealers() {
 
       <ImageHero
         imageSrc="/page-photos/dealers.png"
-        imageAlt="TimberEquip dealer network"
+        imageAlt="Forestry Equipment Sales dealer network"
         imageClassName="object-center"
       >
         <div>
@@ -451,7 +661,7 @@ export function Dealers() {
       <section className="px-4 py-14 md:px-8 md:py-20">
         <div className="mx-auto max-w-[1600px]">
           {/* ── Search + Filters ─────────────────────────────── */}
-          <div className="mb-10 space-y-6">
+          <div className="mb-10 space-y-6 rounded-sm border border-line bg-surface/60 p-6 md:p-8">
             <div>
               <h2 className="text-2xl font-black uppercase tracking-tight text-ink md:text-3xl">Search The Directory</h2>
               <p className="mt-2 text-sm font-medium text-muted">
@@ -531,13 +741,7 @@ export function Dealers() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (userCoords) {
-                        setSortMode('nearest');
-                      } else {
-                        requestLocation();
-                      }
-                    }}
+                    onClick={requestLocation}
                     disabled={locationRequested}
                     className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 ${
                       sortMode === 'nearest' ? 'bg-accent text-white border-accent' : 'bg-bg border-line text-muted hover:text-ink'
@@ -570,7 +774,7 @@ export function Dealers() {
           </div>
 
           {/* ── Map Section ────────────────────────────────────── */}
-          <div className="mb-10">
+          <div className="mb-10 rounded-sm border border-line bg-surface/60 p-4 md:p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <MapPin size={16} className="text-accent" />
@@ -698,7 +902,7 @@ export function Dealers() {
                       <div className="mt-6 grid grid-cols-1 gap-3 text-sm text-muted sm:grid-cols-3">
                         <div className="flex items-start gap-2">
                           <MapPin size={16} className="mt-0.5 shrink-0 text-accent" />
-                          <span className="leading-relaxed">{dealer.location || 'Location available on storefront'}</span>
+                          <span className="leading-relaxed">{getDealerLocationLabel(dealer) || 'Location available on storefront'}</span>
                         </div>
                         <div className="flex items-start gap-2">
                           <Mail size={16} className="mt-0.5 shrink-0 text-accent" />

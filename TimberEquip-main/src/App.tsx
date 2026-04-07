@@ -60,7 +60,7 @@ const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ defau
 const AuctionDetail = lazy(() => import('./pages/AuctionDetail').then((module) => ({ default: module.AuctionDetail })));
 const AuctionLotDetail = lazy(() => import('./pages/AuctionLotDetail').then((module) => ({ default: module.AuctionLotDetail })));
 const BidderRegistration = lazy(() => import('./pages/BidderRegistration').then((module) => ({ default: module.BidderRegistration })));
-const LotDetail = lazy(() => import('./pages/LotDetail').then((module) => ({ default: module.LotDetail })));
+const Calculator = lazy(() => import('./pages/Calculator').then((module) => ({ default: module.Calculator })));
 
 function RouteLoadingFallback() {
   return (
@@ -147,6 +147,7 @@ function App() {
                     <Route path="/dealer-os" element={<ProtectedRoute requireDealerOs><DealerOS /></ProtectedRoute>} />
                     <Route path="/account" element={<ProtectedRoute><AccountWorkspaceRedirect /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
+                    <Route path="/calculator" element={<Suspense fallback={<div />}><Calculator /></Suspense>} />
                     <Route path="/logistics" element={<Logistics />} />
                     <Route path="/profile" element={<ProtectedRoute><ProfileWorkspaceRoute /></ProtectedRoute>} />
                     <Route path="/about" element={<About />} />
@@ -158,7 +159,7 @@ function App() {
                     <Route path="/ad-programs" element={<AdPrograms />} />
                     <Route path="/subscription-success" element={<SubscriptionSuccess />} />
                     <Route path="/auctions" element={<Auctions />} />
-                    <Route path="/auctions/:auctionSlug/lots/:lotNumber" element={<Suspense fallback={<div />}><LotDetail /></Suspense>} />
+                    <Route path="/bidder-registration" element={<ProtectedRoute><Suspense fallback={<div />}><BidderRegistration /></Suspense></ProtectedRoute>} />
                     <Route path="/auctions/:auctionSlug/register" element={<Suspense fallback={<div />}><BidderRegistration /></Suspense>} />
                     <Route path="/auctions/:auctionSlug/lots/:lotNumber" element={<Suspense fallback={<div />}><AuctionLotDetail /></Suspense>} />
                     <Route path="/auctions/:auctionSlug" element={<Suspense fallback={<div />}><AuctionDetail /></Suspense>} />

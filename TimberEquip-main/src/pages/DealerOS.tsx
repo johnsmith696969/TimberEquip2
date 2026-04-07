@@ -724,7 +724,7 @@ export function DealerOS() {
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 py-8 md:px-8">
       <Seo
-        title="DealerOS | TimberEquip"
+        title="DealerOS | Forestry Equipment Sales"
         description="Manage your dealer inventory, leads, feed imports, and storefront settings."
         robots={NOINDEX_ROBOTS}
       />
@@ -1343,7 +1343,7 @@ export function DealerOS() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Hosted Inventory Embed</div>
-                <div className="mt-1 text-xs text-muted">This is the TimberEquip-hosted inventory view for the dealer. Use it directly in an iframe when a script install is not needed.</div>
+                <div className="mt-1 text-xs text-muted">This is the Forestry Equipment Sales-hosted inventory view for the dealer. Use it directly in an iframe when a script install is not needed.</div>
               </div>
               <button
                 type="button"
@@ -1365,7 +1365,7 @@ export function DealerOS() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Copy-Paste Script Embed</div>
-                <div className="mt-1 text-xs text-muted">Preferred option for dealers who want TimberEquip inventory embedded on their own website with one snippet.</div>
+                <div className="mt-1 text-xs text-muted">Preferred option for dealers who want Forestry Equipment Sales inventory embedded on their own website with one snippet.</div>
               </div>
               <button
                 type="button"
@@ -1413,7 +1413,7 @@ export function DealerOS() {
           <div>
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Widget Builder</h2>
             <p className="mt-1 max-w-3xl text-sm text-muted">
-              Customize and embed an interactive inventory widget on any website. Supports four card styles including TimberEquip Native, with optional inquiry forms, call buttons, and detail lightbox.
+              Customize and embed an interactive inventory widget on any website. Supports four card styles including Forestry Equipment Sales Native, with optional inquiry forms, call buttons, and detail lightbox.
             </p>
           </div>
         </div>
@@ -1434,7 +1434,7 @@ export function DealerOS() {
                     onClick={() => setWidgetCardStyle(style)}
                     className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-colors ${widgetCardStyle === style ? 'border-ink bg-bg text-ink' : 'border-line text-muted hover:border-ink/30'}`}
                   >
-                    {style === 'fes-native' ? 'TimberEquip Native' : style}
+                    {style === 'fes-native' ? 'Forestry Equipment Sales Native' : style}
                   </button>
                 ))}
               </div>

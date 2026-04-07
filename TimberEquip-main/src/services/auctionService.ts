@@ -336,26 +336,42 @@ export const auctionService = {
     }, { merge: true });
   },
 
-  async getBidderStatus(auctionSlug: string): Promise<AuctionBidderStatusResponse> {
-    return getAuthorizedJson<AuctionBidderStatusResponse>(`/api/auctions/${encodeURIComponent(auctionSlug)}/bidder-status`);
+  async getBidderStatus(auctionSlug?: string | null): Promise<AuctionBidderStatusResponse> {
+    const normalizedAuctionSlug = String(auctionSlug || '').trim();
+    const path = normalizedAuctionSlug
+      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/bidder-status`
+      : '/api/auctions/bidder-status';
+    return getAuthorizedJson<AuctionBidderStatusResponse>(path);
   },
 
-  async saveBidderProfileForAuction(auctionSlug: string, data: Partial<BidderProfile>): Promise<AuctionBidderStatusResponse> {
-    return getAuthorizedJson<AuctionBidderStatusResponse>(`/api/auctions/${encodeURIComponent(auctionSlug)}/bidder-profile`, {
+  async saveBidderProfileForAuction(auctionSlug: string | null | undefined, data: Partial<BidderProfile>): Promise<AuctionBidderStatusResponse> {
+    const normalizedAuctionSlug = String(auctionSlug || '').trim();
+    const path = normalizedAuctionSlug
+      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/bidder-profile`
+      : '/api/auctions/bidder-profile';
+    return getAuthorizedJson<AuctionBidderStatusResponse>(path, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  async createBidderIdentitySession(auctionSlug: string): Promise<{ url: string; sessionId: string }> {
-    return getAuthorizedJson<{ url: string; sessionId: string }>(`/api/auctions/${encodeURIComponent(auctionSlug)}/identity-session`, {
+  async createBidderIdentitySession(auctionSlug?: string | null): Promise<{ url: string; sessionId: string }> {
+    const normalizedAuctionSlug = String(auctionSlug || '').trim();
+    const path = normalizedAuctionSlug
+      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/identity-session`
+      : '/api/auctions/bidder-identity-session';
+    return getAuthorizedJson<{ url: string; sessionId: string }>(path, {
       method: 'POST',
       body: JSON.stringify({}),
     });
   },
 
-  async createBidderPaymentSetupSession(auctionSlug: string): Promise<{ url: string; sessionId: string }> {
-    return getAuthorizedJson<{ url: string; sessionId: string }>(`/api/auctions/${encodeURIComponent(auctionSlug)}/payment-setup-session`, {
+  async createBidderPaymentSetupSession(auctionSlug?: string | null): Promise<{ url: string; sessionId: string }> {
+    const normalizedAuctionSlug = String(auctionSlug || '').trim();
+    const path = normalizedAuctionSlug
+      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/payment-setup-session`
+      : '/api/auctions/bidder-payment-setup-session';
+    return getAuthorizedJson<{ url: string; sessionId: string }>(path, {
       method: 'POST',
       body: JSON.stringify({}),
     });

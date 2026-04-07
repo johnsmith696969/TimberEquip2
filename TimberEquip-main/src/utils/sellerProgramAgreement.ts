@@ -55,8 +55,8 @@ export function createDefaultSellerProgramEnrollmentForm(
 
 export function getSellerProgramStatementLabel(planId?: ListingPlanId | string | null): string {
   return planId === 'dealer' || planId === 'fleet_dealer'
-    ? 'TimberEquip DealerOS'
-    : 'TimberEquip';
+    ? 'Forestry Equipment Sales DealerOS'
+    : 'Forestry Equipment Sales';
 }
 
 export function getSellerProgramScopeLabel(planId?: ListingPlanId | string | null): string {

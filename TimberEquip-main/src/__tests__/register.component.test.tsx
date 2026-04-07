@@ -7,14 +7,12 @@ const {
   navigateMock,
   registerMock,
   loginMock,
-  getRecaptchaTokenMock,
-  assessRecaptchaMock,
+  verifyRecaptchaActionMock,
 } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   registerMock: vi.fn(),
   loginMock: vi.fn(),
-  getRecaptchaTokenMock: vi.fn(),
-  assessRecaptchaMock: vi.fn(),
+  verifyRecaptchaActionMock: vi.fn(),
 }));
 
 vi.mock('framer-motion', () => {
@@ -48,8 +46,7 @@ vi.mock('../components/AuthContext', () => ({
 }));
 
 vi.mock('../services/recaptchaService', () => ({
-  getRecaptchaToken: getRecaptchaTokenMock,
-  assessRecaptcha: assessRecaptchaMock,
+  verifyRecaptchaAction: verifyRecaptchaActionMock,
 }));
 
 vi.mock('../firebase', () => ({
@@ -79,10 +76,8 @@ describe('Register component', () => {
     navigateMock.mockReset();
     registerMock.mockReset();
     loginMock.mockReset();
-    getRecaptchaTokenMock.mockReset();
-    assessRecaptchaMock.mockReset();
-    getRecaptchaTokenMock.mockResolvedValue(null);
-    assessRecaptchaMock.mockResolvedValue(true);
+    verifyRecaptchaActionMock.mockReset();
+    verifyRecaptchaActionMock.mockResolvedValue(true);
   });
 
   it('requires a full name before continuing and preserves the selected account type', async () => {
@@ -117,7 +112,7 @@ describe('Register component', () => {
     const { emailInput, passwordInput } = getStepTwoInputs();
     fireEvent.change(emailInput, { target: { value: 'buyer@example.com' } });
     fireEvent.change(passwordInput, { target: { value: 'StrongPass123!' } });
-    fireEvent.click(screen.getByLabelText(/i accept the timberequip/i));
+    fireEvent.click(screen.getByLabelText(/i accept the forestry equipment sales/i));
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
@@ -146,7 +141,7 @@ describe('Register component', () => {
     const { emailInput, passwordInput } = getStepTwoInputs();
     fireEvent.change(emailInput, { target: { value: 'seller@example.com' } });
     fireEvent.change(passwordInput, { target: { value: 'StrongPass123!' } });
-    fireEvent.click(screen.getByLabelText(/i accept the timberequip/i));
+    fireEvent.click(screen.getByLabelText(/i accept the forestry equipment sales/i));
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {

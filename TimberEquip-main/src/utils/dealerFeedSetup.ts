@@ -46,7 +46,7 @@ export const DEALER_FEED_SETUP_META: Record<DealerFeedSetupMode, DealerFeedSetup
     label: 'API / Feed URL',
     sourceType: 'auto',
     shortDesc: 'We fetch inventory from your live URL endpoint.',
-    helper: 'Point TimberEquip at a live JSON, XML, or CSV endpoint and preview the mapped inventory before importing.',
+    helper: 'Point Forestry Equipment Sales at a live JSON, XML, or CSV endpoint and preview the mapped inventory before importing.',
     placeholder: 'https://dealer.example.com/inventory-feed.json',
     accept: '',
     uploadLabel: 'Upload Feed',

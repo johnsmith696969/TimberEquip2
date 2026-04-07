@@ -50,8 +50,8 @@ export function Bookmarks() {
   return (
     <>
       <Seo
-        title="Saved Equipment | TimberEquip"
-        description="Your bookmarked forestry equipment listings on TimberEquip."
+        title="Saved Equipment | Forestry Equipment Sales"
+        description="Your bookmarked forestry equipment listings on Forestry Equipment Sales."
         canonicalPath="/bookmarks"
       />
 

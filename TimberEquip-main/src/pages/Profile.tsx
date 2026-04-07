@@ -33,8 +33,12 @@ import { Seo } from '../components/Seo';
 import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
 import { TagSelectorModal } from '../components/TagSelectorModal';
 import { GooglePlacesInput } from '../components/GooglePlacesInput';
-import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
+import { taxonomyService, type FullEquipmentTaxonomy } from '../services/taxonomyService';
 import { type GooglePlaceSelection } from '../services/placesService';
+import {
+  getTaxonomyCategoryOptions,
+  getTaxonomySubcategoryOptions,
+} from '../utils/equipmentTaxonomy';
 import {
   SERVICE_AREA_REGION_OPTIONS,
   SERVICE_AREA_SCOPE_OPTIONS,
@@ -252,11 +256,11 @@ export function Profile() {
     [resolveRequestedProfileTab, searchParams]
   );
   const activeTab = resolvedRequestedProfileTab;
-  const profileSeoTitle = `${activeTab} | TimberEquip`;
+  const profileSeoTitle = `${activeTab} | Forestry Equipment Sales`;
   const profileSeoDescription = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL
-    ? 'Manage your TimberEquip account, listings, saved equipment, and subscription settings.'
-    : `Manage ${activeTab.toLowerCase()} from your TimberEquip account workspace.`;
-  const profileCanonicalPath = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL ? '/profile' : `/profile?tab=${encodeURIComponent(activeTab)}`;
+    ? 'Manage your Forestry Equipment Sales account, listings, saved equipment, and subscription settings.'
+    : `Manage ${activeTab.toLowerCase()} from your Forestry Equipment Sales account workspace.`;
+  const profileCanonicalPath = '/profile';
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -329,7 +333,7 @@ export function Profile() {
     seoDescription: '',
     seoKeywordsCsv: '',
   });
-  const [storefrontTaxonomy, setStorefrontTaxonomy] = useState<EquipmentTaxonomy>({});
+  const [storefrontTaxonomy, setStorefrontTaxonomy] = useState<FullEquipmentTaxonomy>({});
   const [smsMfaFactors, setSmsMfaFactors] = useState<SmsMfaFactorSummary[]>([]);
   const [mfaPhoneNumber, setMfaPhoneNumber] = useState('');
   const [mfaDisplayName, setMfaDisplayName] = useState('');
@@ -496,10 +500,10 @@ export function Profile() {
     const locationSuffix = sellerLocation ? ` in ${sellerLocation}` : '';
 
     const defaultSeoTitle = sellerName
-      ? `${sellerName} | ${roleLabel || 'Equipment Seller'} on TimberEquip`
+      ? `${sellerName} | ${roleLabel || 'Equipment Seller'} on Forestry Equipment Sales`
       : '';
     const defaultSeoDescription = sellerName
-      ? `Browse forestry and logging equipment from ${sellerName}${locationSuffix}. Verified ${roleLabel || 'seller'} on TimberEquip — the trusted marketplace for industrial forestry machinery, skidders, harvesters, feller bunchers, and more.`
+      ? `Browse forestry and logging equipment from ${sellerName}${locationSuffix}. Verified ${roleLabel || 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery, skidders, harvesters, feller bunchers, and more.`
       : '';
     const defaultSeoKeywords = [
       sellerName,
@@ -567,7 +571,7 @@ export function Profile() {
 
     const loadStorefrontTaxonomy = async () => {
       try {
-        const taxonomy = await taxonomyService.getTaxonomy();
+        const taxonomy = await taxonomyService.getFullTaxonomy();
         if (active) {
           setStorefrontTaxonomy(taxonomy);
         }
@@ -604,27 +608,15 @@ export function Profile() {
   }, []);
 
   const storefrontCategoryOptions = useMemo(
-    () => Object.keys(storefrontTaxonomy)
-      .sort((left, right) => left.localeCompare(right))
-      .map((value) => ({ value, count: 0 })),
+    () => getTaxonomyCategoryOptions(storefrontTaxonomy).map((value) => ({ value, count: 0 })),
     [storefrontTaxonomy]
   );
 
   const storefrontSubcategoryOptions = useMemo(() => {
-    const categoryPool = storefrontForm.servicesOfferedCategories.length
-      ? storefrontForm.servicesOfferedCategories
-      : Object.keys(storefrontTaxonomy);
-    const subcategories = new Set<string>();
-
-    categoryPool.forEach((category) => {
-      Object.keys(storefrontTaxonomy[category] || {}).forEach((subcategory) => {
-        subcategories.add(subcategory);
-      });
-    });
-
-    return Array.from(subcategories)
-      .sort((left, right) => left.localeCompare(right))
-      .map((value) => ({ value, count: 0 }));
+    return getTaxonomySubcategoryOptions(
+      storefrontTaxonomy,
+      storefrontForm.servicesOfferedCategories
+    ).map((value) => ({ value, count: 0 }));
   }, [storefrontForm.servicesOfferedCategories, storefrontTaxonomy]);
 
   const storefrontServiceAreaScopeOptions = useMemo(
@@ -742,11 +734,11 @@ export function Profile() {
 
     try {
       const verifier = await getProfileMfaRecaptcha();
-      setMfaNotice('Complete the reCAPTCHA challenge below. TimberEquip will send the SMS code as soon as the security check is passed.');
+      setMfaNotice('Complete the reCAPTCHA challenge below. Forestry Equipment Sales will send the SMS code as soon as the security check is passed.');
       const verificationId = await startSmsMfaEnrollment(authUser, normalizedPhoneNumber, verifier);
       setMfaVerificationId(verificationId);
       setMfaVerificationCode('');
-      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for TimberEquip.com. Enter the code below to finish enrollment.`);
+      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for Forestry Equipment Sales.com. Enter the code below to finish enrollment.`);
     } catch (error) {
       resetProfileMfaRecaptcha();
       setMfaError(getMfaErrorMessage(error, 'Unable to start SMS multi-factor enrollment right now.'));
@@ -2126,7 +2118,7 @@ export function Profile() {
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-black uppercase tracking-widest">Financing Applications</h3>
         <p className="text-[10px] font-bold text-muted uppercase tracking-widest">
-          Review financing forms you submitted through TimberEquip and track their current status.
+          Review financing forms you submitted through Forestry Equipment Sales and track their current status.
         </p>
       </div>
 
@@ -2974,7 +2966,7 @@ export function Profile() {
             <div>
               <p className="text-xs font-black uppercase tracking-widest">SMS Multi-Factor Authentication</p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Add a verified mobile number so TimberEquip requires an SMS code after your password or Google sign-in.
+                Add a verified mobile number so Forestry Equipment Sales requires an SMS code after your password or Google sign-in.
               </p>
               <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
                 Firebase Identity Platform must have SMS multi-factor authentication enabled and your domain authorized for this to work.

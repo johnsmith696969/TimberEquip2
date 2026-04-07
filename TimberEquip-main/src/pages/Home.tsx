@@ -33,24 +33,29 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
-import { normalizeSeoSlug, buildManufacturerPath, buildStateMarketPath, getStateFromLocation, getListingManufacturer, getListingStateName, CANONICAL_MARKET_ROUTE_KEY } from '../utils/seoRoutes';
+import { compareRegionNames, getListingLocationLabel, normalizeSeoSlug, buildManufacturerPath, buildStateMarketPath, getListingManufacturer, getListingStateName, CANONICAL_MARKET_ROUTE_KEY } from '../utils/seoRoutes';
 import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
+import { buildSiteUrl } from '../utils/siteUrl';
 import {
   LoggingEquipmentIcon,
   LandClearingEquipmentIcon,
   FirewoodEquipmentIcon,
   TreeServiceEquipmentIcon,
+  SawmillEquipmentIcon,
+  TrailersIcon,
+  TrucksIcon,
+  PartsAndAttachmentsIcon,
 } from '../components/CategoryIcons';
 
-const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
+const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
   'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-yellow-500/10 text-yellow-500' },
   'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-red-500/10 text-red-500' },
   'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-green-600/10 text-green-600' },
-  'Sawmill Equipment': { icon: Settings, color: 'bg-amber-500/10 text-amber-500' },
-  Trailers: { icon: Package, color: 'bg-blue-600/10 text-blue-600' },
-  Trucks: { icon: Truck, color: 'bg-slate-600/10 text-slate-600' },
-  'Parts And Attachments': { icon: LayoutDashboard, color: 'bg-sky-600/10 text-sky-600' },
+  'Sawmill Equipment': { icon: SawmillEquipmentIcon, color: 'bg-amber-500/10 text-amber-500' },
+  Trailers: { icon: TrailersIcon, color: 'bg-blue-600/10 text-blue-600' },
+  Trucks: { icon: TrucksIcon, color: 'bg-slate-600/10 text-slate-600' },
+  'Parts And Attachments': { icon: PartsAndAttachmentsIcon, color: 'bg-sky-600/10 text-sky-600' },
 };
 
 const SUBCATEGORY_MARKET_ORDER = [
@@ -141,7 +146,7 @@ const buildHomeStateSummaries = (listings: Listing[]): HomeStateSummary[] => {
       count: value.count,
       topManufacturer: [...value.manufacturers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Mixed Inventory',
     }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .sort((a, b) => compareRegionNames(a.name, b.name))
     .slice(0, 8);
 };
 
@@ -320,11 +325,11 @@ export function Home() {
   const topStates = useMemo(() => {
     const counts = new Map<string, number>();
     allListings.forEach((listing) => {
-      const state = getStateFromLocation(listing.location).trim();
+      const state = getListingStateName(listing).trim();
       if (state) counts.set(state, (counts.get(state) || 0) + 1);
     });
     return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => compareRegionNames(a[0], b[0]))
       .slice(0, 16)
       .map(([name, count]) => ({ name, count }));
   }, [allListings]);
@@ -338,40 +343,40 @@ export function Home() {
       '@graph': [
         {
           '@type': 'Organization',
-          name: 'TimberEquip',
-          alternateName: 'TimberEquip.com',
-          url: 'https://timberequip.com/',
-          logo: 'https://timberequip.com/TimberEquip-Logo.png?v=20260405c',
-          email: 'info@timberequip.com',
+          name: 'Forestry Equipment Sales',
+          alternateName: 'Forestry Equipment Sales.com',
+          url: buildSiteUrl('/'),
+          logo: buildSiteUrl('/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
+          email: 'info@forestryequipmentsales.com',
           description: 'New and used logging equipment marketplace connecting buyers, sellers, and dealers across North America.',
           contactPoint: {
             '@type': 'ContactPoint',
             contactType: 'customer service',
-            email: 'support@timberequip.com',
+            email: 'support@forestryequipmentsales.com',
             availableLanguage: 'English',
           },
         },
         {
           '@type': 'WebSite',
-          name: 'TimberEquip',
-          url: 'https://timberequip.com/',
+          name: 'Forestry Equipment Sales',
+          url: buildSiteUrl('/'),
           inLanguage: 'en-US',
         },
         {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
           description: 'Browse in-stock forestry equipment by make (manufacturer), model, category, dealer, and state. Shop equipment from Caterpillar, John Deere, Tigercat, and more.',
-          url: 'https://timberequip.com/',
+          url: buildSiteUrl('/'),
         },
         {
           '@type': 'ItemList',
           name: 'Primary marketplace routes',
           itemListElement: [
-            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://timberequip.com/forestry-equipment-for-sale' },
-            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://timberequip.com/categories' },
-            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://timberequip.com/manufacturers' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Markets By State', url: 'https://timberequip.com/states' },
-            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: 'https://timberequip.com/dealers' },
+            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: buildSiteUrl('/forestry-equipment-for-sale') },
+            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: buildSiteUrl('/categories') },
+            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: buildSiteUrl('/manufacturers') },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Markets By State', url: buildSiteUrl('/states') },
+            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: buildSiteUrl('/dealers') },
           ],
         },
       ],
@@ -515,11 +520,11 @@ export function Home() {
   return (
     <div className="flex flex-col">
       <Seo
-        title="Logging Equipment For Sale | TimberEquip"
-        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment at timberequip.com"
+        title="Logging Equipment For Sale | Forestry Equipment Sales"
+        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment on Forestry Equipment Sales."
         canonicalPath="/"
         jsonLd={homeJsonLd}
-        imagePath="/TimberEquip-Logo.png?v=20260405c"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
         preloadImage={HERO_IMAGE_PATH}
       />
 
@@ -643,7 +648,7 @@ export function Home() {
                 tickerListings.map((listing) => (
                   <div key={`${loopIndex}-${listing.id}`} className="flex items-center space-x-8 px-10">
                     <span className="text-[10px] font-black text-white uppercase tracking-widest">
-                      {t('home.recentTransaction', 'RECENT TRANSACTION')}: {listing.year || 'N/A'} {safeUppercase(listing.make || listing.manufacturer, 'UNBRANDED')} {safeUppercase(listing.model, 'MODEL')} SOLD FOR {listing.currency || 'USD'} {formatNumber(Number.isFinite(listing.price) ? listing.price : 0)} ({safeUppercase(listing.location, 'LOCATION PENDING')})
+                      {t('home.recentTransaction', 'RECENT TRANSACTION')}: {listing.year || 'N/A'} {safeUppercase(listing.make || listing.manufacturer, 'UNBRANDED')} {safeUppercase(listing.model, 'MODEL')} SOLD FOR {listing.currency || 'USD'} {formatNumber(Number.isFinite(listing.price) ? listing.price : 0)} ({safeUppercase(getListingLocationLabel(listing), 'LOCATION PENDING')})
                     </span>
                     <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
                   </div>

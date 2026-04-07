@@ -44,18 +44,20 @@ type TestListing = {
   price: number;
   year: number;
   hours: number;
+  status?: string;
 };
 
 function makeListing(overrides: Partial<TestListing> = {}): TestListing {
   return {
     id: overrides.id || 'listing-1',
-    make: overrides.make || 'Tigercat',
-    manufacturer: overrides.manufacturer,
-    model: overrides.model || '1075B',
-    category: overrides.category || 'Logging Equipment',
-    price: overrides.price ?? 100000,
-    year: overrides.year ?? 2022,
-    hours: overrides.hours ?? 5000,
+      make: overrides.make || 'Tigercat',
+      manufacturer: overrides.manufacturer,
+      model: overrides.model || '1075B',
+      category: overrides.category || 'Logging Equipment',
+      price: overrides.price ?? 100000,
+      year: overrides.year ?? 2022,
+      hours: overrides.hours ?? 5000,
+      status: overrides.status || 'active',
   };
 }
 
@@ -138,6 +140,7 @@ describe('equipmentService market intelligence helpers', () => {
       makeListing({ id: 'closest', price: 100000, year: 2022, hours: 5000 }),
       makeListing({ id: 'second', price: 101000, year: 2022, hours: 5100 }),
       makeListing({ id: 'third', price: 98000, year: 2021, hours: 5200 }),
+      makeListing({ id: 'sold-match', price: 99000, year: 2022, hours: 5050, status: 'sold' }),
       makeListing({ id: 'excluded-self', price: 100000, year: 2022, hours: 5000 }),
       makeListing({ id: 'wrong-price', price: 150000, year: 2022, hours: 5000 }),
     ] as any);
@@ -156,5 +159,27 @@ describe('equipmentService market intelligence helpers', () => {
     );
 
     expect(result.map((listing) => listing.id)).toEqual(['closest', 'second']);
+  });
+
+  it('reuses one comparable pass to derive both AMV and live recommendations', async () => {
+    const getListingsSpy = vi.spyOn(equipmentService, 'getListings').mockResolvedValue([
+      makeListing({ id: 'closest', price: 100000, year: 2022, hours: 5000 }),
+      makeListing({ id: 'sold-match', price: 99000, year: 2022, hours: 5050, status: 'sold' }),
+      makeListing({ id: 'third', price: 98000, year: 2021, hours: 5200 }),
+    ] as any);
+
+    const result = await equipmentService.getMarketComparableInsights({
+      listingId: 'subject',
+      category: 'Logging Equipment',
+      manufacturer: 'Tigercat',
+      model: '1075B',
+      price: 100000,
+      year: 2022,
+      hours: 5000,
+    });
+
+    expect(getListingsSpy).toHaveBeenCalledTimes(1);
+    expect(result.marketValueEstimate).toBe(Math.round((100000 + 99000 + 98000) / 3));
+    expect(result.recommendations.map((listing) => listing.id)).toEqual(['closest', 'third']);
   });
 });

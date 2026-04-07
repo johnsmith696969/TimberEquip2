@@ -42,7 +42,7 @@ describe('resolveAccountEntitlement', () => {
     expect(result.canPostListings).toBe(true);
     expect(result.publicListingVisibility).toBe('publicly_eligible');
     expect(result.effectiveSellerCapability).toBe('owner_operator');
-    expect(result.billingLabel).toBe('TimberEquip');
+    expect(result.billingLabel).toBe('Forestry Equipment Sales');
   });
 
   it('returns subscription-backed access for active dealer', () => {
@@ -57,7 +57,7 @@ describe('resolveAccountEntitlement', () => {
     expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.dealerOsAccess).toBe(true);
     expect(result.effectiveSellerCapability).toBe('dealer');
-    expect(result.billingLabel).toBe('TimberEquip DealerOS');
+    expect(result.billingLabel).toBe('Forestry Equipment Sales DealerOS');
   });
 
   it('returns subscription-backed access for active fleet_dealer', () => {
@@ -72,7 +72,7 @@ describe('resolveAccountEntitlement', () => {
     expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.dealerOsAccess).toBe(true);
     expect(result.effectiveSellerCapability).toBe('pro_dealer');
-    expect(result.billingLabel).toBe('TimberEquip DealerOS');
+    expect(result.billingLabel).toBe('Forestry Equipment Sales DealerOS');
   });
 
   it('returns hidden_due_to_billing when subscription is past_due', () => {

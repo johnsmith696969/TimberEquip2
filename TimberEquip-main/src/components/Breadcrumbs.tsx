@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 export interface BreadcrumbItem {
   label: string;
@@ -35,7 +36,7 @@ export function Breadcrumbs({ items = [] }: Props) {
       '@type': 'ListItem',
       'position': idx + 1,
       'name': item.label,
-      'item': `https://timberequip.com${item.path}`
+      'item': buildSiteUrl(item.path)
     }))
   };
 

@@ -20,7 +20,7 @@ const LOGIN_URL = `${APP_URL}/login`;
 const MANIFEST_PATH = path.resolve(process.cwd(), process.env.SENDGRID_TEMPLATE_MANIFEST_PATH || 'sendgrid-template-manifest.json');
 
 function templateName(label) {
-  return `${label} | TimberEquip`;
+  return `${label} | Forestry Equipment Sales`;
 }
 
 function token(name) {

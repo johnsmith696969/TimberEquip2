@@ -198,8 +198,8 @@ async function writeStorefrontProfile(token, uid) {
     storefrontDescription: { stringValue: `Browse forestry and logging equipment from ${DISPLAY_NAME} in ${LOCATION}.` },
     location: { stringValue: LOCATION },
     email: { stringValue: EMAIL },
-    seoTitle: { stringValue: `${DISPLAY_NAME} | Pro Dealer on TimberEquip` },
-    seoDescription: { stringValue: `Browse forestry and logging equipment from ${DISPLAY_NAME} in ${LOCATION}. Verified pro dealer on TimberEquip.` },
+    seoTitle: { stringValue: `${DISPLAY_NAME} | Pro Dealer on Forestry Equipment Sales` },
+    seoDescription: { stringValue: `Browse forestry and logging equipment from ${DISPLAY_NAME} in ${LOCATION}. Verified pro dealer on Forestry Equipment Sales.` },
     seoKeywords: {
       arrayValue: {
         values: [

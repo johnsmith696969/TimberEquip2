@@ -192,30 +192,30 @@ export function SellerProfile() {
   }, [id]);
 
   const seoTitle = useMemo(() => {
-    if (!seller) return 'Dealer Storefront | TimberEquip';
+    if (!seller) return 'Dealer Storefront | Forestry Equipment Sales';
     const headline = seller.storefrontName || seller.name;
     if (isDealerRoute && categorySlug) {
-      return `${headline} ${titleCaseSlug(categorySlug)} Inventory | TimberEquip`;
+      return `${headline} ${titleCaseSlug(categorySlug)} Inventory | Forestry Equipment Sales`;
     }
     if (isDealerRoute && isInventoryRoute) {
-      return `${headline} Inventory | TimberEquip`;
+      return `${headline} Inventory | Forestry Equipment Sales`;
     }
-    return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | TimberEquip`;
+    return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | Forestry Equipment Sales`;
   }, [seller, isDealerRoute, categorySlug, isInventoryRoute]);
 
   const seoDescription = useMemo(() => {
-    if (!seller) return 'Browse seller storefront inventory on TimberEquip.';
+    if (!seller) return 'Browse seller storefront inventory on Forestry Equipment Sales.';
     const headline = seller.storefrontName || seller.name;
     if (isDealerRoute && categorySlug) {
-      return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on TimberEquip.`;
+      return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on Forestry Equipment Sales.`;
     }
     if (isDealerRoute && isInventoryRoute) {
-      return `Browse live inventory from ${headline} on TimberEquip.`;
+      return `Browse live inventory from ${headline} on Forestry Equipment Sales.`;
     }
     return (
       seller.seoDescription ||
       seller.storefrontDescription ||
-      `${headline} storefront on TimberEquip. Browse inventory, contact details, and active listings.`
+      `${headline} storefront on Forestry Equipment Sales. Browse inventory, contact details, and active listings.`
     );
   }, [seller, isDealerRoute, categorySlug, isInventoryRoute]);
 
@@ -343,7 +343,7 @@ export function SellerProfile() {
   const logoImage = seller.logo || 'https://picsum.photos/seed/timberequip-logo/260/260';
   const headline = seller.storefrontName || seller.name;
   const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
-  const description = seller.storefrontDescription || 'This storefront is managed on TimberEquip with branded inventory, verified seller controls, and direct lead routing.';
+  const description = seller.storefrontDescription || 'This storefront is managed on Forestry Equipment Sales with branded inventory, verified seller controls, and direct lead routing.';
   const preferredDealerPath = buildDealerPath(seller);
   const storefrontCategoryLinks = (() => {
     const counts = new Map<string, number>();
@@ -534,7 +534,7 @@ export function SellerProfile() {
                         className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
                       />
                       <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/50 break-all">
-                        timberequip.com/dealers/{editData.storefrontSlug || 'your-storefront-slug'}
+                        forestryequipmentsales.com/dealers/{editData.storefrontSlug || 'your-storefront-slug'}
                       </p>
                     </div>
                     <div>

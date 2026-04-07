@@ -1,9 +1,35 @@
 import React from 'react';
+import partsAndAttachmentsSvgRaw from '../assets/category-icons/Parts and Attachments.svg?raw';
+import sawmillEquipmentSvgRaw from '../assets/category-icons/Sawmill Equipment.svg?raw';
+import trailersSvgRaw from '../assets/category-icons/Trailers.svg?raw';
+import trucksSvgRaw from '../assets/category-icons/Trucks.svg?raw';
 
 interface IconProps {
   size?: number;
   className?: string;
 }
+
+const prepareInlineSvg = (svg: string) =>
+  svg
+    .replace(/<\?xml[\s\S]*?\?>/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\.st1\s*\{fill:[^}]+\}/gi, '.st1{fill:currentColor;}')
+    .replace(/<svg\b([^>]*)>/i, '<svg$1 width="100%" height="100%" preserveAspectRatio="xMidYMid meet">')
+    .trim();
+
+const PARTS_AND_ATTACHMENTS_SVG = prepareInlineSvg(partsAndAttachmentsSvgRaw);
+const SAWMILL_EQUIPMENT_SVG = prepareInlineSvg(sawmillEquipmentSvgRaw);
+const TRAILERS_SVG = prepareInlineSvg(trailersSvgRaw);
+const TRUCKS_SVG = prepareInlineSvg(trucksSvgRaw);
+
+const AssetCategoryIcon: React.FC<IconProps & { svg: string }> = ({ svg, size = 24, className }) => (
+  <span
+    aria-hidden="true"
+    className={['inline-block shrink-0', className].filter(Boolean).join(' ')}
+    style={{ width: size, height: size, lineHeight: 0 }}
+    dangerouslySetInnerHTML={{ __html: svg }}
+  />
+);
 
 export const LoggingEquipmentIcon: React.FC<IconProps> = ({ size = 24, className }) => (
   <svg viewBox="0 0 64 64" width={size} height={size} className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -74,4 +100,20 @@ export const FirewoodEquipmentIcon: React.FC<IconProps> = ({ size = 24, classNam
       <path d="M46.37,27.396c.194-.184.293-.417.316-.681.072-.065.141-.135.208-.21.045.029.088.047.124.076.1.078-.013.358-.013.358.238-.308.307-.632.268-.951.055-.092.107-.188.156-.288.048.008.094.008.134.02.112.032.061.347.061.347.164-.394.164-.732.061-1.021.034-.111.064-.225.09-.342.048-.012.091-.031.132-.037.113-.017.13.306.13.306.076-.447.007-.77-.151-1.002.009-.12.015-.241.016-.364.043-.032.081-.069.119-.092.105-.064.187.238.187.238-.019-.458-.151-.738-.35-.894a5.356 5.356 0 0 0-.059-.356c.035-.049.063-.099.094-.137.087-.105.227.149.227.149-.112-.43-.296-.642-.518-.707-.04-.108-.083-.213-.13-.314.023-.061.04-.122.062-.172.062-.137.248.046.248.046-.196-.364-.415-.489-.64-.457a4.528 4.528 0 0 0-.188-.246c.01-.068.013-.133.024-.19.031-.157.246-.061.246-.061-.261-.265-.496-.292-.705-.167a4.528 4.528 0 0 0-.23-.156c-.005-.069-.015-.132-.016-.191-.003-.163.223-.162.223-.162-.304-.143-.534-.07-.708.138a2.528 2.528 0 0 0-.252-.051c-.019-.064-.041-.121-.054-.177-.036-.155.18-.249.18-.249-.32-.009-.525.159-.649.431a2.528 2.528 0 0 0-.289.068c-.032-.053-.065-.096-.09-.144-.067-.131.118-.316.118-.316-.306.133-.465.383-.524.696a2.528 2.528 0 0 0-.227.166c-.041-.037-.082-.065-.115-.1-.092-.097.048-.352.048-.352-.266.257-.366.563-.358.887a4.528 4.528 0 0 0-.183.253c-.047-.018-.092-.027-.131-.047-.107-.054-.027-.356-.027-.356-.201.357-.235.692-.161.999a4.528 4.528 0 0 0-.123.32c-.048.002-.093.013-.134.01-.114-.007-.098-.33-.098-.33-.119.426-.082.76.051 1.022-.021.117-.039.237-.052.358-.046.023-.086.051-.126.067-.11.042-.162-.273-.162-.273-.026.458.077.762.259.956.004.123.012.244.023.363-.039.041-.072.086-.107.117-.097.086-.211-.193-.211-.193.069.448.23.695.443.804.029.115.061.228.097.338-.029.056-.051.112-.078.157-.075.123-.241-.096-.241-.096.158.4.362.568.588.582.051.098.105.191.162.281-.016.066-.026.129-.043.184-.046.149-.25.01-.25.01.233.316.463.39.682.308.068.072.139.139.212.201-.002.07.002.134-.003.193-.013.162-.237.115-.237.115.287.203.522.177.714.007.08.04.162.074.245.102.012.067.029.127.036.185h-9.795v-1.977H34.71v-1.977h.561v-.528h-1.713v.528h.612v1.977h-.27v1.977h-4.361v-1.977H29.32v-1.977h.561v-.528h-1.713v.528h.612v1.977h-.27v1.977h-4.613v2.423H28.8v-.823c0-.519.432-.941.962-.941h9.331c.531 0 .962.422.962.941v.823h4.818v.228h-4.818v.801h4.818v5.969h-5.357c.18-.13.306-.329.306-.564v-7.302c0-.393-.328-.713-.73-.713h-9.331c-.402 0-.729.32-.729.713v7.302c0 .235.125.434.305.564h-6.18c.296-.143.505-.434.505-.779v-8.686v-.618c0-.081-.026-.154-.047-.228-.105-.37-.437-.647-.848-.647h-8.998c-.494 0-.896.393-.896.876v9.304c0 .316.181.58.437.734.023.014.043.033.067.045h-2.95v.742l-1.634-.098v-1.115H7.898v1.061l-4.656-.28v-.045H2.65v2.046h.592v-.844l4.656.28v3.808H7.152v2.242h2.389v-2.242H8.794v-3.754l1.634.098v.021h.344l.036.002v-.002h14.62l.635-1.216h15.851l.635 1.216h3.281c-.012.066-.04.125-.04.194 0 .482.304.893.733 1.066v3.751h-.747v.875h2.389v-.875h-.747v-3.751c.43-.173.733-.584.733-1.066 0-.069-.028-.129-.04-.194h.431V37.1v-.307v-7.073c0-1.218-.955-2.209-2.172-2.324zM18.501 34.625h-.466v-6.524h.466v6.524zm2.949 0h-.466v-6.524h.466v6.524zm12.863-3.035h-5.669v-.455h5.669v.455zm10.826-4.217c0-.203-.165-.528-.368-.528s-.368.236-.368.528.165.528.368.528.368-.236.368-.528zm1.01 0c-.056-.004-.11-.016-.167-.016h-.255c.037-.064.068-.135.092-.211.083-.032.164-.069.243-.112.037.046.074.082.103.124.04.059.017.145-.016.215z"/>
     </g>
   </svg>
+);
+
+export const PartsAndAttachmentsIcon: React.FC<IconProps> = ({ size = 24, className }) => (
+  <AssetCategoryIcon svg={PARTS_AND_ATTACHMENTS_SVG} size={size} className={className} />
+);
+
+export const SawmillEquipmentIcon: React.FC<IconProps> = ({ size = 24, className }) => (
+  <AssetCategoryIcon svg={SAWMILL_EQUIPMENT_SVG} size={size} className={className} />
+);
+
+export const TrailersIcon: React.FC<IconProps> = ({ size = 24, className }) => (
+  <AssetCategoryIcon svg={TRAILERS_SVG} size={size} className={className} />
+);
+
+export const TrucksIcon: React.FC<IconProps> = ({ size = 24, className }) => (
+  <AssetCategoryIcon svg={TRUCKS_SVG} size={size} className={className} />
 );

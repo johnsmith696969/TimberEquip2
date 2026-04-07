@@ -21,8 +21,16 @@ import { Auction, AuctionStatus } from '../types';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { useAuth } from '../components/AuthContext';
 import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { buildAuctionLegalSummaryLines } from '../utils/auctionFees';
+import {
+  buildAuctionRegistrationLoginPath,
+  buildAuctionRegistrationPath,
+  isExternalAuctionHref,
+  resolveAuctionTermsHref,
+} from '../utils/auctionLinks';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -74,7 +82,7 @@ const HOW_IT_WORKS_STEPS = [
     title: 'Register',
     desc: 'Create your account, save your bidder profile, and accept the auction paperwork.',
     detail:
-      'Bidder approval runs through the registration flow, where we collect business and contact details, verify identity with Stripe Identity, and save a payment method before TimberEquip clears an account to bid.',
+      'Bidder approval runs through the registration flow, where we collect business and contact details, verify identity with Stripe Identity, and save a payment method before Forestry Equipment Sales clears an account to bid.',
   },
   {
     icon: Gavel,
@@ -169,6 +177,7 @@ function AuctionCard({ auction }: { auction: Auction }) {
 
 export function Auctions() {
   const { theme } = useTheme();
+  const { isAuthenticated } = useAuth();
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
   const [pastExpanded, setPastExpanded] = useState(false);
@@ -214,12 +223,18 @@ export function Auctions() {
 
   const hasAuctions = auctions.length > 0;
   const auctionLegalSummaryLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
-  const featuredTermsHref = featuredAuction?.termsAndConditionsUrl || '/terms';
+  const registrationAuction = featuredAuction || activeAuctions[0] || upcomingAuctions[0] || null;
+  const hasRegistrationAuction = Boolean(registrationAuction?.slug);
+  const registrationPath = buildAuctionRegistrationPath(registrationAuction?.slug);
+  const registrationLoginPath = buildAuctionRegistrationLoginPath(registrationAuction?.slug);
+  const registrationCtaPath = isAuthenticated ? registrationPath : registrationLoginPath;
+  const featuredTermsHref = resolveAuctionTermsHref(featuredAuction?.termsAndConditionsUrl);
+  const featuredTermsIsExternal = isExternalAuctionHref(featuredTermsHref);
 
   return (
     <div className="bg-bg min-h-screen">
       <Seo
-        title="Equipment Auctions | TimberEquip"
+        title="Equipment Auctions | Forestry Equipment Sales"
         description="Browse active and upcoming forestry equipment auctions, review bidder requirements and auction terms, and bid on logging machines, land clearing equipment, trucks, and trailers."
         canonicalPath="/auctions"
         imagePath="/page-photos/john-deere-harvester.webp"
@@ -229,7 +244,7 @@ export function Auctions() {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment Auctions',
           description: 'Browse active and upcoming forestry equipment auctions.',
-          url: 'https://timberequip.com/auctions',
+          url: buildSiteUrl('/auctions'),
         }}
       />
 
@@ -273,11 +288,11 @@ export function Auctions() {
             </div>
             <h2 className="text-2xl font-black tracking-tighter uppercase mb-3">No Auctions Scheduled</h2>
             <p className="text-sm font-medium text-muted max-w-md mb-8">
-              There are no active or upcoming auctions at this time. Check back soon or contact support for information on upcoming events.
+              There are no active or upcoming auctions at this time. Check back soon, or complete bidder approval now so your identity and payment setup are ready for the next published auction.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link to="/contact" className="btn-industrial btn-accent py-4 px-10">
-                Contact Support
+              <Link to={registrationCtaPath} className="btn-industrial btn-accent py-4 px-10">
+                Get Bidder Approval
               </Link>
               <Link to="/search" className="btn-industrial btn-outline py-4 px-10">
                 Browse Inventory
@@ -347,7 +362,9 @@ export function Auctions() {
                         <ArrowRight size={14} className="ml-2" />
                       </Link>
                       <Link
-                        to={`/login?redirect=/auctions/${featuredAuction.slug}/register`}
+                        to={isAuthenticated
+                          ? buildAuctionRegistrationPath(featuredAuction.slug)
+                          : buildAuctionRegistrationLoginPath(featuredAuction.slug)}
                         className="btn-industrial btn-outline py-4 px-6 whitespace-nowrap"
                       >
                         Register to Bid
@@ -460,10 +477,10 @@ export function Auctions() {
                 Review the Governing Documents Before You Bid
               </h3>
               <p className="text-sm font-medium text-muted leading-relaxed">
-                Auction-specific rules are linked inside the catalog and lot pages, while bidder approval, privacy handling, and platform-wide enforcement live in the TimberEquip legal documents below. Review both the event terms and the marketplace terms before placing bids.
+                Auction-specific rules are linked inside the catalog and lot pages, while bidder approval, privacy handling, and platform-wide enforcement live in the Forestry Equipment Sales legal documents below. Review both the event terms and the marketplace terms before placing bids.
               </p>
               <div className="mt-6 grid gap-3">
-                {featuredTermsHref.startsWith('http') ? (
+                {featuredTermsIsExternal ? (
                   <a
                     href={featuredTermsHref}
                     target="_blank"
@@ -486,16 +503,21 @@ export function Auctions() {
                   to="/terms"
                   className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
                 >
-                  TimberEquip Terms of Service
+                  Forestry Equipment Sales Terms of Service
                   <ArrowRight size={14} />
                 </Link>
                 <Link
-                  to={featuredAuction ? `/login?redirect=/auctions/${featuredAuction.slug}/register` : '/login?redirect=/auctions'}
+                  to={registrationCtaPath}
                   className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
                 >
                   Bidder registration, identity, and payment setup
                   <ArrowRight size={14} />
                 </Link>
+                {!hasRegistrationAuction && (
+                  <p className="px-1 text-xs text-muted">
+                    Complete bidder approval now and Forestry Equipment Sales will keep it on file for the next live or preview auction.
+                  </p>
+                )}
                 <Link
                   to="/privacy"
                   className="flex items-center justify-between border border-line bg-bg px-4 py-4 text-sm font-bold text-ink transition-colors hover:border-accent hover:text-accent"
@@ -542,10 +564,10 @@ export function Auctions() {
           </div>
           <div className="flex flex-col sm:flex-row gap-4 flex-shrink-0">
             <Link
-              to="/login?redirect=/auctions"
+              to={registrationCtaPath}
               className="btn-industrial btn-accent py-5 px-12 whitespace-nowrap"
             >
-              Register Now
+              {hasRegistrationAuction ? 'Register Now' : 'Get Bidder Approval'}
             </Link>
             <Link to="/contact" className="btn-industrial btn-outline py-5 px-12 whitespace-nowrap">
               Contact Support

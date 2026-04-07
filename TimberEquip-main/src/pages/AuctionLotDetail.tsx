@@ -6,6 +6,12 @@ import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { auctionService, type AuctionBidderStatusResponse } from '../services/auctionService';
 import { buildAuctionInvoiceTotals, buildAuctionLegalSummaryLines } from '../utils/auctionFees';
+import {
+  buildAuctionRegistrationLoginPath,
+  buildAuctionRegistrationPath,
+  isExternalAuctionHref,
+  resolveAuctionTermsHref,
+} from '../utils/auctionLinks';
 import { isOperatorOnlyRole } from '../utils/roleScopes';
 import type { Auction, AuctionBid, AuctionInvoice, AuctionLot } from '../types';
 
@@ -188,10 +194,10 @@ export function AuctionLotDetail() {
     paymentMethod: 'card',
   });
   const returnTo = auctionSlug && lotNumber ? `/auctions/${auctionSlug}/lots/${lotNumber}` : '/auctions';
-  const registrationPath = auctionSlug
-    ? `/auctions/${auctionSlug}/register?returnTo=${encodeURIComponent(returnTo)}`
-    : '/auctions';
-  const loginPath = `/login?redirect=${encodeURIComponent(registrationPath)}`;
+  const registrationPath = buildAuctionRegistrationPath(auctionSlug, returnTo);
+  const loginPath = buildAuctionRegistrationLoginPath(auctionSlug, returnTo);
+  const auctionTermsHref = resolveAuctionTermsHref(auction?.termsAndConditionsUrl);
+  const auctionTermsIsExternal = isExternalAuctionHref(auctionTermsHref);
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Auctions', path: '/auctions' },
@@ -645,10 +651,17 @@ export function AuctionLotDetail() {
                   Bidder verification and payment setup
                   <ShieldCheck size={13} />
                 </Link>
-                <a href={auction.termsAndConditionsUrl || '/terms'} target="_blank" rel="noreferrer" className="flex items-center justify-between text-sm font-bold text-ink hover:text-accent">
-                  Full auction terms
-                  <ExternalLink size={13} />
-                </a>
+                {auctionTermsIsExternal ? (
+                  <a href={auctionTermsHref} target="_blank" rel="noreferrer" className="flex items-center justify-between text-sm font-bold text-ink hover:text-accent">
+                    Full auction terms
+                    <ExternalLink size={13} />
+                  </a>
+                ) : (
+                  <Link to={auctionTermsHref} className="flex items-center justify-between text-sm font-bold text-ink hover:text-accent">
+                    Full auction terms
+                    <ArrowRight size={13} />
+                  </Link>
+                )}
               </div>
             </div>
           </aside>

@@ -16,6 +16,7 @@
 const { logger } = require('firebase-functions/v2');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { captureFunctionsException } = require('./sentry.js');
+const { mergeEmailPreferenceMetadata } = require('./email-preferences.js');
 
 // The custom Firestore database used by the marketplace.
 const FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
@@ -124,7 +125,7 @@ exports.syncUserToPostgres = onDocumentWritten(
       seoTitle: safeStr(after.seoTitle),
       seoDescription: safeStr(after.seoDescription),
       seoKeywords: Array.isArray(after.seoKeywords) ? after.seoKeywords : [],
-      metadataJson: {},
+      metadataJson: mergeEmailPreferenceMetadata(after.metadataJson, after),
     };
 
     logger.info(`[dual-write] Syncing user ${userId} to PostgreSQL`);

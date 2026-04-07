@@ -12,6 +12,7 @@ import { NewsPost } from '../types';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 function slugifyNewsTitle(value: string) {
   return String(value || '')
@@ -58,8 +59,8 @@ export function Blog() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment News | Market Reports & Industry Updates | TimberEquip"
-        description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from TimberEquip."
+        title="Equipment News | Market Reports & Industry Updates | Forestry Equipment Sales"
+        description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales."
         canonicalPath="/blog"
         preloadImage="/page-photos/pine-dirt-road.webp"
         jsonLd={{
@@ -67,20 +68,20 @@ export function Blog() {
           '@graph': [
             {
               '@type': 'Blog',
-              name: 'TimberEquip Blog',
-              description: 'Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from TimberEquip.',
-              url: 'https://timberequip.com/blog',
+              name: 'Forestry Equipment Sales Blog',
+              description: 'Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales.',
+              url: buildSiteUrl('/blog'),
               publisher: {
                 '@type': 'Organization',
-                name: 'TimberEquip',
-                url: 'https://timberequip.com',
+                name: 'Forestry Equipment Sales',
+                url: buildSiteUrl(),
               },
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
-                { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://timberequip.com/blog' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl() },
+                { '@type': 'ListItem', position: 2, name: 'Blog', item: buildSiteUrl('/blog') },
               ],
             },
           ],
@@ -178,7 +179,7 @@ export function Blog() {
                     </div>
                     <div className="flex items-center">
                       <ShieldCheck size={12} className="mr-2" />
-                      {post.author || 'TimberEquip'}
+                      {post.author || 'Forestry Equipment Sales'}
                     </div>
                   </div>
 

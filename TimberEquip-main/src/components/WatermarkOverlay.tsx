@@ -3,10 +3,10 @@
  * Pass `index` to cycle which corner is used across a set of images.
  *
  * Uses the watermark asset's built-in transparency at ~9 % of container width, no rotation.
- * The overlay is reduced to roughly one-third visibility.
+ * The overlay stays subtle while remaining readable.
  */
-const WATERMARK_SRC = '/watermark.png?v=20260405a';
-const WATERMARK_OPACITY = 0.12;
+const WATERMARK_SRC = '/Watermark.avif?v=20260407a';
+const WATERMARK_OPACITY = 0.19;
 
 const corners = [
   { top: '4%', left: '4%' },          // top-left

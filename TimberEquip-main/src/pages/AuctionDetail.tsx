@@ -14,8 +14,17 @@ import { auctionService } from '../services/auctionService';
 import { Auction, AuctionLot, AuctionStatus, AuctionLotStatus } from '../types';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs, BreadcrumbItem } from '../components/Breadcrumbs';
+import { useAuth } from '../components/AuthContext';
 import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
+import { useAuctionSocket } from '../hooks/useAuctionSocket';
 import { buildAuctionLegalSummaryLines } from '../utils/auctionFees';
+import {
+  buildAuctionRegistrationLoginPath,
+  buildAuctionRegistrationPath,
+  isExternalAuctionHref,
+  resolveAuctionTermsHref,
+} from '../utils/auctionLinks';
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -81,6 +90,20 @@ function getLotStatusBadge(status: AuctionLotStatus): string {
   }
 }
 
+/** Server-corrected time remaining (accounts for clock drift via serverTimeOffset). */
+function formatTimeRemainingWithOffset(endTime: string, offset: number): string {
+  const remaining = new Date(endTime).getTime() - (Date.now() + offset);
+  if (remaining <= 0) return 'Ended';
+  const days = Math.floor(remaining / 86400000);
+  const hours = Math.floor((remaining % 86400000) / 3600000);
+  const minutes = Math.floor((remaining % 3600000) / 60000);
+  const seconds = Math.floor((remaining % 60000) / 1000);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 // ── Skeleton components ───────────────────────────────────────────────────────
 
 function LotCardSkeleton() {
@@ -97,18 +120,18 @@ function LotCardSkeleton() {
   );
 }
 
-function LotCard({ lot, auctionSlug }: { lot: AuctionLot; auctionSlug: string }) {
+function LotCard({ lot, auctionSlug, serverTimeOffset = 0 }: { lot: AuctionLot; auctionSlug: string; serverTimeOffset?: number }) {
   const [timeRemaining, setTimeRemaining] = useState(() =>
-    (lot.status === 'active' || lot.status === 'extended') ? auctionService.formatTimeRemaining(lot.endTime) : ''
+    (lot.status === 'active' || lot.status === 'extended') ? formatTimeRemainingWithOffset(lot.endTime, serverTimeOffset) : ''
   );
 
   useEffect(() => {
     if (lot.status !== 'active' && lot.status !== 'extended') return;
-    const interval = setInterval(() => {
-      setTimeRemaining(auctionService.formatTimeRemaining(lot.endTime));
-    }, 1000);
+    const tick = () => setTimeRemaining(formatTimeRemainingWithOffset(lot.endTime, serverTimeOffset));
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [lot.endTime, lot.status]);
+  }, [lot.endTime, lot.status, serverTimeOffset]);
 
   const thumbnailSrc = lot.thumbnailUrl || '/page-photos/john-deere-harvester.webp';
 
@@ -181,18 +204,18 @@ function LotCard({ lot, auctionSlug }: { lot: AuctionLot; auctionSlug: string })
   );
 }
 
-function PromotedLotCard({ lot, auctionSlug }: { lot: AuctionLot; auctionSlug: string }) {
+function PromotedLotCard({ lot, auctionSlug, serverTimeOffset = 0 }: { lot: AuctionLot; auctionSlug: string; serverTimeOffset?: number }) {
   const [timeRemaining, setTimeRemaining] = useState(() =>
-    (lot.status === 'active' || lot.status === 'extended') ? auctionService.formatTimeRemaining(lot.endTime) : ''
+    (lot.status === 'active' || lot.status === 'extended') ? formatTimeRemainingWithOffset(lot.endTime, serverTimeOffset) : ''
   );
 
   useEffect(() => {
     if (lot.status !== 'active' && lot.status !== 'extended') return;
-    const interval = setInterval(() => {
-      setTimeRemaining(auctionService.formatTimeRemaining(lot.endTime));
-    }, 1000);
+    const tick = () => setTimeRemaining(formatTimeRemainingWithOffset(lot.endTime, serverTimeOffset));
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [lot.endTime, lot.status]);
+  }, [lot.endTime, lot.status, serverTimeOffset]);
 
   const thumbnailSrc = lot.thumbnailUrl || '/page-photos/john-deere-harvester.webp';
 
@@ -265,6 +288,7 @@ function PromotedLotCard({ lot, auctionSlug }: { lot: AuctionLot; auctionSlug: s
 export function AuctionDetail() {
   const { auctionSlug } = useParams<{ auctionSlug: string }>();
   const { theme } = useTheme();
+  const { isAuthenticated } = useAuth();
   const legalSummaryLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
 
   const [auction, setAuction] = useState<Auction | null>(null);
@@ -272,6 +296,44 @@ export function AuctionDetail() {
   const [loadingAuction, setLoadingAuction] = useState(true);
   const [loadingLots, setLoadingLots] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  // ── WebSocket real-time updates ──────────────────────────────────────────
+  const { serverTimeOffset } = useAuctionSocket({
+    auctionId: auction?.id || '',
+    onBidPlaced: (payload) => {
+      setLots((prev) =>
+        prev.map((l) =>
+          l.id === payload.lotId
+            ? {
+                ...l,
+                currentBid: payload.currentBid,
+                bidCount: Math.max(l.bidCount, payload.bidCount),
+                currentBidderAnonymousId: payload.bidderAnonymousId,
+                lastBidTime: payload.timestamp,
+              }
+            : l,
+        ),
+      );
+    },
+    onLotExtended: (payload) => {
+      setLots((prev) =>
+        prev.map((l) =>
+          l.id === payload.lotId
+            ? { ...l, endTime: payload.newEndTime, extensionCount: payload.extensionCount, status: 'extended' as AuctionLotStatus }
+            : l,
+        ),
+      );
+    },
+    onLotClosed: (payload) => {
+      setLots((prev) =>
+        prev.map((l) =>
+          l.id === payload.lotId
+            ? { ...l, status: payload.finalStatus as AuctionLotStatus, winningBid: payload.winningBid }
+            : l,
+        ),
+      );
+    },
+  });
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -344,12 +406,12 @@ export function AuctionDetail() {
         description: auction.description,
         startDate: auction.startTime,
         endDate: auction.endTime,
-        url: `https://timberequip.com/auctions/${auction.slug}`,
+        url: buildSiteUrl(`/auctions/${auction.slug}`),
         image: auction.coverImageUrl || auction.image,
         organizer: {
           '@type': 'Organization',
-          name: 'TimberEquip',
-          url: 'https://timberequip.com',
+          name: 'Forestry Equipment Sales',
+          url: buildSiteUrl(),
         },
       }
     : undefined;
@@ -372,12 +434,17 @@ export function AuctionDetail() {
   }
 
   const isLive = auction?.status === 'active';
+  const auctionRegistrationPath = buildAuctionRegistrationPath(auction?.slug);
+  const auctionRegistrationLoginPath = buildAuctionRegistrationLoginPath(auction?.slug);
+  const auctionCtaPath = isAuthenticated ? auctionRegistrationPath : auctionRegistrationLoginPath;
+  const auctionTermsHref = resolveAuctionTermsHref(auction?.termsAndConditionsUrl);
+  const auctionTermsIsExternal = isExternalAuctionHref(auctionTermsHref);
 
   return (
     <div className="bg-bg min-h-screen">
       {auction && (
         <Seo
-          title={`${auction.title} | Auction Catalog | TimberEquip`}
+          title={`${auction.title} | Auction Catalog | Forestry Equipment Sales`}
           description={auction.description || `Browse lots and bid on ${auction.title}. Forestry equipment auction.`}
           canonicalPath={`/auctions/${auction.slug}`}
           imagePath={auction.coverImageUrl || auction.image}
@@ -439,7 +506,7 @@ export function AuctionDetail() {
               <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
                 {(auction.status === 'active' || auction.status === 'preview') && (
                   <Link
-                    to={`/login?redirect=/auctions/${auction.slug}/register`}
+                    to={auctionCtaPath}
                     className="btn-industrial btn-accent py-4 px-10 whitespace-nowrap"
                   >
                     Register to Bid
@@ -465,7 +532,7 @@ export function AuctionDetail() {
             </div>
             <div className="space-y-6">
               {promotedLots.map((lot) => (
-                <PromotedLotCard key={lot.id} lot={lot} auctionSlug={auction.slug} />
+                <PromotedLotCard key={lot.id} lot={lot} auctionSlug={auction.slug} serverTimeOffset={serverTimeOffset} />
               ))}
             </div>
           </section>
@@ -538,7 +605,7 @@ export function AuctionDetail() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredLots.map((lot) => (
-                auction && <LotCard key={lot.id} lot={lot} auctionSlug={auction.slug} />
+                auction && <LotCard key={lot.id} lot={lot} auctionSlug={auction.slug} serverTimeOffset={serverTimeOffset} />
               ))}
             </div>
           )}
@@ -560,15 +627,22 @@ export function AuctionDetail() {
                           <li key={line}>{line}</li>
                         ))}
                       </ul>
-                      {auction.termsAndConditionsUrl && (
+                      {auctionTermsIsExternal ? (
                         <a
-                          href={auction.termsAndConditionsUrl}
+                          href={auctionTermsHref}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-accent font-bold hover:underline"
                         >
                           Full Terms & Conditions <ArrowRight size={12} />
                         </a>
+                      ) : (
+                        <Link
+                          to={auctionTermsHref}
+                          className="inline-flex items-center gap-1 text-accent font-bold hover:underline"
+                        >
+                          Full Terms & Conditions <ArrowRight size={12} />
+                        </Link>
                       )}
                     </div>
                   ),
@@ -647,7 +721,7 @@ export function AuctionDetail() {
               </p>
             </div>
             <Link
-              to={`/login?redirect=/auctions/${auction.slug}/register`}
+              to={auctionCtaPath}
               className="btn-industrial btn-accent py-5 px-12 whitespace-nowrap flex-shrink-0"
             >
               Register to Bid

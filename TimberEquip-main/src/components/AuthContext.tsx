@@ -3,6 +3,7 @@ import {
   onIdTokenChanged,
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile as updateFirebaseProfile,
@@ -454,6 +455,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.uid, user?.favorites]);
 
   useEffect(() => {
+    // Complete any pending Google redirect sign-in flow.
+    getRedirectResult(auth).catch((err) => {
+      const code = err?.code || '';
+      // Silently ignore user-initiated cancellations.
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        console.warn('[Auth] Redirect result error:', code || err);
+      }
+    });
+
     let authStateVersion = 0;
 
     const unsubscribeAuth = onIdTokenChanged(auth, (firebaseUser) => {
@@ -675,7 +685,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    await signInWithEmailAndPassword(auth, email.trim(), password);
   };
 
   const sendVerificationEmailViaApi = async (firebaseUser?: FirebaseUser | null) => {
@@ -712,7 +722,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string;
     onboardingIntent?: 'free_member' | ListingPlanId;
   }) => {
-    const credential = await createUserWithEmailAndPassword(auth, email, password);
+    const normalizedEmail = email.trim();
+    const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
     try {
       await updateFirebaseProfile(credential.user, { displayName });
     } catch (error) {
@@ -730,7 +741,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profile: UserProfile = {
       uid: credential.user.uid,
       displayName,
-      email,
+      email: normalizedEmail,
       role: nextRole,
       photoURL: credential.user.photoURL || '',
       company: company || '',
@@ -780,15 +791,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
 
+    // Errors that should NOT trigger a redirect (user-initiated or account issues).
+    const NO_REDIRECT_CODES = new Set([
+      'auth/popup-closed-by-user',
+      'auth/cancelled-popup-request',
+      'auth/account-exists-with-different-credential',
+      'auth/unauthorized-domain',
+      'auth/user-disabled',
+    ]);
+
     try {
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       const code = error?.code || '';
-      if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-        await signInWithRedirect(auth, provider);
-        return;
+
+      // MFA challenge — rethrow so Login.tsx can handle it.
+      if (code === 'auth/multi-factor-auth-required') {
+        throw error;
       }
-      throw error;
+
+      // User-initiated cancellations or account issues — rethrow as-is.
+      if (NO_REDIRECT_CODES.has(code)) {
+        throw error;
+      }
+
+      // Everything else (popup blocked, internal error, network error,
+      // 3rd-party cookie blocking, etc.) — fallback to full-page redirect.
+      console.warn(`[Auth] signInWithPopup failed (${code || 'unknown'}), falling back to redirect.`);
+      try {
+        await signInWithRedirect(auth, provider);
+      } catch (redirectError: any) {
+        // If redirect also fails, throw the original popup error.
+        console.error('[Auth] signInWithRedirect also failed:', redirectError);
+        throw error;
+      }
     }
   };
 

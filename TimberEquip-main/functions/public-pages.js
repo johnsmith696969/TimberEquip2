@@ -806,16 +806,17 @@ function renderHead({ title, description, canonicalUrl, jsonLd, robots = 'index,
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
-    <meta property="og:image" content="${escapeHtml(DEFAULT_BASE_URL)}/TimberEquip-OG-Share.png?v=20260405d" />
+    <meta property="og:image" content="${escapeHtml(DEFAULT_BASE_URL)}/Forestry_Equipment_Sales_Logo.png?v=20260407a" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260405c" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260405c" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260405c" />
-    <link rel="shortcut icon" href="/favicon.ico?v=20260405c" />
-    <link rel="manifest" href="/site.webmanifest?v=20260405c" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260407a" />
+    <link rel="icon" type="image/svg+xml" href="/Forestry_Equipment_Sales_Favicon.svg?v=20260407a" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260407a" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260407a" />
+    <link rel="shortcut icon" href="/favicon.ico?v=20260407a" />
+    <link rel="manifest" href="/site.webmanifest?v=20260407a" />
     <style>${baseStyles()}</style>
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ''}
   `;
@@ -831,9 +832,9 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
     <header class="topbar">
       <div class="shell topbar-inner">
         <a class="brand" href="/">
-          <img src="/TimberEquip-Light-Mode-Logo.svg?v=20260405c" alt="TimberEquip" onerror="this.onerror=null;this.src='/TimberEquip-Logo.png?v=20260405c';" />
+          <img src="/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=20260407a" alt="Forestry Equipment Sales" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260407a';" />
           <span class="brand-copy">
-            <strong>TimberEquip</strong>
+            <strong>Forestry Equipment Sales</strong>
             <span>Browse equipment inventory, dealers, categories, manufacturers, and states.</span>
           </span>
         </a>
@@ -852,9 +853,9 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
       <div class="shell">
           <div class="footer-card">
             <div class="footer-brand">
-              <img src="/TimberEquip-Brand-Logo-Dusk-Mode.svg?v=20260405c" alt="TimberEquip logo" onerror="this.onerror=null;this.src='/Logo-Transparent.png?v=20260405c';" />
+              <img src="/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=20260407a" alt="Forestry Equipment Sales logo" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260407a';" />
               <span class="footer-copy">
-                <strong>TimberEquip Marketplace</strong>
+                <strong>Forestry Equipment Sales Marketplace</strong>
                 <span>Dealer storefronts, live inventory, and clean public routes for buyers and sellers.</span>
               </span>
             </div>
@@ -1045,7 +1046,7 @@ function buildListingItemList(name, listings, fallbackBrand) {
         model: listing.model || undefined,
         brand: {
           '@type': 'Brand',
-          name: listing.manufacturer || fallbackBrand || 'TimberEquip',
+          name: listing.manufacturer || fallbackBrand || 'Forestry Equipment Sales',
         },
         offers: {
           '@type': 'Offer',
@@ -1070,12 +1071,12 @@ function buildCollectionJsonLd(name, description, canonicalUrl, listings, breadc
         url: canonicalUrl,
         isPartOf: {
           '@type': 'WebSite',
-          name: 'TimberEquip',
+          name: 'Forestry Equipment Sales',
           url: DEFAULT_BASE_URL,
         },
       },
       ...(breadcrumbs.length ? [buildBreadcrumbJsonLd(breadcrumbs, canonicalUrl)] : []),
-      buildListingItemList(`${name} inventory`, listings, 'TimberEquip'),
+      buildListingItemList(`${name} inventory`, listings, 'Forestry Equipment Sales'),
     ],
   };
 }
@@ -1091,7 +1092,7 @@ function buildDirectoryJsonLd(name, description, canonicalUrl, breadcrumbs, item
         url: canonicalUrl,
         isPartOf: {
           '@type': 'WebSite',
-          name: 'TimberEquip',
+          name: 'Forestry Equipment Sales',
           url: DEFAULT_BASE_URL,
         },
       },
@@ -1760,7 +1761,7 @@ function renderQuotaFallbackPage(req, res) {
       description: 'The dealer directory remains online while live inventory route data retries.',
       intro: 'This directory is the public dealer hub for the marketplace. Live seller counts are temporarily unavailable, but the canonical dealer directory and search entry points remain online.',
       heroImageUrl: '/page-photos/dealers.png',
-      heroImageAlt: 'TimberEquip dealer network',
+      heroImageAlt: 'Forestry Equipment Sales dealer network',
       heroImagePosition: 'center 42%',
       heroImageScale: 1.08,
       breadcrumbs: [
@@ -1917,7 +1918,7 @@ async function renderRoute(req, res) {
 
     res.status(200).type('html').send(
       renderInventoryPage({
-        title: 'New & Used Logging Equipment For Sale | TimberEquip',
+        title: 'New & Used Logging Equipment For Sale | Forestry Equipment Sales',
         eyebrow: 'Marketplace Home',
         description: 'Buy and sell new and used logging equipment, forestry equipment, dealer inventory, and high-intent machine categories from one crawlable marketplace.',
         canonicalUrl: `${baseUrl}/`,
@@ -1976,7 +1977,7 @@ async function renderRoute(req, res) {
         primaryAction: { href: '/forestry-equipment-for-sale', label: 'Browse Market Hub' },
         secondaryAction: { href: '/search', label: 'Open Search App' },
         jsonLd: buildCollectionJsonLd(
-          'TimberEquip',
+          'Forestry Equipment Sales',
           'Buy and sell new and used logging equipment, forestry equipment, dealer inventory, and manufacturer routes on one crawlable marketplace.',
           `${baseUrl}/`,
           marketListings,
@@ -2102,7 +2103,7 @@ async function renderRoute(req, res) {
         statValue,
         items,
         emptyMessage: 'Categories will appear here as soon as live marketplace inventory is published.',
-        jsonLd: buildDirectoryJsonLd('Equipment Categories', 'Browse the live major equipment families currently represented on TimberEquip.', `${baseUrl}/categories`, breadcrumbs, items),
+        jsonLd: buildDirectoryJsonLd('Equipment Categories', 'Browse the live major equipment families currently represented on Forestry Equipment Sales.', `${baseUrl}/categories`, breadcrumbs, items),
       })
     );
     return true;
@@ -2837,7 +2838,7 @@ async function renderRoute(req, res) {
           { label: 'Dealers', path: '/dealers' },
         ]),
         heroImageUrl: '/page-photos/dealers.png',
-        heroImageAlt: 'TimberEquip dealer network',
+        heroImageAlt: 'Forestry Equipment Sales dealer network',
         heroImagePosition: 'center 42%',
         heroImageScale: 1.08,
       })
@@ -2891,7 +2892,7 @@ async function renderRoute(req, res) {
       ? `${seller.storefrontName} ${resolvedCategory} Inventory`
       : `${seller.storefrontName} Equipment Inventory`;
     const pageDescription = resolvedCategory
-      ? `Browse ${resolvedCategory.toLowerCase()} inventory from ${seller.storefrontName} on TimberEquip.`
+      ? `Browse ${resolvedCategory.toLowerCase()} inventory from ${seller.storefrontName} on Forestry Equipment Sales.`
       : `Browse live equipment inventory, contact details, and dealer storefront information for ${seller.storefrontName}.`;
 
     res.status(200).type('html').send(

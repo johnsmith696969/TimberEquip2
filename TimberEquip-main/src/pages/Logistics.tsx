@@ -8,6 +8,7 @@ import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { equipmentService } from '../services/equipmentService';
 import { assessRecaptcha, getRecaptchaToken } from '../services/recaptchaService';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 const LOGISTICS_CONTACT_CONSENT_VERSION = 'logistics-contact-v1';
 
@@ -156,8 +157,8 @@ export function Logistics() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Global Logistics | Trucking Request Form | TimberEquip"
-        description="Request trucking and heavy-haul coordination for forestry equipment with the TimberEquip logistics team."
+        title="Global Logistics | Trucking Request Form | Forestry Equipment Sales"
+        description="Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team."
         canonicalPath="/logistics"
         jsonLd={{
           '@context': 'https://schema.org',
@@ -165,14 +166,14 @@ export function Logistics() {
             {
               '@type': 'Service',
               name: 'Forestry Equipment Logistics & Trucking',
-              description: 'Request trucking and heavy-haul coordination for forestry equipment with the TimberEquip logistics team.',
-              url: 'https://timberequip.com/logistics',
+              description: 'Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team.',
+              url: buildSiteUrl('/logistics'),
               provider: {
                 '@type': 'Organization',
-                name: 'TimberEquip',
-                url: 'https://timberequip.com',
-                telephone: '(612) 600-8268',
-                email: 'support@timberequip.com',
+                name: 'Forestry Equipment Sales',
+                url: buildSiteUrl(),
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
               },
               areaServed: {
                 '@type': 'Place',
@@ -182,8 +183,8 @@ export function Logistics() {
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
-                { '@type': 'ListItem', position: 2, name: 'Global Logistics', item: 'https://timberequip.com/logistics' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Global Logistics', item: buildSiteUrl('/logistics') },
               ],
             },
           ],
@@ -241,7 +242,7 @@ export function Logistics() {
                   </div>
                   <h2 className="text-4xl font-black uppercase tracking-tighter text-ink">Request Submitted</h2>
                   <p className="mt-5 max-w-xl text-sm font-medium leading-relaxed text-muted md:text-base">
-                    Your trucking request is in the queue. TimberEquip can now review the route, equipment notes,
+                    Your trucking request is in the queue. Forestry Equipment Sales can now review the route, equipment notes,
                     and timing details before following up with the next logistics step.
                   </p>
                   <div className="mt-10 flex flex-col gap-4 sm:flex-row">
@@ -404,7 +405,7 @@ export function Logistics() {
                       htmlFor="logistics-consent"
                       className="cursor-pointer text-[10px] font-medium uppercase tracking-widest text-muted leading-relaxed"
                     >
-                      I authorize TimberEquip and the specific logistics or hauling partners reviewing this request
+                      I authorize Forestry Equipment Sales and the specific logistics or hauling partners reviewing this request
                       to contact me by phone, SMS, or email about this trucking inquiry. This consent applies only to this
                       logistics request, is not a condition of purchase, and may be withdrawn at any time.
                     </label>
@@ -483,18 +484,18 @@ export function Logistics() {
             <div className="border border-line bg-surface p-8 md:p-10">
               <span className="label-micro mb-4 block text-accent">Reach Us</span>
               <div className="space-y-4">
-                <a href="tel:+16126008268" className="flex items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
+                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
                   <Phone className="mt-0.5 text-accent" size={18} />
                   <div>
                     <span className="label-micro block text-muted">Customer Support</span>
-                    <span className="text-sm font-black tracking-tight">(612) 600-8268</span>
+                    <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                   </div>
                 </a>
-                <a href="mailto:info@timberequip.com" className="flex min-w-0 items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
+                <a href="mailto:info@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
                   <Mail className="mt-0.5 text-accent" size={18} />
                   <div className="min-w-0">
                     <span className="label-micro block text-muted">Email</span>
-                    <span className="block break-all text-sm font-black tracking-tight">info@timberequip.com</span>
+                    <span className="block break-all text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
                   </div>
                 </a>
               </div>

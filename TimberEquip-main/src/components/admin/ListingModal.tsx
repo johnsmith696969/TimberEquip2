@@ -8,6 +8,14 @@ import { storageService } from '../../services/storageService';
 import { GooglePlacesInput } from '../GooglePlacesInput';
 import type { GooglePlaceSelection } from '../../services/placesService';
 import { taxonomyService, FullEquipmentTaxonomy } from '../../services/taxonomyService';
+import {
+  getCanonicalOptionLabel,
+  getTaxonomyCategoryOptions,
+  getTaxonomyManufacturerOptions,
+  getTaxonomyModelOptions,
+  getTaxonomySubcategoryOptions,
+  resolveEquipmentTaxonomySelection,
+} from '../../utils/equipmentTaxonomy';
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB
@@ -34,43 +42,24 @@ const FALLBACK_FULL_TAXONOMY: FullEquipmentTaxonomy = Object.fromEntries(
 const DEFAULT_TOP_LEVEL_CATEGORY = Object.keys(EQUIPMENT_TAXONOMY)[0] || '';
 const DEFAULT_SUBCATEGORY = Object.keys(EQUIPMENT_TAXONOMY[DEFAULT_TOP_LEVEL_CATEGORY] || {})[0] || '';
 
-const findTopLevelCategoryForSubcategory = (taxonomy: FullEquipmentTaxonomy, subcategory: string): string | null => {
-  for (const [category, subcategories] of Object.entries(taxonomy)) {
-    if (subcategory in subcategories) {
-      return category;
-    }
-  }
-  return null;
-};
-
 const inferCategorySelection = (
   taxonomy: FullEquipmentTaxonomy,
   listing?: Partial<Listing> | null
 ): { category: string; subcategory: string } => {
-  const categoryValue = String(listing?.category || '').trim();
-  const subcategoryValue = String(listing?.subcategory || '').trim();
+  const resolved = resolveEquipmentTaxonomySelection(taxonomy, {
+    category: listing?.category,
+    subcategory: listing?.subcategory,
+    manufacturer: listing?.manufacturer || listing?.make,
+    model: listing?.model,
+  });
 
-  if (categoryValue && taxonomy[categoryValue]) {
-    if (subcategoryValue && taxonomy[categoryValue][subcategoryValue]) {
-      return { category: categoryValue, subcategory: subcategoryValue };
+  if (resolved.category && taxonomy[resolved.category]) {
+    if (resolved.subcategory && taxonomy[resolved.category][resolved.subcategory]) {
+      return { category: resolved.category, subcategory: resolved.subcategory };
     }
 
-    const firstSubcategory = Object.keys(taxonomy[categoryValue] || {})[0] || '';
-    return { category: categoryValue, subcategory: firstSubcategory };
-  }
-
-  if (subcategoryValue) {
-    const inferredCategory = findTopLevelCategoryForSubcategory(taxonomy, subcategoryValue);
-    if (inferredCategory) {
-      return { category: inferredCategory, subcategory: subcategoryValue };
-    }
-  }
-
-  if (categoryValue) {
-    const inferredCategory = findTopLevelCategoryForSubcategory(taxonomy, categoryValue);
-    if (inferredCategory) {
-      return { category: inferredCategory, subcategory: categoryValue };
-    }
+    const firstSubcategory = Object.keys(taxonomy[resolved.category] || {})[0] || '';
+    return { category: resolved.category, subcategory: firstSubcategory };
   }
 
   return {
@@ -298,12 +287,17 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
     setUploadError('');
   }, [listing, isOpen]);
 
-  const categoryOptions = Object.keys(fullTaxonomy);
-  const subcategoryOptions = Object.keys(fullTaxonomy[formData.category] || {});
+  const categoryOptions = getTaxonomyCategoryOptions(fullTaxonomy);
+  const subcategoryOptions = getTaxonomySubcategoryOptions(fullTaxonomy, formData.category);
   const selectedMake = (formData.manufacturer || formData.make || '').trim();
-  const makeMap = fullTaxonomy[formData.category]?.[formData.subcategory] || {};
-  const manufacturerOptions = Object.keys(makeMap);
-  const modelOptions = selectedMake ? (makeMap[selectedMake] || []) : [];
+  const manufacturerOptions = getTaxonomyManufacturerOptions(fullTaxonomy, formData.category, formData.subcategory);
+  const canonicalSelectedMake = getCanonicalOptionLabel(manufacturerOptions, selectedMake);
+  const modelOptions = getTaxonomyModelOptions(
+    fullTaxonomy,
+    formData.category,
+    formData.subcategory,
+    canonicalSelectedMake || selectedMake
+  );
 
   const schema = getSchemaForListing(formData.category, formData.subcategory);
 
@@ -652,7 +646,10 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
                 <div className="space-y-1">
                   <label className="label-micro">Make <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.manufacturer || formData.make}
-                    onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value, make: e.target.value, model: '' })}
+                    onChange={(e) => {
+                      const nextManufacturer = getCanonicalOptionLabel(manufacturerOptions, e.target.value) || e.target.value;
+                      setFormData({ ...formData, manufacturer: nextManufacturer, make: nextManufacturer, model: '' });
+                    }}
                     className="input-industrial w-full" placeholder="e.g. Tigercat"
                     list="listing-manufacturer-options" />
                   <datalist id="listing-manufacturer-options">
@@ -664,7 +661,10 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
                 <div className="space-y-1">
                   <label className="label-micro">Model <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.model}
-                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                    onChange={(e) => {
+                      const nextModel = getCanonicalOptionLabel(modelOptions, e.target.value) || e.target.value;
+                      setFormData({ ...formData, model: nextModel });
+                    }}
                     className="input-industrial w-full" placeholder="e.g. 855E"
                     list="listing-model-options" />
                   <datalist id="listing-model-options">

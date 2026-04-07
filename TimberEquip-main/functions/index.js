@@ -3,7 +3,7 @@ const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('fir
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onRequest } = require('firebase-functions/v2/https');
 const { beforeUserCreated } = require('firebase-functions/v2/identity');
-const { defineSecret } = require('firebase-functions/params');
+const { defineSecret, defineString } = require('firebase-functions/params');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
@@ -63,6 +63,14 @@ const {
   buildAuctionInvoiceTotals,
   buildAuctionLegalSummaryLines,
 } = require('./auction-fees.js');
+const { normalizeOptionalEmailPreferenceState } = require('./email-preferences.js');
+const imageProcessingModule = require('./image-processing.js');
+const scheduledMarketModule = require('./scheduled-market.js');
+const postgresSyncModule = require('./postgres-sync.js');
+const createSeoSyncTriggers = require('./seo-sync-triggers.js');
+const createEmailTriggers = require('./email-triggers.js');
+const createSubscriptionLifecycleTriggers = require('./subscription-lifecycle.js');
+const createListingLifecycleTriggers = require('./listing-lifecycle-triggers.js');
 
 const LEGACY_RUNTIME_CONFIG = (() => {
   try {
@@ -75,8 +83,8 @@ const LEGACY_RUNTIME_CONFIG = (() => {
   }
 })();
 
-const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
-const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
+const RECAPTCHA_SITE_KEY = defineString('RECAPTCHA_SITE_KEY', { default: '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0' });
+const RECAPTCHA_PROJECT_ID = defineString('RECAPTCHA_PROJECT_ID', { default: 'mobile-app-equipment-sales' });
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -2165,7 +2173,7 @@ async function queueDealerFeedSourceImagesForListing({
       const response = await fetch(imageUrl, {
         headers: {
           Accept: 'image/avif,image/webp,image/*;q=0.9,*/*;q=0.5',
-          'User-Agent': 'TimberEquipDealerImageMirror/1.0',
+          'User-Agent': 'Forestry Equipment SalesDealerImageMirror/1.0',
         },
       });
 
@@ -3988,6 +3996,44 @@ async function resolvePublicDealer(identity) {
   };
 }
 
+function hasUsableDealerCoordinates(latitude, longitude) {
+  const normalizedLatitude = toFiniteNumberOrUndefined(latitude);
+  const normalizedLongitude = toFiniteNumberOrUndefined(longitude);
+  if (normalizedLatitude === undefined || normalizedLongitude === undefined) {
+    return false;
+  }
+  if (Math.abs(normalizedLatitude) > 90 || Math.abs(normalizedLongitude) > 180) {
+    return false;
+  }
+  if (Math.abs(normalizedLatitude) < 0.000001 && Math.abs(normalizedLongitude) < 0.000001) {
+    return false;
+  }
+  return true;
+}
+
+function buildDealerDirectoryGeocodeQuery(dealer = {}) {
+  const preciseAddress = [
+    normalizeNonEmptyString(dealer.street1),
+    normalizeNonEmptyString(dealer.city),
+    normalizeNonEmptyString(dealer.state),
+    normalizeNonEmptyString(dealer.postalCode),
+    normalizeNonEmptyString(dealer.country),
+  ].filter(Boolean).join(', ');
+
+  if (preciseAddress) {
+    return preciseAddress;
+  }
+
+  return normalizeNonEmptyString(
+    dealer.location,
+    [
+      normalizeNonEmptyString(dealer.city),
+      normalizeNonEmptyString(dealer.state),
+      normalizeNonEmptyString(dealer.country),
+    ].filter(Boolean).join(', ')
+  );
+}
+
 function serializeDealerDirectoryEntry(snapshotId, data = {}) {
   const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   if (!isDealerSellerRole(rawRole) || isPrivilegedStorefrontRecord({ role: rawRole })) {
@@ -3995,6 +4041,12 @@ function serializeDealerDirectoryEntry(snapshotId, data = {}) {
   }
 
   const listingCount = toFiniteNumberOrUndefined(data.listingCount ?? data.totalListings) || 0;
+  const latitude = hasUsableDealerCoordinates(data.latitude, data.longitude)
+    ? toFiniteNumberOrUndefined(data.latitude)
+    : undefined;
+  const longitude = latitude !== undefined
+    ? toFiniteNumberOrUndefined(data.longitude)
+    : undefined;
 
   return {
     id: snapshotId,
@@ -4013,8 +4065,8 @@ function serializeDealerDirectoryEntry(snapshotId, data = {}) {
     county: normalizeNonEmptyString(data.county),
     postalCode: normalizeNonEmptyString(data.postalCode),
     country: normalizeNonEmptyString(data.country),
-    latitude: toFiniteNumberOrUndefined(data.latitude),
-    longitude: toFiniteNumberOrUndefined(data.longitude),
+    latitude,
+    longitude,
     phone: normalizeNonEmptyString(data.phone || data.phoneNumber),
     email: normalizeNonEmptyString(data.email),
     website: normalizeNonEmptyString(data.website),
@@ -4185,6 +4237,45 @@ async function getPublicDealerDirectoryEntries() {
       }
       if (authEmail && !normalizeNonEmptyString(existingDealer.email)) {
         existingDealer.email = authEmail;
+      }
+    });
+  }
+
+  const dealersMissingCoordinates = [...dealersByUid.values()].filter((dealer) =>
+    !hasUsableDealerCoordinates(dealer.latitude, dealer.longitude)
+  );
+
+  if (dealersMissingCoordinates.length > 0) {
+    const coordinateLookups = await Promise.allSettled(
+      dealersMissingCoordinates.map(async (dealer) => {
+        const geocodeQuery = buildDealerDirectoryGeocodeQuery(dealer);
+        if (!geocodeQuery) return null;
+
+        const geocoded = await geocodeLocation(geocodeQuery);
+        if (!geocoded || !hasUsableDealerCoordinates(geocoded.lat, geocoded.lng)) {
+          return null;
+        }
+
+        return {
+          uid: normalizeNonEmptyString(dealer.uid || dealer.id),
+          latitude: geocoded.lat,
+          longitude: geocoded.lng,
+          formattedAddress: normalizeNonEmptyString(geocoded.formattedAddress),
+        };
+      })
+    );
+
+    coordinateLookups.forEach((lookupResult) => {
+      if (lookupResult.status !== 'fulfilled' || !lookupResult.value?.uid) return;
+      const existingDealer = dealersByUid.get(lookupResult.value.uid);
+      if (!existingDealer) return;
+
+      existingDealer.latitude = lookupResult.value.latitude;
+      existingDealer.longitude = lookupResult.value.longitude;
+
+      const existingLocation = normalizeNonEmptyString(existingDealer.location);
+      if ((!existingLocation || existingLocation === 'Location available on storefront') && lookupResult.value.formattedAddress) {
+        existingDealer.location = lookupResult.value.formattedAddress;
       }
     });
   }
@@ -4418,6 +4509,78 @@ async function getOptionalEmailUserContext(userUid, cache = new Map()) {
   return context;
 }
 
+async function getOptionalEmailRecipientContext(email, cache = new Map()) {
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  if (!normalizedEmail) {
+    return {
+      displayName: '',
+      email: '',
+      emailNotificationsEnabled: true,
+    };
+  }
+
+  if (cache.has(normalizedEmail)) {
+    return cache.get(normalizedEmail);
+  }
+
+  const recipientRef = getEmailPreferenceRecipientRef(normalizedEmail);
+  const recipientSnap = recipientRef ? await recipientRef.get() : null;
+  const recipientData = recipientSnap?.exists ? (recipientSnap.data() || {}) : {};
+  const context = {
+    displayName: normalizeNonEmptyString(recipientData.displayName),
+    email: normalizeNonEmptyString(recipientData.email || normalizedEmail).toLowerCase(),
+    emailNotificationsEnabled: recipientData.emailNotificationsEnabled !== false,
+  };
+
+  cache.set(normalizedEmail, context);
+  return context;
+}
+
+async function getOptionalEmailDeliveryContext({ userUid, email }, caches = {}) {
+  const userCache = caches.userCache || new Map();
+  const recipientCache = caches.recipientCache || new Map();
+  const userContext = await getOptionalEmailUserContext(userUid, userCache);
+  const recipientContext = await getOptionalEmailRecipientContext(email || userContext.email, recipientCache);
+  const preferenceState = normalizeOptionalEmailPreferenceState({
+    userData: { emailNotificationsEnabled: userContext.emailNotificationsEnabled },
+    recipientData: { emailNotificationsEnabled: recipientContext.emailNotificationsEnabled },
+  });
+
+  return {
+    displayName: userContext.displayName || recipientContext.displayName || 'there',
+    email: normalizeNonEmptyString(email || userContext.email || recipientContext.email).toLowerCase(),
+    emailNotificationsEnabled: preferenceState.emailNotificationsEnabled,
+  };
+}
+
+async function getAuctionForBidderProfile(profile) {
+  const auctionSlug = normalizeNonEmptyString(profile?.legalAcceptedAuctionSlug);
+  if (!auctionSlug) return null;
+  return getAuctionBySlugFromDb(auctionSlug);
+}
+
+async function syncEmailPreferenceRecipientRecord(email, overrides = {}) {
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  const recipientRef = getEmailPreferenceRecipientRef(normalizedEmail);
+  if (!normalizedEmail || !recipientRef) return;
+
+  await recipientRef.set(
+    {
+      email: normalizedEmail,
+      emailHash: sha256Hex(normalizedEmail),
+      scope: normalizeNonEmptyString(overrides.scope, 'optional'),
+      displayName: normalizeNonEmptyString(overrides.displayName),
+      emailNotificationsEnabled: overrides.emailNotificationsEnabled !== false,
+      emailOptOutSource: normalizeNonEmptyString(overrides.emailOptOutSource) || null,
+      ...(overrides.emailNotificationsEnabled === false
+        ? { emailOptOutAt: admin.firestore.FieldValue.serverTimestamp() }
+        : { emailOptOutAt: null }),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 /**
  * Deliver webhook notifications to all active subscriptions for a dealer.
  * Fire-and-forget: failures are logged but never throw.
@@ -4502,6 +4665,7 @@ async function notifyMatchingSavedSearches(listingId, listing) {
   const listingPrice = formatListingMoney(listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
+  const recipientContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -4510,11 +4674,14 @@ async function notifyMatchingSavedSearches(listingId, listing) {
       const savedSearch = searchDoc.data();
       const recipient = savedSearch.alertEmail;
       if (!recipient) return;
-      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
-      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const emailContext = await getOptionalEmailDeliveryContext(
+        { userUid: savedSearch.userUid, email: recipient },
+        { userCache: userContextCache, recipientCache: recipientContextCache }
+      );
+      if (emailContext.emailNotificationsEnabled === false) return;
       const unsubscribeUrl = buildEmailUnsubscribeUrl({
         uid: savedSearch.userUid,
-        email: userContext.email || recipient,
+        email: emailContext.email || recipient,
         scope: 'optional',
       });
 
@@ -4523,7 +4690,7 @@ async function notifyMatchingSavedSearches(listingId, listing) {
 
       if (savedSearch.alertPreferences?.newListingAlerts && exactMatch) {
         const emailPayload = templates.newMatchingListing({
-          displayName: userContext.displayName,
+          displayName: emailContext.displayName,
           searchName: savedSearch.name || 'Saved Search',
           listingTitle: listing.title || 'New Equipment Listing',
           listingUrl,
@@ -4538,7 +4705,7 @@ async function notifyMatchingSavedSearches(listingId, listing) {
 
       if (savedSearch.alertPreferences?.restockSimilarAlerts && similarMatch) {
         const emailPayload = templates.similarListingRestocked({
-          displayName: userContext.displayName,
+          displayName: emailContext.displayName,
           searchName: savedSearch.name || 'Saved Search',
           listingTitle: listing.title || 'Equipment Listing',
           listingUrl,
@@ -4559,6 +4726,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
   const currentPrice = formatListingMoney(after, after.price);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
+  const recipientContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -4568,11 +4736,14 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
       if (!savedSearch.alertPreferences?.priceDropAlerts) return;
       if (!savedSearch.alertEmail) return;
       if (!listingMatchesSavedSearch(after, savedSearch)) return;
-      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
-      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const emailContext = await getOptionalEmailDeliveryContext(
+        { userUid: savedSearch.userUid, email: savedSearch.alertEmail },
+        { userCache: userContextCache, recipientCache: recipientContextCache }
+      );
+      if (emailContext.emailNotificationsEnabled === false) return;
 
       const emailPayload = templates.matchingListingPriceDrop({
-        displayName: userContext.displayName,
+        displayName: emailContext.displayName,
         searchName: savedSearch.name || 'Saved Search',
         listingTitle: after.title || 'Equipment Listing',
         listingUrl,
@@ -4581,7 +4752,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
         location: after.location || 'Unknown',
         unsubscribeUrl: buildEmailUnsubscribeUrl({
           uid: savedSearch.userUid,
-          email: userContext.email || savedSearch.alertEmail,
+          email: emailContext.email || savedSearch.alertEmail,
           scope: 'optional',
         }),
       });
@@ -4595,6 +4766,7 @@ async function notifySavedSearchSoldStatus(listingId, listing) {
   const listingUrl = buildCanonicalListingUrl(listingId, listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
+  const recipientContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -4604,18 +4776,21 @@ async function notifySavedSearchSoldStatus(listingId, listing) {
       if (!savedSearch.alertPreferences?.soldStatusAlerts) return;
       if (!savedSearch.alertEmail) return;
       if (!listingMatchesSavedSearch(listing, savedSearch)) return;
-      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
-      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const emailContext = await getOptionalEmailDeliveryContext(
+        { userUid: savedSearch.userUid, email: savedSearch.alertEmail },
+        { userCache: userContextCache, recipientCache: recipientContextCache }
+      );
+      if (emailContext.emailNotificationsEnabled === false) return;
 
       const emailPayload = templates.matchingListingSold({
-        displayName: userContext.displayName,
+        displayName: emailContext.displayName,
         searchName: savedSearch.name || 'Saved Search',
         listingTitle: listing.title || 'Equipment Listing',
         listingUrl,
         location: listing.location || 'Unknown',
         unsubscribeUrl: buildEmailUnsubscribeUrl({
           uid: savedSearch.userUid,
-          email: userContext.email || savedSearch.alertEmail,
+          email: emailContext.email || savedSearch.alertEmail,
           scope: 'optional',
         }),
       });
@@ -4663,8 +4838,8 @@ function resolveStorageBucketName() {
 }
 
 // ── Watermark compositing ───────────────────────────────────────────────────
-const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.png');
-const WATERMARK_ALPHA_SCALE = 0.12;
+const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.avif');
+const WATERMARK_ALPHA_SCALE = 0.19;
 let _watermarkBuffer = null;
 
 async function getWatermarkBuffer() {
@@ -4680,8 +4855,8 @@ async function getWatermarkBuffer() {
 
 /**
  * Composite the brand watermark onto an image buffer.
- * Uses the watermark asset's native transparency, then reduces it to roughly
- * one-third visibility before placing it upright in the bottom-right corner.
+ * Uses the watermark asset's native transparency, then scales it to a subtle
+ * but still readable final opacity before placing it upright in the bottom-right corner.
  */
 async function applyWatermark(imageBuffer) {
   const wmSource = await getWatermarkBuffer();
@@ -4773,795 +4948,58 @@ async function compressToAvifTarget(inputBuffer, width, targetBytes) {
   throw new Error(`Unable to compress source image under ${Math.round(targetBytes / 1024)}KB AVIF target.`);
 }
 
-exports.generateListingImageVariants = onObjectFinalized(
-  {
-    region: 'us-central1',
-    memory: '1GiB',
-    timeoutSeconds: 120,
-    bucket: resolveStorageBucketName(),
-  },
-  async (event) => {
-    const object = event.data;
-    const bucketName = object.bucket;
-    const filePath = object.name || '';
-    const contentType = object.contentType || '';
-
-    if (!bucketName || !filePath) {
-      logger.warn('Missing storage event data.');
-      return;
-    }
-
-    // Process only source images to avoid loops.
-    // Expected path: listings/{listingId}/images/source/{filename}
-    const sourceMatch = filePath.match(/^listings\/([^/]+)\/images\/source\/(.+)$/);
-    if (!sourceMatch) return;
-
-    if (!contentType.startsWith('image/')) {
-      logger.info(`Skipping non-image file: ${filePath}`);
-      return;
-    }
-
-    const listingId = sourceMatch[1];
-    const originalName = sourceMatch[2];
-    const outputBaseName = originalName.replace(/\.[^/.]+$/, '');
-
-    const detailPath = `listings/${listingId}/images/detail/${outputBaseName}.avif`;
-    const thumbPath = `listings/${listingId}/images/thumb/${outputBaseName}.avif`;
-
-    const bucket = admin.storage().bucket(bucketName);
-    const sourceFile = bucket.file(filePath);
-
-    logger.info(`Generating variants for ${filePath}`);
-
-    const [sourceBuffer] = await sourceFile.download();
-
-    const [detailBuffer, thumbBuffer] = await Promise.all([
-      compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES),
-      compressToAvifTarget(sourceBuffer, THUMB_MAX_WIDTH, THUMB_MAX_BYTES),
-    ]);
-
-    const detailToken = randomUUID();
-    const thumbToken = randomUUID();
-
-    await Promise.all([
-      bucket.file(detailPath).save(detailBuffer, {
-        metadata: {
-          contentType: 'image/avif',
-          metadata: {
-            firebaseStorageDownloadTokens: detailToken,
-            variant: 'detail',
-            listingId,
-            sourcePath: filePath,
-          },
-        },
-      }),
-      bucket.file(thumbPath).save(thumbBuffer, {
-        metadata: {
-          contentType: 'image/avif',
-          metadata: {
-            firebaseStorageDownloadTokens: thumbToken,
-            variant: 'thumbnail',
-            listingId,
-            sourcePath: filePath,
-          },
-        },
-      }),
-    ]);
-
-    const detailUrl = buildFirebaseDownloadUrl(bucketName, detailPath, detailToken);
-    const thumbnailUrl = buildFirebaseDownloadUrl(bucketName, thumbPath, thumbToken);
-
-    const listingRef = getDb().collection('listings').doc(listingId);
-    await listingRef.set(
-      {
-        images: admin.firestore.FieldValue.arrayUnion(detailUrl),
-        imageVariants: admin.firestore.FieldValue.arrayUnion({
-          detailUrl,
-          thumbnailUrl,
-          format: 'image/avif',
-        }),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    logger.info(`Finished variants for listing ${listingId}`);
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMAIL TRIGGER: New inquiry → notify seller + confirm to buyer
-// Firestore path: inquiries/{inquiryId}
-// ─────────────────────────────────────────────────────────────────────────────
-exports.onInquiryCreated = onDocumentCreated(
-  {
-    document: 'inquiries/{inquiryId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const inquiry = event.data?.data();
-    if (!inquiry) return;
-
-    const { sellerUid, sellerId, listingId, message, buyerName, buyerEmail, buyerPhone } = inquiry;
-    const sellerDocId = sellerUid || sellerId || '';
-
-    // Look up listing and seller in parallel
-    const [listingSnap, sellerSnap] = await Promise.all([
-      getDb().collection('listings').doc(listingId).get(),
-      sellerDocId ? getDb().collection('users').doc(sellerDocId).get() : Promise.resolve(null),
-    ]);
-
-    if (!listingSnap.exists || !sellerSnap?.exists) {
-      logger.warn(`onInquiryCreated: listing or seller not found for inquiry ${event.params.inquiryId}; proceeding with fallback email payload.`);
-    }
-
-    const listing = listingSnap.exists ? listingSnap.data() : {};
-    const seller = sellerSnap?.exists ? sellerSnap.data() : {};
-    const listingTitle = listing.title || 'Equipment Listing';
-    const sellerName = seller.displayName || 'Seller';
-    const sellerEmail = seller.email;
-    const listingUrl = buildCanonicalListingUrl(listingId, listing);
-
-    const errors = [];
-
-    // Notify seller
-    if (sellerEmail) {
-      try {
-        const { subject, html } = templates.leadNotification({
-          sellerName,
-          buyerName: buyerName || 'A buyer',
-          buyerEmail: buyerEmail || '',
-          buyerPhone: buyerPhone || '',
-          listingTitle,
-          listingUrl,
-          message: message || '',
-        });
-        await sendEmail({ to: sellerEmail, subject, html });
-      } catch (err) {
-        errors.push(`seller email failed: ${err.message}`);
-        logger.error('Failed to send lead notification to seller', err);
-      }
-    }
-
-    // Confirm to buyer
-    if (buyerEmail) {
-      try {
-        const { subject, html } = templates.inquiryConfirmation({
-          buyerName: buyerName || 'Buyer',
-          listingTitle,
-          listingUrl,
-          sellerName,
-          inquiryType: inquiry.type || 'Inquiry',
-        });
-        await sendEmail({ to: buyerEmail, subject, html });
-      } catch (err) {
-        errors.push(`buyer confirmation failed: ${err.message}`);
-        logger.error('Failed to send inquiry confirmation to buyer', err);
-      }
-    }
-
-    // Copy admin inbox on all inquiry leads (inquiry, financing, shipping, etc.)
-    try {
-      const adminPayload = templates.adminInquiryAlert({
-        inquiryType: inquiry.type || 'Inquiry',
-        buyerName: buyerName || '',
-        buyerEmail: buyerEmail || '',
-        buyerPhone: buyerPhone || '',
-        listingTitle,
-        listingUrl,
-        message: message || '',
-        sellerUid: sellerDocId || '',
-      });
-      await sendEmail({ to: getAdminRecipients(), ...adminPayload });
-    } catch (err) {
-      errors.push(`admin inquiry copy failed: ${err.message}`);
-      logger.error('Failed to send inquiry admin copy', err);
-    }
-
-    if (errors.length) {
-      logger.warn(`onInquiryCreated partial failure: ${errors.join(', ')}`);
-    }
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMAIL TRIGGER: New user → send welcome + email verification
-// Auth trigger via Firestore user profile creation
-// Firestore path: users/{uid}
-// ─────────────────────────────────────────────────────────────────────────────
-exports.onUserProfileCreated = onDocumentCreated(
-  {
-    document: 'users/{uid}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const profile = event.data?.data();
-    if (!profile?.email) return;
-    if (String(profile.onboardingSource || '').trim() === 'managed_invite') return;
-
-    try {
-      await sendVerificationEmailMessage({
-        email: profile.email,
-        displayName: profile.displayName || 'there',
-      });
-    } catch (err) {
-      logger.error('Failed to send welcome email', err);
-    }
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMAIL TRIGGER: Listing status change → notify seller on approval or rejection
-// Firestore path: listings/{listingId}
-// ─────────────────────────────────────────────────────────────────────────────
-exports.onListingStatusChanged = onDocumentUpdated(
-  {
-    document: 'listings/{listingId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const before = event.data?.before?.data();
-    const after = event.data?.after?.data();
-    if (!before || !after) return;
-
-    const prevApproval = before.approvalStatus;
-    const newApproval = after.approvalStatus;
-    const previousStatus = normalize(before.status || 'active');
-    const newStatus = normalize(after.status || 'active');
-    const beforePrice = Number(before.price || 0);
-    const afterPrice = Number(after.price || 0);
-
-    if (newApproval === 'approved' && prevApproval !== 'approved') {
-      await notifyMatchingSavedSearches(event.params.listingId, after);
-    }
-
-    if (previousStatus !== 'sold' && newStatus === 'sold') {
-      await notifySavedSearchSoldStatus(event.params.listingId, after);
-      void deliverDealerWebhooks(after.sellerUid || after.sellerId, 'listing.sold', event.params.listingId, after);
-    }
-
-    if (previousStatus !== 'deleted' && newStatus === 'deleted') {
-      void deliverDealerWebhooks(after.sellerUid || after.sellerId, 'listing.deleted', event.params.listingId, after);
-    }
-
-    if (
-      newApproval === 'approved' &&
-      prevApproval === 'approved' &&
-      previousStatus !== 'sold' &&
-      newStatus !== 'sold' &&
-      beforePrice > 0 &&
-      afterPrice > 0 &&
-      afterPrice < beforePrice
-    ) {
-      await notifySavedSearchPriceDrop(event.params.listingId, before, after);
-    }
-
-    /* Deliver webhook for any approved listing update */
-    if (newApproval === 'approved' && newStatus !== 'sold' && newStatus !== 'deleted') {
-      void deliverDealerWebhooks(after.sellerUid || after.sellerId, 'listing.updated', event.params.listingId, after);
-    }
-
-    if (prevApproval === newApproval) return;
-    if (newApproval !== 'approved' && newApproval !== 'rejected') return;
-
-    const sellerUid = after.sellerUid || after.sellerId;
-    if (!sellerUid) return;
-
-    const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
-    if (!sellerSnap.exists) return;
-
-    const seller = sellerSnap.data();
-    const sellerEmail = seller.email;
-    if (!sellerEmail) return;
-
-    const listingTitle = after.title || 'Your Listing';
-    const listingUrl = buildCanonicalListingUrl(event.params.listingId, after);
-
-    try {
-      let emailPayload;
-      if (newApproval === 'approved') {
-        emailPayload = templates.listingApproved({ sellerName: seller.displayName || 'Seller', listingTitle, listingUrl });
-      } else {
-        const editUrl = `${APP_URL}/sell?edit=${event.params.listingId}`;
-        emailPayload = templates.listingRejected({
-          sellerName: seller.displayName || 'Seller',
-          listingTitle,
-          reason: after.rejectionReason || '',
-          editUrl,
-        });
-      }
-      await sendEmail({ to: sellerEmail, ...emailPayload });
-    } catch (err) {
-      logger.error('Failed to send listing status email', err);
-    }
-  }
-);
-
-exports.onListingCreated = onDocumentCreated(
-  {
-    document: 'listings/{listingId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const listing = event.data?.data();
-    if (!listing) return;
-
-    const sellerUid = String(listing.sellerUid || listing.sellerId || '').trim();
-    let seller = null;
-    if (sellerUid) {
-      const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
-      if (sellerSnap.exists) {
-        seller = sellerSnap.data();
-      }
-    }
-
-    const sellerEmail = String(seller?.email || '').trim();
-    const sellerName = String(seller?.displayName || 'Seller').trim();
-    const listingTitle = String(listing.title || 'Your Listing').trim();
-    const listingUrl = buildCanonicalListingUrl(event.params.listingId, listing);
-    const dashboardUrl = `${APP_URL}/profile?tab=${encodeURIComponent('My Listings')}`;
-
-    if (listing.approvalStatus === 'approved') {
-      await notifyMatchingSavedSearches(event.params.listingId, listing);
-      void deliverDealerWebhooks(sellerUid, 'listing.created', event.params.listingId, listing);
-
-      if (sellerEmail) {
-        try {
-          const payload = templates.listingApproved({
-            sellerName,
-            listingTitle,
-            listingUrl,
-          });
-          await sendEmail({ to: sellerEmail, ...payload });
-        } catch (error) {
-          logger.error('Failed to send listing approved email on create', error);
-        }
-      }
-      return;
-    }
-
-    if (sellerEmail) {
-      try {
-        const payload = templates.listingSubmitted({
-          sellerName,
-          listingTitle,
-          dashboardUrl,
-          reviewEta: 'Typically within 1 business day',
-        });
-        await sendEmail({ to: sellerEmail, ...payload });
-      } catch (error) {
-        logger.error('Failed to send listing submitted email', error);
-      }
-    }
-  }
-);
-
-exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
-  {
-    document: 'listings/{listingId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-  },
-  async (event) => {
-    const listingId = event.params.listingId;
-    const before = event.data?.before?.data() || null;
-    const after = event.data?.after?.data() || null;
-    invalidateMarketplaceCaches();
-
-    const [seoResult, governanceResult, dataConnectResult] = await Promise.allSettled([
-      syncPublicSeoForListingChange({
-        listingId,
-        before,
-        after,
-      }),
-      syncListingGovernanceArtifactsForWrite({
-        db: getDb(),
-        listingId,
-        before,
-        after,
-      }),
-      syncListingToDataConnect({ listingId, before, after }),
-    ]);
-
-    if (seoResult.status === 'rejected') {
-      logger.error('Failed to sync public SEO read model for listing write', {
-        listingId,
-        error: seoResult.reason instanceof Error ? seoResult.reason.message : seoResult.reason,
-      });
-    }
-
-    if (governanceResult.status === 'rejected') {
-      logger.error('Failed to sync listing governance artifacts for listing write', {
-        listingId,
-        error: governanceResult.reason instanceof Error ? governanceResult.reason.message : governanceResult.reason,
-      });
-    }
-
-    // Phase 1 dual-write: Firestore → PostgreSQL via Data Connect. Failures
-    // here are logged as warnings and never block Firestore, which remains
-    // the source of truth during Phase 1.
-    if (dataConnectResult.status === 'rejected') {
-      logger.warn('Failed to dual-write listing to Data Connect (Phase 1)', {
-        listingId,
-        error: dataConnectResult.reason instanceof Error ? dataConnectResult.reason.message : dataConnectResult.reason,
-      });
-    }
-  }
-);
-
-exports.syncPublicSeoReadModelOnUserWrite = onDocumentWritten(
-  {
-    document: 'users/{uid}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-  },
-  async (event) => {
-    try {
-      await syncPublicSeoForSellerChange(event.params.uid);
-    } catch (error) {
-      logger.error('Failed to sync public SEO read model for user write', {
-        uid: event.params.uid,
-        error: error instanceof Error ? error.message : error,
-      });
-    }
-  }
-);
-
-exports.syncPublicSeoReadModelOnStorefrontWrite = onDocumentWritten(
-  {
-    document: 'storefronts/{uid}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-  },
-  async (event) => {
-    try {
-      await syncPublicSeoForSellerChange(event.params.uid);
-    } catch (error) {
-      logger.error('Failed to sync public SEO read model for storefront write', {
-        uid: event.params.uid,
-        error: error instanceof Error ? error.message : error,
-      });
-    }
-  }
-);
-
-exports.rebuildPublicSeoReadModelScheduled = onSchedule(
-  {
-    schedule: 'every 6 hours',
-    region: 'us-central1',
-    timeoutSeconds: 300,
-    memory: '1GiB',
-  },
-  async () => {
-    try {
-      await rebuildPublicSeoReadModel();
-    } catch (error) {
-      logger.error('Failed to rebuild public SEO read model on schedule', error);
-    }
-  }
-);
-
-exports.onMediaKitRequestCreated = onDocumentCreated(
-  {
-    document: 'mediaKitRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const adminPayload = templates.mediaKitRequest({
-      requesterName: request.firstName || '',
-      companyName: request.companyName || '',
-      email: request.email || '',
-      phone: request.phone || '',
-      notes: request.notes || '',
-    });
-
-    await sendEmail({ to: getAdminRecipients(), ...adminPayload });
-
-    if (request.email) {
-      try {
-        const confirmationPayload = templates.mediaKitRequestConfirmation({
-          requesterName: request.firstName || 'there',
-          requestType: request.requestType || 'media-kit',
-          companyName: request.companyName || '',
-          supportUrl: `${APP_URL}/ad-programs`,
-        });
-
-        await sendEmail({ to: request.email, ...confirmationPayload });
-      } catch (error) {
-        logger.error('Failed to send media kit confirmation email', error);
-      }
-    }
-  }
-);
-
-exports.onFinancingRequestCreated = onDocumentCreated(
-  {
-    document: 'financingRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const payload = templates.financingRequestAdmin({
-      applicantName: request.applicantName || '',
-      applicantEmail: request.applicantEmail || '',
-      applicantPhone: request.applicantPhone || '',
-      company: request.company || '',
-      requestedAmount: request.requestedAmount || null,
-      listingId: request.listingId || '',
-      message: request.message || '',
-    });
-
-    await sendEmail({ to: getAdminRecipients(), ...payload });
-
-    if (request.applicantEmail) {
-      try {
-        const confirmationPayload = templates.financingRequestConfirmation({
-          applicantName: request.applicantName || 'there',
-          requestedAmount: typeof request.requestedAmount === 'number' ? request.requestedAmount : null,
-          company: request.company || '',
-          dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Financing')}`,
-        });
-        await sendEmail({ to: request.applicantEmail, ...confirmationPayload });
-      } catch (error) {
-        logger.error('Failed to send financing confirmation email', error);
-      }
-    }
-  }
-);
-
-exports.onContactRequestCreated = onDocumentCreated(
-  {
-    document: 'contactRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const payload = templates.contactRequestAdmin({
-      name: request.name || '',
-      email: request.email || '',
-      category: request.category || '',
-      message: request.message || '',
-      source: request.source || 'contact-page',
-    });
-
-    await sendEmail({ to: getAdminRecipients(), ...payload });
-
-    if (request.email) {
-      try {
-        const confirmationPayload = templates.contactRequestConfirmation({
-          name: request.name || 'there',
-          category: request.category || 'General Support',
-          supportUrl: `${APP_URL}/contact`,
-        });
-        await sendEmail({ to: request.email, ...confirmationPayload });
-      } catch (error) {
-        logger.error('Failed to send contact confirmation email', error);
-      }
-    }
-  }
-);
-
-exports.onSubscriptionCreated = onDocumentCreated(
-  {
-    document: 'subscriptions/{subscriptionId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const subscription = event.data?.data();
-    if (!subscription?.userUid) return;
-
-    const userSnap = await getDb().collection('users').doc(subscription.userUid).get();
-    if (!userSnap.exists) return;
-
-    const user = userSnap.data();
-    if (!user.email) return;
-
-    const payload = templates.subscriptionCreated({
-      displayName: user.displayName || 'there',
-      planName: getPlanDisplayName(subscription.planId),
-    });
-
-    await sendEmail({ to: user.email, ...payload });
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCHEDULED: Daily check for subscriptions expiring in exactly 7 days
-// ─────────────────────────────────────────────────────────────────────────────
-exports.subscriptionExpiryReminder = onSchedule(
-  {
-    schedule: 'every 24 hours',
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (_context) => {
-    const now = admin.firestore.Timestamp.now();
-    const in7Days = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    );
-    const in8Days = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + 8 * 24 * 60 * 60 * 1000)
-    );
-
-    // Find subscriptions expiring in the next 7–8 day window (catches daily runs)
-    const snap = await admin
-      .firestore()
-      .collection('subscriptions')
-      .where('status', '==', 'active')
-      .where('currentPeriodEnd', '>=', in7Days)
-      .where('currentPeriodEnd', '<', in8Days)
-      .get();
-
-    if (snap.empty) {
-      logger.info('subscriptionExpiryReminder: no subscriptions expiring in 7 days');
-      return;
-    }
-
-    const renewUrl = `${APP_URL}/profile#subscription`;
-    const errors = [];
-
-    await Promise.all(
-      snap.docs.map(async (subDoc) => {
-        const sub = subDoc.data();
-        const userSnap = await getDb().collection('users').doc(sub.userUid).get();
-        if (!userSnap.exists) return;
-
-        const user = userSnap.data();
-        if (!user.email) return;
-
-        const expiryDate = sub.currentPeriodEnd
-          .toDate()
-          .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-        try {
-          const { subject, html } = templates.subscriptionExpiring({
-            displayName: user.displayName || 'Seller',
-            planName: getPlanDisplayName(sub.planId),
-            expiryDate,
-            renewUrl,
-          });
-          await sendEmail({ to: user.email, subject, html });
-        } catch (err) {
-          errors.push(err.message);
-          logger.error(`Failed to send expiry reminder to ${user.email}`, err);
-        }
-      })
-    );
-
-    logger.info(`subscriptionExpiryReminder: processed ${snap.size} subs. Errors: ${errors.length}`);
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCHEDULED: Daily check for subscriptions that expired today
-// ─────────────────────────────────────────────────────────────────────────────
-exports.subscriptionExpiredNotice = onSchedule(
-  {
-    schedule: 'every 24 hours',
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (_context) => {
-    const now = admin.firestore.Timestamp.now();
-    const yesterday = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() - 24 * 60 * 60 * 1000)
-    );
-
-    const snap = await admin
-      .firestore()
-      .collection('subscriptions')
-      .where('status', '==', 'active')
-      .where('currentPeriodEnd', '>=', yesterday)
-      .where('currentPeriodEnd', '<', now)
-      .get();
-
-    if (snap.empty) return;
-
-    const renewUrl = `${APP_URL}/profile#subscription`;
-
-    await Promise.all(
-      snap.docs.map(async (subDoc) => {
-        const sub = subDoc.data();
-
-        // Mark subscription as expired
-        await subDoc.ref.update({ status: 'past_due' });
-
-        const userSnap = await getDb().collection('users').doc(sub.userUid).get();
-        if (!userSnap.exists) return;
-
-        const user = userSnap.data();
-        if (!user.email) return;
-
-        try {
-          const { subject, html } = templates.subscriptionExpired({
-            displayName: user.displayName || 'Seller',
-            planName: getPlanDisplayName(sub.planId),
-            renewUrl,
-          });
-          await sendEmail({ to: user.email, subject, html });
-        } catch (err) {
-          logger.error(`Failed to send expired notice to ${user.email}`, err);
-        }
-      })
-    );
-
-    logger.info(`subscriptionExpiredNotice: processed ${snap.size} expired subs`);
-  }
-);
-
-exports.expireListingsByDate = onSchedule(
-  {
-    schedule: 'every 24 hours',
-    region: 'us-central1',
-  },
-  async () => {
-    const now = admin.firestore.Timestamp.now();
-
-    const snap = await getDb()
-      .collection('listings')
-      .where('approvalStatus', '==', 'approved')
-      .where('paymentStatus', '==', 'paid')
-      .where('status', '==', 'active')
-      .where('expiresAt', '<=', now)
-      .get();
-
-    if (snap.empty) {
-      logger.info('expireListingsByDate: no listings to expire');
-      return;
-    }
-
-    for (const docSnap of snap.docs) {
-      await applyListingLifecycleAction({
-        listingRef: docSnap.ref,
-        listingId: docSnap.id,
-        listing: docSnap.data() || {},
-        action: 'expire',
-        actorUid: 'system',
-        actorRole: 'system',
-        reason: 'Automatic expiration window reached',
-      });
-    }
-    logger.info(`expireListingsByDate: expired ${snap.size} listings`);
-  }
-);
-
-exports.processAuctionClosures = onSchedule(
-  {
-    schedule: 'every 5 minutes',
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async () => {
-    const results = await processEndedAuctionLots();
-    logger.info('processAuctionClosures: processed auction lot settlements', {
-      settledCount: results.length,
-    });
-  }
-);
-
+// Image processing — extracted to image-processing.js
+exports.generateListingImageVariants = imageProcessingModule.generateListingImageVariants;
+
+// ─── Extracted trigger modules (factory pattern) ────────────────────────────
+const _triggerDeps = {
+  FIRESTORE_DB_ID,
+  SENDGRID_API_KEY,
+  EMAIL_FROM,
+  ADMIN_EMAILS,
+  sendEmail,
+  templates,
+  getAdminRecipients,
+  getDb,
+  buildCanonicalListingUrl,
+  sendVerificationEmailMessage,
+  normalize,
+  notifyMatchingSavedSearches,
+  deliverDealerWebhooks,
+  notifySavedSearchSoldStatus,
+  notifySavedSearchPriceDrop,
+  processEndedAuctionLots,
+  getPlanDisplayName,
+  applyListingLifecycleAction,
+  invalidateMarketplaceCaches,
+  APP_URL,
+};
+
+const _emailTriggers = createEmailTriggers(_triggerDeps);
+exports.onInquiryCreated = _emailTriggers.onInquiryCreated;
+exports.onUserProfileCreated = _emailTriggers.onUserProfileCreated;
+exports.onMediaKitRequestCreated = _emailTriggers.onMediaKitRequestCreated;
+exports.onFinancingRequestCreated = _emailTriggers.onFinancingRequestCreated;
+exports.onContactRequestCreated = _emailTriggers.onContactRequestCreated;
+
+const _listingLifecycle = createListingLifecycleTriggers(_triggerDeps);
+exports.onListingStatusChanged = _listingLifecycle.onListingStatusChanged;
+exports.onListingCreated = _listingLifecycle.onListingCreated;
+exports.processAuctionClosures = _listingLifecycle.processAuctionClosures;
+
+const _seoSync = createSeoSyncTriggers(_triggerDeps);
+exports.syncPublicSeoReadModelOnListingWrite = _seoSync.syncPublicSeoReadModelOnListingWrite;
+exports.syncPublicSeoReadModelOnUserWrite = _seoSync.syncPublicSeoReadModelOnUserWrite;
+exports.syncPublicSeoReadModelOnStorefrontWrite = _seoSync.syncPublicSeoReadModelOnStorefrontWrite;
+exports.rebuildPublicSeoReadModelScheduled = _seoSync.rebuildPublicSeoReadModelScheduled;
+
+const _subscriptionLifecycle = createSubscriptionLifecycleTriggers(_triggerDeps);
+exports.onSubscriptionCreated = _subscriptionLifecycle.onSubscriptionCreated;
+exports.subscriptionExpiryReminder = _subscriptionLifecycle.subscriptionExpiryReminder;
+exports.subscriptionExpiredNotice = _subscriptionLifecycle.subscriptionExpiredNotice;
+exports.expireListingsByDate = _subscriptionLifecycle.expireListingsByDate;
+
+// ─── Dealer feed scheduled jobs (remain inline) ─────────────────────────────
 exports.dealerFeedNightlySync = onSchedule(
   {
     schedule: '0 2 * * *',
@@ -5934,9 +5372,11 @@ exports.monthlyDealerReport = onSchedule(
     for (const summary of report.sellerSummaries) {
       if (!summary.email) continue;
 
-      const userSnapshot = await getDb().collection('users').doc(summary.sellerUid).get().catch(() => null);
-      const userData = userSnapshot?.data?.() || {};
-      if (userData.emailNotificationsEnabled === false) {
+      const emailContext = await getOptionalEmailDeliveryContext({
+        userUid: summary.sellerUid,
+        email: summary.email,
+      });
+      if (emailContext.emailNotificationsEnabled === false) {
         logger.info(`monthlyDealerReport: skipped seller report for ${summary.sellerUid} because optional emails are disabled`);
         continue;
       }
@@ -5956,7 +5396,7 @@ exports.monthlyDealerReport = onSchedule(
           dashboardUrl: 'https://timberequip.com/profile',
           unsubscribeUrl: buildEmailUnsubscribeUrl({
             uid: summary.sellerUid,
-            email: summary.email,
+            email: emailContext.email || summary.email,
             scope: 'optional',
           }),
         });
@@ -6483,7 +5923,7 @@ function serializePublicNewsPostFromBlog(docSnapshot) {
     content: record.content,
     author: normalizeNonEmptyString(record.authorName, 'Forestry Equipment Sales Editorial'),
     date: normalizeNonEmptyString(record.updatedAt || record.createdAt, new Date().toISOString()),
-    image: normalizeNonEmptyString(record.image, '/TimberEquip-Logo.png?v=20260405c'),
+    image: normalizeNonEmptyString(record.image, '/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
     category: normalizeNonEmptyString(record.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(record.seoTitle) || undefined,
     seoDescription: normalizeNonEmptyString(record.seoDescription) || undefined,
@@ -6501,7 +5941,7 @@ function serializePublicNewsPostFromLegacy(docSnapshot) {
     content: normalizeNonEmptyString(data.content),
     author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
     date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image, '/TimberEquip-Logo.png?v=20260405c'),
+    image: normalizeNonEmptyString(data.image, '/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
     seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
@@ -6539,7 +5979,7 @@ async function getPublicNewsFeedPayload() {
           content: post.content,
           author: normalizeNonEmptyString(post.authorName, 'Forestry Equipment Sales Editorial'),
           date: normalizeNonEmptyString(post.updatedAt || post.createdAt, new Date().toISOString()),
-          image: normalizeNonEmptyString(post.image, '/TimberEquip-Logo.png?v=20260405c'),
+          image: normalizeNonEmptyString(post.image, '/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
           category: normalizeNonEmptyString(post.category, 'Industry News'),
           seoTitle: normalizeNonEmptyString(post.seoTitle) || undefined,
           seoDescription: normalizeNonEmptyString(post.seoDescription) || undefined,
@@ -7475,10 +6915,10 @@ async function getMarketplaceStatsPayload() {
 
 async function assessRecaptchaToken(token, action) {
   const client = new RecaptchaEnterpriseServiceClient();
-  const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID);
+  const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID.value());
   const request = {
     assessment: {
-      event: { token, siteKey: RECAPTCHA_SITE_KEY },
+      event: { token, siteKey: RECAPTCHA_SITE_KEY.value() },
     },
     parent: projectPath,
   };
@@ -12233,6 +11673,176 @@ exports.apiProxy = onRequest(
         }
       }
 
+      if (req.method === 'GET' && /^\/auctions\/bidder-status$/i.test(path)) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const stripeClient = stripe || createStripeClient();
+        let rawProfile = await getAuctionBidderProfile(userUid);
+
+        if (rawProfile && stripeClient) {
+          const previousProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+            email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+            fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+          });
+
+          if (normalizeNonEmptyString(previousProfile.stripeIdentityVerificationSessionId) && previousProfile.idVerificationStatus !== 'verified') {
+            rawProfile = await syncAuctionBidderIdentityStatus(stripeClient, previousProfile.stripeIdentityVerificationSessionId, userUid);
+          }
+
+          const syncedProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+            email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+            fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+          });
+          if (normalizeNonEmptyString(syncedProfile.stripeSetupSessionId) && !normalizeNonEmptyString(syncedProfile.defaultPaymentMethodId)) {
+            rawProfile = await syncAuctionBidderSetupSession(stripeClient, syncedProfile.stripeSetupSessionId, userUid);
+          }
+        }
+
+        const bidderProfile = rawProfile
+          ? normalizeAuctionBidderProfile(rawProfile, {
+              email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+              fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+            })
+          : null;
+        const associatedAuction = await getAuctionForBidderProfile(bidderProfile);
+        return res.status(200).json(buildAuctionBidderStatusPayload(associatedAuction, bidderProfile));
+      }
+
+      if (req.method === 'POST' && /^\/auctions\/bidder-profile$/i.test(path)) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const profilePatch = req.body || {};
+        const nowIso = new Date().toISOString();
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          fullName: normalizeNonEmptyString(profilePatch.fullName, existingProfile?.fullName || decodedToken.name || authUser?.displayName),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || profilePatch.email || existingProfile?.email).toLowerCase(),
+          phone: normalizeNonEmptyString(profilePatch.phone, existingProfile?.phone),
+          companyName: normalizeNonEmptyString(profilePatch.companyName, existingProfile?.companyName || '') || null,
+          address: {
+            street: normalizeNonEmptyString(profilePatch.address?.street, existingProfile?.address?.street),
+            city: normalizeNonEmptyString(profilePatch.address?.city, existingProfile?.address?.city),
+            state: normalizeNonEmptyString(profilePatch.address?.state, existingProfile?.address?.state),
+            zip: normalizeNonEmptyString(profilePatch.address?.zip, existingProfile?.address?.zip),
+            country: normalizeNonEmptyString(profilePatch.address?.country, existingProfile?.address?.country || 'US'),
+          },
+          taxExempt: profilePatch.taxExempt !== undefined ? profilePatch.taxExempt === true : (existingProfile?.taxExempt === true),
+          taxExemptState: normalizeNonEmptyString(profilePatch.taxExemptState !== undefined ? profilePatch.taxExemptState : existingProfile?.taxExemptState),
+          taxExemptCertificateUrl: normalizeNonEmptyString(profilePatch.taxExemptCertificateUrl !== undefined ? profilePatch.taxExemptCertificateUrl : existingProfile?.taxExemptCertificateUrl),
+          taxExemptCertificateUploadedAt: normalizeNonEmptyString(profilePatch.taxExemptCertificateUploadedAt || existingProfile?.taxExemptCertificateUploadedAt),
+          termsAcceptedAt: normalizeNonEmptyString(profilePatch.termsAcceptedAt, existingProfile?.termsAcceptedAt || nowIso),
+          termsVersion: normalizeNonEmptyString(profilePatch.termsVersion, existingProfile?.termsVersion || AUCTION_TERMS_VERSION),
+          lastAuctionRegistrationAt: nowIso,
+        });
+
+        await saveAuctionBidderProfile(userUid, nextProfile);
+        const associatedAuction = await getAuctionForBidderProfile(nextProfile);
+        return res.status(200).json(buildAuctionBidderStatusPayload(associatedAuction, nextProfile));
+      }
+
+      if (req.method === 'POST' && /^\/auctions\/bidder-identity-session$/i.test(path)) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const associatedAuction = await getAuctionForBidderProfile(existingProfile);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const verificationSession = await stripe.identity.verificationSessions.create({
+          type: 'document',
+          return_url: `${getRequestBaseUrl(req)}/bidder-registration?identity_return=1`,
+          metadata: stripUndefinedDeep({
+            userUid,
+            auctionId: associatedAuction?.id,
+            auctionSlug: associatedAuction?.slug,
+          }),
+          options: {
+            document: {
+              require_matching_selfie: true,
+            },
+          },
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeIdentityVerificationSessionId: verificationSession.id,
+          stripeIdentityVerificationUrl: verificationSession.url || null,
+          idVerificationStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: verificationSession.url,
+          sessionId: verificationSession.id,
+        });
+      }
+
+      if (req.method === 'POST' && /^\/auctions\/bidder-payment-setup-session$/i.test(path)) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const associatedAuction = await getAuctionForBidderProfile(existingProfile);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const setupSession = await stripe.checkout.sessions.create({
+          mode: 'setup',
+          customer: customerId,
+          payment_method_types: ['card'],
+          success_url: `${getRequestBaseUrl(req)}/bidder-registration?setup_session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${getRequestBaseUrl(req)}/bidder-registration?setup_cancelled=1`,
+          metadata: stripUndefinedDeep({
+            checkoutScope: 'auction_bidder_setup',
+            userUid,
+            auctionId: associatedAuction?.id,
+            auctionSlug: associatedAuction?.slug,
+          }),
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeSetupSessionId: setupSession.id,
+          stripeSetupSessionStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: setupSession.url,
+          sessionId: setupSession.id,
+        });
+      }
+
       const auctionBidderStatusMatch = path.match(/^\/auctions\/([^/]+)\/bidder-status$/i);
       if (req.method === 'GET' && auctionBidderStatusMatch) {
         const decodedToken = await getDecodedUserFromBearer(req);
@@ -13292,12 +12902,20 @@ exports.apiProxy = onRequest(
             return res.status(404).json({ error: 'Subscriber not found.' });
           }
 
+          const recipientRef = getEmailPreferenceRecipientRef(email);
+          const recipientSnap = recipientRef ? await recipientRef.get() : null;
+          const recipientData = recipientSnap?.exists ? (recipientSnap.data() || {}) : {};
+          const preferenceState = normalizeOptionalEmailPreferenceState({
+            userData,
+            recipientData,
+          });
+
           if (req.method === 'GET') {
             return res.status(200).json({
               email,
               displayName: normalizeNonEmptyString(userData.displayName, 'there'),
               scope,
-              emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+              emailNotificationsEnabled: preferenceState.emailNotificationsEnabled,
             });
           }
 
@@ -13310,6 +12928,12 @@ exports.apiProxy = onRequest(
             },
             { merge: true }
           );
+          await syncEmailPreferenceRecipientRecord(email, {
+            displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+            scope,
+            emailNotificationsEnabled: false,
+            emailOptOutSource: 'unsubscribe_link',
+          });
 
           return res.status(200).json({
             success: true,
@@ -14931,6 +14555,18 @@ exports.apiProxy = onRequest(
           },
           { merge: true }
         );
+
+        if ('emailNotificationsEnabled' in sanitizedUpdates) {
+          await syncEmailPreferenceRecipientRecord(
+            normalizeNonEmptyString(nextUserData.email || authRecord?.email).toLowerCase(),
+            {
+              displayName: normalizeNonEmptyString(nextUserData.displayName || authRecord?.displayName, 'there'),
+              scope: 'optional',
+              emailNotificationsEnabled: sanitizedUpdates.emailNotificationsEnabled !== false,
+              emailOptOutSource: sanitizedUpdates.emailNotificationsEnabled === false ? 'account_profile' : '',
+            }
+          );
+        }
 
         if (isOperatorOnlyRole(nextRole)) {
           await getDb().collection('users').doc(actorUid).set(
@@ -17451,166 +17087,9 @@ exports.apiProxy = onRequest(
   }
 );
 
-// ── Nightly Data Refresh (2AM CST) ─────────────────────────────────────────
-exports.nightlyDataRefresh = onSchedule(
-  {
-    schedule: '0 2 * * *',
-    timeZone: 'America/Chicago',
-    region: 'us-central1',
-    memory: '256MiB',
-  },
-  async () => {
-    const db = getDb();
-    const listingsSnap = await db.collection('listings')
-      .where('status', '==', 'active')
-      .where('approvalStatus', '==', 'approved')
-      .get();
+// ── Scheduled market analytics — extracted to scheduled-market.js ────────────
+exports.nightlyDataRefresh = scheduledMarketModule.nightlyDataRefresh;
+exports.weeklyMarketPulse = scheduledMarketModule.weeklyMarketPulse;
 
-    const listings = listingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    let totalMarketValue = 0;
-    const subcategoryAggregates = {};
-
-    for (const listing of listings) {
-      const price = parseFloat(listing.price) || 0;
-      const subcategory = normalizeMarketplaceText(listing.subcategory || listing.category || 'other');
-      const make = normalizeMarketplaceText(listing.make || listing.manufacturer || '');
-      const model = normalizeMarketplaceText(listing.model || '');
-      const year = parseInt(listing.year, 10) || 0;
-      const hours = parseFloat(listing.hours || (listing.specs && listing.specs.hours) || 0) || 0;
-
-      totalMarketValue += price;
-
-      if (!subcategoryAggregates[subcategory]) {
-        subcategoryAggregates[subcategory] = { totalPrice: 0, count: 0 };
-      }
-      subcategoryAggregates[subcategory].totalPrice += price;
-      subcategoryAggregates[subcategory].count += 1;
-
-      // Compute AMV: same make+model, +/-10% price, +/-10% hours, +/-2 years
-      const comparables = listings.filter((comp) => {
-        if (comp.id === listing.id) return false;
-        if (normalizeMarketplaceText(comp.make || comp.manufacturer || '') !== make) return false;
-        if (normalizeMarketplaceText(comp.model || '') !== model) return false;
-        const compPrice = parseFloat(comp.price) || 0;
-        const compYear = parseInt(comp.year, 10) || 0;
-        const compHours = parseFloat(comp.hours || (comp.specs && comp.specs.hours) || 0) || 0;
-        if (price > 0 && Math.abs(compPrice - price) > price * 0.10) return false;
-        if (Math.abs(compYear - year) > 2) return false;
-        if (hours > 0 && compHours > 0 && Math.abs(compHours - hours) > hours * 0.10) return false;
-        return true;
-      });
-
-      if (comparables.length >= 1) {
-        const amvValue = comparables.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0) / comparables.length;
-        const roundedAmv = Math.round(amvValue);
-        await db.collection('listings').doc(listing.id).update({
-          computedAmv: roundedAmv,
-          marketValueEstimate: roundedAmv,
-          amvComparableCount: comparables.length,
-          amvComputedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
-    }
-
-    const statsRef = db.collection('system').doc('stats');
-    const prevSnap = await statsRef.get();
-    const prevData = prevSnap.exists ? prevSnap.data() : {};
-
-    const subcategoryStats = {};
-    for (const [key, agg] of Object.entries(subcategoryAggregates)) {
-      subcategoryStats[key] = {
-        avgPrice: agg.count > 0 ? Math.round(agg.totalPrice / agg.count) : 0,
-        supplyCount: agg.count,
-      };
-    }
-
-    await statsRef.set({
-      totalActiveListings: listings.length,
-      totalMarketValue: Math.round(totalMarketValue),
-      previousDayTotalMarketValue: prevData.totalMarketValue || 0,
-      previousDayTotalActiveListings: prevData.totalActiveListings || 0,
-      subcategoryStats,
-      dataRefreshedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    logger.info(`Nightly refresh: ${listings.length} listings, $${Math.round(totalMarketValue)} total value.`);
-  }
-);
-
-// ── Weekly Market Pulse (Monday 3AM CST) ────────────────────────────────────
-exports.weeklyMarketPulse = onSchedule(
-  {
-    schedule: '0 3 * * 1',
-    timeZone: 'America/Chicago',
-    region: 'us-central1',
-    memory: '256MiB',
-  },
-  async () => {
-    const db = getDb();
-    const listingsSnap = await db.collection('listings')
-      .where('status', '==', 'active')
-      .where('approvalStatus', '==', 'approved')
-      .get();
-
-    const listings = listingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-    const pulseRef = db.collection('system').doc('marketPulse');
-    const prevPulse = await pulseRef.get();
-    const prevSubcategoryPulse = prevPulse.exists ? (prevPulse.data().subcategoryPulse || {}) : {};
-
-    const subcategoryPulse = {};
-    for (const listing of listings) {
-      const price = parseFloat(listing.price) || 0;
-      const key = normalizeMarketplaceText(listing.subcategory || listing.category || 'other');
-      if (!subcategoryPulse[key]) subcategoryPulse[key] = { totalPrice: 0, count: 0 };
-      subcategoryPulse[key].totalPrice += price;
-      subcategoryPulse[key].count += 1;
-    }
-
-    const pulseData = {};
-    for (const [key, agg] of Object.entries(subcategoryPulse)) {
-      const avgPrice = agg.count > 0 ? Math.round(agg.totalPrice / agg.count) : 0;
-      const prevAvg = prevSubcategoryPulse[key]?.avgPrice || 0;
-      const prevCount = prevSubcategoryPulse[key]?.supplyCount || 0;
-      const priceChangePct = prevAvg > 0 ? parseFloat(((avgPrice - prevAvg) / prevAvg * 100).toFixed(1)) : 0;
-      const supplyChangePct = prevCount > 0 ? parseFloat(((agg.count - prevCount) / prevCount * 100).toFixed(1)) : 0;
-
-      pulseData[key] = { avgPrice, supplyCount: agg.count, priceChangePct, supplyChangePct };
-    }
-
-    await pulseRef.set({
-      subcategoryPulse: pulseData,
-      totalListings: listings.length,
-      pulseGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    logger.info(`Weekly market pulse: ${Object.keys(pulseData).length} subcategories analyzed.`);
-  }
-);
-
-// ─── Phase 2 dual-write: Firestore → PostgreSQL ──────────────────────
-exports.syncUserToPostgres = dualWriteUsersBilling.syncUserToPostgres;
-exports.syncStorefrontToPostgres = dualWriteUsersBilling.syncStorefrontToPostgres;
-exports.syncSubscriptionToPostgres = dualWriteUsersBilling.syncSubscriptionToPostgres;
-exports.syncInvoiceToPostgres = dualWriteUsersBilling.syncInvoiceToPostgres;
-exports.syncSellerApplicationToPostgres = dualWriteUsersBilling.syncSellerApplicationToPostgres;
-
-// ─── Phase 3 dual-write: Firestore → PostgreSQL (Auctions) ───────────
-exports.syncAuctionToPostgres = dualWriteAuctions.syncAuctionToPostgres;
-exports.syncAuctionLotToPostgres = dualWriteAuctions.syncAuctionLotToPostgres;
-exports.syncAuctionBidToPostgres = dualWriteAuctions.syncAuctionBidToPostgres;
-exports.syncAuctionInvoiceToPostgres = dualWriteAuctions.syncAuctionInvoiceToPostgres;
-
-// ─── Phase 4 dual-write: Firestore → PostgreSQL (Leads & Inquiries) ──
-exports.syncInquiryToPostgres = dualWriteLeads.syncInquiryToPostgres;
-exports.syncFinancingRequestToPostgres = dualWriteLeads.syncFinancingRequestToPostgres;
-exports.syncCallLogToPostgres = dualWriteLeads.syncCallLogToPostgres;
-exports.syncContactRequestToPostgres = dualWriteLeads.syncContactRequestToPostgres;
-
-// ─── Phase 5 dual-write: Firestore → PostgreSQL (Dealer System) ──────
-exports.syncDealerFeedProfileToPostgres = dualWriteDealers.syncDealerFeedProfileToPostgres;
-exports.syncDealerListingToPostgres = dualWriteDealers.syncDealerListingToPostgres;
-exports.syncDealerIngestLogToPostgres = dualWriteDealers.syncDealerIngestLogToPostgres;
-exports.syncDealerAuditLogToPostgres = dualWriteDealers.syncDealerAuditLogToPostgres;
-exports.syncDealerWebhookToPostgres = dualWriteDealers.syncDealerWebhookToPostgres;
-exports.syncDealerWidgetConfigToPostgres = dualWriteDealers.syncDealerWidgetConfigToPostgres;
+// ── PostgreSQL dual-write — extracted to postgres-sync.js ───────────────────
+Object.assign(exports, postgresSyncModule);

@@ -63,14 +63,14 @@ describe('Seo component', () => {
   });
 
   it('injects JSON-LD structured data script', () => {
-    const jsonLd = { '@type': 'WebSite', name: 'TimberEquip' };
+    const jsonLd = { '@type': 'WebSite', name: 'Forestry Equipment Sales' };
     render(<Seo title="Test" description="Desc" jsonLd={jsonLd} />);
     const script = document.head.querySelector('#seo-json-ld') as HTMLScriptElement;
     expect(script).toBeTruthy();
     expect(script.type).toBe('application/ld+json');
     const parsed = JSON.parse(script.text);
     expect(parsed['@type']).toBe('WebSite');
-    expect(parsed.name).toBe('TimberEquip');
+    expect(parsed.name).toBe('Forestry Equipment Sales');
   });
 
   it('cleans up JSON-LD script on unmount', () => {
@@ -82,10 +82,10 @@ describe('Seo component', () => {
     expect(document.head.querySelector('#seo-json-ld')).toBeNull();
   });
 
-  it('sets og:site_name to TimberEquip', () => {
+  it('sets og:site_name to Forestry Equipment Sales', () => {
     render(<Seo title="Test" description="Desc" />);
     const siteName = document.head.querySelector('meta[property="og:site_name"]') as HTMLMetaElement;
-    expect(siteName?.content).toBe('TimberEquip');
+    expect(siteName?.content).toBe('Forestry Equipment Sales');
   });
 
   it('defaults ogType to website', () => {
@@ -97,7 +97,7 @@ describe('Seo component', () => {
   it('sets og:image with default logo path', () => {
     render(<Seo title="Test" description="Desc" />);
     const ogImage = document.head.querySelector('meta[property="og:image"]') as HTMLMetaElement;
-    expect(ogImage?.content).toContain('TimberEquip-OG-Share');
+    expect(ogImage?.content).toContain('Forestry_Equipment_Sales_Logo.png');
   });
 
   it('sets og:image with custom imagePath', () => {

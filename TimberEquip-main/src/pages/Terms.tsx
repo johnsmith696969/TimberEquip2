@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Gavel, AlertTriangle, Scale, FileCheck, CheckCircle2, XCircle, Shield, Clock, Users, CreditCard, Ban, FileText, Globe, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Seo } from '../components/Seo';
+import { buildSiteUrl } from '../utils/siteUrl';
 import {
   AUCTION_CARD_PAYMENT_LIMIT,
   AUCTION_PAYMENT_DEADLINE_DAYS,
@@ -14,26 +15,26 @@ export function Terms() {
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
-        title="Terms of Service | TimberEquip"
-        description="Terms of service governing the use of the TimberEquip marketplace, including listing rules, auction bidding terms, billing, dispute resolution, and governing law."
+        title="Terms of Service | Forestry Equipment Sales"
+        description="Terms of service governing the use of the Forestry Equipment Sales marketplace, including listing rules, auction bidding terms, billing, dispute resolution, and governing law."
         canonicalPath="/terms"
         ogType="website"
-        imagePath="/TimberEquip-Logo.png?v=20260405c"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [
             {
               '@type': 'WebPage',
               name: 'Terms of Service',
-              description: 'Terms of service governing the use of the TimberEquip marketplace, including listing rules, auction bidding terms, billing, dispute resolution, and governing law.',
-              url: 'https://timberequip.com/terms',
+              description: 'Terms of service governing the use of the Forestry Equipment Sales marketplace, including listing rules, auction bidding terms, billing, dispute resolution, and governing law.',
+              url: buildSiteUrl('/terms'),
               lastReviewed: '2026-04-05',
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
-                { '@type': 'ListItem', position: 2, name: 'Terms of Service', item: 'https://timberequip.com/terms' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Terms of Service', item: buildSiteUrl('/terms') },
               ],
             },
           ],
@@ -60,7 +61,7 @@ export function Terms() {
               <Gavel className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Binding Agreement</h3>
               <p className="text-sm text-muted leading-relaxed">
-                By accessing the TimberEquip network, you agree to be bound by these terms.
+                By accessing the Forestry Equipment Sales network, you agree to be bound by these terms.
               </p>
             </div>
             <div className="bg-surface border border-line p-8 flex flex-col space-y-4">
@@ -74,7 +75,7 @@ export function Terms() {
               <AlertTriangle className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Liability</h3>
               <p className="text-sm text-muted leading-relaxed">
-                TimberEquip is a marketplace platform and is not liable for the condition of equipment listed by sellers.
+                Forestry Equipment Sales is a marketplace platform and is not liable for the condition of equipment listed by sellers.
               </p>
             </div>
           </div>
@@ -85,8 +86,8 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Acceptance of Terms</h2>
               <p>
-                These Terms of Service ("Terms") constitute a legally binding agreement between you and TimberEquip, LLC
-                ("TimberEquip", "we", "us", or "our"), governing your access to and use of the timberequip.com website, mobile applications,
+                These Terms of Service ("Terms") constitute a legally binding agreement between you and Forestry Equipment Sales, LLC
+                ("Forestry Equipment Sales", "we", "us", or "our"), governing your access to and use of the Forestry Equipment Sales website, mobile applications,
                 APIs, and all related services (collectively, the "Platform"). By creating an account, accessing, or using any part of the Platform,
                 you agree to be bound by these Terms, our <Link to="/privacy" className="text-accent underline">Privacy Policy</Link>,
                 our <Link to="/cookies" className="text-accent underline">Cookie Policy</Link>,
@@ -123,7 +124,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">3. Marketplace Usage</h2>
               <p>
-                The TimberEquip network is designed for professional equipment buyers, sellers, dealers,
+                The Forestry Equipment Sales network is designed for professional equipment buyers, sellers, dealers,
                 and service partners operating in a global marketplace. Users must provide accurate information,
                 maintain professional conduct, and use the platform only for lawful commercial purposes.
               </p>
@@ -180,7 +181,7 @@ export function Terms() {
                 <li>The listed price reflects a genuine offer and is not intended to deceive or manipulate</li>
               </ul>
               <p>
-                TimberEquip reserves the right to reject, unpublish, suspend, or permanently remove any listing
+                Forestry Equipment Sales reserves the right to reject, unpublish, suspend, or permanently remove any listing
                 that fails our verification process, violates marketplace policy, or receives a valid complaint. We may also
                 require sellers to provide additional documentation (proof of ownership, title, service records) before
                 publishing or reinstating a listing.
@@ -214,7 +215,7 @@ export function Terms() {
                     <li>Cancellation takes effect at the end of the current billing period - you retain access until then</li>
                     <li>No prorated refunds are issued for partial billing periods unless required by applicable law</li>
                     <li>Upon cancellation, your listings will be hidden from public search results after the billing period ends but are not permanently deleted</li>
-                    <li>Refunds for billing errors or disputes may be issued at TimberEquip's sole discretion</li>
+                    <li>Refunds for billing errors or disputes may be issued at Forestry Equipment Sales's sole discretion</li>
                   </ul>
                 </div>
 
@@ -225,7 +226,7 @@ export function Terms() {
                     <li>During the dunning period, your subscription status changes to "past due" and your listings may be hidden</li>
                     <li>Failure to resolve payment within the dunning period will result in subscription cancellation</li>
                     <li>Chargebacks, suspected fraud, or material billing disputes may result in immediate suspension</li>
-                    <li>Listings are not necessarily deleted when billing lapses - TimberEquip may retain them in a hidden state until the account is restored</li>
+                    <li>Listings are not necessarily deleted when billing lapses - Forestry Equipment Sales may retain them in a hidden state until the account is restored</li>
                   </ul>
                 </div>
               </div>
@@ -239,24 +240,24 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">6. Fees, Taxes &amp; Payment Terms</h2>
               <p>
-                TimberEquip charges subscription fees for seller access as described on the <Link to="/ad-programs" className="text-accent underline">Ad Programs</Link> page.
+                Forestry Equipment Sales charges subscription fees for seller access as described on the <Link to="/ad-programs" className="text-accent underline">Ad Programs</Link> page.
                 We reserve the right to change our pricing at any time. If we change pricing for an existing subscription, we will
                 provide at least 30 days' written notice before the new price takes effect. You may cancel your subscription before
                 the price change takes effect.
               </p>
               <p>
                 You are responsible for all applicable taxes, duties, levies, and assessments related to your use of the Platform
-                and any equipment transactions facilitated through the Platform. TimberEquip does not collect or remit sales tax, use tax,
+                and any equipment transactions facilitated through the Platform. Forestry Equipment Sales does not collect or remit sales tax, use tax,
                 VAT, or any other transaction taxes on behalf of buyers or sellers. Each party is responsible for its own tax
                 compliance and reporting obligations.
               </p>
             </section>
 
             {/* Section 6A: Auction Marketplace & Bidding Terms */}
-            <section className="space-y-6">
+            <section id="auction-marketplace-bidding-terms" className="space-y-6 scroll-mt-28">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">6A. Auction Marketplace &amp; Bidding Terms</h2>
               <p>
-                TimberEquip may host timed, soft-close, live-online, or catalog-style auction events for equipment and related assets.
+                Forestry Equipment Sales may host timed, soft-close, live-online, or catalog-style auction events for equipment and related assets.
                 Auction participation is governed by these Terms, any event-specific terms and conditions linked from the auction catalog or lot page,
                 bidder registration requirements, and the winning invoice issued after the sale. If event-specific auction terms conflict with these
                 Terms for a particular sale, the event-specific auction terms control for that event.
@@ -266,7 +267,7 @@ export function Terms() {
                 <div className="border border-line p-6 space-y-2">
                   <h4 className="text-xs font-black uppercase tracking-widest text-ink">Bidder Approval &amp; Eligibility</h4>
                   <ul className="list-disc pl-6 space-y-1 text-sm">
-                    <li>TimberEquip may require account creation, bidder-profile completion, tax documentation, identity verification, and a payment method before bidding is enabled</li>
+                    <li>Forestry Equipment Sales may require account creation, bidder-profile completion, tax documentation, identity verification, and a payment method before bidding is enabled</li>
                     <li>We may deny, pause, or revoke bidder approval at any time for fraud risk, sanctions screening, legal compliance, payment issues, incomplete verification, or other marketplace-protection concerns</li>
                     <li>You must ensure that the bidder account, payment instrument, and legal entity information used to register are accurate and authorized for use in the transaction</li>
                   </ul>
@@ -275,7 +276,7 @@ export function Terms() {
                 <div className="border border-line p-6 space-y-2">
                   <h4 className="text-xs font-black uppercase tracking-widest text-ink">Bidding Rules</h4>
                   <ul className="list-disc pl-6 space-y-1 text-sm">
-                    <li>All bids are binding and generally may not be withdrawn once placed, except where TimberEquip cancels a lot, corrects a clear clerical or platform error, or is otherwise required by law</li>
+                    <li>All bids are binding and generally may not be withdrawn once placed, except where Forestry Equipment Sales cancels a lot, corrects a clear clerical or platform error, or is otherwise required by law</li>
                     <li>Lots may be subject to reserve prices, and reserve amounts may remain confidential. A high bid does not guarantee a completed sale unless the reserve is met or the seller otherwise confirms acceptance</li>
                     <li>Timed events may use staggered closings and soft-close extensions to discourage last-second bid sniping and keep bidding open when active competition continues near the closing time</li>
                     <li>Catalog descriptions, photos, inspection notes, hours, serial numbers, condition statements, and title representations are believed reliable but are not guaranteed. Buyers remain solely responsible for inspection, diligence, and suitability review</li>
@@ -289,7 +290,7 @@ export function Terms() {
                     <li>Card and debit payments are capped at ${AUCTION_CARD_PAYMENT_LIMIT.toLocaleString()} total due and include a 3% processing fee. Wire transfer remains available for all winning invoices, and titled items may include a ${AUCTION_TITLED_DOCUMENT_FEE} documentation fee</li>
                     <li>Equipment is sold as-is, where-is, with no warranty unless explicitly stated in writing. Buyer is responsible for taxes, loading, rigging, transport, export or import compliance, insurance, and all post-sale logistics</li>
                     <li>Unless the invoice or event notice states otherwise, purchased assets must be removed within {AUCTION_REMOVAL_DEADLINE_DAYS} calendar days after auction close. Storage, rehandling, yard, or access fees may apply after the stated deadline</li>
-                    <li>If a winning bidder defaults, TimberEquip and/or the seller may cancel the sale, suspend the account, revoke bidding privileges, re-market the lot, assess fees or storage permitted by law or invoice terms, and pursue collection, damages, or other available remedies</li>
+                    <li>If a winning bidder defaults, Forestry Equipment Sales and/or the seller may cancel the sale, suspend the account, revoke bidding privileges, re-market the lot, assess fees or storage permitted by law or invoice terms, and pursue collection, damages, or other available remedies</li>
                     <li>Title documents, release paperwork, and pickup authorizations may be withheld until cleared funds, required signatures, tax forms, and compliance checks are fully completed</li>
                   </ul>
                 </div>
@@ -310,7 +311,7 @@ export function Terms() {
                 entitlement, compliance with platform rules, and availability of supporting systems.
               </p>
               <p>
-                TimberEquip may limit, suspend, or modify these services at any time to protect the marketplace,
+                Forestry Equipment Sales may limit, suspend, or modify these services at any time to protect the marketplace,
                 comply with law, maintain platform performance, or for any other reasonable business purpose. We will endeavor
                 to provide reasonable notice before discontinuing any material service feature, except where immediate action
                 is required for security or legal compliance.
@@ -328,7 +329,7 @@ export function Terms() {
                 jurisdictions where you operate.
               </p>
               <p>
-                TimberEquip requires seller-specific or lender-specific contact consent for platform-generated outreach requests and does not
+                Forestry Equipment Sales requires seller-specific or lender-specific contact consent for platform-generated outreach requests and does not
                 permit blanket consent language that authorizes unrelated sellers, lenders, or telemarketing campaigns to contact a user.
                 Where your use of the Platform involves calls or texts, you are solely responsible for any legally required notices,
                 opt-out handling, and consent records tied to that outreach.
@@ -339,14 +340,14 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">8. Data, Leads &amp; Platform Records</h2>
               <p>
-                By using the platform, you authorize TimberEquip to store operational records related to account setup,
+                By using the platform, you authorize Forestry Equipment Sales to store operational records related to account setup,
                 consent, billing status, leads, listing lifecycle actions, fraud prevention, and support activity.
                 These records may be used to maintain the platform, investigate abuse, support audits, verify account entitlement,
                 and comply with legal obligations.
               </p>
               <p>
                 Lead data (inquiries, contact requests, financing applications) generated through the Platform is provided to the
-                relevant seller or dealer as part of the subscription service. TimberEquip may retain aggregated, anonymized lead data for
+                relevant seller or dealer as part of the subscription service. Forestry Equipment Sales may retain aggregated, anonymized lead data for
                 analytics and platform improvement purposes. Individual lead data is subject to our
                 {' '}<Link to="/privacy" className="text-accent underline">Privacy Policy</Link>.
               </p>
@@ -362,8 +363,8 @@ export function Terms() {
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">9. Intellectual Property &amp; Content Ownership</h2>
               <p>
                 <strong>Your Content:</strong> Users retain ownership of all content they upload to the Platform, including listing descriptions,
-                photographs, videos, and brand assets. By uploading content to TimberEquip, you grant
-                TimberEquip a non-exclusive, worldwide, royalty-free, sublicensable license to display, reproduce, distribute, modify (for formatting and
+                photographs, videos, and brand assets. By uploading content to Forestry Equipment Sales, you grant
+                Forestry Equipment Sales a non-exclusive, worldwide, royalty-free, sublicensable license to display, reproduce, distribute, modify (for formatting and
                 optimization, such as image compression and resizing), and promote your content solely in connection with the operation
                 and marketing of the marketplace.
               </p>
@@ -376,7 +377,7 @@ export function Terms() {
               </p>
               <p>
                 <strong>Our Content:</strong> The Platform, including its design, code, logos, trademarks, service marks, trade names, and all
-                intellectual property therein, is owned by or licensed to TimberEquip, LLC. You may not use our
+                intellectual property therein, is owned by or licensed to Forestry Equipment Sales, LLC. You may not use our
                 trademarks, logos, or branding without our prior written consent. Nothing in these Terms grants you any right,
                 title, or interest in our intellectual property.
               </p>
@@ -391,7 +392,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">10. User-Generated Content &amp; Moderation</h2>
               <p>
-                TimberEquip does not pre-screen all user-generated content but reserves the right to review, moderate, edit, or remove
+                Forestry Equipment Sales does not pre-screen all user-generated content but reserves the right to review, moderate, edit, or remove
                 any content at our sole discretion, including content that:
               </p>
               <ul className="list-disc pl-6 space-y-2">
@@ -404,7 +405,7 @@ export function Terms() {
               </ul>
               <p>
                 We are not obligated to monitor all content and are not liable for any user-generated content posted on the Platform.
-                If you encounter content that you believe violates these Terms, please report it to legal@timberequip.com.
+                If you encounter content that you believe violates these Terms, please report it to legal@forestryequipmentsales.com.
               </p>
             </section>
 
@@ -414,7 +415,7 @@ export function Terms() {
               <p>
                 Users are responsible for complying with all laws that apply to their activity, including sanctions, export controls,
                 tax obligations, privacy law, consumer protection, and advertising rules in the jurisdictions where they operate.
-                TimberEquip may refuse service, block transactions, or restrict access where compliance risk exists.
+                Forestry Equipment Sales may refuse service, block transactions, or restrict access where compliance risk exists.
               </p>
               <p>
                 Without limiting the foregoing, you agree not to use the Platform to facilitate transactions with individuals
@@ -428,7 +429,7 @@ export function Terms() {
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">12. Disclaimer of Warranties</h2>
               <p>
                 THE PLATFORM IS PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS,
-                IMPLIED, STATUTORY, OR OTHERWISE. TO THE FULLEST EXTENT PERMITTED BY LAW, TimberEquip DISCLAIMS ALL WARRANTIES, INCLUDING
+                IMPLIED, STATUTORY, OR OTHERWISE. TO THE FULLEST EXTENT PERMITTED BY LAW, Forestry Equipment Sales DISCLAIMS ALL WARRANTIES, INCLUDING
                 BUT NOT LIMITED TO:
               </p>
               <ul className="list-disc pl-6 space-y-2">
@@ -438,7 +439,7 @@ export function Terms() {
                 <li>WARRANTIES REGARDING THE CONDITION, QUALITY, SAFETY, OR LEGALITY OF ANY EQUIPMENT LISTED ON THE PLATFORM</li>
               </ul>
               <p>
-                TimberEquip is a marketplace that connects buyers and sellers. We do not inspect, verify ownership of, or guarantee the
+                Forestry Equipment Sales is a marketplace that connects buyers and sellers. We do not inspect, verify ownership of, or guarantee the
                 condition of any equipment listed on the Platform. All transactions are between the buyer and seller. You assume
                 all risk associated with equipment purchases made through the Platform.
               </p>
@@ -448,7 +449,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">13. Limitation of Liability</h2>
               <p>
-                TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL TimberEquip, ITS OFFICERS, DIRECTORS, EMPLOYEES,
+                TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL Forestry Equipment Sales, ITS OFFICERS, DIRECTORS, EMPLOYEES,
                 AGENTS, AFFILIATES, OR LICENSORS BE LIABLE FOR:
               </p>
               <ul className="list-disc pl-6 space-y-2">
@@ -459,8 +460,8 @@ export function Terms() {
                 <li>ANY DAMAGES ARISING FROM THE CONDUCT OF ANY THIRD PARTY ON THE PLATFORM</li>
               </ul>
               <p>
-                IN ANY EVENT, TimberEquip'S TOTAL AGGREGATE LIABILITY TO YOU FOR ALL CLAIMS ARISING OUT OF OR RELATING TO THESE TERMS
-                OR YOUR USE OF THE PLATFORM SHALL NOT EXCEED THE GREATER OF: (A) THE TOTAL FEES ACTUALLY PAID BY YOU TO TimberEquip
+                IN ANY EVENT, Forestry Equipment Sales'S TOTAL AGGREGATE LIABILITY TO YOU FOR ALL CLAIMS ARISING OUT OF OR RELATING TO THESE TERMS
+                OR YOUR USE OF THE PLATFORM SHALL NOT EXCEED THE GREATER OF: (A) THE TOTAL FEES ACTUALLY PAID BY YOU TO Forestry Equipment Sales
                 DURING THE TWELVE (12) MONTHS IMMEDIATELY PRECEDING THE EVENT GIVING RISE TO THE CLAIM, OR (B) ONE HUNDRED
                 US DOLLARS ($100.00).
               </p>
@@ -474,7 +475,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">14. Indemnification</h2>
               <p>
-                You agree to indemnify, defend, and hold harmless TimberEquip, LLC, its officers,
+                You agree to indemnify, defend, and hold harmless Forestry Equipment Sales, LLC, its officers,
                 directors, employees, agents, and affiliates from and against any and all claims, damages,
                 obligations, losses, liabilities, costs, and expenses (including reasonable attorneys' fees)
                 arising from:
@@ -502,11 +503,11 @@ export function Terms() {
                 Active subscriptions should be canceled before account deletion to avoid further charges.
               </p>
               <p>
-                <strong>By TimberEquip:</strong> We may suspend or terminate your access to the Platform, in whole or in part, at any time
+                <strong>By Forestry Equipment Sales:</strong> We may suspend or terminate your access to the Platform, in whole or in part, at any time
                 and for any reason, including but not limited to:
               </p>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Violation of these Terms or any TimberEquip policy</li>
+                <li>Violation of these Terms or any Forestry Equipment Sales policy</li>
                 <li>Fraudulent, abusive, or illegal activity</li>
                 <li>Non-payment or chargeback activity</li>
                 <li>Repeated intellectual property infringement (see our <Link to="/dmca" className="text-accent underline">DMCA Policy</Link>)</li>
@@ -526,12 +527,12 @@ export function Terms() {
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">16. Dispute Resolution &amp; Liability</h2>
               <p>
                 Any disputes between buyers and sellers must be resolved through the parties directly unless otherwise required by law.
-                TimberEquip provides the platform for communication and billing infrastructure, but does not guarantee
+                Forestry Equipment Sales provides the platform for communication and billing infrastructure, but does not guarantee
                 the outcome of any transaction, financing outcome, transport result, or equipment condition.
               </p>
               <p>
                 <strong>Informal Resolution:</strong> Before initiating formal proceedings, you agree to first contact us at
-                legal@timberequip.com and attempt to resolve any dispute informally for at least 30 days.
+                legal@forestryequipmentsales.com and attempt to resolve any dispute informally for at least 30 days.
               </p>
             </section>
 
@@ -564,7 +565,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">18. Force Majeure</h2>
               <p>
-                TimberEquip shall not be liable for any failure or delay in performing its obligations
+                Forestry Equipment Sales shall not be liable for any failure or delay in performing its obligations
                 under these Terms where such failure or delay results from circumstances beyond its reasonable control,
                 including but not limited to: acts of God, natural disasters, pandemics, epidemics, war, terrorism, riots,
                 embargoes, government actions or orders, power failures, internet or telecommunications outages, cyberattacks,
@@ -582,7 +583,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">19. Electronic Communications Consent</h2>
               <p>
-                By creating an account, you consent to receive electronic communications from TimberEquip, including:
+                By creating an account, you consent to receive electronic communications from Forestry Equipment Sales, including:
               </p>
               <ul className="list-disc pl-6 space-y-2">
                 <li>Transactional emails related to your account, subscriptions, listings, and inquiries</li>
@@ -601,7 +602,7 @@ export function Terms() {
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">20. Third-Party Links &amp; Services</h2>
               <p>
                 The Platform may contain links to third-party websites or services (e.g., Stripe checkout, financing partner portals,
-                equipment manufacturer websites, transport providers). These links are provided for convenience only. TimberEquip does not
+                equipment manufacturer websites, transport providers). These links are provided for convenience only. Forestry Equipment Sales does not
                 endorse, control, or assume responsibility for the content, privacy policies, or practices of any third-party
                 services. Your interactions with third-party services are governed solely by their terms and policies.
               </p>
@@ -611,7 +612,7 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">21. Modifications to These Terms</h2>
               <p>
-                TimberEquip reserves the right to modify these Terms at any time. When we make material changes, we will:
+                Forestry Equipment Sales reserves the right to modify these Terms at any time. When we make material changes, we will:
               </p>
               <ul className="list-disc pl-6 space-y-2">
                 <li>Update the "Last Updated" date and version number at the top of this page</li>
@@ -628,11 +629,11 @@ export function Terms() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">22. General Provisions</h2>
               <ul className="list-disc pl-6 space-y-3">
-                <li><strong>Entire Agreement:</strong> These Terms, together with our Privacy Policy, Cookie Policy, and DMCA Policy, constitute the entire agreement between you and TimberEquip regarding your use of the Platform, and supersede all prior agreements, understandings, and representations.</li>
+                <li><strong>Entire Agreement:</strong> These Terms, together with our Privacy Policy, Cookie Policy, and DMCA Policy, constitute the entire agreement between you and Forestry Equipment Sales regarding your use of the Platform, and supersede all prior agreements, understandings, and representations.</li>
                 <li><strong>Severability:</strong> If any provision of these Terms is found to be unenforceable or invalid by a court of competent jurisdiction, that provision will be limited or eliminated to the minimum extent necessary, and the remaining provisions will remain in full force and effect.</li>
-                <li><strong>Waiver:</strong> The failure of TimberEquip to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver must be in writing and signed by an authorized representative of TimberEquip.</li>
-                <li><strong>Assignment:</strong> You may not assign or transfer these Terms or any rights hereunder without our prior written consent. TimberEquip may assign these Terms freely in connection with a merger, acquisition, reorganization, or sale of assets.</li>
-                <li><strong>No Agency:</strong> No agency, partnership, joint venture, or employment relationship is created by these Terms, and you have no authority to bind TimberEquip in any respect.</li>
+                <li><strong>Waiver:</strong> The failure of Forestry Equipment Sales to enforce any right or provision of these Terms shall not constitute a waiver of such right or provision. Any waiver must be in writing and signed by an authorized representative of Forestry Equipment Sales.</li>
+                <li><strong>Assignment:</strong> You may not assign or transfer these Terms or any rights hereunder without our prior written consent. Forestry Equipment Sales may assign these Terms freely in connection with a merger, acquisition, reorganization, or sale of assets.</li>
+                <li><strong>No Agency:</strong> No agency, partnership, joint venture, or employment relationship is created by these Terms, and you have no authority to bind Forestry Equipment Sales in any respect.</li>
                 <li><strong>Headings:</strong> Section headings are for convenience only and do not affect the interpretation of these Terms.</li>
                 <li><strong>Survival:</strong> Any provisions that by their nature should survive termination will survive, including but not limited to intellectual property provisions, disclaimers, limitations of liability, and indemnification.</li>
               </ul>
@@ -646,9 +647,9 @@ export function Terms() {
                 a copy of these Terms in an alternative format, contact our Legal Department:
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight text-ink">
-                <span>legal@timberequip.com</span>
+                <span>legal@forestryequipmentsales.com</span>
                 <span>+1 (800) 846-2373</span>
-                <span className="text-muted text-sm font-medium mt-2">TimberEquip, LLC - 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+                <span className="text-muted text-sm font-medium mt-2">Forestry Equipment Sales, LLC - 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
               </div>
             </section>
           </div>

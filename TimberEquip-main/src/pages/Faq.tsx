@@ -4,6 +4,7 @@ import { ArrowRight, ChevronDown, HelpCircle, Mail, Phone } from 'lucide-react';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 interface FaqCategory {
   title: string;
@@ -122,7 +123,7 @@ const faqCategories: FaqCategory[] = [
       },
       {
         question: 'How do I contact support?',
-        answer: 'Use the Contact page, call (612) 600-8268 Monday through Friday 8am-5pm CST, or email support@timberequip.com. Email support is available 8am-10pm CST.',
+        answer: 'Use the Contact page, call (218) 720-0933 Monday through Friday 8am-5pm CST, or email support@forestryequipmentsales.com. Email support is available 8am-10pm CST.',
       },
       {
         question: 'Is my information secure?',
@@ -147,7 +148,7 @@ export function Faq() {
     <div className="min-h-screen bg-bg">
       <Seo
         title="Logging Equipment Marketplace FAQ | Buyers, Sellers, and Dealers"
-        description="Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on TimberEquip."
+        description="Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on Forestry Equipment Sales."
         canonicalPath="/faq"
         imagePath="/page-photos/winter-log-road.webp"
         preloadImage="/page-photos/faq.webp"
@@ -165,8 +166,8 @@ export function Faq() {
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
-                { '@type': 'ListItem', position: 2, name: 'FAQ', item: 'https://timberequip.com/faq' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'FAQ', item: buildSiteUrl('/faq') },
               ],
             },
           ],
@@ -186,7 +187,7 @@ export function Faq() {
           </h1>
           <p className={`max-w-3xl text-base font-medium leading-relaxed md:text-lg ${heroBodyClass}`}>
             Quick answers to common questions about listing equipment, financing, logistics, dealer programs,
-            and support at TimberEquip.
+            and support at Forestry Equipment Sales.
           </p>
         </div>
       </ImageHero>
@@ -205,18 +206,18 @@ export function Faq() {
                 we can point you in the right direction quickly.
               </p>
               <div className="space-y-4">
-                <a href="tel:+16126008268" className="flex items-start space-x-3 border border-line bg-bg p-4 transition-colors hover:border-accent">
+                <a href="tel:+12187200933" className="flex items-start space-x-3 border border-line bg-bg p-4 transition-colors hover:border-accent">
                   <Phone className="mt-0.5 text-accent" size={18} />
                   <div>
                     <span className="label-micro block">Customer Support</span>
-                    <span className="text-sm font-black tracking-tight">(612) 600-8268</span>
+                    <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                   </div>
                 </a>
-                <a href="mailto:support@timberequip.com" className="flex min-w-0 items-start space-x-3 border border-line bg-bg p-4 transition-colors hover:border-accent">
+                <a href="mailto:support@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 border border-line bg-bg p-4 transition-colors hover:border-accent">
                   <Mail className="mt-0.5 text-accent" size={18} />
                   <div className="min-w-0">
                     <span className="label-micro block">Email Support</span>
-                    <span className="block break-all text-sm font-black tracking-tight">support@timberequip.com</span>
+                    <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
                   </div>
                 </a>
               </div>

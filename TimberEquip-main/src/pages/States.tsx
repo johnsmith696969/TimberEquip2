@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Globe2, MapPin, Trees, TrendingUp } from 'lucide-react';
+import { ArrowRight, Globe2, Trees, TrendingUp } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
-import { CANONICAL_MARKET_ROUTE_KEY, buildStateMarketPath, getListingCategoryLabel, getListingManufacturer, getStateFromLocation } from '../utils/seoRoutes';
+import { CANONICAL_MARKET_ROUTE_KEY, buildStateMarketPath, compareRegionNames, getListingCategoryLabel, getListingManufacturer, getListingStateName } from '../utils/seoRoutes';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 type StateCard = {
   name: string;
@@ -29,7 +30,7 @@ function buildStateCards(listings: Listing[]): StateCard[] {
   >();
 
   listings.forEach((listing) => {
-    const state = getStateFromLocation(listing.location);
+    const state = getListingStateName(listing);
     if (!state) return;
 
     const manufacturer = getListingManufacturer(listing);
@@ -67,7 +68,7 @@ function buildStateCards(listings: Listing[]): StateCard[] {
       topCategories: sortCounts(entry.categories),
       topManufacturers: sortCounts(entry.topManufacturers),
     }))
-    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+    .sort((left, right) => compareRegionNames(left.name, right.name));
 }
 
 export function States() {
@@ -106,32 +107,35 @@ export function States() {
   }, []);
 
   const stateCards = useMemo(() => buildStateCards(listings), [listings]);
+  const marketLeader = useMemo(
+    () => [...stateCards].sort((left, right) => right.count - left.count || compareRegionNames(left.name, right.name))[0],
+    [stateCards]
+  );
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
   const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const formatNumber = useMemo(() => new Intl.NumberFormat('en-US'), []);
 
   const totalStates = stateCards.length;
-  const topState = stateCards[0];
   const totalManufacturers = new Set(listings.map((listing) => getListingManufacturer(listing)).filter(Boolean)).size;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
     name: 'Equipment Markets By State',
     description: 'Browse state-level equipment market routes with direct paths into live public inventory.',
-    url: 'https://timberequip.com/states',
+    url: buildSiteUrl('/states'),
     hasPart: stateCards.slice(0, 60).map((state, index) => ({
       '@type': 'ListItem',
       position: index + 1,
       name: state.name,
-      url: `https://timberequip.com${buildStateMarketPath(state.name, CANONICAL_MARKET_ROUTE_KEY)}`,
+      url: buildSiteUrl(buildStateMarketPath(state.name, CANONICAL_MARKET_ROUTE_KEY)),
     })),
   };
 
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment Markets By State | TimberEquip"
+        title="Equipment Markets By State | Forestry Equipment Sales"
         description="Browse state-level market pages for forestry and logging equipment, with direct paths into live public inventory."
         canonicalPath="/states"
         jsonLd={jsonLd}
@@ -160,20 +164,20 @@ export function States() {
             </div>
             <div className="border border-line bg-bg/90 p-5 backdrop-blur-sm">
               <div className="label-micro mb-2">Top Market</div>
-              <div className="text-xl font-black uppercase tracking-tight text-ink">{topState?.name || 'Pending'}</div>
+              <div className="text-xl font-black uppercase tracking-tight text-ink">{marketLeader?.name || 'Pending'}</div>
             </div>
           </div>
         </div>
       </ImageHero>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
-        <section className="mb-12 border border-line bg-surface p-8 md:p-10">
+        <section className="mb-12 border border-line bg-surface/60 p-8 md:p-10">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <span className="label-micro text-accent mb-3 block">Regional Route Index</span>
+              <span className="label-micro text-accent mb-3 block">Regional Market Directory</span>
               <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight text-ink">Browse Equipment By Geography</h2>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-relaxed text-muted">
-                These React-owned state markets replace the conflicting SEO stub pages. Each route points buyers into the local forestry equipment inventory already live on the marketplace.
+                Open any state market to browse live inventory, leading machine categories, and the brands currently active in that region. Every route stays tied to real Forestry Equipment Sales supply instead of generic directory filler.
               </p>
             </div>
             <Link to="/search" className="btn-industrial btn-accent py-4 px-6 w-full md:w-auto text-center">
@@ -190,7 +194,7 @@ export function States() {
             </div>
             <div className="label-micro mb-2">Geographic Coverage</div>
             <div className="text-2xl font-black tracking-tight text-ink">{formatNumber.format(totalStates)} Markets</div>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">State pages now resolve inside the React app instead of handing off to the conflicting server-rendered directory layer.</p>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">Every state market updates from live Forestry Equipment Sales inventory, giving buyers a clean way to shop by geography without landing on stale placeholder pages.</p>
           </div>
           <div className="border border-line bg-bg p-6">
             <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent/10 text-accent mb-4">
@@ -205,8 +209,8 @@ export function States() {
               <TrendingUp size={22} />
             </div>
             <div className="label-micro mb-2">Market Leader</div>
-            <div className="text-2xl font-black tracking-tight text-ink">{topState?.name || 'Pending'}</div>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">The strongest state route is determined by current active listing count, so it stays tied to real marketplace supply instead of static filler content.</p>
+            <div className="text-2xl font-black tracking-tight text-ink">{marketLeader?.name || 'Pending'}</div>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">The strongest state route is based on current active listing count, so buyers land where the deepest live supply is actually available.</p>
           </div>
         </section>
 
@@ -231,40 +235,35 @@ export function States() {
               <Link
                 key={state.name}
                 to={buildStateMarketPath(state.name, CANONICAL_MARKET_ROUTE_KEY)}
-                className="group border border-line bg-bg p-8 transition-all duration-300 hover:-translate-y-1 hover:border-accent"
+                className="group border border-line bg-bg p-8 transition-all duration-300 hover:-translate-y-1 hover:border-accent hover:shadow-xl"
               >
-                <div className="flex items-start justify-between gap-4 mb-6">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-sm bg-accent/10 text-accent">
-                    <MapPin size={26} />
+                <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <span className="label-micro mb-2 block">State Market</span>
+                    <h3 className="text-2xl font-black uppercase tracking-tighter text-ink">{state.name}</h3>
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-accent">
-                    {formatNumber.format(state.count)} Listings
-                  </span>
+                  <div className="rounded-sm border border-accent/20 bg-accent/8 px-4 py-3 text-right">
+                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-accent">Active Listings</div>
+                    <div className="mt-2 text-2xl font-black tracking-tight text-ink">{formatNumber.format(state.count)}</div>
+                  </div>
                 </div>
 
-                <h3 className="text-2xl font-black uppercase tracking-tighter text-ink mb-3">{state.name}</h3>
                 <p className="text-xs font-medium leading-relaxed text-muted mb-6">
                   {state.manufacturerCount} active manufacturers currently represented in this market.
                 </p>
 
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-start gap-3 text-xs text-muted">
-                    <Trees size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <span className="label-micro mb-1 block">Top Categories</span>
-                      <span className="font-medium">
-                        {state.topCategories.length ? state.topCategories.join(', ') : 'Inventory categories populating now'}
-                      </span>
-                    </div>
+                <div className="mb-8 grid gap-3 sm:grid-cols-2">
+                  <div className="border border-line bg-surface/60 p-4">
+                    <span className="label-micro mb-2 block">Top Categories</span>
+                    <span className="text-xs font-medium leading-relaxed text-muted">
+                      {state.topCategories.length ? state.topCategories.join(', ') : 'Inventory categories populating now'}
+                    </span>
                   </div>
-                  <div className="flex items-start gap-3 text-xs text-muted">
-                    <Globe2 size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <span className="label-micro mb-1 block">Top Manufacturers</span>
-                      <span className="font-medium">
-                        {state.topManufacturers.length ? state.topManufacturers.join(', ') : 'Brand coverage populating now'}
-                      </span>
-                    </div>
+                  <div className="border border-line bg-surface/60 p-4">
+                    <span className="label-micro mb-2 block">Top Manufacturers</span>
+                    <span className="text-xs font-medium leading-relaxed text-muted">
+                      {state.topManufacturers.length ? state.topManufacturers.join(', ') : 'Brand coverage populating now'}
+                    </span>
                   </div>
                 </div>
 

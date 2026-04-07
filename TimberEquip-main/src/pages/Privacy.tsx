@@ -3,31 +3,32 @@ import { motion } from 'framer-motion';
 import { Shield, Lock, Eye, FileText, UserCheck, Trash2, Download, Globe, Users, AlertTriangle, Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Seo } from '../components/Seo';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 export function Privacy() {
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
-        title="Privacy Policy | TimberEquip"
-        description="Learn how TimberEquip collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant. Data encryption, third-party processors, and your rights explained."
+        title="Privacy Policy | Forestry Equipment Sales"
+        description="Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant. Data encryption, third-party processors, and your rights explained."
         canonicalPath="/privacy"
         ogType="website"
-        imagePath="/TimberEquip-Logo.png?v=20260405c"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
         jsonLd={{
           '@context': 'https://schema.org',
           '@graph': [
             {
               '@type': 'WebPage',
               name: 'Privacy Policy',
-              description: 'Learn how TimberEquip collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant.',
-              url: 'https://timberequip.com/privacy',
+              description: 'Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant.',
+              url: buildSiteUrl('/privacy'),
               lastReviewed: '2026-03-29',
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com' },
-                { '@type': 'ListItem', position: 2, name: 'Privacy Policy', item: 'https://timberequip.com/privacy' },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Privacy Policy', item: buildSiteUrl('/privacy') },
               ],
             },
           ],
@@ -54,7 +55,7 @@ export function Privacy() {
               <Shield className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Data Encryption</h3>
               <p className="text-sm text-muted leading-relaxed">
-                All data transmitted through the TimberEquip platform is encrypted using AES-256 encryption.
+                All data transmitted through the Forestry Equipment Sales platform is encrypted using AES-256 encryption.
                 We never store raw payment data on our servers.
               </p>
             </div>
@@ -81,9 +82,9 @@ export function Privacy() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Introduction &amp; Scope</h2>
               <p>
-                This Privacy Policy ("Policy") describes how TimberEquip, LLC ("TimberEquip", "we", "us", or "our")
-                collects, uses, stores, shares, and protects personal information when you access or use our website at
-                timberequip.com, our mobile applications, our APIs, and any related services (collectively, the "Platform").
+                This Privacy Policy ("Policy") describes how Forestry Equipment Sales, LLC ("Forestry Equipment Sales", "we", "us", or "our")
+                collects, uses, stores, shares, and protects personal information when you access or use the Forestry Equipment Sales website,
+                our mobile applications, our APIs, and any related services (collectively, the "Platform").
               </p>
               <p>
                 This Policy applies to all users of the Platform, including equipment buyers, sellers, dealers, service partners,
@@ -91,7 +92,7 @@ export function Privacy() {
                 that you have read and understood this Policy.
               </p>
               <p>
-                If you are located in the European Economic Area (EEA), United Kingdom (UK), or Switzerland, TimberEquip, LLC
+                If you are located in the European Economic Area (EEA), United Kingdom (UK), or Switzerland, Forestry Equipment Sales, LLC
                 is the "data controller" for purposes of applicable data protection law. If you are a California resident, please see
                 Section 14 for additional disclosures under the CCPA/CPRA.
               </p>
@@ -114,7 +115,7 @@ export function Privacy() {
                     <li>Professional credentials, certifications, and licensing information</li>
                     <li>Job title and authority to act on behalf of a business entity</li>
                     <li>Profile photograph (optional)</li>
-                    <li>Tax identification number or EIN (for dealer accounts — transmitted directly to Stripe, not stored by TimberEquip)</li>
+                    <li>Tax identification number or EIN (for dealer accounts — transmitted directly to Stripe, not stored by Forestry Equipment Sales)</li>
                   </ul>
                 </div>
 
@@ -263,7 +264,7 @@ export function Privacy() {
 
               <p>
                 We may also share data with legal advisors, auditors, and law enforcement authorities when required by law or
-                to protect the rights, safety, and property of TimberEquip, our users, or the public.
+                to protect the rights, safety, and property of Forestry Equipment Sales, our users, or the public.
               </p>
             </section>
 
@@ -322,7 +323,7 @@ export function Privacy() {
               <p>
                 To exercise these rights, visit your <Link to="/profile" className="text-accent underline">Profile &gt; Privacy &amp; Data</Link> tab
                 where you can export your data or request account deletion. You may also contact our Data Protection Officer
-                at privacy@timberequip.com. We will respond to all verified requests within 30 days as required by GDPR Article 12.
+                at privacy@forestryequipmentsales.com. We will respond to all verified requests within 30 days as required by GDPR Article 12.
                 If the request is complex, we may extend this by an additional 60 days with notice.
               </p>
               <p>
@@ -448,14 +449,14 @@ export function Privacy() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">11. Children's Privacy (COPPA)</h2>
               <p>
-                The TimberEquip platform is designed for use by forestry and logging professionals and is not
+                The Forestry Equipment Sales platform is designed for use by forestry and logging professionals and is not
                 intended for children under the age of 13 (or under 16 in the EEA/UK). We do not knowingly collect personal information
                 from children under the applicable age threshold.
               </p>
               <p>
                 If we become aware that we have collected personal data from a child
                 under the applicable age, we will delete that data immediately and terminate the associated account.
-                If you believe a child has provided us with personal information, please contact us at privacy@timberequip.com.
+                If you believe a child has provided us with personal information, please contact us at privacy@forestryequipmentsales.com.
               </p>
             </section>
 
@@ -463,7 +464,7 @@ export function Privacy() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">12. International Data Transfers</h2>
               <p>
-                TimberEquip is based in the United States. Your data may be processed in the United States
+                Forestry Equipment Sales is based in the United States. Your data may be processed in the United States
                 and other countries where our service providers operate (including Google Cloud regions in the US and EU, and
                 Stripe's global infrastructure).
               </p>
@@ -537,7 +538,7 @@ export function Privacy() {
 
               <p>
                 To exercise these rights, visit your <Link to="/profile" className="text-accent underline">Profile &gt; Privacy &amp; Data</Link> tab
-                or contact us at privacy@timberequip.com. You may also designate an authorized agent to submit requests on your behalf.
+                or contact us at privacy@forestryequipmentsales.com. You may also designate an authorized agent to submit requests on your behalf.
                 We will verify your identity before processing any request.
               </p>
             </section>
@@ -596,9 +597,9 @@ export function Privacy() {
                 </a>.
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
-                <span>privacy@timberequip.com</span>
+                <span>privacy@forestryequipmentsales.com</span>
                 <span>+1 (800) 846-2373</span>
-                <span className="text-white/40 text-sm font-medium mt-2">TimberEquip, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+                <span className="text-white/40 text-sm font-medium mt-2">Forestry Equipment Sales, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
               </div>
             </section>
           </div>

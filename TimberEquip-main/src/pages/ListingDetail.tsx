@@ -29,6 +29,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import WatermarkOverlay from '../components/WatermarkOverlay';
 import { buildListingPath, decodeListingPublicKey, extractListingPublicKeyFromSlug, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import {
   buildCategoryPath,
@@ -40,8 +41,9 @@ import {
   buildStateCategoryPath,
   getCityFromLocation,
   getListingCategoryLabel,
+  getListingLocationLabel,
   getListingManufacturer,
-  getStateFromLocation,
+  getListingStateName,
   isDealerRole,
 } from '../utils/seoRoutes';
 
@@ -164,7 +166,7 @@ export function ListingDetail() {
 
   const getListingUrl = (targetListing?: Listing | null) => {
     if (typeof window !== 'undefined') return window.location.href;
-    return targetListing ? `https://timberequip.com${buildListingPath(targetListing)}` : '';
+    return targetListing ? buildSiteUrl(buildListingPath(targetListing)) : '';
   };
 
   const auctionLotPath = listing?.auctionSlug && auctionLot
@@ -335,43 +337,10 @@ export function ListingDetail() {
             return undefined;
           });
 
-        const computedAmv = await equipmentService
-          .getMarketValue({
-            listingId: listingData.id,
-            category: listingData.category,
-            manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
-            model: listingData.model,
-            price: listingData.price,
-            year: listingData.year,
-            hours: listingData.hours,
-          })
-          .catch((error) => {
-            console.error('Error fetching market value estimate:', error);
-            return null;
-          });
-
-        if (isActive) {
-          setListing((current) =>
-            current && current.id === listingData.id
-              ? {
-                  ...current,
-                  marketValueEstimate: computedAmv,
-                }
-              : current
-          );
-        }
-
-        const explanationPromise = Promise.resolve(
-          computedAmv !== null
-            ? `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`
-            : null
-        );
-
-        const [sellerData, explanation, recommendations] = await Promise.all([
+        const [sellerData, marketComparableInsights] = await Promise.all([
           sellerPromise,
-          explanationPromise,
           equipmentService
-            .getMarketMatchRecommendations({
+            .getMarketComparableInsights({
               listingId: listingData.id,
               category: listingData.category,
               manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
@@ -381,8 +350,11 @@ export function ListingDetail() {
               hours: listingData.hours,
             })
             .catch((error) => {
-              console.error('Error fetching market match recommendations:', error);
-              return [];
+              console.error('Error fetching market comparable insights:', error);
+              return {
+                marketValueEstimate: null,
+                recommendations: [],
+              };
             }),
         ]);
 
@@ -396,8 +368,20 @@ export function ListingDetail() {
             if (isActive) setSellerListingCount(count);
           }).catch(() => { /* non-critical */ });
         }
-        setAmvExplanation(explanation || null);
-        setMarketMatchRecommendations(recommendations);
+        setListing((current) =>
+          current && current.id === listingData.id
+            ? {
+                ...current,
+                marketValueEstimate: marketComparableInsights.marketValueEstimate,
+              }
+            : current
+        );
+        setAmvExplanation(
+          marketComparableInsights.marketValueEstimate !== null
+            ? `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`
+            : null
+        );
+        setMarketMatchRecommendations(marketComparableInsights.recommendations);
       } catch (error) {
         console.error('Error fetching listing detail:', error);
         if (isActive) {
@@ -418,7 +402,9 @@ export function ListingDetail() {
 
   // Compute Similar Equipment fallback when no market match recommendations exist
   useEffect(() => {
-    if (loadingMarketMatches || marketMatchRecommendations.length > 0 || !listing) {
+    const cachedListings = equipmentService.getCachedPublicListings();
+
+    if ((loadingMarketMatches && cachedListings.length === 0) || marketMatchRecommendations.length > 0 || !listing) {
       setSimilarEquipment([]);
       return;
     }
@@ -428,7 +414,6 @@ export function ListingDetail() {
       setSimilarEquipment([]);
       return;
     }
-    const cached = equipmentService.getCachedPublicListings();
     const getPriceThreshold = (p: number) => {
       if (p > 600000) return 0.05;
       if (p > 300000) return 0.15;
@@ -436,7 +421,7 @@ export function ListingDetail() {
       return 0.25;
     };
     const threshold = getPriceThreshold(price);
-    const matches = cached
+    const matches = cachedListings
       .filter((l) => {
         if (l.id === listing.id) return false;
         const lSub = l.subcategory || l.category || '';
@@ -516,7 +501,7 @@ export function ListingDetail() {
   const googleMapsHref = hasMachineMapLink
     ? buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
     : '';
-  const showMarketMatchRecommendations = loadingMarketMatches || marketMatchRecommendations.length > 0;
+  const showMarketMatchRecommendations = marketMatchRecommendations.length > 0;
   const marketMatchExplainer = 'We recommend machines that match the same manufacturer and model, with +/- 10% of price and hour range.';
 
   useEffect(() => {
@@ -867,17 +852,11 @@ export function ListingDetail() {
   const safeYear = toFiniteNumber(listing.year) ?? new Date().getFullYear();
   const safeMake = formatSpecValue(listing.make || listing.manufacturer) || 'Unknown Make';
   const safeModel = formatSpecValue(listing.model) || 'Unknown Model';
-  const safeLocation = formatSpecValue(listing.location) || 'Location Pending';
+  const safeLocation = getListingLocationLabel(listing) || formatSpecValue(listing.location) || 'Location Pending';
   const safeLocationParts = safeLocation
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
-  const safeCityState = [
-    safeLocationParts[0] || '',
-    safeLocationParts.length > 1 ? safeLocationParts[1] : ''
-  ]
-    .filter(Boolean)
-    .join(', ') || safeLocation;
   const safeCondition = formatSpecValue(listing.condition) || 'Unspecified';
   const safeDescription = formatSpecValue(listing.description) || 'No description provided.';
   const safeHours = toFiniteNumber(listing.hours) ?? 0;
@@ -923,18 +902,19 @@ export function ListingDetail() {
   const routeManufacturer = getListingManufacturer(listing) || safeMake;
   const routeModel = formatSpecValue(listing.model).trim();
   const routeCity = getCityFromLocation(listing.location) || safeLocationParts[0] || '';
-  const routeState = getStateFromLocation(listing.location) || safeLocationParts[safeLocationParts.length - 2] || safeLocation;
+  const routeState = getListingStateName(listing) || safeLocationParts[safeLocationParts.length - 2] || safeLocation;
+  const safeCityState = [routeCity, routeState].filter(Boolean).join(', ') || safeLocation;
   const dealerPath = seller?.id && (seller.storefrontSlug || isDealerRole(seller.role))
     ? buildDealerPath({ id: seller.id, storefrontSlug: seller.storefrontSlug || seller.id })
     : '';
   const detailSeoHeadline = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''}`.replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
   const detailSeoTitle = safeCityState
-    ? `${detailSeoHeadline} for Sale in ${safeCityState} | TimberEquip`
-    : `${detailSeoHeadline} for Sale | TimberEquip`;
+    ? `${detailSeoHeadline} for Sale in ${safeCityState} | Forestry Equipment Sales`
+    : `${detailSeoHeadline} for Sale | Forestry Equipment Sales`;
   const detailSeoDescription = [
     `Used ${detailSeoHeadline} ${routeCategory ? `${routeCategory.toLowerCase()} ` : ''}for sale${safeCityState ? ` in ${safeCityState}` : ''}`.replace(/\s+/g, ' ').trim(),
     safeHours > 0 ? `with ${formatNumber(safeHours)} hours.` : 'View photos, specs, and pricing details.',
-    'Request pricing, financing, and logistics support from TimberEquip.',
+    'Request pricing, financing, and logistics support from Forestry Equipment Sales.',
   ].join(' ');
   const isLiveApprovedListing =
     String(listing.approvalStatus || '').toLowerCase() === 'approved' &&
@@ -1018,14 +998,14 @@ export function ListingDetail() {
       '@type': 'ListItem',
       position: 1,
       name: 'Home',
-      item: 'https://timberequip.com/',
+      item: buildSiteUrl('/'),
     },
     routeCategory
       ? {
           '@type': 'ListItem',
           position: 2,
           name: `${routeCategory} For Sale`,
-          item: `https://timberequip.com${buildCategoryPath(routeCategory)}`,
+          item: buildSiteUrl(buildCategoryPath(routeCategory)),
         }
       : null,
     routeManufacturer
@@ -1033,7 +1013,7 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 3 : 2,
           name: routeManufacturer,
-          item: `https://timberequip.com${buildManufacturerPath(routeManufacturer)}`,
+          item: buildSiteUrl(buildManufacturerPath(routeManufacturer)),
         }
       : null,
     routeManufacturer && routeModel
@@ -1041,14 +1021,14 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 4 : 3,
           name: `${routeManufacturer} ${routeModel}`,
-          item: `https://timberequip.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
+          item: buildSiteUrl(buildManufacturerModelPath(routeManufacturer, routeModel)),
         }
       : null,
     {
       '@type': 'ListItem',
       position: routeManufacturer && routeModel ? (routeCategory ? 5 : 4) : routeManufacturer ? (routeCategory ? 4 : 3) : routeCategory ? 3 : 2,
       name: detailSeoHeadline,
-      item: `https://timberequip.com${listingPath}`,
+      item: buildSiteUrl(listingPath),
     },
   ].filter(Boolean);
   const detailJsonLd = {
@@ -1067,7 +1047,7 @@ export function ListingDetail() {
         sku: listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
-        url: `https://timberequip.com${listingPath}`,
+        url: buildSiteUrl(listingPath),
         brand: {
           '@type': 'Brand',
           name: routeManufacturer,
@@ -1089,7 +1069,7 @@ export function ListingDetail() {
           })),
         offers: {
           '@type': 'Offer',
-          url: `https://timberequip.com${listingPath}`,
+          url: buildSiteUrl(listingPath),
           priceCurrency: listing.currency || 'USD',
           availability: String(listing.status || 'active').toLowerCase() === 'sold'
             ? 'https://schema.org/SoldOut'
@@ -1099,7 +1079,7 @@ export function ListingDetail() {
           seller: {
             '@type': 'Organization',
             name: seller?.storefrontName || safeSellerName,
-            url: dealerPath ? `https://timberequip.com${dealerPath}` : undefined,
+            url: dealerPath ? buildSiteUrl(dealerPath) : undefined,
           },
         },
       },
@@ -1144,7 +1124,7 @@ export function ListingDetail() {
               onClick={async () => {
                 const shareData = {
                   title: `${safeYear} ${safeMake} ${safeModel} for Sale`,
-                  text: `Check out this ${safeYear} ${safeMake} ${safeModel} on TimberEquip`,
+                  text: `Check out this ${safeYear} ${safeMake} ${safeModel} on Forestry Equipment Sales`,
                   url: window.location.href,
                 };
                 if (navigator.share) {
@@ -1640,99 +1620,81 @@ export function ListingDetail() {
                     {marketMatchExplainer}
                   </p>
                 </div>
-                {!loadingMarketMatches && marketMatchRecommendations.length > 0 ? (
-                  <span className="label-micro">{formatNumber(marketMatchRecommendations.length)} live matches</span>
-                ) : null}
+                <span className="label-micro">{formatNumber(marketMatchRecommendations.length)} live matches</span>
               </div>
 
-              {loadingMarketMatches ? (
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="overflow-hidden border border-line bg-surface">
-                      <div className="aspect-[4/3] animate-pulse bg-line" />
-                      <div className="space-y-3 p-5">
-                        <div className="h-3 w-24 animate-pulse bg-line" />
-                        <div className="h-6 w-3/4 animate-pulse bg-line" />
-                        <div className="h-4 w-1/2 animate-pulse bg-line" />
-                        <div className="h-10 w-full animate-pulse bg-line" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : marketMatchRecommendations.length > 0 ? (
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                  {marketMatchRecommendations.map((match, matchIdx) => {
-                    const matchImage =
-                      match.imageVariants?.[0]?.thumbnailUrl ||
-                      match.images?.find(Boolean) ||
-                      LISTING_IMAGE_PLACEHOLDER;
-                    const matchPath = buildListingPath(match);
-                    const yearDelta = Math.abs((match.year || 0) - safeYear);
-                    const hoursDeltaPercent = safeHours > 0
-                      ? Math.abs((((match.hours || 0) - safeHours) / safeHours) * 100)
-                      : 0;
-                    const priceDeltaPercent = safePrice > 0
-                      ? Math.abs((((match.price || 0) - safePrice) / safePrice) * 100)
-                      : 0;
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                {marketMatchRecommendations.map((match, matchIdx) => {
+                  const matchImage =
+                    match.imageVariants?.[0]?.thumbnailUrl ||
+                    match.images?.find(Boolean) ||
+                    LISTING_IMAGE_PLACEHOLDER;
+                  const matchPath = buildListingPath(match);
+                  const yearDelta = Math.abs((match.year || 0) - safeYear);
+                  const hoursDeltaPercent = safeHours > 0
+                    ? Math.abs((((match.hours || 0) - safeHours) / safeHours) * 100)
+                    : 0;
+                  const priceDeltaPercent = safePrice > 0
+                    ? Math.abs((((match.price || 0) - safePrice) / safePrice) * 100)
+                    : 0;
 
-                    return (
-                      <Link
-                        key={match.id}
-                        to={matchPath}
-                        className="group overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
-                      >
-                        <div className="aspect-[4/3] overflow-hidden bg-bg relative">
-                          <img
-                            src={matchImage}
-                            alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
-                            width={400}
-                            height={300}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                          <WatermarkOverlay index={matchIdx} />
+                  return (
+                    <Link
+                      key={match.id}
+                      to={matchPath}
+                      className="group overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
+                    >
+                      <div className="aspect-[4/3] overflow-hidden bg-bg relative">
+                        <img
+                          src={matchImage}
+                          alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
+                          width={400}
+                          height={300}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <WatermarkOverlay index={matchIdx} />
+                      </div>
+                      <div className="space-y-4 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="label-micro">{match.make || match.manufacturer || match.brand || 'Market Match'}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-accent">
+                            {priceDeltaPercent.toFixed(1)}% price
+                          </span>
                         </div>
-                        <div className="space-y-4 p-5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="label-micro">{match.make || match.manufacturer || match.brand || 'Market Match'}</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-accent">
-                              {priceDeltaPercent.toFixed(1)}% price
-                            </span>
+                        <div>
+                          <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
+                            {match.year || 'Unknown Year'} {match.make || match.manufacturer || match.brand || 'Unknown Make'} {match.model || 'Unknown Model'}
+                          </h4>
+                          <p className="mt-2 text-sm font-medium text-muted">{match.location || 'Location pending'}</p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 border border-line bg-bg p-3 text-center">
+                          <div>
+                            <p className="label-micro">Price</p>
+                            <p className="mt-2 text-sm font-black tracking-tight">{formatPrice(match.price || 0, match.currency || 'USD', 0)}</p>
                           </div>
                           <div>
-                            <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
-                              {match.year || 'Unknown Year'} {match.make || match.manufacturer || match.brand || 'Unknown Make'} {match.model || 'Unknown Model'}
-                            </h4>
-                            <p className="mt-2 text-sm font-medium text-muted">{match.location || 'Location pending'}</p>
+                            <p className="label-micro">Year Delta</p>
+                            <p className="mt-2 text-sm font-black tracking-tight">{yearDelta} yr</p>
                           </div>
-                          <div className="grid grid-cols-3 gap-3 border border-line bg-bg p-3 text-center">
-                            <div>
-                              <p className="label-micro">Price</p>
-                              <p className="mt-2 text-sm font-black tracking-tight">{formatPrice(match.price || 0, match.currency || 'USD', 0)}</p>
-                            </div>
-                            <div>
-                              <p className="label-micro">Year Delta</p>
-                              <p className="mt-2 text-sm font-black tracking-tight">{yearDelta} yr</p>
-                            </div>
-                            <div>
-                              <p className="label-micro">Hours Delta</p>
-                              <p className="mt-2 text-sm font-black tracking-tight">{hoursDeltaPercent.toFixed(1)}%</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-muted">
-                            <span>{formatNumber(match.hours || 0)} hrs</span>
-                            <span className="flex items-center gap-1 text-accent">
-                              View listing <ChevronRight size={12} />
-                            </span>
+                          <div>
+                            <p className="label-micro">Hours Delta</p>
+                            <p className="mt-2 text-sm font-black tracking-tight">{hoursDeltaPercent.toFixed(1)}%</p>
                           </div>
                         </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : null}
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-muted">
+                          <span>{formatNumber(match.hours || 0)} hrs</span>
+                          <span className="flex items-center gap-1 text-accent">
+                            View listing <ChevronRight size={12} />
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
             ) : null}
 
@@ -1994,7 +1956,7 @@ export function ListingDetail() {
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black uppercase tracking-widest mb-1">{t('listingDetail.transactionPolicy', 'Transaction Policy')}</span>
                   <p className="text-[10px] font-medium text-muted leading-relaxed">
-                    {t('listingDetail.transactionPolicyCopy', 'Always use the TimberEquip platform for inquiries. Never send funds directly to sellers without a verified escrow system.')}
+                    {t('listingDetail.transactionPolicyCopy', 'Always use the Forestry Equipment Sales platform for inquiries. Never send funds directly to sellers without a verified escrow system.')}
                   </p>
                 </div>
               </div>
@@ -2205,7 +2167,7 @@ export function ListingDetail() {
                         onChange={(e) => setInquiryConsentAccepted(e.target.checked)}
                       />
                       <span>
-                        I consent to TimberEquip and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
+                        I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
                       </span>
                     </label>
                     <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
@@ -2355,7 +2317,7 @@ export function ListingDetail() {
                         onChange={(e) => setFinancingConsentAccepted(e.target.checked)}
                       />
                       <span>
-                        I authorize TimberEquip Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
+                        I authorize Forestry Equipment Sales Financing and the specific lending or financing partners evaluating this request to contact me by phone, SMS, or email about this application, perform a credit inquiry, and verify the information provided. This consent is specific to this financing request, is not a condition of purchase, and may be withdrawn at any time.
                       </span>
                     </label>
 
@@ -2495,7 +2457,7 @@ export function ListingDetail() {
 
                     <div className="pt-2 border-t border-line">
                       <button type="submit" className="btn-industrial btn-accent w-full py-4">Submit Logistics Request</button>
-                      <p className="text-[9px] font-medium text-muted text-center mt-4 uppercase tracking-widest">Sent to seller and the TimberEquip logistics desk for quote review.</p>
+                      <p className="text-[9px] font-medium text-muted text-center mt-4 uppercase tracking-widest">Sent to seller and the Forestry Equipment Sales logistics desk for quote review.</p>
                     </div>
                   </form>
                 )}

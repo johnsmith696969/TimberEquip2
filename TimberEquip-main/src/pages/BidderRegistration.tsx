@@ -50,6 +50,7 @@ export function BidderRegistration() {
     MI: { label: 'Michigan', certName: 'Michigan Form 3372' },
   };
 
+  const isGenericPreApproval = !String(auctionSlug || '').trim();
   const returnTo = searchParams.get('returnTo') || (auctionSlug ? `/auctions/${auctionSlug}` : '/auctions');
   const legalLines = useMemo(() => buildAuctionLegalSummaryLines(), []);
   const bidderInputClass = 'input-industrial w-full min-h-12 px-4 py-3 text-base font-semibold normal-case tracking-normal';
@@ -64,7 +65,7 @@ export function BidderRegistration() {
     let cancelled = false;
 
     async function loadPage() {
-      if (!auctionSlug || !isAuthenticated) {
+      if (!isAuthenticated) {
         setLoading(false);
         return;
       }
@@ -72,14 +73,22 @@ export function BidderRegistration() {
       setLoading(true);
       setError('');
       try {
-        const [auctionRecord, bidderStatus] = await Promise.all([
-          auctionService.getAuctionBySlug(auctionSlug),
-          auctionService.getBidderStatus(auctionSlug),
-        ]);
+        let auctionRecord: Auction | null = null;
+        let bidderStatus: AuctionBidderStatusResponse;
+
+        if (auctionSlug) {
+          [auctionRecord, bidderStatus] = await Promise.all([
+            auctionService.getAuctionBySlug(auctionSlug),
+            auctionService.getBidderStatus(auctionSlug),
+          ]);
+        } else {
+          bidderStatus = await auctionService.getBidderStatus();
+          auctionRecord = bidderStatus.auction || null;
+        }
 
         if (cancelled) return;
 
-        setAuction(auctionRecord);
+        setAuction(auctionRecord || bidderStatus.auction || null);
         setStatus(bidderStatus);
         const profile = bidderStatus.profile;
         setFullName(profile?.fullName || user?.displayName || '');
@@ -119,7 +128,7 @@ export function BidderRegistration() {
 
   useEffect(() => {
     const setupSessionId = searchParams.get('setup_session_id');
-    if (!auctionSlug || !setupSessionId || !isAuthenticated) return;
+    if (!setupSessionId || !isAuthenticated) return;
 
     let cancelled = false;
     async function syncSetupSession() {
@@ -129,6 +138,7 @@ export function BidderRegistration() {
       try {
         const bidderStatus = await auctionService.syncBidderPaymentSetupSession(setupSessionId, auctionSlug);
         if (!cancelled) {
+          setAuction((currentAuction) => currentAuction || bidderStatus.auction || null);
           setStatus(bidderStatus);
           setNotice(bidderStatus.bidderApproved
             ? 'Payment method confirmed and bidder approval completed.'
@@ -162,17 +172,17 @@ export function BidderRegistration() {
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Home', path: '/' },
-    { label: 'Auctions', path: '/auctions' },
+    ...(isGenericPreApproval ? [] : [{ label: 'Auctions', path: '/auctions' }]),
     ...(auction ? [{ label: auction.title, path: `/auctions/${auction.slug}` }] : []),
-    { label: 'Register to Bid', path: '' },
+    { label: isGenericPreApproval ? 'Bidder Approval' : 'Register to Bid', path: '' },
   ];
 
   async function refreshBidderStatus() {
-    if (!auctionSlug) return;
     setLoading(true);
     setError('');
     try {
       const bidderStatus = await auctionService.getBidderStatus(auctionSlug);
+      setAuction((currentAuction) => currentAuction || bidderStatus.auction || null);
       setStatus(bidderStatus);
     } catch (refreshError) {
       console.error('Failed to refresh bidder status:', refreshError);
@@ -209,7 +219,6 @@ export function BidderRegistration() {
   }
 
   async function handleSaveRegistration() {
-    if (!auctionSlug) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -245,6 +254,7 @@ export function BidderRegistration() {
         termsAcceptedAt: new Date().toISOString(),
         termsVersion: AUCTION_TERMS_VERSION,
       });
+      setAuction((currentAuction) => currentAuction || bidderStatus.auction || null);
       setStatus(bidderStatus);
       setTermsAccepted(true);
       setNotice('Registration details saved. Continue with identity verification and payment setup.');
@@ -257,7 +267,6 @@ export function BidderRegistration() {
   }
 
   async function handleStartIdentityVerification() {
-    if (!auctionSlug) return;
     setIdentityLoading(true);
     setError('');
     try {
@@ -271,7 +280,6 @@ export function BidderRegistration() {
   }
 
   async function handleStartPaymentSetup() {
-    if (!auctionSlug) return;
     setPaymentLoading(true);
     setError('');
     try {
@@ -320,24 +328,30 @@ export function BidderRegistration() {
   return (
     <>
       <Seo
-        title={`${auction ? `${auction.title} | ` : ''}Register to Bid | TimberEquip`}
-        description="Complete bidder registration, identity verification, and payment setup for the auction."
+        title={isGenericPreApproval ? 'Bidder Approval | Forestry Equipment Sales' : `${auction ? `${auction.title} | ` : ''}Register to Bid | Forestry Equipment Sales`}
+        description={isGenericPreApproval
+          ? 'Complete bidder pre-approval, identity verification, and payment setup so you are ready before the next Forestry Equipment Sales auction goes live.'
+          : 'Complete bidder registration, identity verification, and payment setup for the auction.'}
       />
       <Breadcrumbs items={breadcrumbs} />
       <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <span className="label-micro text-accent">Auction Registration</span>
+            <span className="label-micro text-accent">{isGenericPreApproval ? 'Bidder Approval' : 'Auction Registration'}</span>
             <h1 className="mt-2 text-3xl font-black uppercase tracking-tight md:text-4xl">
-              Register to Bid
+              {isGenericPreApproval ? 'Get Approved to Bid' : 'Register to Bid'}
             </h1>
-            {auction && (
+            {auction ? (
               <p className="mt-3 text-sm text-muted">
                 {auction.title} · bidding window opens {new Date(auction.startTime).toLocaleDateString('en-US', {
                   month: 'long',
                   day: 'numeric',
                   year: 'numeric',
                 })}
+              </p>
+            ) : (
+              <p className="mt-3 max-w-2xl text-sm text-muted">
+                Complete your bidder profile, identity verification, and payment setup once so your account is ready before the next Forestry Equipment Sales auction is published.
               </p>
             )}
           </div>
@@ -347,7 +361,7 @@ export function BidderRegistration() {
               Refresh Status
             </button>
             <Link to={returnTo} className="btn-industrial btn-accent">
-              Return to Auction
+              {auction ? 'Return to Auction' : 'Return to Auctions'}
             </Link>
           </div>
         </div>
@@ -514,7 +528,7 @@ export function BidderRegistration() {
                         </button>
                         {taxCertFile && (
                           <p className="mt-1 text-xs text-muted">
-                            Selected: {taxCertFile.name} — will be uploaded when you save.
+                            Selected: {taxCertFile.name} - will be uploaded when you save.
                           </p>
                         )}
                       </div>
@@ -612,10 +626,12 @@ export function BidderRegistration() {
                   <div>
                     <h2 className="text-sm font-black uppercase tracking-widest">Approved to Bid</h2>
                     <p className="mt-2 text-sm text-muted">
-                      Your bidder account is fully approved. You can now place bids on active lots in this auction.
+                      {auction
+                        ? 'Your bidder account is fully approved. You can now place bids on active lots in this auction.'
+                        : 'Your bidder account is fully approved. When the next Forestry Equipment Sales auction goes live, you can move straight into bidding.'}
                     </p>
                     <Link to={returnTo} className="btn-industrial btn-accent mt-4 inline-flex">
-                      Start Bidding
+                      {auction ? 'Start Bidding' : 'Browse Auctions'}
                     </Link>
                   </div>
                 </div>

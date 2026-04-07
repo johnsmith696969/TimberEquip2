@@ -254,6 +254,6 @@ const MANUFACTURER_CONTENT: Record<string, ManufacturerInfo> = {
 export function getManufacturerContent(name: string): ManufacturerInfo {
   const key = name.toUpperCase();
   return MANUFACTURER_CONTENT[key] || {
-    description: `Browse ${name} forestry equipment for sale. Shop live ${name} inventory from dealers and private sellers across North America on TimberEquip.`,
+    description: `Browse ${name} forestry equipment for sale. Shop live ${name} inventory from dealers and private sellers across North America on Forestry Equipment Sales.`,
   };
 }

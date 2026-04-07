@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Menu, X, Sun, Moon,
@@ -16,12 +16,11 @@ import { useLocale } from './LocaleContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { userService } from '../services/userService';
 import { appendReturnToParam, canAccessDealerOs, getDefaultAccountWorkspacePath, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
-const BRAND_ASSET_VERSION = '20260405c';
-const LIGHT_HEADER_LOGO = `/TimberEquip-Light-Mode-Logo.svg?v=${BRAND_ASSET_VERSION}`;
-const DARK_HEADER_LOGO = `/TimberEquip-Brand-Logo-Dusk-Mode.svg?v=${BRAND_ASSET_VERSION}`;
-const HEADER_LOGO_FALLBACK = `/TimberEquip-Logo.png?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO = `/TimberEquip-Brand-Logo-Dusk-Mode.svg?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO_FALLBACK = `/TimberEquip-Favicon-512x512.png?v=${BRAND_ASSET_VERSION}`;
+const BRAND_ASSET_VERSION = '20260407a';
+const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=${BRAND_ASSET_VERSION}`;
+const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
+const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -45,7 +44,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const headerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
-  const headerLogoAlt = 'TimberEquip';
+  const footerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
+  const headerLogoAlt = 'Forestry Equipment Sales';
   const [headerLogoSrc, setHeaderLogoSrc] = useState(headerLogo);
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const currentReturnPath = `${location.pathname}${location.search}`;
@@ -60,34 +60,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const footerSocialLinks = [
-    { icon: Mail, label: 'Email', url: 'mailto:info@timberequip.com' },
+    { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com' },
   ];
 
   useEffect(() => {
     const pageTitles: Record<string, string> = {
-      '/': 'Forestry Equipment For Sale | Logging Equipment Marketplace | TimberEquip',
-      '/search': `TimberEquip | ${t('layout.inventory', 'Inventory')}`,
-      '/sell': `TimberEquip | ${t('layout.sellEquipment', 'Sell Equipment')}`,
-      '/categories': `TimberEquip | ${t('layout.categories', 'Categories')}`,
-      '/auctions': `TimberEquip | ${t('layout.auctions', 'Auctions')}`,
-      '/financing': `TimberEquip | ${t('layout.financing', 'Financing')}`,
-      '/logistics': 'TimberEquip | Logistics',
-      '/dealers': 'TimberEquip | Dealer Network',
-      '/blog': `TimberEquip | ${t('layout.equipmentNews', 'Equipment News')}`,
-      '/ad-programs': 'Ad Programs | TimberEquip',
-      '/profile': 'Profile | TimberEquip',
-      '/admin': 'Admin Dashboard | TimberEquip',
-      '/bookmarks': 'Saved Equipment | TimberEquip',
-      '/contact': 'TimberEquip | Contact TimberEquip',
-      '/about': 'About Us | TimberEquip',
-      '/about-us': 'About Us | TimberEquip',
-      '/our-team': 'Our Team | TimberEquip',
-      '/about/our-team': 'Our Team | TimberEquip',
-      '/faq': 'FAQ | TimberEquip',
-      '/privacy': 'Privacy Policy | TimberEquip',
-      '/terms': 'Terms Of Use | TimberEquip',
-      '/cookies': 'Cookie Policy | TimberEquip',
-      '/dmca': 'DMCA Policy | TimberEquip',
+      '/': 'Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales',
+      '/search': `Forestry Equipment Sales | ${t('layout.inventory', 'Inventory')}`,
+      '/sell': `Forestry Equipment Sales | ${t('layout.sellEquipment', 'Sell Equipment')}`,
+      '/categories': `Forestry Equipment Sales | ${t('layout.categories', 'Categories')}`,
+      '/auctions': `Forestry Equipment Sales | ${t('layout.auctions', 'Auctions')}`,
+      '/financing': `Forestry Equipment Sales | ${t('layout.financing', 'Financing')}`,
+      '/logistics': 'Forestry Equipment Sales | Logistics',
+      '/dealers': 'Forestry Equipment Sales | Dealer Network',
+      '/blog': `Forestry Equipment Sales | ${t('layout.equipmentNews', 'Equipment News')}`,
+      '/ad-programs': 'Ad Programs | Forestry Equipment Sales',
+      '/profile': 'Profile | Forestry Equipment Sales',
+      '/admin': 'Admin Dashboard | Forestry Equipment Sales',
+      '/bookmarks': 'Saved Equipment | Forestry Equipment Sales',
+      '/contact': 'Forestry Equipment Sales | Contact Forestry Equipment Sales',
+      '/about': 'About Us | Forestry Equipment Sales',
+      '/about-us': 'About Us | Forestry Equipment Sales',
+      '/our-team': 'Our Team | Forestry Equipment Sales',
+      '/about/our-team': 'Our Team | Forestry Equipment Sales',
+      '/faq': 'FAQ | Forestry Equipment Sales',
+      '/privacy': 'Privacy Policy | Forestry Equipment Sales',
+      '/terms': 'Terms Of Use | Forestry Equipment Sales',
+      '/cookies': 'Cookie Policy | Forestry Equipment Sales',
+      '/dmca': 'DMCA Policy | Forestry Equipment Sales',
     };
 
     if (pageTitles[location.pathname]) {
@@ -522,14 +522,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="lg:col-span-2 flex flex-col space-y-8">
               <Link to="/" className="flex items-center">
                 <img
-                  src={FOOTER_LOGO}
-                  alt="TimberEquip"
+                  src={footerLogo}
+                  alt="Forestry Equipment Sales"
                   width={180}
                   height={48}
                   className="h-12 w-auto max-w-[180px] object-contain"
                   onError={(event) => {
                     const target = event.currentTarget;
-                    if (target.src.includes('TimberEquip-Favicon-512x512.png')) return;
+                    if (target.src.includes('Forestry_Equipment_Sales_Favicon_512x512.png')) return;
                     target.src = FOOTER_LOGO_FALLBACK;
                   }}
                 />
@@ -591,16 +591,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="bg-bg border border-line p-5 rounded-sm">
                   <span className="label-micro block mb-2">{t('layout.customerSupport', 'Customer Support')}</span>
                   <a
-                    href="tel:+16126008268"
+                    href="tel:+12187200933"
                     className="text-sm font-black tracking-tight hover:text-accent transition-colors block"
                   >
-                    (612) 600-8268
+                    (218) 720-0933
                   </a>
                   <a
-                    href="mailto:support@timberequip.com"
+                    href="mailto:support@forestryequipmentsales.com"
                     className="mt-2 block break-all text-xs font-semibold normal-case tracking-normal text-muted transition-colors hover:text-accent"
                   >
-                    support@timberequip.com
+                    support@forestryequipmentsales.com
                   </a>
                 </div>
                 <div className="bg-bg border border-line p-5 rounded-sm">
@@ -616,9 +616,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           
           <div className="mt-24 pt-12 border-t border-line flex flex-col md:flex-row justify-between items-center text-[10px] font-bold text-muted uppercase tracking-[0.2em]">
             <div className="flex items-center space-x-4">
-              <span>{t('layout.siteCopyright', '© 2026 TIMBEREQUIP | LOGGING EQUIPMENT MARKETPLACE.')}</span>
+              <span>{t('layout.siteCopyright', '© 2026 FORESTRY EQUIPMENT SALES | LOGGING EQUIPMENT MARKETPLACE.')}</span>
               <span className="hidden md:inline text-line">|</span>
-              <span className="text-ink">TIMBEREQUIP.COM</span>
+              <span className="text-ink">FORESTRY EQUIPMENT SALES</span>
             </div>
             <div className="flex flex-wrap gap-x-8 gap-y-2 mt-6 md:mt-0">
               <Link to="/privacy" className="hover:text-ink transition-colors inline-flex items-center min-h-[44px]">{t('layout.privacyPolicy', 'Privacy Policy')}</Link>
@@ -632,3 +632,4 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

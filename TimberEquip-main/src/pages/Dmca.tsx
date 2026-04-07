@@ -8,8 +8,8 @@ export function Dmca() {
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
-        title="DMCA Policy | TimberEquip"
-        description="Digital Millennium Copyright Act (DMCA) policy for TimberEquip. Takedown procedures, counter-notifications, designated agent, and repeat infringer policy."
+        title="DMCA Policy | Forestry Equipment Sales"
+        description="Digital Millennium Copyright Act (DMCA) policy for Forestry Equipment Sales. Takedown procedures, counter-notifications, designated agent, and repeat infringer policy."
         canonicalPath="/dmca"
       />
       <div className="max-w-4xl mx-auto">
@@ -33,7 +33,7 @@ export function Dmca() {
               <Shield className="text-accent" size={32} />
               <h3 className="text-xl font-black uppercase tracking-tighter">Copyright Protection</h3>
               <p className="text-sm text-muted leading-relaxed">
-                TimberEquip respects intellectual property rights and complies
+                Forestry Equipment Sales respects intellectual property rights and complies
                 with the Digital Millennium Copyright Act (DMCA), 17 U.S.C. Section 512.
               </p>
             </div>
@@ -61,7 +61,7 @@ export function Dmca() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Overview &amp; Safe Harbor</h2>
               <p>
-                TimberEquip, LLC ("TimberEquip", "we", "us", or "our") operates a marketplace platform where users upload
+                Forestry Equipment Sales, LLC ("Forestry Equipment Sales", "we", "us", or "our") operates a marketplace platform where users upload
                 content including equipment listings, photographs, videos, and descriptions. As a provider of an interactive
                 computer service that hosts user-generated content, we qualify as a "service provider" under the Digital Millennium
                 Copyright Act (DMCA), 17 U.S.C. Section 512, and claim safe harbor protection under Section 512(c) for content
@@ -73,7 +73,7 @@ export function Dmca() {
                 to be infringing. We also provide a counter-notification process for users who believe their content was wrongly removed.
               </p>
               <p>
-                This policy applies to all content hosted on the TimberEquip platform, including but not limited to:
+                This policy applies to all content hosted on the Forestry Equipment Sales platform, including but not limited to:
                 equipment listing photographs, listing descriptions, dealer storefront branding, blog content, and any other
                 user-uploaded media.
               </p>
@@ -83,7 +83,7 @@ export function Dmca() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">2. Designated DMCA Agent</h2>
               <p>
-                In accordance with the DMCA, TimberEquip has designated the following agent to receive
+                In accordance with the DMCA, Forestry Equipment Sales has designated the following agent to receive
                 notifications of claimed copyright infringement. This agent's contact information has been
                 registered with the U.S. Copyright Office's DMCA Designated Agent Directory.
               </p>
@@ -99,15 +99,15 @@ export function Dmca() {
                   </div>
                   <div className="space-y-1 min-w-0">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Email</span>
-                    <a href="mailto:info@timberequip.com" className="text-sm text-ink font-bold break-all hover:text-accent transition-colors">info@timberequip.com</a>
+                    <a href="mailto:info@forestryequipmentsales.com" className="text-sm text-ink font-bold break-all hover:text-accent transition-colors">info@forestryequipmentsales.com</a>
                   </div>
                   <div className="space-y-1">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Phone</span>
-                    <a href="tel:+16126008268" className="text-sm text-ink font-bold hover:text-accent transition-colors">+1 (612) 600-8268</a>
+                    <a href="tel:+12187200933" className="text-sm text-ink font-bold hover:text-accent transition-colors">+1 (218) 720-0933</a>
                   </div>
                   <div className="space-y-1 sm:col-span-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Mailing Address</span>
-                    <span className="text-sm text-ink font-bold">TimberEquip, LLC, Attention: DMCA Agent, 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+                    <span className="text-sm text-ink font-bold">Forestry Equipment Sales, LLC, Attention: DMCA Agent, 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
                   </div>
                 </div>
               </div>
@@ -140,12 +140,12 @@ export function Dmca() {
                   {
                     letter: 'c',
                     title: 'Identification of Infringing Material',
-                    text: 'Identification of the material claimed to be infringing, including the specific URL(s) or other information reasonably sufficient to permit TimberEquip to locate the material on the Platform.',
+                    text: 'Identification of the material claimed to be infringing, including the specific URL(s) or other information reasonably sufficient to permit Forestry Equipment Sales to locate the material on the Platform.',
                   },
                   {
                     letter: 'd',
                     title: 'Contact Information',
-                    text: 'Your full name, mailing address, telephone number, and email address so that TimberEquip may contact you regarding your notice.',
+                    text: 'Your full name, mailing address, telephone number, and email address so that Forestry Equipment Sales may contact you regarding your notice.',
                   },
                   {
                     letter: 'e',
@@ -172,7 +172,7 @@ export function Dmca() {
                 <Mail className="text-accent flex-shrink-0" size={20} />
                 <div className="min-w-0">
                   <span className="text-xs font-black uppercase tracking-widest block mb-1">Send Notices To</span>
-                  <p className="text-sm break-all"><a href="mailto:info@timberequip.com" className="hover:text-accent transition-colors">info@timberequip.com</a> — Subject line: "DMCA Takedown Notice"</p>
+                  <p className="text-sm break-all"><a href="mailto:info@forestryequipmentsales.com" className="hover:text-accent transition-colors">info@forestryequipmentsales.com</a> — Subject line: "DMCA Takedown Notice"</p>
                   <p className="text-[10px] uppercase text-muted mt-2">
                     You may also send notices by mail to our Designated Agent address listed above.
                   </p>
@@ -196,7 +196,7 @@ export function Dmca() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">4. Our Response to Takedown Notices</h2>
               <p>
-                Upon receipt of a valid DMCA takedown notice, TimberEquip will take the following actions:
+                Upon receipt of a valid DMCA takedown notice, Forestry Equipment Sales will take the following actions:
               </p>
               <div className="space-y-3">
                 <div className="flex items-start space-x-4">
@@ -264,7 +264,7 @@ export function Dmca() {
                 <div className="space-y-3">
                   <div className="flex items-start space-x-4">
                     <Clock className="text-accent flex-shrink-0" size={16} />
-                    <p className="text-sm"><strong>Day 0:</strong> TimberEquip receives a valid counter-notification and forwards it to the original complainant.</p>
+                    <p className="text-sm"><strong>Day 0:</strong> Forestry Equipment Sales receives a valid counter-notification and forwards it to the original complainant.</p>
                   </div>
                   <div className="flex items-start space-x-4">
                     <Clock className="text-accent flex-shrink-0" size={16} />
@@ -272,7 +272,7 @@ export function Dmca() {
                   </div>
                   <div className="flex items-start space-x-4">
                     <Clock className="text-accent flex-shrink-0" size={16} />
-                    <p className="text-sm"><strong>Days 10–14:</strong> If no court action is filed, TimberEquip will restore the removed material within 10–14 business days from receipt of the counter-notification.</p>
+                    <p className="text-sm"><strong>Days 10–14:</strong> If no court action is filed, Forestry Equipment Sales will restore the removed material within 10–14 business days from receipt of the counter-notification.</p>
                   </div>
                 </div>
               </div>
@@ -282,7 +282,7 @@ export function Dmca() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">6. Repeat Infringer Policy</h2>
               <p>
-                In accordance with the DMCA and as a condition of maintaining our safe harbor protection, TimberEquip maintains
+                In accordance with the DMCA and as a condition of maintaining our safe harbor protection, Forestry Equipment Sales maintains
                 a policy to terminate, in appropriate circumstances, the accounts of users who are repeat infringers.
               </p>
 
@@ -305,7 +305,7 @@ export function Dmca() {
               </div>
 
               <p>
-                TimberEquip reserves the right to terminate an account after fewer than three notices if the infringement
+                Forestry Equipment Sales reserves the right to terminate an account after fewer than three notices if the infringement
                 is egregious, willful, or conducted on a commercial scale. Conversely, notices that are withdrawn,
                 successfully counter-notified, or determined to be frivolous will not count toward this threshold.
               </p>
@@ -327,7 +327,7 @@ export function Dmca() {
               </p>
               <p>
                 Please ensure that any takedown notice or counter-notification you submit
-                is accurate, complete, and made in good faith. TimberEquip may forward incomplete or potentially abusive
+                is accurate, complete, and made in good faith. Forestry Equipment Sales may forward incomplete or potentially abusive
                 notices to the affected user and may choose not to act on notices that appear fraudulent or harassing.
               </p>
             </section>
@@ -336,7 +336,7 @@ export function Dmca() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">8. User-Generated Content Notice</h2>
               <p>
-                TimberEquip is a marketplace platform that hosts user-generated content. We do not pre-screen
+                Forestry Equipment Sales is a marketplace platform that hosts user-generated content. We do not pre-screen
                 all content uploaded to the Platform. While we make reasonable efforts to prevent infringing content from
                 appearing on the Platform (including reviewing listings during the approval process), we cannot guarantee
                 that all content is free from copyright infringement.
@@ -359,7 +359,7 @@ export function Dmca() {
               </p>
               <p>
                 For non-copyright intellectual property concerns (e.g., trademark infringement, trade secret misappropriation),
-                please contact our Legal Department at legal@timberequip.com. These matters are not governed by the DMCA but
+                please contact our Legal Department at legal@forestryequipmentsales.com. These matters are not governed by the DMCA but
                 will be addressed under our Terms of Service and applicable law.
               </p>
             </section>
@@ -368,7 +368,7 @@ export function Dmca() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">10. Modifications to This Policy</h2>
               <p>
-                TimberEquip reserves the right to modify this DMCA Policy at any time. Changes will be reflected by updating the
+                Forestry Equipment Sales reserves the right to modify this DMCA Policy at any time. Changes will be reflected by updating the
                 "Last Updated" date and version number at the top of this page. Material changes will be communicated to
                 registered users via email or in-platform notification. Your continued use of the Platform after changes
                 constitutes acceptance of the modified policy.
@@ -384,22 +384,22 @@ export function Dmca() {
                 a counter-notification, contact our Designated Agent:
               </p>
               <div className="space-y-4">
-                <a href="tel:+16126008268" className="flex items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
                   <Phone className="mt-0.5 text-accent" size={18} />
                   <div>
                     <span className="label-micro block text-white/60">Customer Support</span>
-                    <span className="text-sm font-black tracking-tight">(612) 600-8268</span>
+                    <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                   </div>
                 </a>
-                <a href="mailto:info@timberequip.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="mailto:info@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
                   <Mail className="mt-0.5 text-accent" size={18} />
                   <div className="min-w-0">
                     <span className="label-micro block text-white/60">Email</span>
-                    <span className="block break-all text-sm font-black tracking-tight">info@timberequip.com</span>
+                    <span className="block break-all text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
                   </div>
                 </a>
               </div>
-              <span className="text-white/40 text-sm font-medium block">TimberEquip, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+              <span className="text-white/40 text-sm font-medium block">Forestry Equipment Sales, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
             </section>
           </div>
         </motion.div>

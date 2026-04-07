@@ -217,7 +217,7 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                       onChange={(e) => setContactConsentAccepted(e.target.checked)}
                     />
                     <span>
-                      I consent to TimberEquip and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing.
+                      I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing.
                     </span>
                   </label>
                   <p className="text-[10px] font-medium uppercase tracking-widest text-muted">

@@ -29,6 +29,10 @@ function shouldUseEnterpriseRecaptcha(): boolean {
   return PRODUCTION_RECAPTCHA_HOSTS.has(hostname);
 }
 
+export function isRecaptchaProtectionEnabled(): boolean {
+  return shouldUseEnterpriseRecaptcha();
+}
+
 function loadEnterpriseRecaptchaScript(): Promise<void> {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return Promise.resolve();
@@ -114,4 +118,25 @@ export async function assessRecaptcha(token: string, action: string): Promise<bo
   } catch {
     return false;
   }
+}
+
+export async function verifyRecaptchaAction(action: string): Promise<boolean> {
+  if (!shouldUseEnterpriseRecaptcha()) {
+    return true;
+  }
+
+  if (!SITE_KEY) {
+    console.warn('[reCAPTCHA] Site key is not configured — skipping verification.');
+    return true;
+  }
+
+  const token = await getRecaptchaToken(action);
+  if (!token) {
+    // Token generation failed (script blocked, network error, wrong key).
+    // Fail open — Firebase Auth has its own brute-force protection.
+    console.warn(`[reCAPTCHA] Token generation failed for action "${action}" — allowing request.`);
+    return true;
+  }
+
+  return assessRecaptcha(token, action);
 }

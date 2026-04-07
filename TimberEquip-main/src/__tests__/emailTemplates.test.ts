@@ -34,15 +34,28 @@ describe('email templates', () => {
     expect(finalHtml).toContain('Manage email preferences or unsubscribe from optional automated emails');
   });
 
+  it('uses the light-mode Forestry Equipment Sales footer logo in shared templates', () => {
+    const { html } = templates.newMatchingListing({
+      displayName: 'Dealer',
+      searchName: 'Skidders',
+      listingTitle: '2019 John Deere 648L',
+      listingUrl: 'https://timberequip.com/equipment/demo',
+      listingPrice: '$120,000',
+      location: 'Bemidji, Minnesota',
+    });
+
+    expect(html).toContain('Forestry_Equipment_Sales_Email_Footer.png?v=20260407a');
+  });
+
   it('uses the branded password reset workspace url in password reset emails', () => {
     const { subject, html } = templates.passwordReset({
       displayName: 'Dealer Admin',
-      intro: 'We received a request to reset your TimberEquip password.',
+      intro: 'We received a request to reset your Forestry Equipment Sales password.',
       resetUrl: 'https://timberequip.com/reset-password?oobCode=demo123&mode=resetPassword&continueUrl=%2Flogin',
       loginUrl: 'https://timberequip.com/login',
     });
 
-    expect(subject).toContain('Reset your TimberEquip password');
+    expect(subject).toContain('Reset your Forestry Equipment Sales password');
     expect(html).toContain('Open Secure Reset Page');
     expect(html).toContain('/reset-password?oobCode=demo123');
     expect(html).toContain('Back To Login');
@@ -82,7 +95,7 @@ describe('email templates', () => {
   it('renders account unlock emails with sign-in and support actions', () => {
     const { subject, html } = templates.accountUnlocked({
       displayName: 'Dealer Admin',
-      actorName: 'TimberEquip Admin',
+      actorName: 'Forestry Equipment Sales Admin',
       loginUrl: 'https://timberequip.com/login',
       supportUrl: 'https://timberequip.com/contact',
     });

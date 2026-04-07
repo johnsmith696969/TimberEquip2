@@ -7,7 +7,8 @@ import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
-import { buildManufacturerPath, getListingCategoryLabel, getListingManufacturer, getStateFromLocation } from '../utils/seoRoutes';
+import { buildManufacturerPath, compareRegionNames, getListingCategoryLabel, getListingManufacturer, getListingStateName } from '../utils/seoRoutes';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 type ManufacturerCard = {
   name: string;
@@ -33,7 +34,7 @@ function buildManufacturerCards(listings: Listing[]): ManufacturerCard[] {
     const manufacturer = getListingManufacturer(listing);
     if (!manufacturer) return;
 
-    const state = getStateFromLocation(listing.location);
+    const state = getListingStateName(listing);
     const category = getListingCategoryLabel(listing);
     const entry = manufacturerMap.get(manufacturer) || {
       count: 0,
@@ -60,13 +61,20 @@ function buildManufacturerCards(listings: Listing[]): ManufacturerCard[] {
       .slice(0, 3)
       .map(([label]) => label);
 
+  const sortStateCounts = (counts: Map<string, number>) =>
+    [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || compareRegionNames(left[0], right[0]))
+      .slice(0, 3)
+      .map(([label]) => label)
+      .sort(compareRegionNames);
+
   return [...manufacturerMap.entries()]
     .map(([name, entry]) => ({
       name,
       count: entry.count,
       averagePrice: entry.priceSamples > 0 ? Math.round(entry.priceTotal / entry.priceSamples) : null,
       topCategories: sortCounts(entry.categories),
-      topStates: sortCounts(entry.states),
+      topStates: sortStateCounts(entry.states),
     }))
     .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
 }
@@ -129,19 +137,19 @@ export function Manufacturers() {
     '@type': 'CollectionPage',
     name: 'Equipment Manufacturers',
     description: 'Browse equipment manufacturers with direct paths into live marketplace inventory.',
-    url: 'https://timberequip.com/manufacturers',
+    url: buildSiteUrl('/manufacturers'),
     hasPart: manufacturerCards.slice(0, 60).map((manufacturer, index) => ({
       '@type': 'ListItem',
       position: index + 1,
       name: manufacturer.name,
-      url: `https://timberequip.com${buildManufacturerPath(manufacturer.name)}`,
+      url: buildSiteUrl(buildManufacturerPath(manufacturer.name)),
     })),
   };
 
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Equipment Manufacturers | TimberEquip"
+        title="Equipment Manufacturers | Forestry Equipment Sales"
         description="Browse equipment manufacturers with direct paths into live marketplace inventory, top machine categories, and regional availability."
         canonicalPath="/manufacturers"
         jsonLd={jsonLd}

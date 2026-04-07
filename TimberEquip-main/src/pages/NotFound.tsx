@@ -6,8 +6,8 @@ export function NotFound() {
   return (
     <>
       <Seo
-        title="Page Not Found | TimberEquip"
-        description="The page you requested could not be found. Browse live equipment inventory, categories, dealers, or return to the TimberEquip homepage."
+        title="Page Not Found | Forestry Equipment Sales"
+        description="The page you requested could not be found. Browse live equipment inventory, categories, dealers, or return to the Forestry Equipment Sales homepage."
         canonicalPath="/404"
         robots="noindex, nofollow, noarchive, nosnippet, noimageindex"
       />
@@ -93,7 +93,7 @@ export function NotFound() {
                   Support
                 </p>
                 <p className="mt-2 text-lg font-black uppercase tracking-[-0.03em] text-ink">
-                  Contact TimberEquip
+                  Contact Forestry Equipment Sales
                 </p>
               </Link>
             </div>

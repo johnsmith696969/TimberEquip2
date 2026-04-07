@@ -4,6 +4,7 @@ import { ArrowLeft, Clock, ShieldCheck } from 'lucide-react';
 import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
 import { Seo } from '../components/Seo';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 function slugifyNewsTitle(value: string) {
   return String(value || '')
@@ -182,7 +183,7 @@ export function BlogPostDetail() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title={`${post.seoTitle || post.title} | TimberEquip`}
+        title={`${post.seoTitle || post.title} | Forestry Equipment Sales`}
         description={post.seoDescription || post.summary}
         canonicalPath={getNewsPostCanonicalPath(post)}
         ogType="article"
@@ -197,23 +198,23 @@ export function BlogPostDetail() {
               datePublished: post.publishedAt || post.createdAt || undefined,
               dateModified: post.updatedAt || post.publishedAt || post.createdAt || undefined,
               image: post.image || undefined,
-              author: { '@type': 'Organization', name: 'TimberEquip' },
+              author: { '@type': 'Organization', name: 'Forestry Equipment Sales' },
               publisher: {
                 '@type': 'Organization',
-                name: 'TimberEquip',
-                logo: { '@type': 'ImageObject', url: 'https://timberequip.com/TimberEquip-Logo.png' },
+                name: 'Forestry Equipment Sales',
+                logo: { '@type': 'ImageObject', url: buildSiteUrl('/Forestry_Equipment_Sales_Logo.png') },
               },
               mainEntityOfPage: {
                 '@type': 'WebPage',
-                '@id': `https://timberequip.com${getNewsPostCanonicalPath(post)}`,
+                '@id': buildSiteUrl(getNewsPostCanonicalPath(post)),
               },
             },
             {
               '@type': 'BreadcrumbList',
               itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://timberequip.com/' },
-                { '@type': 'ListItem', position: 2, name: 'Equipment News', item: 'https://timberequip.com/blog' },
-                { '@type': 'ListItem', position: 3, name: post.seoTitle || post.title, item: `https://timberequip.com${getNewsPostCanonicalPath(post)}` },
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Equipment News', item: buildSiteUrl('/blog') },
+                { '@type': 'ListItem', position: 3, name: post.seoTitle || post.title, item: buildSiteUrl(getNewsPostCanonicalPath(post)) },
               ],
             },
           ],
