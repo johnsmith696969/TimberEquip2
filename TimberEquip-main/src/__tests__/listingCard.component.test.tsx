@@ -18,6 +18,10 @@ vi.mock('../components/LocaleContext', () => ({
   }),
 }));
 
+vi.mock('../components/AuthContext', () => ({
+  useAuth: () => ({ user: null }),
+}));
+
 function buildListing(overrides: Partial<Listing> = {}): Listing {
   return {
     id: 'listing-1',

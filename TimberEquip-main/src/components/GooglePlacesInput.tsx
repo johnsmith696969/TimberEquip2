@@ -22,6 +22,7 @@ interface GooglePlacesInputProps {
   optionClassName?: string;
   helperTextClassName?: string;
   leadingIconClassName?: string;
+  showIcon?: boolean;
   required?: boolean;
   disabled?: boolean;
 }
@@ -40,6 +41,7 @@ export function GooglePlacesInput({
   optionClassName = '',
   helperTextClassName = '',
   leadingIconClassName = '',
+  showIcon = true,
   required = false,
   disabled = false,
 }: GooglePlacesInputProps) {
@@ -102,11 +104,13 @@ export function GooglePlacesInput({
   return (
     <div className={`space-y-2 ${className}`.trim()}>
       <div className="flex items-center gap-3">
-        <div
-          className={`flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-sm border border-line bg-surface text-[#5f6368] ${leadingIconClassName}`.trim()}
-        >
-          {isLoading || isSelecting ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
-        </div>
+        {showIcon && (
+          <div
+            className={`flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-sm border border-line bg-surface text-[#5f6368] ${leadingIconClassName}`.trim()}
+          >
+            {isLoading || isSelecting ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
+          </div>
+        )}
         <div className="relative flex-1">
           <input
             id={id}

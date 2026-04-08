@@ -138,6 +138,8 @@ export function DealerOS() {
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [webhookNotice, setWebhookNotice] = useState('');
   const [webhookError, setWebhookError] = useState('');
+  const [webhookLogs, setWebhookLogs] = useState<Array<{ id: string; webhookId: string; event: string; listingId: string; statusCode: number | null; success: boolean; deliveredAt?: unknown; errorMessage?: string }>>([]);
+  const [webhookLogsLoading, setWebhookLogsLoading] = useState(false);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [leadNoteDraft, setLeadNoteDraft] = useState('');
   const loadDealerOsData = async () => {
@@ -179,6 +181,7 @@ export function DealerOS() {
       }).catch(() => setWidgetConfigLoaded(true));
 
       dealerFeedService.getWebhooks(ownerUid).then((wh) => setWebhooks(wh)).catch(() => {});
+      dealerFeedService.getWebhookDeliveryLogs(ownerUid).then((l) => setWebhookLogs(l)).catch(() => {});
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'DealerOS could not load yet.');
     } finally {
@@ -1760,6 +1763,63 @@ export function DealerOS() {
             <p className="text-sm font-bold text-muted">No webhook subscriptions configured yet.</p>
           </div>
         )}
+
+        {/* Delivery Logs */}
+        {webhooks.length > 0 ? (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Recent Deliveries</div>
+              <button
+                type="button"
+                className="rounded-sm border border-line px-2 py-1 text-[10px] font-bold text-muted hover:text-ink"
+                disabled={webhookLogsLoading}
+                onClick={async () => {
+                  if (!ownerUid) return;
+                  setWebhookLogsLoading(true);
+                  try {
+                    const fresh = await dealerFeedService.getWebhookDeliveryLogs(ownerUid);
+                    setWebhookLogs(fresh);
+                  } catch { /* ignore */ }
+                  setWebhookLogsLoading(false);
+                }}
+              >
+                <RefreshCw size={10} className={`mr-1 inline ${webhookLogsLoading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+            {webhookLogs.length > 0 ? (
+              <div className="overflow-x-auto rounded-sm border border-line">
+                <table className="w-full min-w-[600px] text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-line bg-bg text-[10px] font-black uppercase tracking-[0.15em] text-muted">
+                      <th className="px-3 py-2">Event</th>
+                      <th className="px-3 py-2">Listing</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">HTTP</th>
+                      <th className="px-3 py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {webhookLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-line/50 last:border-0">
+                        <td className="px-3 py-2 font-mono">{log.event}</td>
+                        <td className="px-3 py-2 font-mono text-muted">{log.listingId.slice(0, 12)}...</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${log.success ? 'bg-data/10 text-data' : 'bg-accent/10 text-accent'}`}>
+                            {log.success ? 'OK' : 'FAIL'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">{log.statusCode ?? '—'}</td>
+                        <td className="px-3 py-2 text-muted">{formatLogTime(log.deliveredAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">No delivery logs yet.</p>
+            )}
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
@@ -1976,13 +2036,15 @@ export function DealerOS() {
         </div>
 
         <div className="mt-5 max-h-[600px] overflow-y-auto overflow-x-auto rounded-sm border border-line">
-          <table className="w-full min-w-[980px] text-left">
+          <table className="w-full min-w-[1100px] text-left">
             <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
               <tr>
                 <th className="px-4 py-3">Machine</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Featured</th>
                 <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3 text-right">Views</th>
+                <th className="px-4 py-3 text-right">Leads</th>
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Feed</th>
                 <th className="px-4 py-3">Actions</th>
@@ -1991,11 +2053,11 @@ export function DealerOS() {
             <tbody className="divide-y divide-line bg-surface">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-muted">Loading DealerOS inventory…</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm font-bold text-muted">Loading DealerOS inventory…</td>
                 </tr>
               ) : filteredListings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-muted">No listings match the current filter.</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm font-bold text-muted">No listings match the current filter.</td>
                 </tr>
               ) : (
                 filteredListings.map((listing) => (
@@ -2016,6 +2078,8 @@ export function DealerOS() {
                       </button>
                     </td>
                     <td className="px-4 py-4 text-xs font-bold text-ink">{formatPrice(listing.price, listing.currency)}</td>
+                    <td className="px-4 py-4 text-xs font-bold text-ink text-right">{listing.views || 0}</td>
+                    <td className="px-4 py-4 text-xs font-bold text-ink text-right">{listing.leads || 0}</td>
                     <td className="px-4 py-4 text-xs text-muted">{listing.location || '—'}</td>
                     <td className="px-4 py-4 text-xs text-muted">{listing.externalSource?.sourceName || 'Manual'}</td>
                     <td className="px-4 py-4">

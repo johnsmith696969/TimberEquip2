@@ -58,6 +58,7 @@ export function PaymentCalculatorModal({
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const { alert, dialogProps } = useConfirmDialog();
   const { theme } = useTheme();
   const prefersReducedMotion = useReducedMotion();
@@ -75,6 +76,7 @@ export function PaymentCalculatorModal({
       setMessage('');
       setSubmitting(false);
       setSubmitted(false);
+      setConsentAccepted(false);
     }
   }, [isOpen]);
 
@@ -99,6 +101,10 @@ export function PaymentCalculatorModal({
     if (!onSubmitFinancingRequest || submitting) return;
     if (!buyerName.trim() || !buyerEmail.trim() || !buyerPhone.trim()) {
       await alert({ title: 'Missing Information', message: 'Please enter your name, email, and phone to submit a financing request.', variant: 'info' });
+      return;
+    }
+    if (!consentAccepted) {
+      await alert({ title: 'Consent Required', message: 'Please accept the contact consent before submitting.', variant: 'info' });
       return;
     }
 
@@ -350,6 +356,17 @@ export function PaymentCalculatorModal({
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                     />
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={consentAccepted}
+                        onChange={(e) => setConsentAccepted(e.target.checked)}
+                        className="mt-0.5 accent-accent"
+                      />
+                      <span className="text-[9px] font-medium text-muted leading-relaxed">
+                        By submitting, I consent to be contacted by Forestry Equipment Sales and its financing partners regarding this equipment financing request via phone, email, or text. Standard rates may apply.
+                      </span>
+                    </label>
                     <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                       Protected by reCAPTCHA Enterprise before submission.
                     </p>

@@ -87,7 +87,7 @@ export function Compare() {
                   <th key={listing.id} className="p-6 bg-bg border border-line min-w-[300px]">
                     <div className="flex flex-col items-start text-left">
                       <div className="aspect-[16/9] w-full bg-surface mb-6 overflow-hidden rounded-sm">
-                        <img src={listing.images[0]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={listing.images[0]} alt={`${listing.year || ''} ${listing.manufacturer || ''} ${listing.model || ''} - ${listing.category || 'Equipment'}`.replace(/\s+/g, ' ').trim()} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                       <span className="label-micro mb-1">{listing.manufacturer}</span>
                       <h3 className="text-sm font-black uppercase tracking-tight mb-4 line-clamp-1">{listing.title}</h3>

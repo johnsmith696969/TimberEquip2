@@ -10,25 +10,31 @@ import './styles/input-fixes.css';
 
 installAssetRecoveryGuards();
 
-initializeBrowserSentry();
-void initializePerformanceMonitoring();
-void applyHeadBrandAssets();
-
-const appBootstrapTracePromise = startPerformanceTrace('app_bootstrap', {
-  mode: import.meta.env.MODE,
-  route: typeof window !== 'undefined' ? window.location.pathname : '/',
-});
-
+// Render first, then initialize non-critical services after first paint
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
 
-if (typeof window !== 'undefined') {
+// Defer monitoring/telemetry setup to avoid blocking initial render
+const deferInit = typeof requestIdleCallback === 'function'
+  ? requestIdleCallback
+  : (cb: () => void) => setTimeout(cb, 1);
+
+deferInit(() => {
+  initializeBrowserSentry();
+  void initializePerformanceMonitoring();
+  void applyHeadBrandAssets();
+
+  const tracePromise = startPerformanceTrace('app_bootstrap', {
+    mode: import.meta.env.MODE,
+    route: typeof window !== 'undefined' ? window.location.pathname : '/',
+  });
+
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      void appBootstrapTracePromise.then(async (trace) => {
+      void tracePromise.then(async (trace) => {
         if (!trace) return;
         trace.putMetric('pathname_length', window.location.pathname.length);
         trace.putMetric('search_length', window.location.search.length);
@@ -36,4 +42,4 @@ if (typeof window !== 'undefined') {
       });
     });
   });
-}
+});

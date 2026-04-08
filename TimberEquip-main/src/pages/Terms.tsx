@@ -648,8 +648,8 @@ export function Terms() {
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight text-ink">
                 <span>legal@forestryequipmentsales.com</span>
-                <span>+1 (800) 846-2373</span>
-                <span className="text-muted text-sm font-medium mt-2">Forestry Equipment Sales, LLC - 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+                <span>+1 (218) 720-0933</span>
+                <span className="text-muted text-sm font-medium mt-2">Forestry Equipment Sales, LLC - 1518 E Superior St, Duluth, MN 55812</span>
               </div>
             </section>
           </div>

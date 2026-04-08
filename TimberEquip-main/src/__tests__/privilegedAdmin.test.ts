@@ -7,7 +7,7 @@ describe('isPrivilegedAdminEmail', () => {
 
   it('returns false for any email (deprecated - admin detection is server-side)', () => {
     expect(isPrivilegedAdminEmail('caleb@timberequip.com')).toBe(false);
-    expect(isPrivilegedAdminEmail('calebhappy@gmail.com')).toBe(false);
+    expect(isPrivilegedAdminEmail('admin@example.com')).toBe(false);
     expect(isPrivilegedAdminEmail('random@example.com')).toBe(false);
   });
 

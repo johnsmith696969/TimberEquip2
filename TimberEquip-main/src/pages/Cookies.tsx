@@ -434,30 +434,30 @@ export function Cookies() {
             </section>
 
             {/* Contact Section */}
-            <section className="bg-[#1C1917] text-white p-8 md:p-12 rounded-sm space-y-6">
+            <section className="bg-surface border border-line p-8 md:p-12 rounded-sm space-y-6">
               <span className="label-micro block text-accent">Reach Us</span>
-              <h2 className="text-2xl font-black uppercase tracking-tighter text-accent">Cookie Support</h2>
-              <p className="text-white/60">
+              <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">Cookie Support</h2>
+              <p className="text-muted">
                 If you have questions about our use of cookies or need assistance managing your
                 cookie preferences, contact our Technical Support team:
               </p>
               <div className="space-y-4">
-                <a href="tel:+18008462373" className="flex items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-line transition-colors hover:border-accent">
                   <Phone className="mt-0.5 text-accent" size={18} />
                   <div>
-                    <span className="label-micro block text-white/60">Customer Support</span>
-                    <span className="text-sm font-black tracking-tight">+1 (800) 846-2373</span>
+                    <span className="label-micro block text-muted">Customer Support</span>
+                    <span className="text-sm font-black tracking-tight text-ink">(218) 720-0933</span>
                   </div>
                 </a>
-                <a href="mailto:support@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="mailto:support@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-line transition-colors hover:border-accent">
                   <Mail className="mt-0.5 text-accent" size={18} />
                   <div className="min-w-0">
-                    <span className="label-micro block text-white/60">Email</span>
-                    <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
+                    <span className="label-micro block text-muted">Email</span>
+                    <span className="block break-all text-sm font-black tracking-tight text-ink">support@forestryequipmentsales.com</span>
                   </div>
                 </a>
               </div>
-              <span className="text-white/40 text-sm font-medium block">Forestry Equipment Sales, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+              <span className="text-muted text-sm font-medium block">Forestry Equipment Sales, LLC — 1518 E Superior St, Duluth, MN 55812</span>
             </section>
           </div>
         </motion.div>

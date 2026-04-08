@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Globe2, Trees, TrendingUp } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -107,10 +107,6 @@ export function States() {
   }, []);
 
   const stateCards = useMemo(() => buildStateCards(listings), [listings]);
-  const marketLeader = useMemo(
-    () => [...stateCards].sort((left, right) => right.count - left.count || compareRegionNames(left.name, right.name))[0],
-    [stateCards]
-  );
   const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
   const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
   const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
@@ -151,7 +147,7 @@ export function States() {
             <span className={heroSecondaryClass}>By State</span>
           </h1>
           <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
-            Open state routes to browse local inventory, leading machine categories, and the brands currently active in each market.
+            Choose a state to browse machines located there, review the strongest categories in that market, and jump straight into live listings from local sellers.
           </p>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             <div className="border border-line bg-bg/90 p-5 backdrop-blur-sm">
@@ -163,8 +159,8 @@ export function States() {
               <div className="text-3xl font-black tracking-tight text-ink">{formatNumber.format(listings.length)}</div>
             </div>
             <div className="border border-line bg-bg/90 p-5 backdrop-blur-sm">
-              <div className="label-micro mb-2">Top Market</div>
-              <div className="text-xl font-black uppercase tracking-tight text-ink">{marketLeader?.name || 'Pending'}</div>
+              <div className="label-micro mb-2">Manufacturers Represented</div>
+              <div className="text-3xl font-black tracking-tight text-ink">{formatNumber.format(totalManufacturers)}</div>
             </div>
           </div>
         </div>
@@ -175,9 +171,9 @@ export function States() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <span className="label-micro text-accent mb-3 block">Regional Market Directory</span>
-              <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight text-ink">Browse Equipment By Geography</h2>
+              <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight text-ink">Start With The State You Need</h2>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-relaxed text-muted">
-                Open any state market to browse live inventory, leading machine categories, and the brands currently active in that region. Every route stays tied to real Forestry Equipment Sales supply instead of generic directory filler.
+                Open any state market to see what is actually available there right now, then narrow into the categories, makes, and listings that fit your job. This page is meant to help buyers get to live inventory faster, not send them through filler content.
               </p>
             </div>
             <Link to="/search" className="btn-industrial btn-accent py-4 px-6 w-full md:w-auto text-center">
@@ -189,28 +185,25 @@ export function States() {
 
         <section className="grid gap-6 md:grid-cols-3 mb-12">
           <div className="border border-line bg-bg p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent/10 text-accent mb-4">
-              <Globe2 size={22} />
-            </div>
-            <div className="label-micro mb-2">Geographic Coverage</div>
-            <div className="text-2xl font-black tracking-tight text-ink">{formatNumber.format(totalStates)} Markets</div>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">Every state market updates from live Forestry Equipment Sales inventory, giving buyers a clean way to shop by geography without landing on stale placeholder pages.</p>
+            <div className="label-micro mb-2">Shop Local First</div>
+            <div className="text-2xl font-black tracking-tight text-ink">{formatNumber.format(totalStates)} State Markets</div>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">
+              Start with the state where you want to buy or move equipment, then drill into the listings already located there.
+            </p>
           </div>
           <div className="border border-line bg-bg p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent/10 text-accent mb-4">
-              <Trees size={22} />
-            </div>
-            <div className="label-micro mb-2">Active Brands</div>
-            <div className="text-2xl font-black tracking-tight text-ink">{formatNumber.format(totalManufacturers)}</div>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">Each market page can branch into category and manufacturer routes based on the live public inventory already in your marketplace.</p>
+            <div className="label-micro mb-2">Browse Real Supply</div>
+            <div className="text-2xl font-black tracking-tight text-ink">{formatNumber.format(listings.length)} Live Listings</div>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">
+              Counts are based on current approved inventory, so these state pages reflect machines buyers can actually shop today.
+            </p>
           </div>
           <div className="border border-line bg-bg p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-accent/10 text-accent mb-4">
-              <TrendingUp size={22} />
-            </div>
-            <div className="label-micro mb-2">Market Leader</div>
-            <div className="text-2xl font-black tracking-tight text-ink">{marketLeader?.name || 'Pending'}</div>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">The strongest state route is based on current active listing count, so buyers land where the deepest live supply is actually available.</p>
+            <div className="label-micro mb-2">Refine By Brand</div>
+            <div className="text-2xl font-black tracking-tight text-ink">{formatNumber.format(totalManufacturers)} Manufacturers</div>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-muted">
+              Use each state market to move quickly into the brands and equipment families that already have live inventory in that region.
+            </p>
           </div>
         </section>
 

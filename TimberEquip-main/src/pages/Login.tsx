@@ -8,6 +8,8 @@ import {
   AlertCircle,
   CheckCircle2,
   KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
@@ -44,6 +46,7 @@ export function Login() {
   const { theme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
@@ -393,19 +396,20 @@ export function Login() {
         <div className={`p-12 ${theme === 'dark' ? 'bg-bg text-white' : 'bg-surface text-ink border-b border-line'}`}>
           <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2 block">Member Login</span>
           <h1 className={`text-4xl font-black tracking-tighter uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
-            Timber<span className="text-accent">Equip</span>
+            <span className="text-accent">Forestry Equipment</span> Sales
           </h1>
         </div>
 
         <div className="p-12">
           <form onSubmit={handleLogin} className="space-y-8">
             <div className="flex flex-col space-y-2">
-              <label className="label-micro">Email Address</label>
+              <label htmlFor="login-email" className="label-micro">Email Address</label>
               <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                 <div className="p-3 text-muted">
                   <Mail size={18} />
                 </div>
                 <input
+                  id="login-email"
                   required
                   type="email"
                   placeholder="EMAIL@EXAMPLE.COM"
@@ -420,7 +424,7 @@ export function Login() {
 
             <div className="flex flex-col space-y-2">
               <div className="flex justify-between items-center">
-                <label className="label-micro">Password</label>
+                <label htmlFor="login-password" className="label-micro">Password</label>
                 <button
                   type="button"
                   className="text-[10px] font-bold text-accent uppercase hover:underline"
@@ -439,8 +443,9 @@ export function Login() {
                   <Lock size={18} />
                 </div>
                 <input
+                  id="login-password"
                   required
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   placeholder="************"
                   autoComplete="current-password"
                   className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-widest"
@@ -448,6 +453,15 @@ export function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={disablePrimaryAuth}
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="p-3 text-muted hover:text-ink transition-colors"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -499,12 +513,13 @@ export function Login() {
               )}
 
               <div className="space-y-2">
-                <label className="label-micro">Verification Code</label>
+                <label htmlFor="login-mfa-code" className="label-micro">Verification Code</label>
                 <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                   <div className="p-3 text-muted">
                     <KeyRound size={18} />
                   </div>
                   <input
+                    id="login-mfa-code"
                     required
                     type="text"
                     inputMode="numeric"

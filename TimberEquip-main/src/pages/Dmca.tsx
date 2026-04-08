@@ -3,8 +3,15 @@ import { motion } from 'framer-motion';
 import { Shield, FileWarning, AlertTriangle, Scale, Mail, Phone, FileText, Ban, Clock, CheckCircle2, XCircle, Users, Gavel } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 export function Dmca() {
+  const { theme } = useTheme();
+  const contactPanelClass = theme === 'dark' ? 'bg-[#1C1917] text-white border border-white/10' : 'bg-surface text-ink border border-line';
+  const contactBodyClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
+  const contactSubtleClass = theme === 'dark' ? 'text-white/40' : 'text-muted';
+  const contactBorderClass = theme === 'dark' ? 'border-white/10' : 'border-line';
+
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
@@ -107,7 +114,7 @@ export function Dmca() {
                   </div>
                   <div className="space-y-1 sm:col-span-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-accent block">Mailing Address</span>
-                    <span className="text-sm text-ink font-bold">Forestry Equipment Sales, LLC, Attention: DMCA Agent, 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+                    <span className="text-sm text-ink font-bold">Forestry Equipment Sales, LLC, Attention: DMCA Agent, 1518 E Superior St, Duluth, MN 55812</span>
                   </div>
                 </div>
               </div>
@@ -376,30 +383,30 @@ export function Dmca() {
             </section>
 
             {/* Contact Section */}
-            <section className="bg-[#1C1917] text-white p-8 md:p-12 rounded-sm space-y-6">
+            <section className={`${contactPanelClass} p-8 md:p-12 rounded-sm space-y-6`}>
               <span className="label-micro block text-accent">Reach Us</span>
               <h2 className="text-2xl font-black uppercase tracking-tighter text-accent">DMCA Support</h2>
-              <p className="text-white/60">
+              <p className={contactBodyClass}>
                 For questions about this policy, to report copyright infringement, or to submit
                 a counter-notification, contact our Designated Agent:
               </p>
               <div className="space-y-4">
-                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="tel:+12187200933" className={`flex items-start space-x-3 p-4 border ${contactBorderClass} transition-colors hover:border-accent`}>
                   <Phone className="mt-0.5 text-accent" size={18} />
                   <div>
-                    <span className="label-micro block text-white/60">Customer Support</span>
+                    <span className={`label-micro block ${contactBodyClass}`}>Customer Support</span>
                     <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                   </div>
                 </a>
-                <a href="mailto:info@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-white/10 transition-colors hover:border-accent">
+                <a href="mailto:info@forestryequipmentsales.com" className={`flex min-w-0 items-start space-x-3 p-4 border ${contactBorderClass} transition-colors hover:border-accent`}>
                   <Mail className="mt-0.5 text-accent" size={18} />
                   <div className="min-w-0">
-                    <span className="label-micro block text-white/60">Email</span>
+                    <span className={`label-micro block ${contactBodyClass}`}>Email</span>
                     <span className="block break-all text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
                   </div>
                 </a>
               </div>
-              <span className="text-white/40 text-sm font-medium block">Forestry Equipment Sales, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+              <span className={`${contactSubtleClass} text-sm font-medium block`}>Forestry Equipment Sales, LLC — 1518 E Superior St, Duluth, MN 55812</span>
             </section>
           </div>
         </motion.div>

@@ -259,12 +259,15 @@ export function Contact() {
                 {[
                   { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
                   { title: 'Email Support', desc: 'support@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com', valueClassName: 'block break-all text-sm font-black text-muted leading-relaxed normal-case tracking-tight' },
-                  { title: 'HQ', desc: '2112 BROADWAY ST NE STE 225 #113, MINNEAPOLIS, MN 55413', icon: MapPin, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
-                  { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST | EMAIL 8AM-10PM CST', icon: Clock, link: '#', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' }
-                ].map((item, i) => (
-                  <a 
-                    key={i} 
-                    href={item.link}
+                  { title: 'HQ', desc: '1518 E SUPERIOR ST, DULUTH, MN 55812', icon: MapPin, link: 'https://maps.google.com/?q=1518+E+Superior+St+Duluth+MN+55812', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST | EMAIL 8AM-10PM CST', icon: Clock, link: '', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' }
+                ].map((item, i) => {
+                  const Wrapper = item.link ? 'a' : 'div';
+                  const wrapperProps = item.link ? { href: item.link } : {};
+                  return (
+                  <Wrapper
+                    key={i}
+                    {...wrapperProps}
                     className="flex min-w-0 space-x-4 group"
                   >
                     <div className="p-3 bg-bg border border-line rounded-sm h-fit group-hover:border-accent transition-colors">
@@ -274,8 +277,9 @@ export function Contact() {
                       <span className="text-xs font-black uppercase tracking-tight mb-1 group-hover:text-accent transition-colors">{item.title}</span>
                       <p className={item.valueClassName}>{item.desc}</p>
                     </div>
-                  </a>
-                ))}
+                  </Wrapper>
+                  );
+                })}
               </div>
             </div>
 

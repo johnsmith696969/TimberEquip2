@@ -4,8 +4,14 @@ import { Shield, Lock, Eye, FileText, UserCheck, Trash2, Download, Globe, Users,
 import { Link } from 'react-router-dom';
 import { Seo } from '../components/Seo';
 import { buildSiteUrl } from '../utils/siteUrl';
+import { useTheme } from '../components/ThemeContext';
 
 export function Privacy() {
+  const { theme } = useTheme();
+  const contactPanelClass = theme === 'dark' ? 'bg-[#1C1917] text-white border border-white/10' : 'bg-surface text-ink border border-line';
+  const contactBodyClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
+  const contactSubtleClass = theme === 'dark' ? 'text-white/40' : 'text-muted';
+
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
@@ -584,22 +590,22 @@ export function Privacy() {
             </section>
 
             {/* Contact Section */}
-            <section className="bg-[#1C1917] text-white p-12 rounded-sm space-y-6">
+            <section className={`${contactPanelClass} p-12 rounded-sm space-y-6`}>
               <h2 className="text-2xl font-black uppercase tracking-tighter text-accent">Contact Data Protection Officer</h2>
-              <p className="text-white/60">
+              <p className={contactBodyClass}>
                 If you have questions about this policy, wish to exercise your rights, or want to file a
                 privacy-related complaint, contact our Data Protection Center:
               </p>
-              <p className="text-white/60">
+              <p className={contactBodyClass}>
                 If your concern involves voice-call metadata, forwarding numbers, or telephone privacy information similar to customer proprietary network information (CPNI), you may also file a privacy complaint with the FCC through the{' '}
                 <a href="https://consumercomplaints.fcc.gov/hc/en-us/articles/8824334151572-Privacy-Complaints" target="_blank" rel="noopener noreferrer" className="text-accent underline">
                   FCC Privacy Complaints Center
                 </a>.
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
-                <span>privacy@forestryequipmentsales.com</span>
-                <span>+1 (800) 846-2373</span>
-                <span className="text-white/40 text-sm font-medium mt-2">Forestry Equipment Sales, LLC — 2112 Broadway St NE Ste 225 #113 Minneapolis, MN 55413</span>
+                <span>info@forestryequipmentsales.com</span>
+                <span>+1 (218) 720-0933</span>
+                <span className={`${contactSubtleClass} text-sm font-medium mt-2`}>Forestry Equipment Sales, LLC — 1518 E Superior St, Duluth, MN 55812</span>
               </div>
             </section>
           </div>

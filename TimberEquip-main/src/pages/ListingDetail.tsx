@@ -488,7 +488,11 @@ export function ListingDetail() {
 
   const machineLatitude = toFiniteNumber(listing?.latitude);
   const machineLongitude = toFiniteNumber(listing?.longitude);
-  const machineMapQuery = [listing?.location || '', seller?.storefrontName || seller?.name || '', seller?.location || '']
+  const machineMapQuery = [
+    listing?.location || '',
+    seller?.storefrontName || seller?.name || '',
+    seller?.location || '',
+  ]
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(', ');
@@ -751,6 +755,8 @@ export function ListingDetail() {
     const terms = `Requested amount: ${formatPrice(payload.requestedAmount, listing.currency || 'USD', 0)}, term: ${payload.termMonths} months, interest: ${payload.interestRatePct.toFixed(2)}%, down payment: ${payload.downPaymentPct}%, est monthly: ${formatPrice(payload.monthlyPaymentEstimate, listing.currency || 'USD', 0)}.`;
     const combinedMessage = [summary, terms, payload.message || ''].filter(Boolean).join(' ');
 
+    const consentAt = new Date().toISOString();
+
     await equipmentService.createInquiry({
       listingId: listing.id,
       sellerUid,
@@ -760,6 +766,10 @@ export function ListingDetail() {
       buyerPhone: payload.buyerPhone,
       message: combinedMessage,
       type: 'Financing',
+      contactConsentAccepted: true,
+      contactConsentVersion: 'financing-calculator-v1',
+      contactConsentScope: 'financing_request_specific',
+      contactConsentAt: consentAt,
     });
 
     await equipmentService.submitFinancingRequest({
@@ -771,6 +781,10 @@ export function ListingDetail() {
       company: payload.company,
       requestedAmount: payload.requestedAmount,
       message: combinedMessage,
+      contactConsentAccepted: true,
+      contactConsentVersion: 'financing-calculator-v1',
+      contactConsentScope: 'financing_request_specific',
+      contactConsentAt: consentAt,
     });
   };
 
@@ -862,8 +876,8 @@ export function ListingDetail() {
   const safeHours = toFiniteNumber(listing.hours) ?? 0;
   const safePrice = toFiniteNumber(listing.price) ?? 0;
   const safeMarketValueEstimate = toFiniteNumber(listing.marketValueEstimate);
-  const safeSellerName = formatSpecValue(seller?.name) || 'Unknown Seller';
-  const safeSellerLocation = formatSpecValue(seller?.location) || 'Location Not Available';
+  const safeSellerName = formatSpecValue(seller?.name) || formatSpecValue(listing.sellerName) || 'Unknown Seller';
+  const safeSellerLocation = formatSpecValue(seller?.location) || formatSpecValue(listing.location) || 'Location Not Available';
   const safeSellerType = formatSpecValue(seller?.type) || 'Seller';
   const safeSellerLogo = typeof seller?.logo === 'string' ? seller.logo : '';
   const safeSellerId = formatSpecValue(seller?.id) || '';
@@ -1275,9 +1289,10 @@ export function ListingDetail() {
               </div>
               <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
                 {galleryImages.map((img, i) => (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => setActiveImage(i)}
+                    aria-label={galleryImageTitles[i] || `View photo ${i + 1} of ${galleryImages.length}`}
                     className={`aspect-square border-2 transition-all overflow-hidden ${activeImage === i ? 'border-accent' : 'border-line hover:border-muted'}`}
                   >
                     <img
@@ -1332,9 +1347,10 @@ export function ListingDetail() {
                   {(auctionLot.status === 'active' || auctionLot.status === 'extended') && (
                     <>
                       <div>
-                        <span className="label-micro mb-1 block">Your Max Bid</span>
+                        <label htmlFor="bid-amount-gallery" className="label-micro mb-1 block">Your Max Bid</label>
                         <div className="flex gap-2">
                           <input
+                            id="bid-amount-gallery"
                             type="number"
                             className="input-industrial flex-1"
                             placeholder={`Min $${((auctionLot.currentBid || auctionLot.startingBid) + auctionService.getBidIncrement(auctionLot.currentBid || auctionLot.startingBid)).toLocaleString()}`}
@@ -1797,9 +1813,10 @@ export function ListingDetail() {
                     {(auctionLot.status === 'active' || auctionLot.status === 'extended') && (
                       <>
                         <div>
-                          <span className="label-micro mb-1 block">Your Max Bid</span>
+                          <label htmlFor="bid-amount-sidebar" className="label-micro mb-1 block">Your Max Bid</label>
                           <div className="flex gap-2">
                             <input
+                              id="bid-amount-sidebar"
                               type="number"
                               className="input-industrial flex-1"
                               placeholder={`Min $${((auctionLot.currentBid || auctionLot.startingBid) + auctionService.getBidIncrement(auctionLot.currentBid || auctionLot.startingBid)).toLocaleString()}`}
@@ -1867,7 +1884,7 @@ export function ListingDetail() {
               </div>
 
               {/* Seller Card */}
-              {seller && (
+              {(seller || listing.sellerName || listing.sellerUid || listing.sellerId) && (
               <div className="bg-surface border border-line p-8">
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex flex-col">
@@ -2088,7 +2105,10 @@ export function ListingDetail() {
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             ></motion.div>
             
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="inquiry-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -2097,7 +2117,7 @@ export function ListingDetail() {
               <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
+                  <h3 id="inquiry-modal-title" className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
                 </div>
                 <button onClick={dismissInquiryModal} aria-label="Close inquiry form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
@@ -2117,20 +2137,22 @@ export function ListingDetail() {
                   <form onSubmit={handleInquirySubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col space-y-2">
-                        <label className="label-micro">Full Name</label>
-                        <input 
+                        <label htmlFor="inquiry-name" className="label-micro">Full Name</label>
+                        <input
+                          id="inquiry-name"
                           required
-                          type="text" 
+                          type="text"
                           className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                           value={inquiryForm.name}
                           onChange={(e) => setInquiryForm({...inquiryForm, name: e.target.value})}
                         />
                       </div>
                       <div className="flex flex-col space-y-2">
-                        <label className="label-micro">Email Address</label>
-                        <input 
+                        <label htmlFor="inquiry-email" className="label-micro">Email Address</label>
+                        <input
+                          id="inquiry-email"
                           required
-                          type="email" 
+                          type="email"
                           className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                           value={inquiryForm.email}
                           onChange={(e) => setInquiryForm({...inquiryForm, email: e.target.value})}
@@ -2138,18 +2160,20 @@ export function ListingDetail() {
                       </div>
                     </div>
                     <div className="flex flex-col space-y-2">
-                      <label className="label-micro">Phone Number</label>
-                      <input 
+                      <label htmlFor="inquiry-phone" className="label-micro">Phone Number</label>
+                      <input
+                        id="inquiry-phone"
                         required
-                        type="tel" 
+                        type="tel"
                         className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                         value={inquiryForm.phone}
                         onChange={(e) => setInquiryForm({...inquiryForm, phone: e.target.value})}
                       />
                     </div>
                     <div className="flex flex-col space-y-2">
-                      <label className="label-micro">Message / Requirements</label>
-                      <textarea 
+                      <label htmlFor="inquiry-message" className="label-micro">Message / Requirements</label>
+                      <textarea
+                        id="inquiry-message"
                         required
                         rows={4}
                         className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
@@ -2196,7 +2220,10 @@ export function ListingDetail() {
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             ></motion.div>
             
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="amv-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -2205,7 +2232,7 @@ export function ListingDetail() {
               <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Market Logic</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
+                  <h3 id="amv-modal-title" className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
                 </div>
                 <button onClick={() => setShowAMVModal(false)} aria-label="Close AMV modal" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
@@ -2263,7 +2290,10 @@ export function ListingDetail() {
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             ></motion.div>
             
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="financing-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -2272,7 +2302,7 @@ export function ListingDetail() {
               <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Credit Center</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
+                  <h3 id="financing-modal-title" className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
                 </div>
                 <button onClick={dismissFinancingModal} aria-label="Close financing form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
@@ -2350,6 +2380,9 @@ export function ListingDetail() {
             ></motion.div>
 
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shipping-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -2358,7 +2391,7 @@ export function ListingDetail() {
               <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Logistics</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>
+                  <h3 id="shipping-modal-title" className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>
                 </div>
                 <button onClick={dismissShippingModal} aria-label="Close shipping form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />

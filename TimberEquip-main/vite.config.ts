@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     build: {
+      target: 'es2022',
+      cssCodeSplit: true,
       sourcemap: env.SENTRY_SOURCE_MAPS === 'true' ? 'hidden' : false,
       rollupOptions: {
         output: {

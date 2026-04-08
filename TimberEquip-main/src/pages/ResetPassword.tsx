@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
@@ -69,6 +69,7 @@ export function ResetPassword() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const oobCode = String(searchParams.get('oobCode') || '').trim();
   const mode = String(searchParams.get('mode') || 'resetPassword').trim();
@@ -142,26 +143,26 @@ export function ResetPassword() {
   };
 
   const panelClass = isDark
-    ? 'border-white/10 bg-zinc-950 text-white shadow-[0_30px_120px_rgba(0,0,0,0.45)]'
-    : 'border-line bg-white text-ink shadow-[0_24px_90px_rgba(15,23,42,0.12)]';
+    ? 'border-white/10 bg-surface text-white shadow-[0_30px_120px_rgba(0,0,0,0.45)]'
+    : 'border-line bg-bg text-ink shadow-[0_24px_90px_rgba(15,23,42,0.12)]';
   const heroClass = isDark
     ? 'border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(22,163,74,0.22),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))]'
     : 'border-line bg-[radial-gradient(circle_at_top_left,rgba(22,163,74,0.18),transparent_38%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,1))]';
-  const mutedClass = isDark ? 'text-zinc-300' : 'text-muted';
-  const secondaryPanelClass = isDark ? 'border-white/10 bg-white/[0.03]' : 'border-line bg-bg';
+  const mutedClass = isDark ? 'text-zinc-400' : 'text-muted';
+  const secondaryPanelClass = isDark ? 'border-white/10 bg-white/[0.03]' : 'border-line bg-surface';
   const inputClass = isDark
     ? 'w-full rounded-sm border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-white placeholder:text-zinc-500 focus:border-accent focus:outline-none'
     : 'w-full rounded-sm border border-line bg-white px-4 py-3 text-sm font-semibold text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none';
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-10 md:px-8 md:py-16">
+    <div className="min-h-screen bg-bg mx-auto w-full max-w-6xl px-4 py-24 md:px-8 md:py-28">
       <Seo
         title="Reset Password | Forestry Equipment Sales"
         description="Securely reset your Forestry Equipment Sales account password."
         robots={NOINDEX_ROBOTS}
       />
 
-      <section className={`overflow-hidden rounded-[28px] border ${panelClass}`}>
+      <section className={`overflow-hidden rounded-sm border ${panelClass}`}>
         <div className={`relative border-b px-6 py-8 md:px-10 md:py-10 ${heroClass}`}>
           <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="max-w-3xl">
@@ -170,26 +171,26 @@ export function ResetPassword() {
                 Reset Your Password
               </h1>
               <p className={`mt-4 max-w-2xl text-sm leading-relaxed md:text-base ${mutedClass}`}>
-                Use the Forestry Equipment Sales password recovery flow to set a new password and get back into your buyer, seller, or admin workspace.
+                Click reset password below to choose a new password for your Forestry Equipment Sales account.
               </p>
             </div>
-            <div className={`flex h-16 w-16 items-center justify-center rounded-[20px] border ${isDark ? 'border-accent/30 bg-accent/10' : 'border-accent/20 bg-accent/10'} text-accent`}>
+            <div className={`flex h-16 w-16 items-center justify-center rounded-sm border ${isDark ? 'border-accent/30 bg-accent/10' : 'border-accent/20 bg-accent/10'} text-accent`}>
               <KeyRound size={28} />
             </div>
           </div>
         </div>
 
         <div className="grid gap-6 px-6 py-6 md:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)] md:px-10 md:py-10">
-          <div className={`rounded-[22px] border p-6 md:p-7 ${secondaryPanelClass}`}>
+          <div className={`rounded-sm border p-6 md:p-7 ${secondaryPanelClass}`}>
             {loading ? (
-              <div className={`flex items-center gap-3 rounded-[18px] border px-4 py-4 text-sm font-bold ${secondaryPanelClass}`}>
+              <div className={`flex items-center gap-3 rounded-sm border px-4 py-4 text-sm font-bold ${secondaryPanelClass}`}>
                 <LoaderCircle size={16} className="animate-spin text-accent" />
                 <span className={mutedClass}>Validating your password reset link…</span>
               </div>
             ) : null}
 
             {!loading && error ? (
-              <div className={`flex items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-red-500/20 bg-red-500/10 text-red-500'}`}>
+              <div className={`flex items-start gap-3 rounded-sm border px-4 py-4 text-sm font-semibold ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-red-500/20 bg-red-500/10 text-red-500'}`}>
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -209,30 +210,52 @@ export function ResetPassword() {
                   <label className="text-[10px] font-black uppercase tracking-[0.16em] text-accent" htmlFor="new-password">
                     New Password
                   </label>
-                  <input
-                    id="new-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    className={inputClass}
-                    placeholder="Enter a new password"
-                  />
+                  <div className="relative">
+                    <input
+                      id="new-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      className={inputClass}
+                      placeholder="Enter a new password"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-[0.16em] text-accent" htmlFor="confirm-password">
                     Confirm Password
                   </label>
-                  <input
-                    id="confirm-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    className={inputClass}
-                    placeholder="Confirm your new password"
-                  />
+                  <div className="relative">
+                    <input
+                      id="confirm-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      className={inputClass}
+                      placeholder="Confirm your new password"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-3 pt-2">
@@ -247,7 +270,7 @@ export function ResetPassword() {
             ) : null}
 
             {!loading && !error && completed ? (
-              <div className={`rounded-[18px] border px-5 py-5 ${isDark ? 'border-accent/25 bg-accent/10' : 'border-accent/20 bg-accent/5'}`}>
+              <div className={`rounded-sm border px-5 py-5 ${isDark ? 'border-accent/25 bg-accent/10' : 'border-accent/20 bg-accent/5'}`}>
                 <div className="flex items-start gap-3">
                   <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-accent" />
                   <div>
@@ -269,9 +292,9 @@ export function ResetPassword() {
             ) : null}
           </div>
 
-          <aside className={`rounded-[22px] border p-6 md:p-7 ${secondaryPanelClass}`}>
+          <aside className={`rounded-sm border p-6 md:p-7 ${secondaryPanelClass}`}>
             <div className="flex items-center gap-3">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-[16px] border ${isDark ? 'border-accent/25 bg-accent/10' : 'border-accent/15 bg-accent/10'} text-accent`}>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-sm border ${isDark ? 'border-accent/25 bg-accent/10' : 'border-accent/15 bg-accent/10'} text-accent`}>
                 <ShieldCheck size={22} />
               </div>
               <div>
@@ -281,21 +304,21 @@ export function ResetPassword() {
             </div>
 
             <div className="mt-6 space-y-4">
-              <div className={`rounded-[18px] border px-4 py-4 ${secondaryPanelClass}`}>
+              <div className={`rounded-sm border px-4 py-4 ${secondaryPanelClass}`}>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">One-Time Link</p>
                 <p className={`mt-2 text-sm leading-relaxed ${mutedClass}`}>
                   Password reset links are single-use and expire automatically. If this page says the link is invalid, request a fresh email from the sign-in screen.
                 </p>
               </div>
 
-              <div className={`rounded-[18px] border px-4 py-4 ${secondaryPanelClass}`}>
+              <div className={`rounded-sm border px-4 py-4 ${secondaryPanelClass}`}>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">Recommended</p>
                 <p className={`mt-2 text-sm leading-relaxed ${mutedClass}`}>
                   Use a unique password for Forestry Equipment Sales, especially for dealer, pro dealer, admin, and super admin accounts.
                 </p>
               </div>
 
-              <div className={`rounded-[18px] border px-4 py-4 ${secondaryPanelClass}`}>
+              <div className={`rounded-sm border px-4 py-4 ${secondaryPanelClass}`}>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">Need Another Email?</p>
                 <p className={`mt-2 text-sm leading-relaxed ${mutedClass}`}>
                   Return to the login page and submit a new reset request if this link expires or you opened an older email by mistake.

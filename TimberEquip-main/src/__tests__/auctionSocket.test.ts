@@ -335,8 +335,8 @@ describe('formatTimeRemainingWithOffset', () => {
   });
 
   it('formats days + hours', () => {
-    const endTime = new Date(Date.now() + 90000000).toISOString(); // 1d 1h
-    expect(formatTimeRemainingWithOffset(endTime, 0)).toBe('1d 1h');
+    const endTime = new Date(Date.now() + 93600000).toISOString(); // 26h = 1d 2h (padded to avoid boundary flake)
+    expect(formatTimeRemainingWithOffset(endTime, 0)).toBe('1d 2h');
   });
 
   it('accounts for positive server offset (server ahead of client)', () => {

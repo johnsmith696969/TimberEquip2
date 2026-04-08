@@ -669,4 +669,32 @@ export const dealerFeedService = {
       `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/secret`
     ).then((res) => res.secret || '');
   },
+
+  async getWebhookDeliveryLogs(sellerUid: string, limit = 20): Promise<Array<{
+    id: string;
+    webhookId: string;
+    event: string;
+    listingId: string;
+    statusCode: number | null;
+    success: boolean;
+    deliveredAt?: unknown;
+    errorMessage?: string;
+  }>> {
+    const normalizedUid = String(sellerUid || '').trim();
+    if (!normalizedUid) return [];
+    return requestDealerFeedApi<{ logs: Array<Record<string, unknown>> }>(
+      `/api/admin/dealer-feeds/webhook-logs?sellerUid=${encodeURIComponent(normalizedUid)}&limit=${limit}`
+    ).then((res) =>
+      (res.logs || []).map((l) => ({
+        id: String(l.id || ''),
+        webhookId: String(l.webhookId || ''),
+        event: String(l.event || ''),
+        listingId: String(l.listingId || ''),
+        statusCode: l.statusCode != null ? Number(l.statusCode) : null,
+        success: Boolean(l.success),
+        deliveredAt: l.deliveredAt,
+        errorMessage: l.errorMessage ? String(l.errorMessage) : undefined,
+      }))
+    );
+  },
 };

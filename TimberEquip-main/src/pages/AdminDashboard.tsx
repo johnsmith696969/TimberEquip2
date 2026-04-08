@@ -9,7 +9,7 @@ import {
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
   FileText, Image, Layers, Database, RefreshCw, FolderTree,
-  Loader2, Gavel, Search
+  Loader2, Gavel, Search, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
@@ -80,6 +80,7 @@ export function AdminDashboard() {
   const normalizedAdminRole = userService.normalizeRole(authUser?.role);
   const isContentOnlyDashboardRole = CONTENT_ONLY_DASHBOARD_ROLES.has(normalizedAdminRole);
   const hasFullAdminDashboardScope = FULL_ADMIN_DASHBOARD_ROLES.has(normalizedAdminRole);
+  const isFullAdmin = normalizedAdminRole === 'super_admin' || normalizedAdminRole === 'admin';
   const assignableRoleOptions = getAssignableUserRoleOptions(authUser?.role);
   const canAssignSuperAdmin = assignableRoleOptions.some((option) => option.value === 'super_admin');
   const [listings, setListings] = useState<Listing[]>([]);
@@ -140,6 +141,9 @@ export function AdminDashboard() {
   const [bulkApprovingListings, setBulkApprovingListings] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [managedSeatError, setManagedSeatError] = useState('');
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ displayName: '', email: '', role: 'member' as string });
+  const [inviteSending, setInviteSending] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userDisplayCount, setUserDisplayCount] = useState(50);
   const [usersLoadError, setUsersLoadError] = useState('');
@@ -1419,6 +1423,34 @@ export function AdminDashboard() {
         message: `${account.name}'s account was deleted.`,
       });
     });
+  };
+
+  const handleInviteUser = async () => {
+    if (!inviteForm.displayName.trim() || !inviteForm.email.trim()) return;
+    setInviteSending(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Not authenticated');
+      const resp = await fetch('/api/admin/invite-user', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayName: inviteForm.displayName.trim(),
+          email: inviteForm.email.trim().toLowerCase(),
+          role: inviteForm.role || 'member',
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to invite user');
+      setUserFeedback({ tone: 'success', message: `Invitation sent to ${inviteForm.email}` });
+      setShowInviteModal(false);
+      setInviteForm({ displayName: '', email: '', role: 'member' });
+      void fetchUsers();
+    } catch (err) {
+      setUserFeedback({ tone: 'error', message: err instanceof Error ? err.message : 'Failed to invite user' });
+    } finally {
+      setInviteSending(false);
+    }
   };
 
   const isUserActionPending = (uid: string, action: string) => pendingUserActionKey === `${uid}:${action}`;
@@ -2894,13 +2926,41 @@ export function AdminDashboard() {
           </button>
           <button
             type="button"
-            onClick={() => selectAdminTab('accounts')}
+            onClick={() => setShowInviteModal(true)}
             className="btn-industrial btn-accent py-2 px-6 text-[10px]"
           >
             Invite User
           </button>
         </div>
       </div>
+
+      {/* Managed Account Creation (for admins who lost the Accounts tab) */}
+      {isFullAdmin && (
+        <details className="bg-bg border border-line rounded-sm overflow-hidden">
+          <summary className="px-6 py-3 bg-surface text-[10px] font-black uppercase tracking-[0.2em] text-ink cursor-pointer hover:bg-surface/70 list-none flex items-center justify-between">
+            <span>Add Managed Team Account</span>
+            <Users size={14} className="text-muted" />
+          </summary>
+          <form onSubmit={handleCreateManagedAccount} className="p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
+            <input value={newManagedAccount.displayName} onChange={(e) => setNewManagedAccount({ ...newManagedAccount, displayName: e.target.value })} placeholder="NAME" className="input-industrial md:col-span-2" required />
+            <input value={newManagedAccount.email} onChange={(e) => setNewManagedAccount({ ...newManagedAccount, email: e.target.value })} placeholder="EMAIL" className="input-industrial md:col-span-2" type="email" required />
+            <select value={newManagedAccount.role} onChange={(e) => setNewManagedAccount({ ...newManagedAccount, role: e.target.value as UserRole })} className="select-industrial md:col-span-1">
+              {assignableRoleOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <button type="submit" disabled={creatingAccount} className="btn-industrial btn-accent md:col-span-1 py-2 text-[10px]">
+              {creatingAccount ? 'Creating...' : 'Add Role'}
+            </button>
+          </form>
+          {managedSeatError && (
+            <div className="mx-4 mb-4 flex items-center gap-2 border border-accent/30 bg-accent/5 rounded-sm px-4 py-3 text-xs font-medium text-accent">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{managedSeatError}</span>
+            </div>
+          )}
+        </details>
+      )}
 
       <div className="bg-bg border border-line rounded-sm overflow-hidden shadow-sm">
         <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
@@ -2970,7 +3030,7 @@ export function AdminDashboard() {
                         <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{user.status}</span>
                       </div>
                       <span className="text-[9px] font-bold text-muted uppercase tracking-widest">
-                        Listings {user.totalListings} • Leads {user.totalLeads}
+                        Listings {user.totalListings} • Leads {user.totalLeads}{user.storefrontViews ? ` • Views ${user.storefrontViews}` : ''}
                       </span>
                     </div>
                   </td>
@@ -3048,6 +3108,67 @@ export function AdminDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Invite User Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowInviteModal(false)}>
+          <div className="bg-surface border border-line rounded-sm p-8 w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-black uppercase tracking-widest text-ink mb-6">Invite New User</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="label-micro text-muted block mb-1">Display Name</label>
+                <input
+                  type="text"
+                  value={inviteForm.displayName}
+                  onChange={(e) => setInviteForm(f => ({ ...f, displayName: e.target.value }))}
+                  placeholder="John Smith"
+                  className="input-industrial w-full px-3 py-2 text-xs"
+                />
+              </div>
+              <div>
+                <label className="label-micro text-muted block mb-1">Email</label>
+                <input
+                  type="email"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="user@example.com"
+                  className="input-industrial w-full px-3 py-2 text-xs"
+                />
+              </div>
+              <div>
+                <label className="label-micro text-muted block mb-1">Role</label>
+                <select
+                  value={inviteForm.role}
+                  onChange={(e) => setInviteForm(f => ({ ...f, role: e.target.value }))}
+                  className="input-industrial w-full px-3 py-2 text-xs"
+                >
+                  <option value="member">Member</option>
+                  <option value="individual_seller">Individual Seller</option>
+                  <option value="dealer">Dealer</option>
+                  <option value="pro_dealer">Pro Dealer</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowInviteModal(false)}
+                className="btn-industrial btn-outline py-2 px-4 text-[10px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleInviteUser()}
+                disabled={inviteSending || !inviteForm.displayName.trim() || !inviteForm.email.trim()}
+                className="btn-industrial btn-accent py-2 px-6 text-[10px] disabled:opacity-50"
+              >
+                {inviteSending ? 'Sending...' : 'Send Invitation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </>
       )}
     </div>
@@ -3253,8 +3374,13 @@ export function AdminDashboard() {
       return item.id === 'content' || item.id === 'settings';
     }
 
+    // Hide Accounts tab for admins — Users tab covers everything
+    if (item.id === 'accounts' && isFullAdmin) {
+      return false;
+    }
+
     if ('adminOnly' in item && item.adminOnly) {
-      return normalizedAdminRole === 'super_admin' || normalizedAdminRole === 'admin';
+      return isFullAdmin;
     }
 
     return true;
@@ -3465,8 +3591,8 @@ export function AdminDashboard() {
                   <h3 className="text-sm font-black uppercase tracking-[0.2em] text-ink">Edit User</h3>
                   <p className="text-[10px] font-bold text-muted uppercase mt-1">Update profile details, role, and contact info.</p>
                 </div>
-                <button type="button" onClick={closeUserEditor} className="p-2 text-muted hover:text-ink" aria-label="Close user editor">
-                  <AlertCircle size={16} />
+                <button type="button" onClick={closeUserEditor} className="p-2 text-muted hover:text-ink transition-colors" aria-label="Close user editor">
+                  <X size={16} />
                 </button>
               </div>
 

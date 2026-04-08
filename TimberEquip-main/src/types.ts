@@ -201,6 +201,7 @@ export interface Listing {
   city?: string;
   state?: string;
   sellerName?: string;
+  sellerPhone?: string;
   stockNumber?: string;
   serialNumber?: string;
   latitude?: number;
@@ -386,7 +387,7 @@ export interface CallLog {
   callerPhone: string;
   duration: number; // in seconds
   status: 'Initiated' | 'Completed' | 'Missed' | 'Voicemail';
-  source?: 'listing_detail' | 'listing_detail_twilio' | 'twilio_inbound' | 'seller_profile' | 'unknown';
+  source?: 'listing_detail' | 'listing_detail_twilio' | 'twilio_inbound' | 'seller_profile' | 'listing_card' | 'unknown';
   isAuthenticated?: boolean;
   recordingUrl?: string;
   twilioCallSid?: string;
@@ -416,6 +417,7 @@ export interface Account {
   updatedAt?: string;
   totalListings: number;
   totalLeads: number;
+  storefrontViews?: number;
   parentAccountUid?: string;
   accountAccessSource?: 'free_member' | 'pending_checkout' | 'subscription' | 'admin_override' | 'managed_account' | null;
   activeSubscriptionPlanId?: 'individual_seller' | 'dealer' | 'fleet_dealer' | null;

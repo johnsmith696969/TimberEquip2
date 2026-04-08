@@ -5,7 +5,10 @@ import {
   User, LogOut,
   Bookmark,
   ChevronDown,
+  Facebook,
+  Linkedin,
   Mail,
+  Youtube,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
@@ -37,6 +40,42 @@ const CURRENCY_SYMBOLS: Record<Currency, string> = {
   HUF: 'HUF',
 };
 
+const LANGUAGE_OPTIONS: ReadonlyArray<{ code: Language; label: string; flag: string }> = [
+  { code: 'EN', label: 'English (Default)', flag: '\u{1F1FA}\u{1F1F8}' },
+  { code: 'FR', label: 'Francais', flag: '\u{1F1EB}\u{1F1F7}' },
+  { code: 'DE', label: 'Deutsch', flag: '\u{1F1E9}\u{1F1EA}' },
+  { code: 'ES', label: 'Espanol', flag: '\u{1F1EA}\u{1F1F8}' },
+  { code: 'SV', label: 'Svenska', flag: '\u{1F1F8}\u{1F1EA}' },
+  { code: 'FI', label: 'Suomi', flag: '\u{1F1EB}\u{1F1EE}' },
+  { code: 'PL', label: 'Polski', flag: '\u{1F1F5}\u{1F1F1}' },
+  { code: 'IT', label: 'Italiano', flag: '\u{1F1EE}\u{1F1F9}' },
+  { code: 'CS', label: 'Cestina', flag: '\u{1F1E8}\u{1F1FF}' },
+  { code: 'RO', label: 'Romana', flag: '\u{1F1F7}\u{1F1F4}' },
+  { code: 'LV', label: 'Latviesu', flag: '\u{1F1F1}\u{1F1FB}' },
+  { code: 'PT', label: 'Portugues', flag: '\u{1F1F5}\u{1F1F9}' },
+  { code: 'SK', label: 'Slovencina', flag: '\u{1F1F8}\u{1F1F0}' },
+  { code: 'ET', label: 'Eesti', flag: '\u{1F1EA}\u{1F1EA}' },
+  { code: 'NO', label: 'Norsk', flag: '\u{1F1F3}\u{1F1F4}' },
+  { code: 'DA', label: 'Dansk', flag: '\u{1F1E9}\u{1F1F0}' },
+  { code: 'HU', label: 'Magyar', flag: '\u{1F1ED}\u{1F1FA}' },
+  { code: 'LT', label: 'Lietuviu', flag: '\u{1F1F1}\u{1F1F9}' },
+];
+
+const CURRENCY_OPTIONS: ReadonlyArray<{ key: string; code: Currency; label: string }> = [
+  { key: 'USD', code: 'USD', label: 'US Dollar' },
+  { key: 'CAD', code: 'CAD', label: 'Canadian Dollar' },
+  { key: 'EUR', code: 'EUR', label: 'Euro' },
+  { key: 'GBP', code: 'GBP', label: 'British Pound' },
+  { key: 'SEK', code: 'SEK', label: 'Swedish Krona' },
+  { key: 'NOK', code: 'NOK', label: 'Norwegian Krone' },
+  { key: 'DKK', code: 'DKK', label: 'Danish Krone' },
+  { key: 'CHF', code: 'CHF', label: 'Swiss Franc' },
+  { key: 'PLN', code: 'PLN', label: 'Polish Zloty' },
+  { key: 'CZK', code: 'CZK', label: 'Czech Koruna' },
+  { key: 'RON', code: 'RON', label: 'Romanian Leu' },
+  { key: 'HUF', code: 'HUF', label: 'Hungarian Forint' },
+];
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, currency, setCurrency, t } = useLocale();
@@ -60,40 +99,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const footerSocialLinks = [
+    { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales' },
+    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline' },
+    { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales' },
     { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com' },
   ];
-
-  useEffect(() => {
-    const pageTitles: Record<string, string> = {
-      '/': 'Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales',
-      '/search': `Forestry Equipment Sales | ${t('layout.inventory', 'Inventory')}`,
-      '/sell': `Forestry Equipment Sales | ${t('layout.sellEquipment', 'Sell Equipment')}`,
-      '/categories': `Forestry Equipment Sales | ${t('layout.categories', 'Categories')}`,
-      '/auctions': `Forestry Equipment Sales | ${t('layout.auctions', 'Auctions')}`,
-      '/financing': `Forestry Equipment Sales | ${t('layout.financing', 'Financing')}`,
-      '/logistics': 'Forestry Equipment Sales | Logistics',
-      '/dealers': 'Forestry Equipment Sales | Dealer Network',
-      '/blog': `Forestry Equipment Sales | ${t('layout.equipmentNews', 'Equipment News')}`,
-      '/ad-programs': 'Ad Programs | Forestry Equipment Sales',
-      '/profile': 'Profile | Forestry Equipment Sales',
-      '/admin': 'Admin Dashboard | Forestry Equipment Sales',
-      '/bookmarks': 'Saved Equipment | Forestry Equipment Sales',
-      '/contact': 'Forestry Equipment Sales | Contact Forestry Equipment Sales',
-      '/about': 'About Us | Forestry Equipment Sales',
-      '/about-us': 'About Us | Forestry Equipment Sales',
-      '/our-team': 'Our Team | Forestry Equipment Sales',
-      '/about/our-team': 'Our Team | Forestry Equipment Sales',
-      '/faq': 'FAQ | Forestry Equipment Sales',
-      '/privacy': 'Privacy Policy | Forestry Equipment Sales',
-      '/terms': 'Terms Of Use | Forestry Equipment Sales',
-      '/cookies': 'Cookie Policy | Forestry Equipment Sales',
-      '/dmca': 'DMCA Policy | Forestry Equipment Sales',
-    };
-
-    if (pageTitles[location.pathname]) {
-      document.title = pageTitles[location.pathname];
-    }
-  }, [location.pathname, t]);
 
   useEffect(() => {
     setIsMenuOpen(false);
@@ -126,6 +136,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         >
           <input
             type="text"
+            aria-label="Search equipment"
             placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
             className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
             style={{
@@ -148,42 +159,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
-
-  const LANGUAGE_OPTIONS: ReadonlyArray<{ code: Language; label: string; flag: string }> = [
-    { code: 'EN', label: 'English (Default)', flag: '🇺🇸' },
-    { code: 'FR', label: 'Francais', flag: '🇫🇷' },
-    { code: 'DE', label: 'Deutsch', flag: '🇩🇪' },
-    { code: 'ES', label: 'Espanol', flag: '🇪🇸' },
-    { code: 'SV', label: 'Svenska', flag: '🇸🇪' },
-    { code: 'FI', label: 'Suomi', flag: '🇫🇮' },
-    { code: 'PL', label: 'Polski', flag: '🇵🇱' },
-    { code: 'IT', label: 'Italiano', flag: '🇮🇹' },
-    { code: 'CS', label: 'Cestina', flag: '🇨🇿' },
-    { code: 'RO', label: 'Romana', flag: '🇷🇴' },
-    { code: 'LV', label: 'Latviesu', flag: '🇱🇻' },
-    { code: 'PT', label: 'Portugues', flag: '🇵🇹' },
-    { code: 'SK', label: 'Slovencina', flag: '🇸🇰' },
-    { code: 'ET', label: 'Eesti', flag: '🇪🇪' },
-    { code: 'NO', label: 'Norsk', flag: '🇳🇴' },
-    { code: 'DA', label: 'Dansk', flag: '🇩🇰' },
-    { code: 'HU', label: 'Magyar', flag: '🇭🇺' },
-    { code: 'LT', label: 'Lietuviu', flag: '🇱🇹' },
-  ];
-
-  const CURRENCY_OPTIONS: ReadonlyArray<{ key: string; code: Currency; label: string }> = [
-    { key: 'USD', code: 'USD', label: 'US Dollar' },
-    { key: 'CAD', code: 'CAD', label: 'Canadian Dollar' },
-    { key: 'EUR', code: 'EUR', label: 'Euro' },
-    { key: 'GBP', code: 'GBP', label: 'British Pound' },
-    { key: 'SEK', code: 'SEK', label: 'Swedish Krona' },
-    { key: 'NOK', code: 'NOK', label: 'Norwegian Krone' },
-    { key: 'DKK', code: 'DKK', label: 'Danish Krone' },
-    { key: 'CHF', code: 'CHF', label: 'Swiss Franc' },
-    { key: 'PLN', code: 'PLN', label: 'Polish Zloty' },
-    { key: 'CZK', code: 'CZK', label: 'Czech Koruna' },
-    { key: 'RON', code: 'RON', label: 'Romanian Leu' },
-    { key: 'HUF', code: 'HUF', label: 'Hungarian Forint' },
-  ];
 
   const [selectedCurrencyKey, setSelectedCurrencyKey] = useState<string>(() => {
     const initial = CURRENCY_OPTIONS.find((option) => option.code === currency) || CURRENCY_OPTIONS[0];
@@ -260,10 +235,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ChevronDown size={12} className="shrink-0" />
             </button>
             {langDropdownOpen && (
-              <div className={`${selectorMenuClass} min-w-[180px]`}>
+              <div role="listbox" aria-label={t('layout.languageLabel', 'Language')} className={`${selectorMenuClass} min-w-[180px]`}>
                 {LANGUAGE_OPTIONS.map((lang) => (
                   <button
                     key={lang.code}
+                    role="option"
+                    aria-selected={language === lang.code}
                     onClick={() => {
                       setLanguage(lang.code);
                       if (user?.uid) {
@@ -306,10 +283,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ChevronDown size={12} className="shrink-0" />
             </button>
             {currDropdownOpen && (
-              <div className={`${selectorMenuClass} min-w-[150px] max-h-72 overflow-y-auto`}>
+              <div role="listbox" aria-label={t('layout.currencyLabel', 'Currency')} className={`${selectorMenuClass} min-w-[150px] max-h-72 overflow-y-auto`}>
                 {CURRENCY_OPTIONS.map((curr) => (
                   <button
                     key={curr.key}
+                    role="option"
+                    aria-selected={selectedCurrencyKey === curr.key}
                     onClick={() => {
                       setSelectedCurrencyKey(curr.key);
                       setCurrency(curr.code);
@@ -544,6 +523,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     href={url}
                     aria-label={label}
                     title={label}
+                    target={url.startsWith('http') ? '_blank' : undefined}
+                    rel={url.startsWith('http') ? 'noopener noreferrer' : undefined}
                     className="w-10 h-10 border border-line flex items-center justify-center hover:bg-ink hover:text-bg transition-all group"
                   >
                     <Icon size={18} className="group-hover:scale-110 transition-transform" />

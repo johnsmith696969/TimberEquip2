@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
@@ -38,6 +39,21 @@ import {
 
 dotenv.config();
 initializeServerSentry();
+
+// ── Standardized API Response Helpers ─────────────────────────────────────────
+// All new endpoints should use these helpers for consistent response envelopes.
+// Existing endpoints will be migrated incrementally.
+function apiSuccess<T>(res: express.Response, data: T, meta?: Record<string, unknown>) {
+  return res.json({ success: true, data, ...(meta ? { meta } : {}) });
+}
+
+function apiError(res: express.Response, status: number, code: string, message: string) {
+  return res.status(status).json({ success: false, error: { code, message } });
+}
+
+function apiPaginated<T>(res: express.Response, data: T[], pagination: { total: number; page: number; limit: number }) {
+  return res.json({ success: true, data, meta: { pagination } });
+}
 
 // Startup env var validation — warn on missing recommended vars
 {
@@ -189,6 +205,13 @@ type DealerFeedItem = {
   description?: string;
   location?: string;
   images?: string[];
+  imageUrls?: string[];
+  imageTitles?: string[];
+  videoUrls?: string[];
+  stockNumber?: string;
+  serialNumber?: string;
+  dealerSourceUrl?: string;
+  sourceUrl?: string;
   specs?: Record<string, unknown>;
 };
 
@@ -761,17 +784,40 @@ async function buildAdminOverviewBootstrapPayload() {
   };
 }
 
-function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sourceName: string) {
+function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sourceName: string, existingListing?: Record<string, any>) {
+  const existing = existingListing && typeof existingListing === 'object' ? existingListing : {} as Record<string, any>;
   const externalId = normalizeNonEmptyString(item.externalId);
   const make = normalizeNonEmptyString(item.make || item.manufacturer, 'Unknown');
   const model = normalizeNonEmptyString(item.model, 'Unknown');
   const title = normalizeNonEmptyString(item.title, `${make} ${model}`.trim());
   const category = normalizeNonEmptyString(item.category, 'Uncategorized');
 
-  const year = normalizeFiniteNumber(item.year, new Date().getFullYear());
-  const price = Math.max(0, normalizeFiniteNumber(item.price, 0));
-  const hours = Math.max(0, normalizeFiniteNumber(item.hours, 0));
-  const images = normalizeImageUrls(item.images);
+  const year = normalizeFiniteNumber(item.year, normalizeFiniteNumber(existing.year, 0));
+  const rawPrice = item.price !== undefined && item.price !== null && item.price !== '' ? Number(item.price) : NaN;
+  const existPrice = existing.price !== undefined && existing.price !== null ? Number(existing.price) : NaN;
+  const price = Math.max(0, Number.isFinite(rawPrice) ? rawPrice : Number.isFinite(existPrice) ? existPrice : 0);
+  const callForPrice = !Number.isFinite(rawPrice) && !Number.isFinite(existPrice);
+  const hours = Math.max(0, normalizeFiniteNumber(item.hours, normalizeFiniteNumber(existing.hours, 0)));
+  const images = normalizeImageUrls(item.images || item.imageUrls);
+
+  // Preserve existing status/approval/payment on re-sync (match Firebase Functions behavior)
+  const existingStatus = normalizeNonEmptyString(existing.status).toLowerCase();
+  const existingApprovalStatus = normalizeNonEmptyString(existing.approvalStatus).toLowerCase();
+  const existingPaymentStatus = normalizeNonEmptyString(existing.paymentStatus).toLowerCase();
+
+  let status = 'pending';
+  if (existingStatus === 'sold') status = 'sold';
+  else if (['active', 'pending'].includes(existingStatus)) status = existingStatus;
+
+  let approvalStatus = 'pending';
+  if (existingApprovalStatus === 'rejected') approvalStatus = 'rejected';
+  else if (['approved', 'pending'].includes(existingApprovalStatus)) approvalStatus = existingApprovalStatus;
+
+  let paymentStatus = 'pending';
+  if (existingPaymentStatus === 'failed') paymentStatus = 'failed';
+  else if (['paid', 'pending'].includes(existingPaymentStatus)) paymentStatus = existingPaymentStatus;
+
+  const existingExternalSource = existing.externalSource && typeof existing.externalSource === 'object' ? existing.externalSource : {};
 
   return {
     sellerUid,
@@ -784,26 +830,40 @@ function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sou
     model,
     year,
     price,
+    callForPrice: callForPrice && !existing.callForPrice ? true : Boolean(existing.callForPrice),
     currency: normalizeNonEmptyString(item.currency, 'USD'),
     hours,
     condition: normalizeNonEmptyString(item.condition, 'Used'),
     description: normalizeNonEmptyString(item.description, `${title} imported from dealer feed.`),
     location: normalizeNonEmptyString(item.location, 'Unknown'),
     images,
-    specs: item.specs && typeof item.specs === 'object' ? item.specs : {},
-    featured: false,
-    views: 0,
-    leads: 0,
-    status: 'pending',
-    approvalStatus: 'pending',
-    paymentStatus: 'pending',
-    marketValueEstimate: null,
-    sellerVerified: true,
-    qualityValidated: true,
+    imageTitles: Array.isArray(item.imageTitles) ? item.imageTitles.slice(0, images.length) : [],
+    videoUrls: Array.isArray(item.videoUrls) ? item.videoUrls.filter((u: string) => /^https?:\/\//i.test(u)).slice(0, 6) : [],
+    stockNumber: normalizeNonEmptyString(item.stockNumber),
+    serialNumber: normalizeNonEmptyString(item.serialNumber),
+    specs: {
+      ...(existing.specs && typeof existing.specs === 'object' ? existing.specs : {}),
+      ...(item.specs && typeof item.specs === 'object' ? item.specs : {}),
+    },
+    featured: Boolean(existing.featured),
+    views: Number(existing.views || 0),
+    leads: Number(existing.leads || 0),
+    status,
+    approvalStatus,
+    paymentStatus,
+    marketValueEstimate: existing.marketValueEstimate ?? null,
+    sellerVerified: existing.sellerVerified !== false,
+    qualityValidated: existing.qualityValidated !== false,
+    dataSource: 'dealer' as const,
     externalSource: {
+      ...existingExternalSource,
       sourceName,
       externalId,
-      importedAt: admin.firestore.FieldValue.serverTimestamp(),
+      stockNumber: normalizeNonEmptyString(item.stockNumber),
+      serialNumber: normalizeNonEmptyString(item.serialNumber),
+      dealerSourceUrl: normalizeNonEmptyString(item.dealerSourceUrl),
+      importedAt: existingExternalSource.importedAt || admin.firestore.FieldValue.serverTimestamp(),
+      lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
@@ -911,9 +971,16 @@ async function scanFileForViruses(buffer: Buffer): Promise<boolean> {
   return true; // File is clean
 }
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeSecretKey
-  ? new Stripe(stripeSecretKey, {
+// --- Validated server config (fail-fast on missing secrets) ---
+// Note: server.ts runs on Cloud Run where process.env is the standard
+// secret injection mechanism. Cloud Functions use defineSecret() instead.
+const serverConfig = {
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+};
+
+const stripe = serverConfig.stripeSecretKey
+  ? new Stripe(serverConfig.stripeSecretKey, {
       apiVersion: '2026-02-25.clover',
     })
   : null;
@@ -1361,12 +1428,22 @@ async function startServer() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "https://*.googleapis.com", "https://*.firebaseio.com"],
+        scriptSrc: [
+          "'self'",
+          ...(process.env.NODE_ENV === 'production' ? [] : ["'unsafe-inline'"]),
+          "https://challenges.cloudflare.com",
+          "https://www.google.com/recaptcha/",
+          "https://www.gstatic.com/recaptcha/",
+          "https://*.googleapis.com",
+          "https://apis.google.com",
+          "https://*.firebaseio.com",
+          "https://www.recaptcha.net",
+        ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://firebasestorage.googleapis.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
-        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app"],
+        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app", "https://www.recaptcha.net"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://*.stripe.com", "https://*.run.app"],
+        frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://apis.google.com", "https://*.firebaseapp.com", "https://*.stripe.com", "https://*.run.app", "https://www.recaptcha.net"],
         frameAncestors: ["'self'", "https://*.run.app"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
@@ -1463,17 +1540,21 @@ async function startServer() {
     res.status(204).end();
   });
 
-  // 3. CORS
-  const ALLOWED_ORIGINS: string[] = [
+  // 3. CORS — production allowlist excludes staging/localhost
+  const PRODUCTION_ORIGINS: string[] = [
     'https://timberequip.com',
     'https://www.timberequip.com',
     'https://mobile-app-equipment-sales.web.app',
     'https://mobile-app-equipment-sales.firebaseapp.com',
-    'https://timberequip-staging.web.app',
   ];
-  if (process.env.NODE_ENV !== 'production') {
-    ALLOWED_ORIGINS.push('http://localhost:3000', 'http://localhost:5173');
-  }
+  const DEV_ORIGINS: string[] = [
+    'https://timberequip-staging.web.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+  const ALLOWED_ORIGINS: string[] = process.env.NODE_ENV === 'production'
+    ? PRODUCTION_ORIGINS
+    : [...PRODUCTION_ORIGINS, ...DEV_ORIGINS];
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -1492,7 +1573,7 @@ async function startServer() {
     }
 
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = serverConfig.stripeWebhookSecret;
 
     let event;
 
@@ -1872,6 +1953,7 @@ async function startServer() {
   });
 
   // 5. Standard Middleware
+  app.use(compression({ threshold: 1024 }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
@@ -1904,7 +1986,21 @@ async function startServer() {
     );
   }
 
-  // 6. CSRF Protection
+  // 6a. API Versioning — accept /api/v1/* and rewrite to /api/* for handlers
+  app.use((req, _res, next) => {
+    if (req.path.startsWith('/api/v1/')) {
+      req.url = req.url.replace('/api/v1/', '/api/');
+    }
+    next();
+  });
+
+  // 6b. API Version Header
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('X-API-Version', 'v1');
+    next();
+  });
+
+  // 6c. CSRF Protection
   // Double-submit token strategy that preserves the existing frontend contract
   // without depending on the archived `csurf` package.
   app.use('/api', (req, res, next) => {
@@ -1918,8 +2014,8 @@ async function startServer() {
   });
 
   // 7. API Routes
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  app.get('/api/health', (_req, res) => {
+    apiSuccess(res, { status: 'ok', timestamp: new Date().toISOString() });
   });
 
   app.post('/api/billing/create-checkout-session', validateBody(checkoutSessionSchema), async (req, res) => {
@@ -2217,10 +2313,10 @@ async function startServer() {
         cancel_at_period_end: true,
       });
 
-      return res.json({ success: true, message: 'Subscription will be canceled at the end of the current billing period.' });
+      return apiSuccess(res, { message: 'Subscription will be canceled at the end of the current billing period.' });
     } catch (error: any) {
       console.error('Failed to cancel subscription:', error);
-      return res.status(500).json({ error: 'Failed to cancel subscription.' });
+      return apiError(res, 500, 'CANCEL_FAILED', 'Failed to cancel subscription.');
     }
   });
 
@@ -2470,10 +2566,10 @@ async function startServer() {
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      res.json({ success: true });
+      apiSuccess(res, { deleted: true });
     } catch (error: any) {
       console.error('Error deleting user account:', error);
-      res.status(500).json({ error: 'An internal error occurred.' });
+      apiError(res, 500, 'DELETE_FAILED', 'An internal error occurred.');
     }
   });
 
@@ -2625,16 +2721,16 @@ async function startServer() {
       listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified: true }));
       if (!listingsSnap.empty) await batch.commit();
 
-      return res.json({ ok: true, listingsUpdated: listingsSnap.size });
+      return apiSuccess(res, { listingsUpdated: listingsSnap.size });
     } catch (error: any) {
       console.error('Verify user failed:', error);
-      return res.status(500).json({ error: 'Unable to verify user.' });
+      return apiError(res, 500, 'VERIFY_FAILED', 'Unable to verify user.');
     }
   });
 
   app.post('/api/admin/users/:userId/unverify', async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+    if (!idToken) return apiError(res, 401, 'UNAUTHORIZED', 'Unauthorized');
 
     try {
       const decodedToken = await auth.verifyIdToken(idToken);
@@ -2660,10 +2756,10 @@ async function startServer() {
         if (!listingsSnap.empty) await batch.commit();
       }
 
-      return res.json({ ok: true });
+      return apiSuccess(res, { unverified: true });
     } catch (error: any) {
       console.error('Unverify user failed:', error);
-      return res.status(500).json({ error: 'Unable to unverify user.' });
+      return apiError(res, 500, 'UNVERIFY_FAILED', 'Unable to unverify user.');
     }
   });
 
@@ -2715,8 +2811,9 @@ async function startServer() {
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
         try {
-          const normalized = normalizeDealerFeedListing(item, sellerUid, sourceName);
-          if (!normalized.externalSource.externalId) {
+          // First pass: resolve externalId to look up existing listing
+          const tempExternalId = normalizeNonEmptyString(item.externalId);
+          if (!tempExternalId) {
             skipped += 1;
             continue;
           }
@@ -2724,9 +2821,12 @@ async function startServer() {
           const existing = await db
             .collection('listings')
             .where('sellerUid', '==', sellerUid)
-            .where('externalSource.externalId', '==', normalized.externalSource.externalId)
+            .where('externalSource.externalId', '==', tempExternalId)
             .limit(1)
             .get();
+
+          const existingData = existing.empty ? undefined : existing.docs[0].data();
+          const normalized = normalizeDealerFeedListing(item, sellerUid, sourceName, existingData);
 
           if (dryRun) {
             if (existing.empty) created += 1;
@@ -4373,11 +4473,11 @@ async function startServer() {
         console.log(`[auction/activate] Scheduled ${lotsSnap.size} lot closure timers for auction ${auctionId}`);
       }
 
-      return res.json({ success: true, lotCount });
+      return apiSuccess(res, { lotCount });
     } catch (error: any) {
       console.error('[auction/activate] Error:', error);
       captureServerException(error, { tags: { endpoint: 'auction-activate' } });
-      return res.status(500).json({ error: 'An internal error occurred while activating the auction.' });
+      return apiError(res, 500, 'ACTIVATE_FAILED', 'An internal error occurred while activating the auction.');
     }
   });
 
@@ -4491,11 +4591,11 @@ async function startServer() {
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
-      return res.json({ success: true, status: 'held' });
+      return apiSuccess(res, { status: 'held' });
     } catch (error: any) {
       console.error('[auction/confirm-preauth] Error:', error);
       captureServerException(error, { tags: { endpoint: 'confirm-preauth' } });
-      return res.status(500).json({ error: 'An internal error occurred while confirming pre-authorization.' });
+      return apiError(res, 500, 'CONFIRM_PREAUTH_FAILED', 'An internal error occurred while confirming pre-authorization.');
     }
   });
 
@@ -4686,7 +4786,16 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: '1y',
+      immutable: true,
+      etag: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.html') || filePath.endsWith('.json')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      },
+    }));
     // Known SPA routes — return 200 for these, 404 for everything else
     const SPA_ROUTES = new Set([
       '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',

@@ -265,6 +265,46 @@ export function BillingTab({ hasFullAdminDashboardScope, adminRole, onFeedback }
   const pendingCount = invoices.filter(i => i.status === 'pending').length;
   const failedCount = invoices.filter(i => i.status === 'failed').length;
   const activeSubs = subscriptions.filter(isSubscriptionTrulyActive).length;
+
+  // ── Month-over-month percentage calculations ───────────────────────────
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+
+  const paidInvoices = invoices.filter(i => i.status === 'paid');
+  const curMonthRevenue = paidInvoices.filter(i => toMillis(i.paidAt || i.createdAt) >= currentMonthStart).reduce((s, i) => s + i.amount, 0);
+  const prevMonthRevenue = paidInvoices.filter(i => { const ms = toMillis(i.paidAt || i.createdAt); return ms >= prevMonthStart && ms < currentMonthStart; }).reduce((s, i) => s + i.amount, 0);
+
+  const curMonthPending = invoices.filter(i => i.status === 'pending' && toMillis(i.createdAt) >= currentMonthStart).length;
+  const prevMonthPending = invoices.filter(i => i.status === 'pending' && (() => { const ms = toMillis(i.createdAt); return ms >= prevMonthStart && ms < currentMonthStart; })()).length;
+
+  const curMonthFailed = invoices.filter(i => i.status === 'failed' && toMillis(i.createdAt) >= currentMonthStart).length;
+  const prevMonthFailed = invoices.filter(i => i.status === 'failed' && (() => { const ms = toMillis(i.createdAt); return ms >= prevMonthStart && ms < currentMonthStart; })()).length;
+
+  // For subscriptions we only have current snapshot — show count vs total subscriptions as a health indicator
+  // Count canceled/expired subs that ended in current month as recent churn to approximate change
+  const recentChurn = subscriptions.filter(s => {
+    if (s.status === 'canceled' || !isSubscriptionTrulyActive(s)) {
+      const end = toMillis(s.currentPeriodEnd);
+      return end >= currentMonthStart;
+    }
+    return false;
+  }).length;
+  const prevMonthActiveSubs = activeSubs + recentChurn;
+
+  function computeChange(current: number, previous: number): string {
+    if (previous === 0 && current === 0) return '0%';
+    if (previous === 0) return current > 0 ? 'New' : '0%';
+    const pct = Math.round(((current - previous) / previous) * 100);
+    if (pct > 0) return `+${pct}%`;
+    if (pct < 0) return `${pct}%`;
+    return '0%';
+  }
+
+  const revenueChange = computeChange(curMonthRevenue, prevMonthRevenue);
+  const pendingChange = computeChange(curMonthPending, prevMonthPending);
+  const failedChange = computeChange(curMonthFailed, prevMonthFailed);
+  const subsChange = computeChange(activeSubs, prevMonthActiveSubs);
   const uniqueAccountEventTypes = Array.from(new Set(accountAuditLogs.map((log) => log.eventType).filter(Boolean))).sort();
   const uniqueAccountActors = Array.from(new Set(accountAuditLogs.map((log) => log.actorUid).filter((uid): uid is string => Boolean(uid)))).sort();
   const accountAuditQ = accountAuditSearchQuery.toLowerCase();
@@ -298,7 +338,7 @@ export function BillingTab({ hasFullAdminDashboardScope, adminRole, onFeedback }
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 overflow-y-auto max-h-[calc(100vh-180px)]">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-black uppercase tracking-tighter">Billing & Revenue Dashboard</h2>
         <div className="flex space-x-4">
@@ -331,17 +371,17 @@ export function BillingTab({ hasFullAdminDashboardScope, adminRole, onFeedback }
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: 'Total Revenue', value: `$${totalRevenue.toLocaleString()}`, change: '+12%', icon: TrendingUp },
-          { label: 'Pending Invoices', value: pendingCount.toString(), change: '-5%', icon: Clock },
-          { label: 'Failed Payments', value: failedCount.toString(), change: '0%', icon: AlertCircle },
-          { label: 'Active Subscriptions', value: activeSubs.toString(), change: '+8%', icon: Users }
+          { label: 'Total Revenue', value: `$${totalRevenue.toLocaleString()}`, change: revenueChange, icon: TrendingUp },
+          { label: 'Pending Invoices', value: pendingCount.toString(), change: pendingChange, icon: Clock },
+          { label: 'Failed Payments', value: failedCount.toString(), change: failedChange, icon: AlertCircle },
+          { label: 'Active Subscriptions', value: activeSubs.toString(), change: subsChange, icon: Users }
         ].map((stat, i) => (
           <div key={i} className="bg-surface border border-line p-6 flex justify-between items-center">
             <div>
               <span className="label-micro text-muted mb-1">{stat.label}</span>
               <div className="flex items-baseline space-x-2">
                 <span className="text-2xl font-black tracking-tighter">{stat.value}</span>
-                <span className={`text-[10px] font-bold ${stat.change.startsWith('+') ? 'text-data' : 'text-accent'}`}>{stat.change}</span>
+                <span className={`text-[10px] font-bold ${stat.change.startsWith('+') || stat.change === 'New' ? 'text-data' : stat.change.startsWith('-') ? 'text-accent' : 'text-muted'}`}>{stat.change}</span>
               </div>
             </div>
             <stat.icon className="text-accent/40" size={24} />

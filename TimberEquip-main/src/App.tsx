@@ -38,16 +38,17 @@ const Compare = lazy(() => import('./pages/Compare').then((module) => ({ default
 const Categories = lazy(() => import('./pages/Categories').then((module) => ({ default: module.Categories })));
 const Manufacturers = lazy(() => import('./pages/Manufacturers').then((module) => ({ default: module.Manufacturers })));
 const States = lazy(() => import('./pages/States').then((module) => ({ default: module.States })));
-const ForestryHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ForestryHubPage })));
-const LoggingHubPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.LoggingHubPage })));
-const CategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.CategoryLandingPage })));
+const seoLandingImport = () => import('./pages/SeoLandingPages');
+const ForestryHubPage = lazy(() => seoLandingImport().then((m) => ({ default: m.ForestryHubPage })));
+const LoggingHubPage = lazy(() => seoLandingImport().then((m) => ({ default: m.LoggingHubPage })));
+const CategoryLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.CategoryLandingPage })));
 const CategorySearchPage = lazy(() => import('./pages/CategorySearchPage').then((module) => ({ default: module.CategorySearchPage })));
-const ManufacturerLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerLandingPage })));
-const ManufacturerModelLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelLandingPage })));
-const ManufacturerModelCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerModelCategoryLandingPage })));
-const StateMarketLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateMarketLandingPage })));
-const StateCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.StateCategoryLandingPage })));
-const ManufacturerCategoryLandingPage = lazy(() => import('./pages/SeoLandingPages').then((module) => ({ default: module.ManufacturerCategoryLandingPage })));
+const ManufacturerLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.ManufacturerLandingPage })));
+const ManufacturerModelLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.ManufacturerModelLandingPage })));
+const ManufacturerModelCategoryLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.ManufacturerModelCategoryLandingPage })));
+const StateMarketLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.StateMarketLandingPage })));
+const StateCategoryLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.StateCategoryLandingPage })));
+const ManufacturerCategoryLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.ManufacturerCategoryLandingPage })));
 const DealerOS = lazy(() => import('./pages/DealerOS').then((module) => ({ default: module.DealerOS })));
 const Profile = lazy(() => import('./pages/Profile').then((module) => ({ default: module.Profile })));
 const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess').then((module) => ({ default: module.SubscriptionSuccess })));
@@ -61,6 +62,8 @@ const AuctionDetail = lazy(() => import('./pages/AuctionDetail').then((module) =
 const AuctionLotDetail = lazy(() => import('./pages/AuctionLotDetail').then((module) => ({ default: module.AuctionLotDetail })));
 const BidderRegistration = lazy(() => import('./pages/BidderRegistration').then((module) => ({ default: module.BidderRegistration })));
 const Calculator = lazy(() => import('./pages/Calculator').then((module) => ({ default: module.Calculator })));
+const Changelog = lazy(() => import('./pages/Changelog').then((module) => ({ default: module.Changelog })));
+const VulnerabilityDisclosure = lazy(() => import('./pages/VulnerabilityDisclosure').then((module) => ({ default: module.VulnerabilityDisclosure })));
 
 function RouteLoadingFallback() {
   return (
@@ -167,6 +170,8 @@ function App() {
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/cookies" element={<Cookies />} />
                     <Route path="/dmca" element={<Dmca />} />
+                    <Route path="/vulnerability-disclosure" element={<VulnerabilityDisclosure />} />
+                    <Route path="/changelog" element={<Suspense fallback={<div />}><Changelog /></Suspense>} />
                     <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/unsubscribe" element={<Unsubscribe />} />
                     <Route path="/bookmarks" element={<ProtectedRoute><Bookmarks /></ProtectedRoute>} />

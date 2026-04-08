@@ -50,7 +50,7 @@ const BASE_STYLES = `
   .message-box { background: #eefbf2 !important; border-left: 3px solid #16A34A; padding: 16px 20px; margin: 20px 0; border-radius: 2px; box-shadow: 0 8px 18px rgba(22, 163, 74, 0.10); }
   .message-box p { color: #224b22 !important; font-size: 14px; margin: 0; font-style: italic; }
   .cta { display: inline-block; background: #16A34A; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; box-shadow: 0 10px 22px rgba(22, 163, 74, 0.22); }
-  .cta-secondary { background: #ffffff !important; border: 1px solid #15803D; color: #15803D !important; box-shadow: 0 8px 18px rgba(21, 128, 61, 0.10); }
+  .cta-secondary { background: #ffffff !important; border: 2px solid #15803D; color: #15803D !important; box-shadow: 0 8px 18px rgba(21, 128, 61, 0.10); }
   .info-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .info-label { color: #6b7280 !important; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; min-width: 120px; }
   .info-value { color: #111827 !important; font-size: 11px; font-weight: 600; }
@@ -698,7 +698,7 @@ const templates = {
       </div>
       <p>Click the login link below, sign in with the temporary password, then reset your password from the reset link or the "Forgot Password" flow on the login screen.</p>
       <a href="${loginUrl}" class="cta">Open Login</a>
-      <a href="${resetLink}" class="cta" style="background:#ffffff; border:1px solid #4f8f3a; color:#2f6f2d; margin-left:12px;">Reset Password</a>
+      <a href="${resetLink}" class="cta" style="background:#2d6a4f; border:1px solid #2d6a4f; color:#ffffff; margin-left:12px;">Reset Password</a>
       <hr class="divider" />
       <p style="font-size:12px; color:#666;">For security, change the temporary password as soon as you sign in.</p>
     `);
@@ -785,7 +785,7 @@ const templates = {
         <div class="info-row"><span class="info-label">Connected Calls</span><span class="info-value">${connectedCalls}</span></div>
         <div class="info-row"><span class="info-label">Qualified Calls (60s+)</span><span class="info-value">${qualifiedCalls}</span></div>
         <div class="info-row"><span class="info-label">Missed Calls</span><span class="info-value">${missedCalls}</span></div>
-        <div class="info-row"><span class="info-label">Listing Views</span><span class="info-value">${totalViews || 0}</span></div>
+        <div class="info-row"><span class="info-label">Storefront Views</span><span class="info-value">${totalViews || 0}</span></div>
       </div>
 
       <h2>Top Machines by Inquiry Volume</h2>
@@ -974,6 +974,146 @@ const templates = {
         <p><strong>Timeline:</strong> The buyer has until the payment deadline to submit payment. Once payment clears, the Forestry Equipment Sales team will coordinate payout to your account and equipment removal logistics.</p>
       </div>
       <a href="${lotUrl}" class="cta">View Lot Details</a>
+    `);
+    return { subject, html };
+  },
+
+  adminPlatformMonthlyReport({
+    monthLabel,
+    totalListings,
+    liveListings,
+    soldListings,
+    totalViews,
+    totalInquiries,
+    totalCalls,
+    connectedCalls,
+    qualifiedCalls,
+    missedCalls,
+    activeSubscriptions,
+    newSubscriptions,
+    cancelledSubscriptions,
+    estimatedMrr,
+    activeUsers,
+    newUsers,
+    topSellersSummary,
+    topListingsByViews,
+    dashboardUrl,
+  }) {
+    const fmtNum = (v) => Number(v || 0).toLocaleString('en-US');
+    const fmtCurrency = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const netSubs = (Number(newSubscriptions) || 0) - (Number(cancelledSubscriptions) || 0);
+    const netSubsLabel = netSubs > 0 ? `+${netSubs}` : String(netSubs);
+    const netSubsColor = netSubs >= 0 ? '#16A34A' : '#DC2626';
+
+    const metricCard = (label, value, subtext) => `
+      <td style="padding:12px 14px; text-align:center; vertical-align:top;">
+        <div style="font-size:10px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:#6b7280; margin-bottom:6px;">${label}</div>
+        <div style="font-size:28px; font-weight:900; color:#111827; letter-spacing:-0.03em; line-height:1;">${value}</div>
+        ${subtext ? `<div style="font-size:10px; color:#9ca3af; margin-top:4px;">${subtext}</div>` : ''}
+      </td>`;
+
+    const sellerRows = Array.isArray(topSellersSummary)
+      ? topSellersSummary.slice(0, 15).map((s, i) => `<tr>
+          <td style="padding:6px 10px; font-size:12px; color:#6b7280; border-bottom:1px solid #f3f4f6;">${i + 1}</td>
+          <td style="padding:6px 10px; font-size:12px; color:#111827; font-weight:600; border-bottom:1px solid #f3f4f6;">${s.name}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.listings)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.views)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.leads)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.calls)}</td>
+        </tr>`).join('')
+      : '';
+
+    const topListingsRows = Array.isArray(topListingsByViews)
+      ? topListingsByViews.slice(0, 10).map((l, i) => `<tr>
+          <td style="padding:6px 10px; font-size:12px; color:#6b7280; border-bottom:1px solid #f3f4f6;">${i + 1}</td>
+          <td style="padding:6px 10px; font-size:12px; color:#111827; font-weight:600; border-bottom:1px solid #f3f4f6;">${l.title}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(l.views)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(l.inquiries)}</td>
+        </tr>`).join('')
+      : '';
+
+    const subject = `${monthLabel} — Platform Performance Report`;
+    const html = baseLayout(subject, `${monthLabel} Platform Report`, `
+      <p class="label">Admin Platform Report</p>
+      <h2>Full marketplace performance for ${monthLabel}</h2>
+      <p>This comprehensive report covers all platform activity across the Forestry Equipment Sales marketplace, including listings, engagement, subscriptions, and revenue.</p>
+
+      <hr class="divider" />
+
+      <p class="label">Inventory Overview</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0 24px;">
+        <tr style="background:#f8fafc;">
+          ${metricCard('Live Listings', fmtNum(liveListings))}
+          ${metricCard('Total Listings', fmtNum(totalListings))}
+          ${metricCard('Sold', fmtNum(soldListings))}
+        </tr>
+      </table>
+
+      <p class="label">Engagement (30-Day Rolling)</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0 24px;">
+        <tr style="background:#f8fafc;">
+          ${metricCard('Page Views', fmtNum(totalViews))}
+          ${metricCard('Inquiries', fmtNum(totalInquiries))}
+          ${metricCard('Calls', fmtNum(totalCalls), `${fmtNum(connectedCalls)} connected · ${fmtNum(qualifiedCalls)} qualified`)}
+        </tr>
+      </table>
+
+      <p class="label">Subscriptions &amp; Revenue</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0 24px;">
+        <tr style="background:#f8fafc;">
+          ${metricCard('Active Subs', fmtNum(activeSubscriptions))}
+          ${metricCard('New', `+${fmtNum(newSubscriptions)}`)}
+          ${metricCard('Cancelled', fmtNum(cancelledSubscriptions))}
+        </tr>
+        <tr style="background:#ffffff;">
+          ${metricCard('Net Change', `<span style="color:${netSubsColor};">${netSubsLabel}</span>`)}
+          ${metricCard('Est. MRR', fmtCurrency(estimatedMrr))}
+          ${metricCard('Active Users', fmtNum(activeUsers), `${fmtNum(newUsers)} new this period`)}
+        </tr>
+      </table>
+
+      <p class="label">Missed Calls</p>
+      <div class="panel">
+        <div class="info-row">
+          <span class="info-label">Missed / Voicemail</span>
+          <span class="info-value">${fmtNum(missedCalls)}</span>
+        </div>
+        <p style="margin-top:8px; font-size:12px; color:#6b7280;">Missed calls represent potential revenue lost. Consider follow-up campaigns for sellers with high miss rates.</p>
+      </div>
+
+      <hr class="divider" />
+
+      <h2>Top Sellers by Activity</h2>
+      ${sellerRows ? `
+      <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+        <tr style="background:#f8fafc;">
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">#</th>
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Seller</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Listings</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Leads</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
+        </tr>
+        ${sellerRows}
+      </table>` : '<p>No seller activity recorded this period.</p>'}
+
+      <hr class="divider" />
+
+      <h2>Top Listings by Views</h2>
+      ${topListingsRows ? `
+      <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+        <tr style="background:#f8fafc;">
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">#</th>
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Listing</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Inquiries</th>
+        </tr>
+        ${topListingsRows}
+      </table>` : '<p>No listing view data available this period.</p>'}
+
+      <hr class="divider" />
+      <p>This report is generated automatically and sent to all platform administrators on the 1st of each month. For questions about metrics methodology or to update admin recipients, contact the engineering team.</p>
+      <a href="${dashboardUrl || ADMIN_URL}" class="cta">Open Admin Dashboard</a>
     `);
     return { subject, html };
   },

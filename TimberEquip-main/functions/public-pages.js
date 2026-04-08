@@ -2148,7 +2148,7 @@ async function renderRoute(req, res) {
         description: 'Browse state-level inventory routes generated from live marketplace locations.',
         canonicalUrl: `${baseUrl}/states`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'These regional routes give the marketplace cleaner geographic landing pages for buyers, dealers, and organic search.',
+        intro: 'Choose a state to see live inventory located there, then move into the categories, manufacturers, and listings that fit your search.',
         breadcrumbs,
         statValue,
         items,

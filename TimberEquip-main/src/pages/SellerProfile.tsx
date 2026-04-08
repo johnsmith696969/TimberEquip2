@@ -342,8 +342,8 @@ export function SellerProfile() {
   const coverImage = seller.coverPhotoUrl || 'https://picsum.photos/seed/timberequip-storefront/1920/720';
   const logoImage = seller.logo || 'https://picsum.photos/seed/timberequip-logo/260/260';
   const headline = seller.storefrontName || seller.name;
-  const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
-  const description = seller.storefrontDescription || 'This storefront is managed on Forestry Equipment Sales with branded inventory, verified seller controls, and direct lead routing.';
+  const tagline = seller.storefrontTagline || '';
+  const description = seller.storefrontDescription || '';
   const preferredDealerPath = buildDealerPath(seller);
   const storefrontCategoryLinks = (() => {
     const counts = new Map<string, number>();
@@ -712,6 +712,25 @@ export function SellerProfile() {
                 <a
                   href={sellerPhoneHref || undefined}
                   className={`btn-industrial flex-1 py-3 bg-white/10 border-white/20 hover:bg-white hover:text-ink ${sellerPhoneHref ? '' : 'pointer-events-none opacity-50'}`}
+                  onClick={() => {
+                    if (!seller || !sellerPhoneHref) return;
+                    equipmentService.createCallLog({
+                      listingId: '',
+                      listingTitle: `Storefront: ${seller.name || 'Unknown'}`,
+                      sellerId: seller.id || id || '',
+                      sellerUid: seller.id || id || '',
+                      sellerName: seller.name || 'Unknown Seller',
+                      sellerPhone: seller.phone || '',
+                      callerUid: currentUser?.uid || null,
+                      callerName: (currentUser?.displayName || currentUser?.email || 'Guest User').trim(),
+                      callerEmail: currentUser?.email || '',
+                      callerPhone: String(currentUser?.phoneNumber || ''),
+                      duration: 0,
+                      status: 'Initiated',
+                      source: 'seller_profile',
+                      isAuthenticated: Boolean(currentUser?.uid),
+                    }).catch(() => {});
+                  }}
                 >
                   <Phone size={14} className="mr-2" />
                   Call
@@ -732,22 +751,24 @@ export function SellerProfile() {
       </section>
 
       <section className="py-24 px-4 md:px-8 max-w-[1600px] mx-auto">
-        <div className="flex justify-between items-end mb-16 border-b border-line pb-8">
-          <div>
+        <div className="mb-16 flex flex-col gap-6 border-b border-line pb-8 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
             <span className="label-micro text-accent mb-2 block">Storefront Inventory</span>
             <h2 className="text-4xl font-black uppercase tracking-tighter">
               {categorySlug ? `${titleCaseSlug(categorySlug)} ` : 'Current '}<span className="text-muted">Equipment</span>
             </h2>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
             <input
               type="text"
               value={storefrontSearchQuery}
               onChange={(e) => { setStorefrontSearchQuery(e.target.value); setStorefrontDisplayCount(24); }}
               placeholder="Search inventory..."
-              className="input-industrial w-48 px-3 text-[10px] font-bold uppercase tracking-widest"
+              className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest sm:w-64 md:w-48"
             />
-            <span className="text-xs font-bold uppercase tracking-widest text-muted">{filteredListings.length} Results</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-muted sm:text-right">
+              {filteredListings.length} Results
+            </span>
           </div>
         </div>
 

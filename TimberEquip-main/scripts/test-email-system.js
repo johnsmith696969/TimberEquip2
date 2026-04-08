@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 // Email templates
 const TEMPLATES = [
   'adminInquiryAlert',
+  'adminPlatformMonthlyReport',
   'contactRequestAdmin',
   'contactRequestConfirmation',
   'financingRequestAdmin',
@@ -39,8 +40,8 @@ const TEMPLATES = [
   'welcomeVerification',
 ];
 
-// Get test email from command line args or use default
-const testEmail = process.argv[2] || 'caleb@forestryequipmentsales.com';
+// Get test email from command line args or environment variable
+const testEmail = process.argv[2] || process.env.TEST_EMAIL || 'admin@example.com';
 
 console.log(`\n🧪 Forestry Equipment Sales Email System Test`);
 console.log(`═══════════════════════════════════════`);

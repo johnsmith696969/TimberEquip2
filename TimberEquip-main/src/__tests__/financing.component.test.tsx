@@ -55,7 +55,7 @@ describe('Financing component', () => {
     useAuthMock.mockReturnValue({
       user: {
         displayName: 'Caleb H',
-        email: 'calebhappy@gmail.com',
+        email: 'admin@example.com',
         phoneNumber: '+12187200933',
       },
     });
@@ -114,7 +114,7 @@ describe('Financing component', () => {
     await waitFor(() => {
       expect(submitFinancingRequestMock).toHaveBeenCalledWith(expect.objectContaining({
         applicantName: 'Caleb H',
-        applicantEmail: 'calebhappy@gmail.com',
+        applicantEmail: 'admin@example.com',
         contactConsentAccepted: true,
         contactConsentScope: 'financing_request_specific',
       }));

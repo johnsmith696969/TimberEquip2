@@ -178,6 +178,32 @@ export async function getPlacePredictions(input: string, mode: GooglePlacesMode 
   }
 }
 
+export async function reverseGeocode(latitude: number, longitude: number): Promise<string | null> {
+  if (!BROWSER_GOOGLE_MAPS_API_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&result_type=locality|administrative_area_level_1&key=${BROWSER_GOOGLE_MAPS_API_KEY}`
+    );
+    if (!response.ok) return null;
+
+    const payload = await response.json();
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    if (results.length === 0) return null;
+
+    const components = Array.isArray(results[0].address_components) ? results[0].address_components : [];
+    const city = components.find((c: { types?: string[] }) => c.types?.includes('locality'))?.long_name || '';
+    const state = components.find((c: { types?: string[] }) => c.types?.includes('administrative_area_level_1'))?.short_name || '';
+    const country = components.find((c: { types?: string[] }) => c.types?.includes('country'))?.long_name || '';
+
+    return [city, state, country].filter(Boolean).join(', ') || results[0].formatted_address || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getPlaceDetails(placeId: string): Promise<GooglePlaceSelection | null> {
   const normalizedPlaceId = String(placeId || '').trim();
   if (!normalizedPlaceId) {

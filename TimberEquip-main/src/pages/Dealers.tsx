@@ -830,7 +830,7 @@ export function Dealers() {
             </div>
           ) : filteredDealers.length === 0 ? (
             <div className="border border-dashed border-line bg-surface px-8 py-16 text-center rounded-sm">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-line bg-bg text-accent">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-line bg-bg text-accent">
                 <Building2 size={24} />
               </div>
               <h3 className="mt-6 text-2xl font-black uppercase tracking-tight text-ink">No Dealers Match</h3>
@@ -864,30 +864,31 @@ export function Dealers() {
                             )}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <h3 className="truncate text-2xl font-black uppercase tracking-tight text-ink">{dealerName}</h3>
-                              <span className="inline-flex items-center rounded-full border border-accent/20 bg-accent/8 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-accent">
-                                {getDealerRoleLabel(dealer.role)}
-                              </span>
-                              {distance && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-data/20 bg-data/8 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-data">
-                                  <Navigation size={10} />
-                                  {distance}
+                            <h3 className="truncate text-2xl font-black uppercase tracking-tight text-ink">{dealerName}</h3>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                              <div className="border border-line bg-surface/60 px-4 py-3">
+                                <span className="label-micro mb-2 block">Storefront Type</span>
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-ink">
+                                  {getDealerRoleLabel(dealer.role)}
                                 </span>
+                              </div>
+                              {distance && (
+                                <div className="border border-line bg-surface/60 px-4 py-3">
+                                  <span className="label-micro mb-2 block">Distance</span>
+                                  <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-ink">
+                                    <Navigation size={12} className="text-accent" />
+                                    {distance}
+                                  </span>
+                                </div>
                               )}
                             </div>
                             {(dealer.servicesOfferedCategories?.length ?? 0) > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {dealer.servicesOfferedCategories!.slice(0, 4).map((cat) => (
-                                  <span key={cat} className="rounded-sm bg-surface border border-line px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-muted">
-                                    {cat}
-                                  </span>
-                                ))}
-                                {(dealer.servicesOfferedCategories!.length > 4) && (
-                                  <span className="rounded-sm bg-surface border border-line px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-muted">
-                                    +{dealer.servicesOfferedCategories!.length - 4}
-                                  </span>
-                                )}
+                              <div className="mt-3 border border-line bg-surface/60 px-4 py-3">
+                                <span className="label-micro mb-2 block">Categories Served</span>
+                                <span className="text-xs font-medium leading-relaxed text-muted">
+                                  {dealer.servicesOfferedCategories!.slice(0, 4).join(', ')}
+                                  {dealer.servicesOfferedCategories!.length > 4 ? `, +${dealer.servicesOfferedCategories!.length - 4} more` : ''}
+                                </span>
                               </div>
                             )}
                           </div>

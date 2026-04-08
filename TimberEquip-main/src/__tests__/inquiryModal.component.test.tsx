@@ -56,7 +56,7 @@ describe('InquiryModal component', () => {
 
     const [nameInput, emailInput, phoneInput] = screen.getAllByRole('textbox');
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
-    fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
+    fireEvent.change(emailInput, { target: { value: 'admin@example.com' } });
     fireEvent.change(phoneInput, { target: { value: '+12187200933' } });
     const submitButton = screen.getByRole('button', { name: /send inquiry/i });
     fireEvent.submit(submitButton.closest('form')!);
@@ -74,7 +74,7 @@ describe('InquiryModal component', () => {
 
     const [nameInput, emailInput, phoneInput] = screen.getAllByRole('textbox');
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
-    fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
+    fireEvent.change(emailInput, { target: { value: 'admin@example.com' } });
     fireEvent.change(phoneInput, { target: { value: '+12187200933' } });
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /send inquiry/i }));
@@ -84,7 +84,7 @@ describe('InquiryModal component', () => {
         listingId: 'listing-qa-1',
         sellerUid: 'seller-qa-1',
         buyerName: 'Caleb Happy',
-        buyerEmail: 'calebhappy@gmail.com',
+        buyerEmail: 'admin@example.com',
         contactConsentAccepted: true,
         contactConsentScope: 'listing_seller_specific',
       }));

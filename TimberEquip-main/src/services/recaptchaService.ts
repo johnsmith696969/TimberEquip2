@@ -3,6 +3,8 @@ const SCRIPT_SRC = `https://www.google.com/recaptcha/enterprise.js?render=${enco
 const PRODUCTION_RECAPTCHA_HOSTS = new Set([
   'timberequip.com',
   'www.timberequip.com',
+  'forestryequipmentsales.com',
+  'www.forestryequipmentsales.com',
   'mobile-app-equipment-sales.web.app',
   'mobile-app-equipment-sales.firebaseapp.com',
 ]);
@@ -130,12 +132,16 @@ export async function verifyRecaptchaAction(action: string): Promise<boolean> {
     return true;
   }
 
-  const token = await getRecaptchaToken(action);
+  // Attempt token generation with one retry on failure
+  let token = await getRecaptchaToken(action);
   if (!token) {
-    // Token generation failed (script blocked, network error, wrong key).
-    // Fail open — Firebase Auth has its own brute-force protection.
-    console.warn(`[reCAPTCHA] Token generation failed for action "${action}" — allowing request.`);
-    return true;
+    token = await getRecaptchaToken(action);
+  }
+  if (!token) {
+    // Token generation failed after retry (script blocked, network error, wrong key).
+    // Fail closed — reject the request to prevent bot bypass.
+    console.warn(`[reCAPTCHA] Token generation failed for action "${action}" — blocking request.`);
+    return false;
   }
 
   return assessRecaptcha(token, action);

@@ -108,6 +108,11 @@ function ListingRow({
         </button>
       </div>
 
+      {/* Views — hidden on mobile */}
+      <div role="cell" className="hidden lg:block w-16 text-xs font-black text-ink px-2 text-right">
+        {listing.views || 0}
+      </div>
+
       {/* Leads — hidden on mobile */}
       <div role="cell" className="hidden lg:block w-16 text-xs font-black text-ink px-2 text-right">
         {listing.leads || 0}
@@ -318,6 +323,7 @@ export const VirtualizedListingsTable: React.FC<VirtualizedListingsTableProps> =
             Hours<SortIndicator column="hours" sortCol={sortCol} sortDir={sortDir} />
           </div>
           <div role="columnheader" className="hidden lg:block w-32 text-[10px] font-black uppercase tracking-widest text-muted px-2">Location</div>
+          <div role="columnheader" className="hidden lg:block w-16 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Views</div>
           <div role="columnheader" className="hidden lg:block w-16 text-[10px] font-black uppercase tracking-widest text-muted px-2 text-right">Leads</div>
           <div
             role="columnheader"

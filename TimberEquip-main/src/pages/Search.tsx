@@ -19,6 +19,7 @@ import { taxonomyService, type FullEquipmentTaxonomy } from '../services/taxonom
 import { Listing, AlertPreferences } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { InquiryModal } from '../components/InquiryModal';
+import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useAuth } from '../components/AuthContext';
@@ -37,7 +38,7 @@ import { AlertMessage } from '../components/AlertMessage';
 import { buildSiteUrl } from '../utils/siteUrl';
 import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
-import type { GooglePlaceSelection } from '../services/placesService';
+import { reverseGeocode, type GooglePlaceSelection } from '../services/placesService';
 import {
   getTaxonomyCategoryOptions,
   getTaxonomyManufacturerOptions,
@@ -48,6 +49,7 @@ import {
 } from '../utils/equipmentTaxonomy';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
+type SearchViewMode = 'grid' | 'list';
 
 const MULTI_SELECT_KEYS = new Set(['manufacturer', 'model', 'subcategory', 'condition', 'state', 'country', 'attachment', 'feature']);
 
@@ -159,6 +161,17 @@ const matchesEquipmentFilterSet = (
 };
 
 const LOCATION_RADIUS_OPTIONS = ['25', '50', '100', '250', '500', '1000'];
+const SEARCH_VIEW_MODE_SESSION_KEY = 'fes-search-view-mode';
+
+const getInitialSearchViewMode = (): SearchViewMode => {
+  if (typeof window === 'undefined') return 'grid';
+  try {
+    const saved = window.sessionStorage.getItem(SEARCH_VIEW_MODE_SESSION_KEY);
+    return saved === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+};
 
 const DEFAULT_ALERT_PREFERENCES: AlertPreferences = {
   newListingAlerts: true,
@@ -398,17 +411,17 @@ const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey):
   return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : '', multiSummary(filters.state, 'state', 'states'), multiSummary(filters.country, 'country', 'countries')].filter(Boolean).join(' | ') || 'Location and radius';
 };
 
-function FilterSectionPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
+function FilterSectionPanel({ open, children, allowOverflow = false }: { open: boolean; children: React.ReactNode; allowOverflow?: boolean }) {
   return (
     <motion.div
       initial={false}
       animate={open ? 'open' : 'collapsed'}
       variants={{
-        open: { height: 'auto', opacity: 1 },
-        collapsed: { height: 0, opacity: 0 },
+        open: { height: 'auto', opacity: 1, overflow: allowOverflow ? 'visible' : 'hidden' },
+        collapsed: { height: 0, opacity: 0, overflow: 'hidden' },
       }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className="overflow-hidden"
+      className={!open ? 'overflow-hidden' : (allowOverflow ? 'overflow-visible' : 'overflow-hidden')}
       {...(!open ? { inert: true as unknown as boolean } : {})}
     >
       <div className="border-t border-line bg-surface/40 p-4 space-y-4">
@@ -418,15 +431,12 @@ function FilterSectionPanel({ open, children }: { open: boolean; children: React
   );
 }
 
-function getPageSize() {
-  if (typeof window === 'undefined') return 21;
-  return 21;
-}
+const PAGE_SIZE = 21;
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
 export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } = {}) {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
-  const { t, formatNumber } = useLocale();
+  const { t, formatNumber, formatPrice } = useLocale();
   const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -449,7 +459,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     }
     void toggleFavorite(normalizedId);
   };
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<SearchViewMode>(() => getInitialSearchViewMode());
   const [showFilters, setShowFilters] = useState(true);
   const [compareList, setCompareList] = useState<string[]>([]);
   const [filters, setFilters] = useState<SearchFilters>(() => {
@@ -480,18 +490,28 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     specs: false,
     location: false,
   });
-  const [pageSize] = useState(getPageSize);
-  const [displayCount, setDisplayCount] = useState(getPageSize);
+  const [pageSize] = useState(PAGE_SIZE);
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertEmail, setAlertEmail] = useState('');
   const [savedSearchName, setSavedSearchName] = useState('');
   const [savingSearch, setSavingSearch] = useState(false);
   const [alertPreferences, setAlertPreferences] = useState<AlertPreferences>(DEFAULT_ALERT_PREFERENCES);
   const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
+  const [financingListing, setFinancingListing] = useState<Listing | null>(null);
   const [auctionOnly, setAuctionOnly] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [geoLocating, setGeoLocating] = useState(false);
   const favoriteIds = normalizeListingIdList(user?.favorites);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(SEARCH_VIEW_MODE_SESSION_KEY, viewMode);
+    } catch {
+      // Ignore storage failures and keep the in-memory preference.
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1042,11 +1062,12 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const { latitude, longitude } = position.coords;
         const coords = { lat: latitude, lng: longitude };
         setUserCoords(coords);
-        const locationLabel = user?.location?.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        const geoLabel = await reverseGeocode(latitude, longitude).catch(() => null);
+        const locationLabel = geoLabel || user?.location?.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
         const nextLocationState = {
           ...buildLocationFilterState(locationLabel, latitude, longitude),
           locationRadius: '500',
@@ -1375,6 +1396,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <button
                     type="button"
                     onClick={() => toggleSection('equipment')}
+                    aria-expanded={openSections.equipment}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -1450,6 +1472,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <button
                     type="button"
                     onClick={() => toggleSection('pricing')}
+                    aria-expanded={openSections.pricing}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -1542,6 +1565,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   <button
                     type="button"
                     onClick={() => toggleSection('specs')}
+                    aria-expanded={openSections.specs}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -1616,10 +1640,11 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   </FilterSectionPanel>
                 </div>
 
-                <div className="border border-line bg-bg rounded-sm overflow-hidden">
+                <div className="border border-line bg-bg rounded-sm">
                   <button
                     type="button"
                     onClick={() => toggleSection('location')}
+                    aria-expanded={openSections.location}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -1630,42 +1655,41 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     </div>
                     {openSections.location ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  <FilterSectionPanel open={openSections.location}>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-2 flex flex-col space-y-2">
-                          <label htmlFor="search-location" className="label-micro">Location</label>
-                          <GooglePlacesInput
-                            id="search-location"
-                            mode="address"
-                            value={draftFilters.location}
-                            onChange={(value) => handleDraftFilterChange('location', value)}
-                            onSelect={(place) => {
-                              const nextLocation = buildLocationSelectionLabel(place);
-                              setDraftFilters((prev) => ({
-                                ...prev,
-                                ...buildLocationFilterState(nextLocation, place.latitude, place.longitude),
-                              }));
-                            }}
-                            placeholder="Address, city, state, or ZIP"
-                            className="space-y-0"
-                          />
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-radius" className="label-micro">Radius (mi)</label>
-                          <select
-                            id="search-radius"
-                            value={draftFilters.locationRadius}
-                            onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
-                            className="select-industrial w-full"
-                          >
-                            <option value="">Select</option>
-                            {LOCATION_RADIUS_OPTIONS.map((radius) => (
-                              <option key={radius} value={radius}>
-                                {radius}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                  <FilterSectionPanel open={openSections.location} allowOverflow>
+                      <div className="flex flex-col space-y-2">
+                        <label htmlFor="search-location" className="label-micro">Location</label>
+                        <GooglePlacesInput
+                          id="search-location"
+                          mode="address"
+                          showIcon={false}
+                          value={draftFilters.location}
+                          onChange={(value) => handleDraftFilterChange('location', value)}
+                          onSelect={(place) => {
+                            const nextLocation = buildLocationSelectionLabel(place);
+                            setDraftFilters((prev) => ({
+                              ...prev,
+                              ...buildLocationFilterState(nextLocation, place.latitude, place.longitude),
+                            }));
+                          }}
+                          placeholder="Address, city, state, or ZIP"
+                          className="space-y-0"
+                        />
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <label htmlFor="search-radius" className="label-micro">Radius (mi)</label>
+                        <select
+                          id="search-radius"
+                          value={draftFilters.locationRadius}
+                          onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
+                          className="select-industrial w-full"
+                        >
+                          <option value="">Select</option>
+                          {LOCATION_RADIUS_OPTIONS.map((radius) => (
+                            <option key={radius} value={radius}>
+                              {radius}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <button
@@ -1916,14 +1940,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 {t('search.showing', 'Showing')} <span className="text-ink">{formatNumber(displayedListings.length)}</span> {t('search.of', 'of')}{' '}
                 <span className="text-ink">{formatNumber(filteredListings.length)}</span> {t('search.listings', 'Listings')}
               </div>
-              <div className={viewMode === 'grid' ? 'industrial-grid' : 'flex flex-col space-y-1'}>
+              <div className={viewMode === 'grid' ? 'industrial-grid' : 'flex flex-col space-y-4'}>
                 {displayedListings.map((listing) => (
                   <div key={listing.id}>
                     <ListingCard
                       listing={listing}
+                      viewMode={viewMode}
                       isFavorite={favoriteIds.includes(normalizeListingId(listing.id))}
                       onToggleFavorite={handleToggleFavorite}
                       onInquire={(selected) => setSelectedListingForInquiry(selected)}
+                      onFinancing={(selected) => setFinancingListing(selected)}
                       isComparing={compareList.includes(normalizeListingId(listing.id))}
                       onToggleCompare={toggleCompare}
                     />
@@ -1976,6 +2002,54 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         )}
       </AnimatePresence>
 
+      {financingListing && (
+        <PaymentCalculatorModal
+          isOpen={!!financingListing}
+          onClose={() => setFinancingListing(null)}
+          equipmentName={`${financingListing.year || ''} ${financingListing.make || financingListing.manufacturer || ''} ${financingListing.model || ''}`.trim()}
+          price={typeof financingListing.price === 'number' ? financingListing.price : 0}
+          currency={financingListing.currency || 'USD'}
+          onSubmitFinancingRequest={async (payload) => {
+            if (!financingListing) return;
+            const sellerUid = financingListing.sellerUid || financingListing.sellerId || '';
+            const summary = `Payment calculator financing request for ${financingListing.title || `${financingListing.year || ''} ${financingListing.make || financingListing.manufacturer || ''} ${financingListing.model || ''}`.trim()}.`;
+            const terms = `Requested amount: ${formatPrice(payload.requestedAmount, financingListing.currency || 'USD', 0)}, term: ${payload.termMonths} months, interest: ${payload.interestRatePct.toFixed(2)}%, down payment: ${payload.downPaymentPct}%, est monthly: ${formatPrice(payload.monthlyPaymentEstimate, financingListing.currency || 'USD', 0)}.`;
+            const combinedMessage = [summary, terms, payload.message || ''].filter(Boolean).join(' ');
+            const consentAt = new Date().toISOString();
+
+            await equipmentService.createInquiry({
+              listingId: financingListing.id,
+              sellerUid,
+              sellerId: sellerUid,
+              buyerName: payload.buyerName,
+              buyerEmail: payload.buyerEmail,
+              buyerPhone: payload.buyerPhone,
+              message: combinedMessage,
+              type: 'Financing',
+              contactConsentAccepted: true,
+              contactConsentVersion: 'financing-calculator-v1',
+              contactConsentScope: 'financing_request_specific',
+              contactConsentAt: consentAt,
+            });
+
+            await equipmentService.submitFinancingRequest({
+              listingId: financingListing.id,
+              sellerUid,
+              applicantName: payload.buyerName,
+              applicantEmail: payload.buyerEmail,
+              applicantPhone: payload.buyerPhone,
+              company: payload.company,
+              requestedAmount: payload.requestedAmount,
+              message: combinedMessage,
+              contactConsentAccepted: true,
+              contactConsentVersion: 'financing-calculator-v1',
+              contactConsentScope: 'financing_request_specific',
+              contactConsentAt: consentAt,
+            });
+          }}
+        />
+      )}
+
       <AnimatePresence>
         {compareList.length > 0 && (
           <motion.div
@@ -1995,7 +2069,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                     const listing = filteredListings.find((item) => item.id === id) || allListings.find((item) => item.id === id);
                     return listing ? (
                       <div key={id} className="relative w-12 h-12 rounded-sm border-2 border-ink overflow-hidden group">
-                        <img src={listing.images[0]} alt={listing.title || 'Equipment image'} className="w-full h-full object-cover" />
+                        <img src={listing.images[0]} alt={`${listing.year || ''} ${listing.make || listing.manufacturer || ''} ${listing.model || ''} - ${listing.category || 'Equipment'}`.replace(/\s+/g, ' ').trim()} className="w-full h-full object-cover" />
                         <button
                           onClick={() => toggleCompare(id)}
                           aria-label="Remove from comparison"

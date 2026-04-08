@@ -163,6 +163,7 @@ const TWILIO_ACCOUNT_SID = defineSecret('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = defineSecret('TWILIO_AUTH_TOKEN');
 const TWILIO_API_KEY_SID = defineSecret('TWILIO_API_KEY_SID');
 const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
+const PRIVILEGED_ADMIN_EMAILS_SECRET = defineSecret('PRIVILEGED_ADMIN_EMAILS');
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
@@ -412,12 +413,12 @@ function getEmailPreferenceRecipientRef(email) {
   if (!normalizedEmail) return null;
   return getDb().collection(EMAIL_PREFERENCE_RECIPIENTS_COLLECTION).doc(sha256Hex(normalizedEmail));
 }
-const PRIVILEGED_ADMIN_EMAILS = new Set(
-  (process.env.PRIVILEGED_ADMIN_EMAILS || LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
-);
+function getPrivilegedAdminEmails() {
+  let raw = '';
+  try { raw = String(PRIVILEGED_ADMIN_EMAILS_SECRET.value() || '').trim(); } catch (_) { /* secret not available in this function context */ }
+  if (!raw) raw = process.env.PRIVILEGED_ADMIN_EMAILS || LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '';
+  return new Set(String(raw).split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
+}
 const FEATURED_LISTING_CAPS = Object.freeze({
   dealer: 3,
   pro_dealer: 6,
@@ -737,7 +738,7 @@ function deriveManualAccountAccessSource(actorRole, requestedRole, existingSourc
 }
 
 function isPrivilegedAdminEmail(email) {
-  return PRIVILEGED_ADMIN_EMAILS.has(normalize(email));
+  return getPrivilegedAdminEmails().has(normalize(email));
 }
 
 function includesNormalized(haystack, needle) {
@@ -757,6 +758,45 @@ function normalizeFiniteNumber(value, fallback = 0) {
 function toFiniteNumberOrUndefined(value) {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : undefined;
+}
+
+const VALID_CONDITIONS = new Set(['New', 'Used', 'Rebuilt']);
+const CONDITION_ALIAS_MAP = {
+  new: 'New', brand_new: 'New', brandnew: 'New',
+  used: 'Used', preowned: 'Used', 'pre-owned': 'Used', secondhand: 'Used',
+  rebuilt: 'Rebuilt', refurbished: 'Rebuilt', reconditioned: 'Rebuilt', remanufactured: 'Rebuilt',
+};
+
+function normalizeFeedCondition(value, fallback = 'Used') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  if (VALID_CONDITIONS.has(raw)) return raw;
+  const lower = raw.toLowerCase().replace(/[\s_-]+/g, '');
+  return CONDITION_ALIAS_MAP[lower] || fallback;
+}
+
+/* Category names seen in vendor feeds may not match our taxonomy exactly.
+   This map covers common alternate spellings/names → canonical category. */
+const CATEGORY_ALIAS_MAP = {
+  'log skidders': 'Skidders', 'cable skidders': 'Skidders', 'grapple skidders': 'Skidders',
+  'feller buncher': 'Feller Bunchers', 'feller-buncher': 'Feller Bunchers', 'felling machines': 'Feller Bunchers',
+  'harvester': 'Harvesters', 'cut-to-length': 'Harvesters', 'ctl harvester': 'Harvesters',
+  'forwarder': 'Forwarders', 'forwarding machine': 'Forwarders',
+  'log loader': 'Log Loaders', 'log loaders': 'Log Loaders', 'knuckleboom loader': 'Log Loaders',
+  'firewood processor': 'Firewood Processors', 'wood processor': 'Firewood Processors',
+  'wood splitter': 'Splitters', 'log splitter': 'Splitters',
+  'wood chipper': 'Chippers', 'brush chipper': 'Chippers', 'drum chipper': 'Chippers',
+  'stump grinder': 'Stump Grinders',
+  'tree shear': 'Tree Shears', 'shear head': 'Tree Shears',
+  'mulcher': 'Mulchers', 'forestry mulcher': 'Mulchers',
+  'delimber': 'Delimbers', 'stroke delimber': 'Delimbers', 'pull-through delimber': 'Delimbers',
+};
+
+function normalizeFeedCategory(value, fallback = 'Uncategorized') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+  return CATEGORY_ALIAS_MAP[lower] || raw;
 }
 
 function stripUndefinedDeep(value) {
@@ -1693,7 +1733,7 @@ async function sendAuctionWinningBidEmailMessage({ email, displayName, auctionTi
     hammerPrice: formatEmailCurrencyAmount(Math.round(Number(hammerPrice || 0) * 100), 'usd'),
     invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
   });
-  await sendEmail({ to: email, cc: AUCTION_ADMIN_CC_EMAIL, ...payload });
+  await sendEmail({ to: email, cc: getAuctionAdminCcEmail(), ...payload });
 }
 
 async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoiceNumber, amountPaid, invoiceUrl }) {
@@ -1703,10 +1743,13 @@ async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoi
     amountPaid: formatEmailCurrencyAmount(Math.round(Number(amountPaid || 0) * 100), 'usd'),
     invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
   });
-  await sendEmail({ to: email, cc: AUCTION_ADMIN_CC_EMAIL, ...payload });
+  await sendEmail({ to: email, cc: getAuctionAdminCcEmail(), ...payload });
 }
 
-const AUCTION_ADMIN_CC_EMAIL = 'caleb@forestryequipmentsales.com';
+function getAuctionAdminCcEmail() {
+  const recipients = getAdminRecipients();
+  return recipients.length > 0 ? recipients[0] : 'caleb@forestryequipmentsales.com';
+}
 
 async function sendAuctionInvoiceEmailMessage({ email, displayName, auctionTitle, lotTitle, invoice, invoiceUrl }) {
   const dueDate = invoice.dueDate
@@ -1724,7 +1767,7 @@ async function sendAuctionInvoiceEmailMessage({ email, displayName, auctionTitle
     paymentDeadline: dueDate,
     invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
   });
-  await sendEmail({ to: email, cc: AUCTION_ADMIN_CC_EMAIL, ...payload });
+  await sendEmail({ to: email, cc: getAuctionAdminCcEmail(), ...payload });
 }
 
 async function sendAuctionLotSoldSellerEmailMessage({ email, sellerName, auctionTitle, lotTitle, winningBid, commissionRate, estimatedPayout, paymentDeadline, lotUrl }) {
@@ -2422,12 +2465,14 @@ function flattenFeedImageUrls(value, depth = 0) {
     return [];
   }
 
+  const IMAGE_KEYS = new Set(['image', 'imageurl', 'imageurls', 'images', 'photo', 'photos', 'gallery', 'media', 'thumbnail', 'thumb', 'url', 'href', 'src', 'full', 'large', 'original', 'medium']);
   return Object.entries(value).flatMap(([key, nestedValue]) => {
     const normalizedKey = normalizeFeedKey(key);
-    if (['image', 'imageurl', 'imageurls', 'images', 'photo', 'photos', 'gallery', 'media', 'thumbnail', 'thumb', 'url', 'href', 'src', 'full', 'large'].includes(normalizedKey)) {
+    if (IMAGE_KEYS.has(normalizedKey)) {
       return flattenFeedImageUrls(nestedValue, depth + 1);
     }
-    return flattenFeedImageUrls(nestedValue, depth + 1);
+    // Skip non-image keys to avoid pulling in dealerSourceUrl, videoUrl, etc.
+    return [];
   });
 }
 
@@ -3185,7 +3230,7 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
     getMappedValue('title') || findFeedValue(item, new Set(['title', 'name', 'headline'])),
     `${manufacturer} ${model}`.trim()
   );
-  const category = normalizeNonEmptyString(
+  const category = normalizeFeedCategory(
     getMappedValue('category') || findFeedValue(item, new Set(['category', 'department', 'type'])),
     'Uncategorized'
   );
@@ -3229,8 +3274,8 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
     model,
     category,
     subcategory,
-    condition: normalizeNonEmptyString(
-      getMappedValue('condition') || findFeedValue(item, new Set(['condition', 'status'])),
+    condition: normalizeFeedCondition(
+      getMappedValue('condition') || findFeedValue(item, new Set(['condition'])),
       'Used'
     ),
     location: normalizeNonEmptyString(
@@ -3365,8 +3410,11 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
   const title = normalizeNonEmptyString(item?.title || existingListing?.title, `${make} ${model}`.trim());
   const category = normalizeNonEmptyString(item?.category || existingListing?.category, 'Uncategorized');
   const subcategory = normalizeNonEmptyString(item?.subcategory || existingListing?.subcategory, category);
-  const year = normalizeFiniteNumber(item?.year, normalizeFiniteNumber(existingListing?.year, new Date().getFullYear()));
-  const price = Math.max(0, normalizeFiniteNumber(item?.price, normalizeFiniteNumber(existingListing?.price, 0)));
+  const year = normalizeFiniteNumber(item?.year, normalizeFiniteNumber(existingListing?.year, 0));
+  const rawPrice = toFiniteNumberOrUndefined(item?.price);
+  const existingPrice = toFiniteNumberOrUndefined(existingListing?.price);
+  const price = Math.max(0, rawPrice ?? existingPrice ?? 0);
+  const callForPrice = rawPrice === undefined && existingPrice === undefined;
   const hours = Math.max(0, normalizeFiniteNumber(item?.hours, normalizeFiniteNumber(existingListing?.hours, 0)));
   const images = normalizeImageUrls(item?.images || item?.imageUrls || existingListing?.images);
   const imageTitles = sanitizeListingCreateImageTitles(item?.imageTitles || existingListing?.imageTitles, images.length);
@@ -3417,6 +3465,7 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
     model,
     year,
     price,
+    callForPrice: callForPrice && !existingListing?.callForPrice ? true : Boolean(existingListing?.callForPrice),
     currency: normalizeNonEmptyString(item?.currency || existingListing?.currency, 'USD'),
     hours,
     condition: normalizeNonEmptyString(item?.condition || existingListing?.condition, 'Used'),
@@ -4699,21 +4748,57 @@ async function deliverDealerWebhooks(sellerUid, eventType, listingId, listingDat
       .get();
     if (snap.empty) return;
 
+    // Look up seller info once per delivery batch
+    let seller = {};
+    try {
+      const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
+      if (sellerSnap.exists) seller = sellerSnap.data() || {};
+    } catch (_e) { /* non-fatal */ }
+
     const payload = JSON.stringify({
       event: eventType,
       listingId,
       listing: {
         title: listingData.title || '',
         price: listingData.price || 0,
+        callForPrice: Boolean(listingData.callForPrice),
+        currency: listingData.currency || 'USD',
         status: listingData.status || 'active',
         make: listingData.make || listingData.manufacturer || '',
         model: listingData.model || '',
         year: listingData.year || null,
+        hours: listingData.hours || null,
         condition: listingData.condition || '',
+        category: listingData.category || '',
+        subcategory: listingData.subcategory || '',
         location: listingData.location || '',
+        description: listingData.description || '',
+        stockNumber: listingData.stockNumber || '',
+        serialNumber: listingData.serialNumber || '',
+        images: Array.isArray(listingData.imageUrls) ? listingData.imageUrls : [],
+        specs: listingData.specs || {},
+      },
+      seller: {
+        uid: sellerUid,
+        name: seller.displayName || '',
+        businessName: seller.businessName || seller.storefrontName || '',
+        storefrontSlug: seller.storefrontSlug || '',
       },
       timestamp: new Date().toISOString(),
     });
+
+    const logDelivery = (webhookId, dealerUid, statusCode, success, errorMessage) => {
+      getDb().collection('dealerWebhookDeliveryLogs').add({
+        webhookId,
+        dealerUid,
+        event: eventType,
+        listingId,
+        statusCode: statusCode || null,
+        success,
+        deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(errorMessage ? { errorMessage } : {}),
+      }).catch((e) => logger.warn('Failed to write webhook delivery log', { error: e.message }));
+    };
 
     const deliveries = [];
     snap.forEach((doc) => {
@@ -4738,6 +4823,7 @@ async function deliverDealerWebhooks(sellerUid, eventType, listingId, listingDat
                 lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
                 failureCount: 0,
               });
+              logDelivery(doc.id, sellerUid, resp.status, true);
             } else {
               const newFailCount = (sub.failureCount || 0) + 1;
               const updateData = {
@@ -4746,6 +4832,7 @@ async function deliverDealerWebhooks(sellerUid, eventType, listingId, listingDat
               };
               if (newFailCount >= 10) updateData.active = false;
               await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update(updateData);
+              logDelivery(doc.id, sellerUid, resp.status, false, `HTTP ${resp.status}`);
               logger.warn('Webhook delivery failed', { subId: doc.id, status: resp.status, failureCount: newFailCount });
             }
           })
@@ -4754,6 +4841,7 @@ async function deliverDealerWebhooks(sellerUid, eventType, listingId, listingDat
             const updateData = { failureCount: newFailCount };
             if (newFailCount >= 10) updateData.active = false;
             await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update(updateData);
+            logDelivery(doc.id, sellerUid, null, false, err.message || 'Connection error');
             logger.warn('Webhook delivery error', { subId: doc.id, error: err.message, failureCount: newFailCount });
           })
       );
@@ -5455,6 +5543,209 @@ async function buildDealerPerformanceReport({
 }
 
 // ---------------------------------------------------------------------------
+// Admin Platform Report — comprehensive metrics for admins/super_admins
+// ---------------------------------------------------------------------------
+async function buildAdminPlatformReport({ startDate, endDate, periodLabel } = {}) {
+  const resolvedEndDate = endDate instanceof Date ? endDate : new Date();
+  const resolvedStartDate = startDate instanceof Date
+    ? startDate
+    : new Date(resolvedEndDate.getTime() - (30 * 24 * 60 * 60 * 1000));
+  const normalizedPeriodLabel = normalizeNonEmptyString(
+    periodLabel,
+    `Last 30 Days ending ${resolvedEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+  );
+
+  const db = getDb();
+  const startTimestamp = admin.firestore.Timestamp.fromDate(resolvedStartDate);
+  const endTimestamp = admin.firestore.Timestamp.fromDate(resolvedEndDate);
+
+  // Fetch all data in parallel
+  const [
+    allListingsSnap,
+    activeListingsSnap,
+    soldListingsSnap,
+    inquiriesSnap,
+    callsSnap,
+    listingViewsSnap,
+    allSubsSnap,
+    activeUsersCount,
+    newUsersSnap,
+    dealerReport,
+  ] = await Promise.all([
+    db.collection('listings').get(),
+    db.collection('listings')
+      .where('status', '==', 'active')
+      .where('approvalStatus', '==', 'approved')
+      .get(),
+    db.collection('listings').where('status', '==', 'sold').get(),
+    db.collection('inquiries')
+      .where('createdAt', '>=', startTimestamp)
+      .where('createdAt', '<', endTimestamp)
+      .get(),
+    db.collection('calls')
+      .where('createdAt', '>=', startTimestamp)
+      .where('createdAt', '<', endTimestamp)
+      .get(),
+    db.collection('listingViewEvents')
+      .where('viewedAt', '>=', startTimestamp)
+      .where('viewedAt', '<', endTimestamp)
+      .get(),
+    db.collection('subscriptions').get(),
+    db.collection('users').where('accountStatus', '==', 'active').get().then((s) => s.size).catch(() => 0),
+    db.collection('users')
+      .where('createdAt', '>=', startTimestamp)
+      .where('createdAt', '<', endTimestamp)
+      .get()
+      .catch(() => ({ size: 0 })),
+    buildDealerPerformanceReport({ startDate: resolvedStartDate, endDate: resolvedEndDate, periodLabel: normalizedPeriodLabel }),
+  ]);
+
+  // Listing counts
+  const totalListings = allListingsSnap.size;
+  const liveListings = activeListingsSnap.size;
+  const soldListings = soldListingsSnap.size;
+
+  // Engagement: inquiries
+  const totalInquiries = inquiriesSnap.size;
+
+  // Engagement: calls
+  let totalCalls = 0;
+  let connectedCalls = 0;
+  let qualifiedCalls = 0;
+  let missedCalls = 0;
+  callsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const duration = Number(data.duration) || 0;
+    const status = String(data.status || '').toLowerCase();
+    totalCalls += 1;
+    if (duration > 0 && status === 'completed') connectedCalls += 1;
+    if (duration >= 60) qualifiedCalls += 1;
+    if (['missed', 'voicemail', 'no_answer', 'no-answer'].includes(status)) missedCalls += 1;
+  });
+
+  // Engagement: views
+  const totalViews = listingViewsSnap.size;
+
+  // Subscriptions
+  const nowMs = Date.now();
+  const startMs = resolvedStartDate.getTime();
+  let activeSubscriptions = 0;
+  let newSubscriptions = 0;
+  let cancelledSubscriptions = 0;
+  let estimatedMrr = 0;
+
+  const PLAN_PRICES = {
+    single_listing: 29.99,
+    dealer_basic: 99,
+    dealer_ad_package: 299,
+    dealer_premium: 499,
+    pro_dealer: 799,
+  };
+
+  allSubsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const status = String(data.status || '').toLowerCase();
+
+    // Determine period end in ms
+    const periodEnd = data.currentPeriodEnd;
+    let periodEndMs = 0;
+    if (periodEnd && typeof periodEnd.toMillis === 'function') {
+      periodEndMs = periodEnd.toMillis();
+    } else if (typeof periodEnd === 'number') {
+      periodEndMs = periodEnd > 1e12 ? periodEnd : periodEnd * 1000;
+    }
+
+    // Determine creation time for new subs
+    const createdAt = data.createdAt || data.updatedAt;
+    let createdMs = 0;
+    if (createdAt && typeof createdAt.toMillis === 'function') {
+      createdMs = createdAt.toMillis();
+    } else if (typeof createdAt === 'number') {
+      createdMs = createdAt > 1e12 ? createdAt : createdAt * 1000;
+    }
+
+    if (status === 'active' && periodEndMs > nowMs) {
+      activeSubscriptions += 1;
+      const planId = String(data.planId || '').toLowerCase().replace(/[-\s]/g, '_');
+      estimatedMrr += PLAN_PRICES[planId] || 0;
+    }
+
+    if (status === 'active' && createdMs >= startMs && createdMs < nowMs) {
+      newSubscriptions += 1;
+    }
+
+    if ((status === 'canceled' || status === 'cancelled') && createdMs >= startMs && createdMs < nowMs) {
+      cancelledSubscriptions += 1;
+    }
+    if (status === 'active' && data.cancelAtPeriodEnd === true && periodEndMs > startMs && periodEndMs < nowMs) {
+      cancelledSubscriptions += 1;
+    }
+  });
+
+  // Top sellers from dealer report
+  const topSellersSummary = dealerReport.sellerSummaries.slice(0, 15).map((s) => ({
+    name: s.name,
+    listings: s.listings,
+    views: s.totalViews,
+    leads: s.leadForms,
+    calls: s.calls,
+  }));
+
+  // Top listings by views — aggregate from listingViewEvents
+  const viewsByListing = {};
+  const inquiriesByListing = {};
+  listingViewsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const lid = normalizeNonEmptyString(data.listingId);
+    if (!lid) return;
+    viewsByListing[lid] = (viewsByListing[lid] || 0) + 1;
+  });
+  inquiriesSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const lid = normalizeNonEmptyString(data.listingId);
+    if (!lid) return;
+    inquiriesByListing[lid] = (inquiriesByListing[lid] || 0) + 1;
+  });
+
+  // Map listing titles
+  const listingTitles = {};
+  activeListingsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    listingTitles[doc.id] = normalizeNonEmptyString(data.title, doc.id);
+  });
+
+  const topListingsByViews = Object.entries(viewsByListing)
+    .map(([id, views]) => ({
+      title: listingTitles[id] || id,
+      views,
+      inquiries: inquiriesByListing[id] || 0,
+    }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 10);
+
+  return {
+    periodLabel: normalizedPeriodLabel,
+    totalListings,
+    liveListings,
+    soldListings,
+    totalViews,
+    totalInquiries,
+    totalCalls,
+    connectedCalls,
+    qualifiedCalls,
+    missedCalls,
+    activeSubscriptions,
+    newSubscriptions,
+    cancelledSubscriptions,
+    estimatedMrr,
+    activeUsers: activeUsersCount,
+    newUsers: typeof newUsersSnap === 'object' ? newUsersSnap.size : 0,
+    topSellersSummary,
+    topListingsByViews,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Monthly Dealer Report — 1st of each month at 9 AM Eastern
 // ---------------------------------------------------------------------------
 exports.monthlyDealerReport = onSchedule(
@@ -5534,6 +5825,49 @@ exports.monthlyDealerReport = onSchedule(
     }
 
     logger.info(`monthlyDealerReport: sent ${adminSummaries.length} seller reports for ${report.periodLabel}`);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Monthly Admin Platform Report — 1st of each month at 10 AM Eastern
+// Comprehensive report sent to all admins/super_admins
+// ---------------------------------------------------------------------------
+exports.monthlyAdminPlatformReport = onSchedule(
+  {
+    schedule: '0 10 1 * *',
+    timeZone: 'America/New_York',
+    region: 'us-central1',
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
+  },
+  async () => {
+    try {
+      const report = await buildAdminPlatformReport();
+      const { subject, html } = templates.adminPlatformMonthlyReport({
+        monthLabel: report.periodLabel,
+        totalListings: report.totalListings,
+        liveListings: report.liveListings,
+        soldListings: report.soldListings,
+        totalViews: report.totalViews,
+        totalInquiries: report.totalInquiries,
+        totalCalls: report.totalCalls,
+        connectedCalls: report.connectedCalls,
+        qualifiedCalls: report.qualifiedCalls,
+        missedCalls: report.missedCalls,
+        activeSubscriptions: report.activeSubscriptions,
+        newSubscriptions: report.newSubscriptions,
+        cancelledSubscriptions: report.cancelledSubscriptions,
+        estimatedMrr: report.estimatedMrr,
+        activeUsers: report.activeUsers,
+        newUsers: report.newUsers,
+        topSellersSummary: report.topSellersSummary,
+        topListingsByViews: report.topListingsByViews,
+        dashboardUrl: `${APP_URL}/admin`,
+      });
+      await sendEmail({ to: getAdminRecipients(), subject, html });
+      logger.info(`monthlyAdminPlatformReport: sent to ${getAdminRecipients().length} admins for ${report.periodLabel}`);
+    } catch (reportError) {
+      logger.error('monthlyAdminPlatformReport: failed to send', reportError);
+    }
   }
 );
 
@@ -6179,6 +6513,7 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     id: String(listingId),
     sellerUid: normalizeNonEmptyString(listing.sellerUid || listing.sellerId),
     sellerId: normalizeNonEmptyString(listing.sellerId || listing.sellerUid),
+    sellerName: normalizeNonEmptyString(listing.sellerName || listing.sellerDisplayName),
     title: normalizeNonEmptyString(listing.title, 'Equipment Listing'),
     category: normalizeNonEmptyString(listing.category, 'Equipment'),
     subcategory: normalizeNonEmptyString(listing.subcategory || listing.category, 'Equipment'),
@@ -6717,6 +7052,70 @@ function filterMarketplaceListings(listings, filters = {}, options = {}) {
   return sortMarketplaceListings(filtered, normalizeNonEmptyString(filters.sortBy, 'newest'), normalizeNonEmptyString(filters.q));
 }
 
+async function enrichListingsWithSellerContact(listings) {
+  const uniqueUids = [...new Set(
+    listings
+      .map((listing) => normalizeNonEmptyString(listing.sellerUid || listing.sellerId))
+      .filter(Boolean)
+  )];
+  if (uniqueUids.length === 0) return listings;
+
+  const sellerMap = new Map();
+  // Batch fetch in chunks of 100 (Firestore getAll limit)
+  for (let i = 0; i < uniqueUids.length; i += 100) {
+    const chunk = uniqueUids.slice(i, i + 100);
+    const userRefs = chunk.map((uid) => getDb().collection('users').doc(uid));
+    const storefrontRefs = chunk.map((uid) => getDb().collection('storefronts').doc(uid));
+    try {
+      const [userSnapshots, storefrontSnapshots] = await Promise.all([
+        getDb().getAll(...userRefs),
+        getDb().getAll(...storefrontRefs),
+      ]);
+
+      chunk.forEach((uid, index) => {
+        const userData = userSnapshots[index]?.exists ? (userSnapshots[index].data() || {}) : {};
+        const storefrontData = storefrontSnapshots[index]?.exists ? (storefrontSnapshots[index].data() || {}) : {};
+        const normalizedRole = normalizeUserRole(storefrontData.role || userData.role);
+        const sellerName = normalizeNonEmptyString(
+          storefrontData.storefrontName
+          || storefrontData.displayName
+          || storefrontData.name
+          || storefrontData.businessName
+          || storefrontData.company
+          || userData.storefrontName
+          || userData.displayName
+          || userData.name
+          || userData.businessName
+          || userData.company
+        );
+        const twilioPhoneNumber = normalizeNonEmptyString(
+          storefrontData.twilioPhoneNumber || userData.twilioPhoneNumber
+        );
+
+        if (!sellerName && !twilioPhoneNumber) return;
+
+        sellerMap.set(uid, {
+          name: sellerName,
+          phone: ['dealer', 'pro_dealer'].includes(normalizedRole) ? twilioPhoneNumber : '',
+        });
+      });
+    } catch (err) {
+      logger.warn('Failed to enrich seller contact data for listings batch', { error: String(err) });
+    }
+  }
+
+  return listings.map((listing) => {
+    const sellerUid = normalizeNonEmptyString(listing.sellerUid || listing.sellerId);
+    const seller = sellerMap.get(sellerUid);
+    if (!seller) return listing;
+    return {
+      ...listing,
+      sellerName: listing.sellerName || seller.name || undefined,
+      sellerPhone: seller.phone || undefined,
+    };
+  });
+}
+
 async function loadActivePublicListings() {
   const now = Date.now();
   if (publicActiveListingsCache && now - publicActiveListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
@@ -6725,7 +7124,7 @@ async function loadActivePublicListings() {
 
   try {
     const snapshot = await getDb().collection('listings').where('approvalStatus', '==', 'approved').get();
-    const listings = snapshot.docs
+    let listings = snapshot.docs
       .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
       .filter((listing) => {
         const paymentStatus = normalizeMarketplaceText(listing.paymentStatus || 'pending');
@@ -6735,6 +7134,7 @@ async function loadActivePublicListings() {
         const expiresAtMs = toMarketplaceMillis(listing.expiresAt);
         return expiresAtMs === undefined || expiresAtMs > now;
       });
+    listings = await enrichListingsWithSellerContact(listings);
     publicActiveListingsCache = { value: listings, fetchedAt: now };
     return listings;
   } catch (error) {
@@ -6759,9 +7159,10 @@ async function loadSoldMarketplaceListings() {
 
   try {
     const snapshot = await getDb().collection('listings').where('status', '==', 'sold').get();
-    const listings = snapshot.docs
+    let listings = snapshot.docs
       .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
       .filter((listing) => normalizeMarketplaceText(listing.approvalStatus) === 'approved' && normalizeMarketplaceText(listing.paymentStatus) === 'paid');
+    listings = await enrichListingsWithSellerContact(listings);
 
     publicSoldListingsCache = { value: listings, fetchedAt: now };
     return listings;
@@ -8783,11 +9184,12 @@ async function buildAdminOperationsBootstrapPayload(options = {}) {
     ? buildAdminOverviewBootstrapPayload()
     : Promise.resolve(null);
 
-  const [usersResult, inquiriesResult, callsResult, overviewResult] = await Promise.allSettled([
+  const [usersResult, inquiriesResult, callsResult, overviewResult, listingViewsResult] = await Promise.allSettled([
     listAdminDirectoryUsersPayload(),
     getDb().collection('inquiries').orderBy('createdAt', 'desc').get(),
     getDb().collection('calls').orderBy('createdAt', 'desc').get(),
     overviewPromise,
+    getDb().collection('listings').select('sellerUid', 'views').get(),
   ]);
 
   const errors = {};
@@ -8836,6 +9238,25 @@ async function buildAdminOperationsBootstrapPayload(options = {}) {
     } else {
       throw callsResult.reason;
     }
+  }
+
+  // Aggregate storefront views per seller from listings
+  const sellerViewsMap = {};
+  if (listingViewsResult.status === 'fulfilled') {
+    listingViewsResult.value.docs.forEach((doc) => {
+      const d = doc.data();
+      const uid = String(d.sellerUid || '').trim();
+      if (uid) {
+        sellerViewsMap[uid] = (sellerViewsMap[uid] || 0) + Number(d.views || 0);
+      }
+    });
+    users.forEach((u) => {
+      u.storefrontViews = sellerViewsMap[u.uid] || 0;
+    });
+  } else if (isFirestoreQuotaExceeded(listingViewsResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('listingViews');
+    errors.listingViews = 'Storefront views are temporarily unavailable because the Firestore daily read quota is exhausted.';
   }
 
   let overview = null;
@@ -9727,8 +10148,8 @@ async function handleTwilioCallStatus(req, res) {
       path: req.originalUrl || req.url,
       callSid: String(req.body?.CallSid || '').trim(),
     });
-    // Soft-fail: action-URL callbacks may have different signatures than standard webhooks.
-    // Log the warning but still process to avoid dropping legitimate status updates.
+    res.set('Content-Type', 'text/xml');
+    return res.status(403).send('<Response><Say>Unauthorized.</Say></Response>');
   }
   const callSid = String(req.body?.CallSid || '').trim();
   const callStatus = String(req.body?.DialCallStatus || req.body?.CallStatus || '').trim();
@@ -11349,6 +11770,40 @@ function buildTemplateTestPayload(templateKey) {
         loginUrl: `${APP_URL}/login`,
         supportUrl: `${APP_URL}/contact`,
       });
+    case 'adminPlatformMonthlyReport':
+      return templates.adminPlatformMonthlyReport({
+        monthLabel: 'Last 30 Days ending Apr 7, 2026',
+        totalListings: 247,
+        liveListings: 189,
+        soldListings: 34,
+        totalViews: 12847,
+        totalInquiries: 342,
+        totalCalls: 218,
+        connectedCalls: 156,
+        qualifiedCalls: 98,
+        missedCalls: 47,
+        activeSubscriptions: 42,
+        newSubscriptions: 8,
+        cancelledSubscriptions: 3,
+        estimatedMrr: 8942,
+        activeUsers: 1204,
+        newUsers: 87,
+        topSellersSummary: [
+          { name: 'Red Pine Equipment', listings: 24, views: 2840, leads: 67, calls: 41 },
+          { name: 'Northern Timber Co', listings: 18, views: 2156, leads: 52, calls: 33 },
+          { name: 'Great Lakes Forestry', listings: 15, views: 1890, leads: 41, calls: 28 },
+          { name: 'Pacific Coast Equipment', listings: 12, views: 1420, leads: 34, calls: 22 },
+          { name: 'Midwest Logger Supply', listings: 10, views: 980, leads: 23, calls: 15 },
+        ],
+        topListingsByViews: [
+          { title: '2024 Tigercat 1165 Harvester', views: 847, inquiries: 23 },
+          { title: '2023 John Deere 959M Feller Buncher', views: 692, inquiries: 18 },
+          { title: '2022 CAT 568 Log Loader', views: 541, inquiries: 15 },
+          { title: '2024 Ponsse Scorpion King', views: 487, inquiries: 12 },
+          { title: '2023 Komatsu PC390LL-11 Log Loader', views: 423, inquiries: 11 },
+        ],
+        dashboardUrl: `${APP_URL}/admin`,
+      });
     default:
       return null;
   }
@@ -11381,6 +11836,7 @@ exports.apiProxy = onRequest(
       TWILIO_AUTH_TOKEN,
       TWILIO_API_KEY_SID,
       TWILIO_API_KEY_SECRET,
+      PRIVILEGED_ADMIN_EMAILS_SECRET,
     ],
   },
   async (req, res) => {
@@ -11566,12 +12022,13 @@ exports.apiProxy = onRequest(
           return res.status(204).send('');
         }
 
-        const dealer = await resolvePublicDealer(decodeURIComponent(publicInquiryMatch[1] || ''));
+        const dealerId = decodeURIComponent(publicInquiryMatch[1] || '');
+        const dealer = await resolvePublicDealer(dealerId);
         const body = req.body || {};
         const buyerName = String(body.name || '').trim();
         const buyerEmail = String(body.email || '').trim().toLowerCase();
         const buyerPhone = String(body.phone || '').trim();
-        const message = String(body.message || '').trim();
+        const message = String(body.message || '').trim().slice(0, 5000);
         const listingId = String(body.listingId || '').trim();
 
         if (!buyerName || !buyerEmail) {
@@ -11579,6 +12036,44 @@ exports.apiProxy = onRequest(
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
           return res.status(400).json({ error: 'Invalid email address.' });
+        }
+
+        /* reCAPTCHA verification (optional token from widget) */
+        const rcToken = String(body.recaptchaToken || '').trim();
+        if (rcToken) {
+          try {
+            const rcResult = await assessRecaptchaToken(rcToken, 'dealer_widget_inquiry');
+            if (!rcResult.valid || rcResult.score < 0.5) {
+              return res.status(403).json({ error: 'reCAPTCHA verification failed.' });
+            }
+          } catch (rcErr) {
+            logger.warn('reCAPTCHA assessment failed for dealer widget inquiry', { error: String(rcErr?.message || rcErr) });
+            return res.status(403).json({ error: 'Security verification failed. Please try again.' });
+          }
+        }
+
+        /* Firestore-based rate limiting (per-IP + per-dealer, 5 per 15 min) */
+        const inquiryIpAddr = getRequestIp(req);
+        const rateLimitKey = `inquiry:${dealerId}:${inquiryIpAddr}`.slice(0, 500);
+        const rateLimitRef = getDb().collection('rateLimits').doc(rateLimitKey);
+        try {
+          const rateLimitDoc = await rateLimitRef.get();
+          const now = Date.now();
+          if (rateLimitDoc.exists) {
+            const rlData = rateLimitDoc.data();
+            if (rlData && rlData.count >= 5 && rlData.windowEnd > now) {
+              return res.status(429).json({ error: 'Too many inquiries. Please try again later.' });
+            }
+            if (rlData && rlData.windowEnd <= now) {
+              await rateLimitRef.set({ count: 1, windowEnd: now + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            } else {
+              await rateLimitRef.update({ count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            }
+          } else {
+            await rateLimitRef.set({ count: 1, windowEnd: Date.now() + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+          }
+        } catch (rlErr) {
+          logger.warn('Rate limit check failed for dealer inquiry, proceeding', { error: String(rlErr?.message || rlErr) });
         }
 
         const inquiryDoc = {
@@ -14470,11 +14965,13 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, ownerScopeUid);
         if (isOperatorOnlyRole(actorRole) && requestedSellerUid === actorUid) {
           return res.status(400).json({ error: 'Operator accounts do not have seller listing workspaces.' });
         }
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        if (requestedSellerUid !== actorUid && requestedSellerUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
         const filters = parseMarketplaceListingFilters({
@@ -14921,8 +15418,10 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, ownerScopeUid);
+        if (requestedSellerUid !== actorUid && requestedSellerUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -14962,8 +15461,10 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, ownerScopeUid);
+        if (requestedSellerUid !== actorUid && requestedSellerUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -15137,8 +15638,10 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, actorUid);
-        if (requestedUserUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, ownerScopeUid);
+        if (requestedUserUid !== actorUid && requestedUserUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -15440,6 +15943,135 @@ exports.apiProxy = onRequest(
           }
 
           return res.status(500).json({ error: 'Unable to create managed account invitation.' });
+        }
+      }
+
+      if (req.method === 'POST' && path === '/admin/invite-user') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const inviteRl = consumeAuthRateLimit('admin_invite_user', req, actor.uid, 10);
+        if (!inviteRl.allowed) {
+          return res.status(429).json({ error: `Too many invitations. Try again in ${inviteRl.retryAfterSeconds} seconds.` });
+        }
+
+        const displayName = String(req.body?.displayName || '').trim();
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const role = normalizeUserRole(String(req.body?.role || 'member'));
+
+        if (!displayName || !email) {
+          return res.status(400).json({ error: 'Display name and email are required.' });
+        }
+
+        try {
+          const existingUserByEmail = await getDb()
+            .collection('users')
+            .where('email', '==', email)
+            .limit(1)
+            .get();
+
+          if (!existingUserByEmail.empty) {
+            return res.status(409).json({ error: 'An account with that email already exists.' });
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) throw error;
+        }
+
+        try {
+          await admin.auth().getUserByEmail(email);
+          return res.status(409).json({ error: 'An authentication account with that email already exists.' });
+        } catch (error) {
+          if (error?.code !== 'auth/user-not-found') {
+            return res.status(500).json({ error: 'Unable to validate the requested email address.' });
+          }
+        }
+
+        const temporaryPassword = generateTemporaryPassword();
+        const loginUrl = `${APP_URL}/login?email=${encodeURIComponent(email)}&invited=1`;
+
+        let authUserRecord;
+        try {
+          authUserRecord = await admin.auth().createUser({
+            email,
+            password: temporaryPassword,
+            displayName,
+            emailVerified: false,
+            disabled: false,
+          });
+
+          await admin.auth().setCustomUserClaims(authUserRecord.uid, buildAccessClaims(authUserRecord.customClaims || {}, {
+            role,
+            accountStatus: 'active',
+            accountAccessSource: null,
+            parentAccountUid: null,
+            subscriptionPlanId: null,
+            subscriptionStatus: null,
+            listingCap: null,
+            managedAccountCap: null,
+          }));
+
+          let resetLink = `${APP_URL}/login`;
+          try {
+            resetLink = await admin.auth().generatePasswordResetLink(email, {
+              url: `${APP_URL}/login`,
+            });
+          } catch (resetError) {
+            logger.warn(`Could not generate password reset link for ${email}: ${resetError.message}`);
+          }
+
+          const newUserRef = getDb().collection('users').doc(authUserRecord.uid);
+          await newUserRef.set({
+            uid: authUserRecord.uid,
+            email,
+            displayName,
+            role,
+            accountStatus: 'active',
+            favorites: [],
+            emailVerified: false,
+            onboardingSource: 'admin_invite',
+            invitationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdByUid: actor.actorUid,
+          });
+
+          const emailPayload = templates.managedAccountInvite({
+            displayName,
+            inviterName: String(actor.actorDoc.data()?.displayName || 'Forestry Equipment Sales Admin').trim(),
+            email,
+            role,
+            company: '',
+            temporaryPassword,
+            loginUrl,
+            resetLink,
+          });
+          await sendEmail({ to: email, ...emailPayload });
+
+          await writeAccountAuditLog({
+            eventType: 'admin_invite_user',
+            actorUid: actor.actorUid,
+            targetUid: authUserRecord.uid,
+            source: 'admin_dashboard',
+            reason: `Invited ${email} as ${role}`,
+            nextState: { role, email, displayName },
+          });
+
+          return res.status(201).json({
+            ok: true,
+            uid: authUserRecord.uid,
+            email,
+            message: 'User invited and invitation email sent.',
+          });
+        } catch (error) {
+          logger.error('Failed to create invited user', error);
+
+          if (authUserRecord?.uid) {
+            try { await getDb().collection('users').doc(authUserRecord.uid).delete(); } catch (_) { /* cleanup */ }
+            try { await admin.auth().deleteUser(authUserRecord.uid); } catch (_) { /* cleanup */ }
+          }
+
+          return res.status(500).json({ error: 'Unable to invite user.' });
         }
       }
 
@@ -15785,6 +16417,65 @@ exports.apiProxy = onRequest(
         return res.status(200).json(report);
       }
 
+      if (req.method === 'POST' && path === '/admin/reports/platform-report/send') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const body = typeof req.body === 'object' && req.body ? req.body : {};
+        const recipientOverride = Array.isArray(body.recipients)
+          ? body.recipients.map((r) => String(r || '').trim()).filter(Boolean)
+          : [];
+
+        const requestedDays = Math.max(1, Math.min(Number(body.days || 30) || 30, 365));
+        const endDate = new Date();
+        const startDate = new Date(endDate.getTime() - (requestedDays * 24 * 60 * 60 * 1000));
+        const report = await buildAdminPlatformReport({
+          startDate,
+          endDate,
+          periodLabel: `Last ${requestedDays} Days ending ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+        });
+
+        const { subject, html } = templates.adminPlatformMonthlyReport({
+          monthLabel: report.periodLabel,
+          totalListings: report.totalListings,
+          liveListings: report.liveListings,
+          soldListings: report.soldListings,
+          totalViews: report.totalViews,
+          totalInquiries: report.totalInquiries,
+          totalCalls: report.totalCalls,
+          connectedCalls: report.connectedCalls,
+          qualifiedCalls: report.qualifiedCalls,
+          missedCalls: report.missedCalls,
+          activeSubscriptions: report.activeSubscriptions,
+          newSubscriptions: report.newSubscriptions,
+          cancelledSubscriptions: report.cancelledSubscriptions,
+          estimatedMrr: report.estimatedMrr,
+          activeUsers: report.activeUsers,
+          newUsers: report.newUsers,
+          topSellersSummary: report.topSellersSummary,
+          topListingsByViews: report.topListingsByViews,
+          dashboardUrl: `${APP_URL}/admin`,
+        });
+
+        const recipients = recipientOverride.length > 0 ? recipientOverride : getAdminRecipients();
+        await sendEmail({ to: recipients, subject, html });
+
+        return res.status(200).json({
+          sent: true,
+          recipients,
+          periodLabel: report.periodLabel,
+          metrics: {
+            liveListings: report.liveListings,
+            totalViews: report.totalViews,
+            totalInquiries: report.totalInquiries,
+            activeSubscriptions: report.activeSubscriptions,
+            estimatedMrr: report.estimatedMrr,
+          },
+        });
+      }
+
       if (req.method === 'POST' && path === '/admin/email/test-send') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
@@ -15815,10 +16506,11 @@ exports.apiProxy = onRequest(
           }
 
           try {
+            const adminReplyTo = getAdminRecipients()[0] || actor.actorEmail;
             await sendEmail({
               to: recipients,
               ...payload,
-              replyTo: 'caleb@forestryequipmentsales.com',
+              replyTo: adminReplyTo,
             });
             results.push({ template: String(templateKey || ''), status: 'sent', subject: payload.subject });
           } catch (error) {
@@ -15827,9 +16519,10 @@ exports.apiProxy = onRequest(
           }
         }
 
+        const adminReplyToSummary = getAdminRecipients()[0] || actor.actorEmail;
         return res.status(200).json({
           recipients,
-          replyTo: 'caleb@forestryequipmentsales.com',
+          replyTo: adminReplyToSummary,
           sentBy: actor.actorEmail,
           results,
         });
@@ -15899,10 +16592,18 @@ exports.apiProxy = onRequest(
               await batch.commit();
             }
 
+            // Sync verified status to storefronts collection
+            const storefrontRef = db.collection('storefronts').doc(targetUid);
+            const storefrontSnap = await storefrontRef.get();
+            if (storefrontSnap.exists) {
+              await storefrontRef.update({ verified: sellerVerified, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            }
+
             return res.status(200).json({
               message: newVal ? 'Seller verified.' : 'Seller verification removed.',
               manuallyVerified: newVal,
               listingsUpdated: listingsSnap.size,
+              storefrontUpdated: storefrontSnap.exists,
             });
           } catch (error) {
             logger.error(`Failed to ${action} seller ${targetUid}`, error);
@@ -16494,6 +17195,48 @@ exports.apiProxy = onRequest(
         return res.status(200).json({ secret: data.secret || '' });
       }
 
+      /* ── Webhook Delivery Logs (admin) ───────────────────────── */
+      if (req.method === 'GET' && path === '/admin/dealer-feeds/webhook-logs') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const targetUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
+        const limit = Math.min(Math.max(1, Number(req.query?.limit) || 20), 100);
+        const logsSnap = await getDb()
+          .collection('dealerWebhookDeliveryLogs')
+          .where('dealerUid', '==', targetUid)
+          .orderBy('deliveredAt', 'desc')
+          .limit(limit)
+          .get();
+        const logs = [];
+        logsSnap.forEach((doc) => logs.push({ id: doc.id, ...doc.data() }));
+        return res.status(200).json({ logs });
+      }
+
+      /* ── Inbound Stock Number (dealer API key auth) ──────────── */
+      const stockNumberMatch = path.match(/^\/dealer\/listings\/([^/]+)\/stock-number$/i);
+      if (req.method === 'PATCH' && stockNumberMatch) {
+        const feedContext = await getDealerFeedContextFromApiKey(req);
+        if (feedContext.error) return res.status(feedContext.status).json({ error: feedContext.error });
+        const listingId = decodeURIComponent(stockNumberMatch[1] || '').trim();
+        if (!listingId) return res.status(400).json({ error: 'Listing ID is required.' });
+        const stockNumber = String(req.body?.stockNumber || '').trim();
+        if (!stockNumber) return res.status(400).json({ error: 'stockNumber is required in request body.' });
+        if (stockNumber.length > 100) return res.status(400).json({ error: 'stockNumber must be 100 characters or fewer.' });
+        const sellerUid = normalizeNonEmptyString(feedContext.feed.sellerUid);
+        if (!sellerUid) return res.status(403).json({ error: 'Feed is not associated with a seller.' });
+        const listingSnap = await getDb().collection('listings').doc(listingId).get();
+        if (!listingSnap.exists) return res.status(404).json({ error: 'Listing not found.' });
+        const listingSellerUid = normalizeNonEmptyString(listingSnap.data()?.sellerUid || listingSnap.data()?.sellerId);
+        if (listingSellerUid !== sellerUid) return res.status(403).json({ error: 'This listing does not belong to the authenticated dealer.' });
+        await getDb().collection('listings').doc(listingId).update({
+          stockNumber,
+          'externalSource.stockNumber': stockNumber,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.status(200).json({ ok: true, listingId, stockNumber });
+      }
+
       if (req.method === 'GET' && path === '/admin/dealer-feeds/bootstrap') {
         const actor = await getDealerFeedActorContext(req);
         if (actor.error) {
@@ -17076,7 +17819,7 @@ exports.apiProxy = onRequest(
           return res.status(200).json({ pass, score: result.score });
         } catch (err) {
           logger.error('reCAPTCHA assessment error', err);
-          return res.status(200).json({ pass: true, score: null });
+          return res.status(200).json({ pass: false, score: null });
         }
       }
 

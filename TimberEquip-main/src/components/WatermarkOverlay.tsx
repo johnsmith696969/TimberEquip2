@@ -33,6 +33,7 @@ export default function WatermarkOverlay({ index = 0 }: WatermarkOverlayProps) {
         position: 'absolute',
         width: '9%',
         height: 'auto',
+        objectFit: 'contain' as const,
         opacity: WATERMARK_OPACITY,
         pointerEvents: 'none',
         userSelect: 'none',

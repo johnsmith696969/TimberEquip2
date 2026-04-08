@@ -75,8 +75,8 @@ export function ConsentBanner() {
           <div className="p-6 rounded-sm shadow-2xl backdrop-blur-md border bg-surface text-ink border-line">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-accent/20 rounded-full flex items-center justify-center">
-                  <Cookie className="text-accent" size={20} />
+                <div className="w-6 h-6 bg-accent/20 rounded-full flex items-center justify-center">
+                  <Cookie className="text-accent" size={12} />
                 </div>
                 <h3 className="text-sm font-black uppercase tracking-widest">Cookie Policy</h3>
               </div>
@@ -120,7 +120,7 @@ export function ConsentBanner() {
 
             <div className="mt-6 pt-4 flex items-center space-x-2 text-[9px] font-bold text-data uppercase tracking-widest border-t border-line">
               <ShieldCheck size={12} />
-              <span>GDPR & CCPA COMPLIANT SYSTEM</span>
+              <span>GDPR & CCPA COMPLIANT</span>
             </div>
           </div>
         </motion.div>

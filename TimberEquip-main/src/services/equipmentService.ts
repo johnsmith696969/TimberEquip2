@@ -24,7 +24,7 @@ import {
 } from '../utils/amvMatching';
 import { getListingStateName, normalizeRegionName } from '../utils/seoRoutes';
 import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
-import { isOperatorOnlyRole } from '../utils/roleScopes';
+import { isDealerSellerRole, isOperatorOnlyRole } from '../utils/roleScopes';
 
 // ── Submodule imports ───────────────────────────────────────────────────────
 import {
@@ -70,6 +70,7 @@ import {
   isQuotaLimitedAccountPayload,
   autoAddTaxonomyEntry,
   invalidateListingRelatedCaches,
+  type QuotaLimitedAccountPayload,
 } from './equipment/listingHelpers';
 import {
   resolveMarketComparableSpecs,
@@ -586,7 +587,8 @@ export const equipmentService = {
     try {
       const params = new URLSearchParams({ ids: ids.join(',') });
       const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings/by-id?${params.toString()}`);
-      return Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+      const listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
+      return listings;
     } catch (error) {
       const cachedListings = getCachedPublicListingsSnapshot().filter((listing) => ids.includes(listing.id));
       if (cachedListings.length > 0) {
