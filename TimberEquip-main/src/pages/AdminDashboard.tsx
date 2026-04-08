@@ -604,10 +604,10 @@ export function AdminDashboard() {
     setTestReportResult(null);
     try {
       const result = await adminUserService.sendTestPlatformReport({
-        recipients: ['caleb@forestryequipmentsales.com'],
+        recipients: [authUser?.email].filter(Boolean) as string[],
         days: 30,
       });
-      setTestReportResult({ type: 'success', message: `Report sent to ${result.recipients?.join(', ') || 'caleb@forestryequipmentsales.com'}` });
+      setTestReportResult({ type: 'success', message: `Report sent to ${result.recipients?.join(', ') || authUser?.email || 'admin'}` });
     } catch (error) {
       setTestReportResult({ type: 'error', message: error instanceof Error ? error.message : 'Failed to send test report' });
     } finally {
@@ -3539,7 +3539,7 @@ export function AdminDashboard() {
               </div>
               <div>
                 <h4 className="text-xs font-black uppercase tracking-tight text-ink">Platform Report</h4>
-                <p className="text-[10px] font-bold text-muted uppercase">Sends to caleb@forestryequipmentsales.com — includes listings, inquiries, calls, subscriptions</p>
+                <p className="text-[10px] font-bold text-muted uppercase">Sends to your admin email — includes listings, inquiries, calls, subscriptions</p>
               </div>
             </div>
             <button

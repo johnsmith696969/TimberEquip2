@@ -202,15 +202,25 @@ export function downloadImageManifestTemplateCsv(filenamePrefix = 'machine-image
 }
 
 export async function downloadWorkbook(filenamePrefix: string, sheets: ImportTemplateSheet[]): Promise<void> {
-  const xlsx = await import('xlsx');
-  const workbook = xlsx.utils.book_new();
+  const ExcelJS = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
 
   for (const sheet of sheets) {
-    const worksheet = xlsx.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
-    xlsx.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31));
+    const worksheet = workbook.addWorksheet(sheet.name.slice(0, 31));
+    worksheet.addRow(sheet.headers);
+    for (const row of sheet.rows) {
+      worksheet.addRow(row);
+    }
   }
 
-  xlsx.writeFile(workbook, `${filenamePrefix}.xlsx`, { compression: true });
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${filenamePrefix}.xlsx`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function downloadMachineImportTemplateXlsx(filenamePrefix = 'machine-import-template'): Promise<void> {

@@ -348,6 +348,15 @@ function getAdminRecipients() {
 
 const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://timberequip.com');
 const STAGING_APP_URL = 'https://timberequip-staging.web.app';
+
+const ALLOWED_CORS_ORIGINS = [
+  'https://timberequip.com',
+  'https://www.timberequip.com',
+  'https://forestryequipmentsales.com',
+  'https://www.forestryequipmentsales.com',
+  'https://timberequip-staging.web.app',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000'] : []),
+];
 function resolveConfiguredAppUrl() {
   const projectId = String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || '').trim().toLowerCase();
   if (projectId === 'timberequip-staging') {
@@ -1748,7 +1757,7 @@ async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoi
 
 function getAuctionAdminCcEmail() {
   const recipients = getAdminRecipients();
-  return recipients.length > 0 ? recipients[0] : 'caleb@forestryequipmentsales.com';
+  return recipients.length > 0 ? recipients[0] : null;
 }
 
 async function sendAuctionInvoiceEmailMessage({ email, displayName, auctionTitle, lotTitle, invoice, invoiceUrl }) {
@@ -10287,7 +10296,12 @@ function getRequestBaseUrl(req) {
 async function getDecodedUserFromBearer(req) {
   const idToken = req.headers.authorization?.split('Bearer ')[1];
   if (!idToken) return null;
-  return admin.auth().verifyIdToken(idToken);
+  try {
+    return await admin.auth().verifyIdToken(idToken, true);
+  } catch (err) {
+    logger.warn('Token verification failed', { error: String(err?.message || err) });
+    return null;
+  }
 }
 
 async function getListingLifecycleActorContext(req, listing = null) {
@@ -11814,7 +11828,7 @@ exports.publicPagesProxy = handlePublicPagesRequest;
 exports.publicPages = onRequest(
   {
     region: 'us-central1',
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (req, res) => handlePublicPagesRequest(req, res)
 );
@@ -11822,7 +11836,7 @@ exports.publicPages = onRequest(
 exports.apiProxy = onRequest(
   {
     region: 'us-central1',
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
     secrets: [
       SENDGRID_API_KEY,
       EMAIL_FROM,
@@ -12114,18 +12128,19 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'Invalid email address.' });
         }
 
-        /* reCAPTCHA verification (optional token from widget) */
+        /* reCAPTCHA verification (mandatory — fail-closed) */
         const rcToken = String(body.recaptchaToken || '').trim();
-        if (rcToken) {
-          try {
-            const rcResult = await assessRecaptchaToken(rcToken, 'dealer_widget_inquiry');
-            if (!rcResult.valid || rcResult.score < 0.5) {
-              return res.status(403).json({ error: 'reCAPTCHA verification failed.' });
-            }
-          } catch (rcErr) {
-            logger.warn('reCAPTCHA assessment failed for dealer widget inquiry', { error: String(rcErr?.message || rcErr) });
-            return res.status(403).json({ error: 'Security verification failed. Please try again.' });
+        if (!rcToken) {
+          return res.status(403).json({ error: 'Security verification is required.' });
+        }
+        try {
+          const rcResult = await assessRecaptchaToken(rcToken, 'dealer_widget_inquiry');
+          if (!rcResult.valid || rcResult.score < 0.5) {
+            return res.status(403).json({ error: 'reCAPTCHA verification failed.' });
           }
+        } catch (rcErr) {
+          logger.warn('reCAPTCHA assessment failed for dealer widget inquiry', { error: String(rcErr?.message || rcErr) });
+          return res.status(403).json({ error: 'Security verification failed. Please try again.' });
         }
 
         /* Firestore-based rate limiting (per-IP + per-dealer, 5 per 15 min) */
@@ -12186,14 +12201,6 @@ exports.apiProxy = onRequest(
               listingId,
               message,
               dashboardUrl: `${APP_URL}/dealer-os`,
-            });
-          }
-          if (false && dealerEmail) {
-            await sgMail.send({
-              to: dealerEmail,
-              from: { email: 'noreply@forestryequipmentsales.com', name: 'Forestry Equipment Sales' },
-              subject: `New Inquiry from ${buyerName}${listingId ? ` — Listing ${listingId}` : ''}`,
-              html: `<p><strong>${buyerName}</strong> (${buyerEmail}${buyerPhone ? `, ${buyerPhone}` : ''}) submitted an inquiry via your dealer widget embed.</p>${message ? `<p>${message.replace(/\n/g, '<br>')}</p>` : ''}<p><a href="${APP_URL}/dealer-os">Open DealerOS</a></p>`,
             });
           }
         } catch (emailError) {
