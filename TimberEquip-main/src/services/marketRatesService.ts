@@ -77,7 +77,8 @@ export const marketRatesService = {
         rate: rates.equipmentLendingEst.value,
         source: rates.equipmentLendingEst.source === 'fallback' ? 'fallback' : 'live',
       };
-    } catch {
+    } catch (err) {
+      console.warn('Market rates fetch failed, using fallback:', err);
       return { rate: FALLBACKS.equipmentLendingEst.value, source: 'fallback' };
     }
   },

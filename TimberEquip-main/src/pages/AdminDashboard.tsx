@@ -1783,7 +1783,7 @@ export function AdminDashboard() {
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-4">
                         <div className="w-10 h-10 bg-surface rounded-sm overflow-hidden border border-line">
-                          <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />
+                          <img src={listing.images[0]} alt={listing.title || 'Listing thumbnail'} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col">
                           <span className="text-xs font-black uppercase tracking-tight text-ink">{listing.title}</span>

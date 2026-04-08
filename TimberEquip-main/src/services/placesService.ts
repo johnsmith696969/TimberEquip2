@@ -158,8 +158,8 @@ export async function getPlacePredictions(input: string, mode: GooglePlacesMode 
   if (BROWSER_GOOGLE_MAPS_API_KEY) {
     try {
       return await getBrowserPlacePredictions(normalizedInput, mode);
-    } catch {
-      // Fall back to the server proxy when the browser key is unavailable or temporarily rejected.
+    } catch (err) {
+      console.warn('Browser Places autocomplete failed, falling back to server proxy:', err);
     }
   }
 
@@ -173,7 +173,8 @@ export async function getPlacePredictions(input: string, mode: GooglePlacesMode 
 
     const payload = await response.json();
     return Array.isArray(payload?.predictions) ? payload.predictions : [];
-  } catch {
+  } catch (err) {
+    console.warn('Places autocomplete server proxy failed:', err);
     return [];
   }
 }
@@ -199,7 +200,8 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
     const country = components.find((c: { types?: string[] }) => c.types?.includes('country'))?.long_name || '';
 
     return [city, state, country].filter(Boolean).join(', ') || results[0].formatted_address || null;
-  } catch {
+  } catch (err) {
+    console.warn('Reverse geocode failed:', err);
     return null;
   }
 }
@@ -213,8 +215,8 @@ export async function getPlaceDetails(placeId: string): Promise<GooglePlaceSelec
   if (BROWSER_GOOGLE_MAPS_API_KEY) {
     try {
       return await getBrowserPlaceDetails(normalizedPlaceId);
-    } catch {
-      // Fall back to the server proxy when the browser key is unavailable or temporarily rejected.
+    } catch (err) {
+      console.warn('Browser Place details failed, falling back to server proxy:', err);
     }
   }
 
@@ -228,7 +230,8 @@ export async function getPlaceDetails(placeId: string): Promise<GooglePlaceSelec
 
     const payload = await response.json();
     return payload?.place && typeof payload.place === 'object' ? payload.place : null;
-  } catch {
+  } catch (err) {
+    console.warn('Place details server proxy failed:', err);
     return null;
   }
 }

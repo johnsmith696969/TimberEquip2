@@ -97,7 +97,8 @@ export async function getRecaptchaToken(action: string): Promise<string | null> 
         }
       });
     });
-  } catch {
+  } catch (err) {
+    console.warn('reCAPTCHA token generation failed:', err);
     return null;
   }
 }
@@ -117,7 +118,8 @@ export async function assessRecaptcha(token: string, action: string): Promise<bo
     if (!res.ok) return false;
     const data = await res.json();
     return data.pass === true;
-  } catch {
+  } catch (err) {
+    console.warn('reCAPTCHA assessment failed (fail-closed):', err);
     return false;
   }
 }

@@ -1904,7 +1904,7 @@ export function ListingDetail() {
                   </div>
                   <div className="w-16 h-16 bg-bg border border-line p-2 flex items-center justify-center">
                     {safeSellerLogo ? (
-                      <img src={safeSellerLogo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                      <img src={safeSellerLogo} alt={`${listing?.sellerName || 'Seller'} logo`} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                     ) : (
                       <span className="text-[10px] font-black uppercase tracking-widest text-muted text-center">Seller</span>
                     )}
