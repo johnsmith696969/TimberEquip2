@@ -1440,7 +1440,7 @@ async function startServer() {
           "https://www.recaptcha.net",
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://firebasestorage.googleapis.com", "https://*.firebasestorage.googleapis.com", "https://*.firebasestorage.app", "https://*.googleusercontent.com", "https://placehold.co", "https://tile.openstreetmap.org", "https://*.tile.openstreetmap.org", "https://timberequip.com", "https://forestryequipmentsales.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://*.stripe.com", "https://firebasestorage.googleapis.com", "https://*.firebasestorage.googleapis.com", "https://*.firebasestorage.app", "https://*.googleusercontent.com", "https://tile.openstreetmap.org", "https://*.tile.openstreetmap.org", "https://timberequip.com", "https://forestryequipmentsales.com"],
         connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com", "https://*.firebasestorage.app", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app", "https://www.recaptcha.net"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://apis.google.com", "https://*.firebaseapp.com", "https://*.stripe.com", "https://*.run.app", "https://www.recaptcha.net"],
@@ -2024,7 +2024,7 @@ async function startServer() {
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
       try {
-        const decodedToken = await auth.verifyIdToken(idToken);
+        const decodedToken = await auth.verifyIdToken(idToken, true);
         const plan = getListingCheckoutPlan(req.body?.planId);
         const listingId = String(req.body?.listingId || '').trim();
 
@@ -2055,7 +2055,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const uid = decodedToken.uid;
       const plan = getListingCheckoutPlan(req.body?.planId);
       const listingId = String(req.body?.listingId || '').trim();
@@ -2156,7 +2156,7 @@ async function startServer() {
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
       try {
-        const decodedToken = await auth.verifyIdToken(idToken);
+        const decodedToken = await auth.verifyIdToken(idToken, true);
         if (stubSession.uid && stubSession.uid !== decodedToken.uid) {
           return res.status(403).json({ error: 'Forbidden' });
         }
@@ -2183,7 +2183,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const uid = decodedToken.uid;
       const sessionId = String(req.params.sessionId || '').trim();
       if (!sessionId) {
@@ -2219,7 +2219,7 @@ async function startServer() {
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
       try {
-        await auth.verifyIdToken(idToken);
+        await auth.verifyIdToken(idToken, true);
         const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
         const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
         const baseUrl = getRequestBaseUrl(req);
@@ -2241,7 +2241,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const uid = String(decodedToken.uid || '').trim();
       const email = String(decodedToken.email || '').trim().toLowerCase();
       const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
@@ -2281,7 +2281,7 @@ async function startServer() {
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
       try {
-        await auth.verifyIdToken(idToken);
+        await auth.verifyIdToken(idToken, true);
         return res.json({
           success: true,
           message: 'Local billing stub: subscription cancellation simulated.',
@@ -2300,7 +2300,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const uid = String(decodedToken.uid || '').trim();
 
       const userDoc = await db.collection('users').doc(uid).get();
@@ -2326,7 +2326,7 @@ async function startServer() {
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
       try {
-        const decodedToken = await auth.verifyIdToken(idToken);
+        const decodedToken = await auth.verifyIdToken(idToken, true);
         const plan = getListingCheckoutPlan(req.body?.planId);
         if (!plan) {
           return res.status(400).json({ error: 'Invalid seller plan.' });
@@ -2359,7 +2359,7 @@ async function startServer() {
       if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
       try {
-        const decodedToken = await auth.verifyIdToken(idToken);
+        const decodedToken = await auth.verifyIdToken(idToken, true);
         return res.json(buildLocalBillingStubSummary(decodedToken));
       } catch {
         return res.status(401).json({ error: 'Invalid token' });
@@ -2532,7 +2532,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const uid = decodedToken.uid;
 
       // 1. Delete user data across collections
@@ -2579,7 +2579,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      await auth.verifyIdToken(idToken);
+      await auth.verifyIdToken(idToken, true);
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
@@ -2619,7 +2619,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorUid = decodedToken.uid;
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const actorDoc = await db.collection('users').doc(actorUid).get();
@@ -2703,7 +2703,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const actorDoc = await db.collection('users').doc(decodedToken.uid).get();
       const actorRole = normalizeRole(actorDoc.data()?.role);
@@ -2733,7 +2733,7 @@ async function startServer() {
     if (!idToken) return apiError(res, 401, 'UNAUTHORIZED', 'Unauthorized');
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const actorDoc = await db.collection('users').doc(decodedToken.uid).get();
       const actorRole = normalizeRole(actorDoc.data()?.role);
@@ -2768,7 +2768,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorUid = decodedToken.uid;
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const actorDoc = await db.collection('users').doc(actorUid).get();
@@ -2884,7 +2884,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const claimRole = String(decodedToken.role || '').trim().toLowerCase();
       const isAdminByClaim = canAdministrateAccountRole(claimRole);
@@ -2986,7 +2986,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const user = await db.collection('users').doc(decodedToken.uid).get();
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
@@ -3006,7 +3006,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const user = await db.collection('users').doc(decodedToken.uid).get();
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
@@ -3026,7 +3026,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const user = await db.collection('users').doc(decodedToken.uid).get();
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
@@ -3049,7 +3049,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const userDoc = await db.collection('users').doc(decodedToken.uid).get();
       const role = String(userDoc.data()?.role || '').trim().toLowerCase();
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
@@ -3071,7 +3071,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const userDoc = await db.collection('users').doc(decodedToken.uid).get();
       const role = String(userDoc.data()?.role || '').trim().toLowerCase();
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
@@ -3489,7 +3489,7 @@ async function startServer() {
 
     let uid: string;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
@@ -3926,7 +3926,7 @@ async function startServer() {
 
     let uid: string;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
@@ -4080,7 +4080,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const claimRole = String(decodedToken.role || '').trim().toLowerCase();
       const isAdminByClaim = canAdministrateAccountRole(claimRole);
@@ -4247,7 +4247,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const claimRole = String(decodedToken.role || '').trim().toLowerCase();
       const isAdminByClaim = canAdministrateAccountRole(claimRole);
@@ -4384,7 +4384,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const claimRole = String(decodedToken.role || '').trim().toLowerCase();
       const isAdminByClaim = canAdministrateAccountRole(claimRole);
@@ -4493,7 +4493,7 @@ async function startServer() {
     let uid: string;
     let decodedEmail: string;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
       decodedEmail = String(decodedToken.email || '').trim();
     } catch {
@@ -4559,7 +4559,7 @@ async function startServer() {
 
     let uid: string;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
@@ -4610,7 +4610,7 @@ async function startServer() {
 
     let uid: string;
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
@@ -4677,7 +4677,7 @@ async function startServer() {
     if (!idToken) return res.status(401).json({ error: 'Not authenticated.' });
 
     try {
-      const decodedToken = await auth.verifyIdToken(idToken);
+      const decodedToken = await auth.verifyIdToken(idToken, true);
       const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
       const claimRole = String(decodedToken.role || '').trim().toLowerCase();
       const isAdminByClaim = canAdministrateAccountRole(claimRole);

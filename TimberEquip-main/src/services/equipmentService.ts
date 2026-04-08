@@ -992,7 +992,7 @@ export const equipmentService = {
 
   subscribeToInquiries(callback: (inquiries: Inquiry[]) => void): () => void {
     const path = 'inquiries';
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(500));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const inquiries = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Inquiry));
       callback(inquiries);
@@ -1042,7 +1042,7 @@ export const equipmentService = {
   async getAccounts(): Promise<Account[]> {
     const path = 'users';
     try {
-      const querySnapshot = await getDocs(collection(db, path));
+      const querySnapshot = await getDocs(query(collection(db, path), limit(1000)));
       return querySnapshot.docs.map(doc => {
         const data = doc.data() as any;
         return {

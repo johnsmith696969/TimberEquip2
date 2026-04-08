@@ -12143,25 +12143,31 @@ exports.apiProxy = onRequest(
           return res.status(403).json({ error: 'Security verification failed. Please try again.' });
         }
 
-        /* Firestore-based rate limiting (per-IP + per-dealer, 5 per 15 min) */
+        /* Firestore-based rate limiting (per-IP + per-dealer, 5 per 15 min) — atomic transaction */
         const inquiryIpAddr = getRequestIp(req);
         const rateLimitKey = `inquiry:${dealerId}:${inquiryIpAddr}`.slice(0, 500);
         const rateLimitRef = getDb().collection('rateLimits').doc(rateLimitKey);
         try {
-          const rateLimitDoc = await rateLimitRef.get();
-          const now = Date.now();
-          if (rateLimitDoc.exists) {
-            const rlData = rateLimitDoc.data();
-            if (rlData && rlData.count >= 5 && rlData.windowEnd > now) {
-              return res.status(429).json({ error: 'Too many inquiries. Please try again later.' });
-            }
-            if (rlData && rlData.windowEnd <= now) {
-              await rateLimitRef.set({ count: 1, windowEnd: now + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+          const rateLimited = await getDb().runTransaction(async (txn) => {
+            const rateLimitDoc = await txn.get(rateLimitRef);
+            const now = Date.now();
+            if (rateLimitDoc.exists) {
+              const rlData = rateLimitDoc.data();
+              if (rlData && rlData.count >= 5 && rlData.windowEnd > now) {
+                return true; // rate limited
+              }
+              if (rlData && rlData.windowEnd <= now) {
+                txn.set(rateLimitRef, { count: 1, windowEnd: now + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              } else {
+                txn.update(rateLimitRef, { count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              }
             } else {
-              await rateLimitRef.update({ count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              txn.set(rateLimitRef, { count: 1, windowEnd: now + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
             }
-          } else {
-            await rateLimitRef.set({ count: 1, windowEnd: Date.now() + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            return false; // not rate limited
+          });
+          if (rateLimited) {
+            return res.status(429).json({ error: 'Too many inquiries. Please try again later.' });
           }
         } catch (rlErr) {
           logger.warn('Rate limit check failed for dealer inquiry, proceeding', { error: String(rlErr?.message || rlErr) });
