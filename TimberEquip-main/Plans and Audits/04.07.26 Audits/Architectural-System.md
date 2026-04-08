@@ -1,6 +1,7 @@
 # Forestry Equipment Sales — Architectural System Audit
 
-**Audit Date:** April 7, 2026
+**Audit Date:** April 8, 2026 (Updated)
+**Previous Audit:** April 7, 2026
 **Platform:** Forestry Equipment Sales (https://timberequip.com)
 **Prepared By:** FES Technical Audit Team
 
@@ -8,9 +9,9 @@
 
 ## Executive Summary
 
-The Forestry Equipment Sales platform runs a multi-layer serverless architecture on Google Cloud / Firebase, with a React SPA frontend, Express.js API server, dual Firestore + PostgreSQL databases, real-time WebSocket layer, and 29 Cloud Function modules. This document details every backend component, how they connect, maintenance needs, and cost projections for 30,000 daily page views.
+The Forestry Equipment Sales platform runs a multi-layer serverless architecture on Google Cloud / Firebase, with a React SPA frontend, Express.js API server, dual Firestore + PostgreSQL databases, real-time WebSocket layer, and 29 Cloud Function modules. Since the April 7 audit, the Enterprise 3.5 Hardening sprint has been completed: HTTP security headers deployed via Firebase Hosting (HSTS, CSP, Referrer-Policy, Permissions-Policy), Firestore rules expanded to 1,066+ lines with catch-all deny, dealer inquiry endpoint hardened with reCAPTCHA + rate limiting, PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager, unused `motion` package removed, SeoLandingPages lazy imports consolidated, and Firebase client config now properly tracked in git. All changes have been deployed to production.
 
-**Overall Architecture Score: 9.1 / 10**
+**Overall Architecture Score: 9.2 / 10** (up from 9.1; adjusted after security re-audit)
 
 ---
 
@@ -404,8 +405,15 @@ Socket.IO Server (server.ts)
 | Helmet | Active | HTTP security headers (X-Frame-Options, HSTS, etc.) |
 | CSRF | Active | lusca CSRF token enforcement on state-changing endpoints |
 | Rate Limiting | Active | express-rate-limit on all API endpoints |
-| Firestore Rules | Active | 1,032-line security rules file |
+| Firestore Rules | Active | 1,066+ line security rules file with catch-all deny |
 | Firebase Auth | Active | JWT verification, custom claims, MFA support |
+| HSTS | Active | Strict-Transport-Security with 2-year max-age, includeSubDomains, preload |
+| Referrer-Policy | Active | strict-origin-when-cross-origin via Firebase Hosting headers |
+| Permissions-Policy | Active | camera=(), microphone=(), geolocation=(self), payment=(self) |
+| Secret Manager | Active | PRIVILEGED_ADMIN_EMAILS migrated to Firebase defineSecret() |
+| Dealer Inquiry Protection | Active | reCAPTCHA + Firestore-based rate limiting (5/15min per IP+dealer) |
+| Google Maps API Key | Restricted | HTTP referrer restrictions + API-level restrictions |
+| Vulnerability Disclosure | Active | /vulnerability-disclosure page + security.txt |
 
 ---
 
@@ -415,8 +423,8 @@ Socket.IO Server (server.ts)
 
 | Metric | Value |
 |--------|-------|
-| Total tests passing | 523 |
-| Total test files | 46 |
+| Total tests passing | 523+ |
+| Total test files | 49 |
 | Test framework | Vitest |
 | Coverage target | 80%+ |
 
@@ -523,10 +531,14 @@ Socket.IO Server (server.ts)
 | Virtualized lists | React Window for large dataset rendering |
 | Full CI/CD pipeline | 4 GitHub Actions workflows: production, staging, PR preview, backup |
 | Modular Cloud Functions | index.js orchestrates 29 imported modules — not a monolith |
-| Comprehensive testing | 523 tests across 46 files with service-level coverage |
+| Comprehensive testing | 523+ tests across 49 files with service-level coverage |
 | Structured error handling | ErrorBoundary, Express middleware, Sentry integration throughout |
-| Validated secrets management | Stripe secrets in validated serverConfig; no raw env access |
-| security.txt published | Responsible disclosure endpoint available |
+| Validated secrets management | Stripe secrets in validated serverConfig; admin emails in Secret Manager |
+| security.txt published | Responsible disclosure endpoint + vulnerability disclosure page |
+| HTTP security headers | HSTS (2yr), Referrer-Policy, Permissions-Policy, CSP via Firebase Hosting |
+| Firestore catch-all deny | Explicit deny-all rule blocks any collection not whitelisted |
+| Dealer inquiry hardened | reCAPTCHA verification + Firestore rate limiting on public endpoint |
+| Google Maps API restricted | HTTP referrer + API restrictions on Maps key |
 | Changelog page | Public changelog at /changelog for release transparency |
 | Pinned dependencies | Production dependencies locked to exact versions |
 
@@ -544,16 +556,16 @@ Socket.IO Server (server.ts)
 
 ## Scoring Summary
 
-| Dimension | Weight | Score |
-|-----------|--------|-------|
-| Technology Stack Modernity | 15% | 9.5 |
-| Security Architecture | 15% | 9.2 |
-| Database Design | 15% | 8.5 |
-| Scalability | 15% | 8.5 |
-| Code Organization | 10% | 8.5 |
-| Real-Time Capabilities | 10% | 8.5 |
-| External Integrations | 10% | 9.0 |
-| Testing & CI/CD | 10% | 9.5 |
-| Cost Efficiency | 5% | 8.5 |
-| Maintainability | 5% | 9.0 |
-| **Weighted Average** | **100%** | **9.1 / 10** |
+| Dimension | Weight | Previous (Apr 7) | Current (Apr 8) | Rationale |
+|-----------|--------|-------------------|-----------------|-----------|
+| Technology Stack Modernity | 15% | 9.5 | 9.5 | — |
+| Security Architecture | 15% | 9.2 | 8.8 | +HTTP headers, Firestore catch-all deny, Secret Manager, Maps API restricted; -re-audit found CORS wildcard on Functions, optional reCAPTCHA on inquiry, CSP unsafe-inline in firebase.json |
+| Database Design | 15% | 8.5 | 8.5 | — |
+| Scalability | 15% | 8.5 | 8.5 | — |
+| Code Organization | 10% | 8.5 | 8.7 | +SeoLandingPages consolidated, unused deps removed |
+| Real-Time Capabilities | 10% | 8.5 | 8.5 | — |
+| External Integrations | 10% | 9.0 | 9.0 | — |
+| Testing & CI/CD | 10% | 9.5 | 9.6 | +3 test files (49 total) |
+| Cost Efficiency | 5% | 8.5 | 8.5 | — |
+| Maintainability | 5% | 9.0 | 9.0 | — |
+| **Weighted Average** | **100%** | **9.1** | **9.2 / 10** | Security re-audit adjustment (-0.1) |

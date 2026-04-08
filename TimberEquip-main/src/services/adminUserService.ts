@@ -383,4 +383,11 @@ export const adminUserService = {
       method: 'GET',
     });
   },
+
+  async sendTestPlatformReport(options: { recipients: string[]; days?: number }): Promise<{ sent: boolean; recipients: string[]; periodLabel?: string }> {
+    return getAuthorizedJson('/api/admin/reports/platform-report/send', {
+      method: 'POST',
+      body: JSON.stringify({ recipients: options.recipients, days: options.days ?? 30 }),
+    });
+  },
 };

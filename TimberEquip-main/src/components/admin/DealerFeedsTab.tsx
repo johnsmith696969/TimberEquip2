@@ -1,7 +1,7 @@
 import React, { useRef, useState, useMemo } from 'react';
 import {
   Upload, Database, RefreshCw, Eye, Copy, CheckCircle2,
-  Clock, AlertCircle,
+  Clock, AlertCircle, Download,
 } from 'lucide-react';
 import { dealerFeedService, DealerFeedIngestResult, DealerFeedLog, DealerFeedProfile } from '../../services/dealerFeedService';
 import {
@@ -251,6 +251,27 @@ export function DealerFeedsTab({ accounts }: DealerFeedsTabProps) {
   const latestDealerFeedLog = dfLogs[0] || null;
   const dealerFeedFailureLog = dfLogs.find((log) => Array.isArray(log.errors) && log.errors.length > 0) || null;
 
+  const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const exportDealerFeedLogsCSV = () => {
+    if (!dfLogs.length) return;
+    const headers = ['Source', 'Dealer ID', 'Processed', 'Upserted', 'Skipped', 'Errors', 'Mode', 'Time'];
+    const rows = dfLogs.map((log) => [
+      log.sourceName || '', log.dealerId || '', String(log.processed || 0),
+      String(log.upserted || 0), String(log.skipped || 0),
+      String(log.errors?.length ?? 0), log.dryRun ? 'Dry Run' : 'Live',
+      formatLogTime(log.processedAt),
+    ]);
+    const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dealer-feed-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-sm border border-line bg-surface p-6">
@@ -261,25 +282,25 @@ export function DealerFeedsTab({ accounts }: DealerFeedsTabProps) {
             auto-detects common feed fields, resolves a preview, then lets operators run a dry import or live ingest.
           </p>
         </div>
-        <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-none md:auto-cols-max md:grid-flow-col md:items-center md:gap-4">
-          <div className="flex items-center gap-2 rounded-sm border border-line bg-bg/70 px-3 py-2 md:border-0 md:bg-transparent md:px-0 md:py-0">
-            <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-black flex items-center justify-center">1</span>
+        <div className="flex w-full items-center gap-3 md:w-auto md:gap-4">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-black flex items-center justify-center shrink-0">1</span>
             <span className="text-[10px] font-bold uppercase tracking-wider text-ink md:text-xs">Choose Format</span>
           </div>
-          <div className="hidden h-px w-8 bg-line md:block" />
-          <div className="flex items-center gap-2 rounded-sm border border-line bg-bg/70 px-3 py-2 md:border-0 md:bg-transparent md:px-0 md:py-0">
-            <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line">2</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted md:text-xs">Configure</span>
+          <div className="h-px flex-1 max-w-8 bg-line" />
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line shrink-0">2</span>
+            <span className="hidden text-[10px] font-bold uppercase tracking-wider text-muted md:inline md:text-xs">Configure</span>
           </div>
-          <div className="hidden h-px w-8 bg-line md:block" />
-          <div className="flex items-center gap-2 rounded-sm border border-line bg-bg/70 px-3 py-2 md:border-0 md:bg-transparent md:px-0 md:py-0">
-            <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line">3</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted md:text-xs">Preview</span>
+          <div className="h-px flex-1 max-w-8 bg-line" />
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line shrink-0">3</span>
+            <span className="hidden text-[10px] font-bold uppercase tracking-wider text-muted md:inline md:text-xs">Preview</span>
           </div>
-          <div className="hidden h-px w-8 bg-line md:block" />
-          <div className="flex items-center gap-2 rounded-sm border border-line bg-bg/70 px-3 py-2 md:border-0 md:bg-transparent md:px-0 md:py-0">
-            <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line">4</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted md:text-xs">Import</span>
+          <div className="h-px flex-1 max-w-8 bg-line" />
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-surface text-muted text-xs font-black flex items-center justify-center border border-line shrink-0">4</span>
+            <span className="hidden text-[10px] font-bold uppercase tracking-wider text-muted md:inline md:text-xs">Import</span>
           </div>
         </div>
       </div>
@@ -592,9 +613,14 @@ export function DealerFeedsTab({ accounts }: DealerFeedsTabProps) {
         <div className="space-y-4">
           <div className="flex justify-between items-center bg-surface p-6 border border-line rounded-sm">
             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Recent Ingest Runs</h3>
-            <button onClick={handleLoadLogs} disabled={dfLogsLoading} className="btn-industrial py-2 px-4 flex items-center gap-2 text-[10px] disabled:opacity-50">
-              <RefreshCw size={13} className={dfLogsLoading ? 'animate-spin' : ''} /> Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={exportDealerFeedLogsCSV} disabled={!dfLogs.length} className="flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest disabled:opacity-50">
+                <Download size={11} /> Export CSV
+              </button>
+              <button onClick={handleLoadLogs} disabled={dfLogsLoading} className="btn-industrial py-2 px-4 flex items-center gap-2 text-[10px] disabled:opacity-50">
+                <RefreshCw size={13} className={dfLogsLoading ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
           </div>
           {dfLogsLoading ? (
             <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" /></div>

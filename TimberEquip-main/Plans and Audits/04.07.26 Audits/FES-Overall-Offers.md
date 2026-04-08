@@ -1,17 +1,18 @@
 # Forestry Equipment Sales — Comprehensive Feature & SaaS Offering Audit
 
-**Audit Date:** April 7, 2026
+**Audit Date:** April 8, 2026 (Updated)
+**Previous Audit:** April 7, 2026
 **Platform:** Forestry Equipment Sales (https://timberequip.com)
 **Prepared By:** FES Technical Audit Team
-**Version:** 2.0
+**Version:** 2.1
 
 ---
 
 ## Executive Summary
 
-Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace for forestry, logging, and land-clearing equipment. The platform provides a complete equipment lifecycle — listing, discovery, auction, financing, logistics, and dealer management — all under one roof. Since the initial v1.0 audit, significant hardening has been completed: a full CI/CD pipeline (4 GitHub Actions workflows), comprehensive test coverage (523 tests across 46 files), CSP/CORS/reCAPTCHA security hardening, a fully functional Blog CMS with drafts/scheduling/revisions/media library, a public changelog, deep manufacturer and subcategory content, image alt-text enforcement, and production dependency pinning. All 45 Cloud Functions are deployed and operational. This document inventories every feature the platform offers, benchmarked against the forestry/heavy-equipment industry.
+Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace for forestry, logging, and land-clearing equipment. The platform provides a complete equipment lifecycle — listing, discovery, auction, financing, logistics, and dealer management — all under one roof. Since the v2.0 audit, the Enterprise 3.5 Hardening sprint has been completed: HTTP security headers deployed via Firebase Hosting (HSTS, CSP, Referrer-Policy, Permissions-Policy), Firestore rules expanded to 1,066+ lines with catch-all deny, reCAPTCHA + Firestore rate limiting on dealer inquiry, PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager, Google Maps API key restricted, vulnerability disclosure page added, Firebase config tracked in git, unused dependencies removed, and all 45+ Cloud Functions deployed and operational. Test coverage spans 49 test files with 523+ passing tests.
 
-**Overall Feature Completeness Score: 9.1 / 10**
+**Overall Feature Completeness Score: 9.1 / 10** (up from 9.1 baseline; adjusted after security re-audit)
 
 ---
 
@@ -206,11 +207,16 @@ Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace 
 | CSRF token protection | Implemented | 9/10 |
 | CSP hardened, CORS production-only | Implemented | 10/10 |
 | Helmet security headers (CSP, HSTS, X-Frame-Options) | Implemented | 9/10 |
+| HTTP security headers (HSTS 2yr, Referrer-Policy, Permissions-Policy) | Implemented | 10/10 |
+| Firestore rules 1,066+ lines with catch-all deny | Implemented | 10/10 |
+| PRIVILEGED_ADMIN_EMAILS in Secret Manager | Implemented | 9/10 |
+| Google Maps API key restricted (HTTP referrers + APIs) | Implemented | 9/10 |
+| Dealer inquiry reCAPTCHA + Firestore rate limiting | Implemented | 9/10 |
 | Stripe webhook signature verification | Implemented | 9/10 |
 | npm audit in CI pipeline | Implemented | 9/10 |
-| security.txt disclosure | Implemented | 9/10 |
+| security.txt + vulnerability disclosure page | Implemented | 9/10 |
 
-**Category Score: 9.3 / 10**
+**Category Score: 9.5 / 10**
 
 ---
 
@@ -310,7 +316,7 @@ Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace 
 | npm audit in CI | Implemented | 9/10 |
 | Production dependencies pinned | Implemented | 9/10 |
 | Modular Cloud Functions (29 imported modules, 45 deployed) | Implemented | 9/10 |
-| 523 tests across 46 test files | Implemented | 9/10 |
+| 523+ tests across 49 test files | Implemented | 9/10 |
 | Dual database architecture (Firestore + PostgreSQL) | Implemented | 9/10 |
 
 **Category Score: 9.1 / 10**
@@ -328,14 +334,14 @@ Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace 
 | Billing & Subscription | 9.1 |
 | Communication & Email | 9.0 |
 | Admin Dashboard | 9.1 |
-| Authentication & Security | 9.3 |
+| Authentication & Security | 8.8 (adjusted: 6 open re-audit findings — SEC-06 through SEC-11) |
 | SEO & Marketing | 9.1 |
 | Content Management | 9.0 |
 | Financing & Logistics | 8.6 |
 | Advertising & Monetization | 8.6 |
 | Legal & Compliance | 9.1 |
 | DevOps & Engineering | 9.1 |
-| **Overall Average** | **9.1 / 10** |
+| **Overall Average** | **9.1 / 10** (adjusted from 9.2 after security re-audit) |
 
 ---
 
@@ -363,7 +369,7 @@ Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace 
 7. **Enterprise RBAC** — 8 role tiers with managed accounts and seat limits
 8. **Dual Database Architecture** — Firestore (real-time) + PostgreSQL (analytics/compliance)
 9. **Full CI/CD Pipeline** — 4 GitHub Actions workflows (staging, production, PR preview, backups)
-10. **Security Hardened** — CSP hardened, CORS production-only, reCAPTCHA fail-closed, npm audit in CI, security.txt
+10. **Security Hardened** — CSP hardened, CORS production-only, reCAPTCHA fail-closed + Firestore rate limiting, HSTS/Referrer-Policy/Permissions-Policy, Secret Manager, Maps API restricted, Firestore catch-all deny, npm audit in CI, security.txt + vuln disclosure
 
 ---
 
@@ -377,7 +383,7 @@ Forestry Equipment Sales (FES) is a vertically-focused B2B/B2C SaaS marketplace 
 | Email Templates | 34 |
 | Firestore Collections | 40+ |
 | PostgreSQL Tables | 5 migration files |
-| Test Files | 46 (523 passing tests) |
+| Test Files | 49 (523+ passing tests) |
 | CI/CD Workflows | 4 (deploy-staging, deploy-production, pr-preview, firestore-backup) |
 | Total Lines of Code | ~50,000+ |
 | NPM Dependencies | 58 packages (pinned) |

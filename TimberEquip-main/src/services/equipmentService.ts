@@ -1213,6 +1213,22 @@ export const equipmentService = {
     }
   },
 
+  async archiveInquiry(id: string): Promise<void> {
+    await getAuthorizedJson(`/api/admin/inquiries/${encodeURIComponent(id)}/archive`, { method: 'PATCH' });
+  },
+
+  async unarchiveInquiry(id: string): Promise<void> {
+    await getAuthorizedJson(`/api/admin/inquiries/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' });
+  },
+
+  async archiveCall(id: string): Promise<void> {
+    await getAuthorizedJson(`/api/admin/calls/${encodeURIComponent(id)}/archive`, { method: 'PATCH' });
+  },
+
+  async unarchiveCall(id: string): Promise<void> {
+    await getAuthorizedJson(`/api/admin/calls/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' });
+  },
+
   async getInquiryHistoryByListing(listingId: string): Promise<Inquiry[]> {
     const path = 'inquiries';
     try {

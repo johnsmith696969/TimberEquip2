@@ -350,6 +350,8 @@ export interface Inquiry {
   updatedAt?: string;
   duration?: number; // For calls
   recordingUrl?: string; // For calls
+  archivedAt?: string;
+  archivedByUid?: string;
   createdAt: string;
 }
 
@@ -394,6 +396,8 @@ export interface CallLog {
   twilioFromNumber?: string;
   twilioToNumber?: string;
   completedAt?: string;
+  archivedAt?: string;
+  archivedByUid?: string;
   createdAt: string;
 }
 

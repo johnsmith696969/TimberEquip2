@@ -9,7 +9,7 @@ import {
   User, Shield, Bell, CreditCard, LogOut,
   Phone, Activity, ShieldAlert, MapPin, ExternalLink, Building2,
   FileText, Image, Layers, Database, RefreshCw, FolderTree,
-  Loader2, Gavel, Search, X
+  Loader2, Gavel, Search, X, Archive, ArchiveRestore
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
@@ -89,6 +89,8 @@ export function AdminDashboard() {
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [adminCallSearchQuery, setAdminCallSearchQuery] = useState('');
   const [adminCallDisplayCount, setAdminCallDisplayCount] = useState(20);
+  const [showArchivedInquiries, setShowArchivedInquiries] = useState(false);
+  const [showArchivedCalls, setShowArchivedCalls] = useState(false);
   const [overview, setOverview] = useState<AdminOperationsBootstrapResponse['overview']>(null);
   const [trackingListings, setTrackingListings] = useState<Listing[]>([]);
   const [trackingListingsLoading, setTrackingListingsLoading] = useState(false);
@@ -104,6 +106,8 @@ export function AdminDashboard() {
   const [billingLoadError, setBillingLoadError] = useState('');
 
   const [demoInventoryRecommended, setDemoInventoryRecommended] = useState(false);
+  const [sendingTestReport, setSendingTestReport] = useState<string | null>(null);
+  const [testReportResult, setTestReportResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const resolvedRequestedTab = useMemo<DashboardTab>(() => resolveDashboardTab(requestedTab), [requestedTab]);
   const activeTab = useMemo<DashboardTab>(() => {
     if (!isContentOnlyDashboardRole) {
@@ -592,6 +596,22 @@ export function AdminDashboard() {
       setAdminSettingsError(error instanceof Error ? error.message : 'Unable to send a password reset link right now.');
     } finally {
       setSendingAdminPasswordReset(false);
+    }
+  };
+
+  const handleSendTestReport = async (reportType: 'platform') => {
+    setSendingTestReport(reportType);
+    setTestReportResult(null);
+    try {
+      const result = await adminUserService.sendTestPlatformReport({
+        recipients: ['caleb@forestryequipmentsales.com'],
+        days: 30,
+      });
+      setTestReportResult({ type: 'success', message: `Report sent to ${result.recipients?.join(', ') || 'caleb@forestryequipmentsales.com'}` });
+    } catch (error) {
+      setTestReportResult({ type: 'error', message: error instanceof Error ? error.message : 'Failed to send test report' });
+    } finally {
+      setSendingTestReport(null);
     }
   };
 
@@ -1174,6 +1194,50 @@ export function AdminDashboard() {
     }
   };
 
+  const handleArchiveInquiry = async (id: string) => {
+    try {
+      await equipmentService.archiveInquiry(id);
+      setInquiries((prev) => prev.map((entry) =>
+        entry.id === id ? { ...entry, archivedAt: new Date().toISOString(), archivedByUid: authUser?.uid } : entry
+      ));
+    } catch (error) {
+      console.error('Error archiving inquiry:', error);
+    }
+  };
+
+  const handleUnarchiveInquiry = async (id: string) => {
+    try {
+      await equipmentService.unarchiveInquiry(id);
+      setInquiries((prev) => prev.map((entry) =>
+        entry.id === id ? { ...entry, archivedAt: undefined, archivedByUid: undefined } : entry
+      ));
+    } catch (error) {
+      console.error('Error unarchiving inquiry:', error);
+    }
+  };
+
+  const handleArchiveCall = async (id: string) => {
+    try {
+      await equipmentService.archiveCall(id);
+      setCalls((prev) => prev.map((entry) =>
+        entry.id === id ? { ...entry, archivedAt: new Date().toISOString(), archivedByUid: authUser?.uid } : entry
+      ));
+    } catch (error) {
+      console.error('Error archiving call:', error);
+    }
+  };
+
+  const handleUnarchiveCall = async (id: string) => {
+    try {
+      await equipmentService.unarchiveCall(id);
+      setCalls((prev) => prev.map((entry) =>
+        entry.id === id ? { ...entry, archivedAt: undefined, archivedByUid: undefined } : entry
+      ));
+    } catch (error) {
+      console.error('Error unarchiving call:', error);
+    }
+  };
+
   const handleCreateManagedAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newManagedAccount.displayName || !newManagedAccount.email) return;
@@ -1745,8 +1809,71 @@ export function AdminDashboard() {
     downloadCsv('inventory', headers, rows);
   };
 
+  const exportGovernanceAuditCSV = () => {
+    if (!selectedListingAudit || !listingAuditData) return;
+    const listing = selectedListingAudit;
+    const report = listingAuditData.report;
+    const media = listingAuditData.mediaAudit;
+    const headers = ['Listing ID', 'Title', 'Manufacturer', 'Model', 'Status', 'Approval Status', 'Payment Status', 'Lifecycle State', 'Review State', 'Payment State', 'Inventory State', 'Visibility State', 'Is Public', 'Summary', 'Anomaly Codes', 'Media Status', 'Image Count', 'Primary Image', 'Media Summary', 'Media Errors'];
+    const rows = [[
+      listing.id,
+      listing.title || '',
+      listing.manufacturer || listing.make || '',
+      listing.model || '',
+      String(listing.status || ''),
+      String(listing.approvalStatus || ''),
+      String(listing.paymentStatus || ''),
+      String(report?.shadowState?.lifecycleState || ''),
+      String(report?.shadowState?.reviewState || ''),
+      String(report?.shadowState?.paymentState || ''),
+      String(report?.shadowState?.inventoryState || ''),
+      String(report?.shadowState?.visibilityState || ''),
+      report?.shadowState?.isPublic ? 'Yes' : 'No',
+      report?.summary || '',
+      (report?.anomalyCodes || []).join('; '),
+      String(media?.status || ''),
+      String(media?.imageCount ?? ''),
+      media?.primaryImagePresent ? 'Yes' : 'No',
+      media?.summary || '',
+      (media?.validationErrors || []).join('; '),
+    ]];
+    downloadCsv(`governance-audit-${listing.id}`, headers, rows);
+  };
+
+  const exportTransitionsCSV = () => {
+    if (!listingAuditData?.transitions?.length) return;
+    const headers = ['Transition Type', 'Actor UID', 'Source', 'Created At', 'From Lifecycle', 'From Visibility', 'To Lifecycle', 'To Visibility', 'Anomaly Codes'];
+    const rows = listingAuditData.transitions.map((t) => [
+      t.transitionType || '',
+      t.actorUid || 'system',
+      t.artifactSource || '',
+      t.createdAt ? formatTimestamp(t.createdAt) : '',
+      String(t.fromState?.lifecycleState || ''),
+      String(t.fromState?.visibilityState || ''),
+      String(t.toState?.lifecycleState || ''),
+      String(t.toState?.visibilityState || ''),
+      (t.anomalyCodes || []).join('; '),
+    ]);
+    downloadCsv(`transitions-${listingAuditData.listingId}`, headers, rows);
+  };
+
+  const exportOverviewCSV = () => {
+    const headers = ['Metric', 'Value'];
+    const rows = stats.map((s) => [s.label || '', String(s.value ?? '')]);
+    downloadCsv('overview-snapshot', headers, rows);
+  };
+
   const renderOverview = () => (
     <div className="space-y-12">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={exportOverviewCSV}
+          className="flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest"
+        >
+          <Download size={11} /> Export Overview CSV
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, i) => (
           <div key={i} className="bg-surface border border-line p-8 rounded-sm shadow-sm">
@@ -2131,10 +2258,13 @@ export function AdminDashboard() {
     </div>
   );
 
+  const archivedCallCount = calls.filter((c) => c.archivedAt).length;
+
   const renderCalls = () => {
     const cq = adminCallSearchQuery.toLowerCase();
+    const archiveFilteredCalls = showArchivedCalls ? calls : calls.filter((c) => !c.archivedAt);
     const filteredCalls = cq
-      ? calls.filter((call) =>
+      ? archiveFilteredCalls.filter((call) =>
           (call.callerName || '').toLowerCase().includes(cq) ||
           (call.callerEmail || '').toLowerCase().includes(cq) ||
           (call.callerPhone || '').toLowerCase().includes(cq) ||
@@ -2142,7 +2272,7 @@ export function AdminDashboard() {
           (call.sellerName || '').toLowerCase().includes(cq) ||
           (call.status || '').toLowerCase().includes(cq)
         )
-      : calls;
+      : archiveFilteredCalls;
     const visibleCalls = filteredCalls.slice(0, adminCallDisplayCount);
     const hasMoreCalls = filteredCalls.length > adminCallDisplayCount;
 
@@ -2161,6 +2291,15 @@ export function AdminDashboard() {
             />
           </div>
           <span className="text-[10px] font-black text-data uppercase">Total: {filteredCalls.length}</span>
+          {archivedCallCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowArchivedCalls(!showArchivedCalls)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-sm border transition-colors ${showArchivedCalls ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface text-muted hover:text-ink'}`}
+            >
+              {showArchivedCalls ? 'Hide Archived' : `Show Archived (${archivedCallCount})`}
+            </button>
+          )}
           <button
             type="button"
             onClick={exportCallsCSV}
@@ -2183,11 +2322,12 @@ export function AdminDashboard() {
                 <th className="px-6 py-4">Audio</th>
                 <th className="px-6 py-4">Timestamp</th>
                 <th className="px-6 py-4 text-right">Authenticated</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {visibleCalls.map(call => (
-                <tr key={call.id} className="hover:bg-surface/20 transition-colors">
+                <tr key={call.id} className={`hover:bg-surface/20 transition-colors ${call.archivedAt ? 'opacity-50' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="text-xs font-black uppercase tracking-tight text-ink">{call.callerName}</span>
@@ -2239,6 +2379,27 @@ export function AdminDashboard() {
                   </td>
                   <td className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest">
                     {call.isAuthenticated ? 'YES' : 'NO'}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    {call.archivedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUnarchiveCall(call.id)}
+                        title="Restore call"
+                        className="text-data hover:text-ink transition-colors"
+                      >
+                        <ArchiveRestore size={14} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleArchiveCall(call.id)}
+                        title="Archive call"
+                        className="text-muted hover:text-ink transition-colors"
+                      >
+                        <Archive size={14} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -2457,6 +2618,15 @@ export function AdminDashboard() {
               </button>
               <button
                 type="button"
+                onClick={exportGovernanceAuditCSV}
+                disabled={!listingAuditData}
+                className="btn-industrial py-2 px-4 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download size={12} className="mr-1.5" />
+                Export Audit CSV
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setSelectedListingAuditId('');
                   setSelectedListingForAudit(null);
@@ -2613,6 +2783,15 @@ export function AdminDashboard() {
                   <div className="flex items-center gap-2">
                     <FileText size={14} className="text-accent" />
                     <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">Transition Log</h4>
+                    {listingAuditData?.transitions?.length ? (
+                      <button
+                        type="button"
+                        onClick={exportTransitionsCSV}
+                        className="ml-auto flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest"
+                      >
+                        <Download size={11} /> Export CSV
+                      </button>
+                    ) : null}
                   </div>
                   <div className="mt-4 space-y-3">
                     {listingAuditData?.transitions?.length ? (
@@ -2772,14 +2951,26 @@ export function AdminDashboard() {
     </div>
   );
 
+  const filteredInquiries = showArchivedInquiries ? inquiries : inquiries.filter((i) => !i.archivedAt);
+  const archivedInquiryCount = inquiries.filter((i) => i.archivedAt).length;
+
   const renderInquiries = () => (
     <div className="space-y-6">
       <div className="flex flex-wrap justify-between items-center gap-4 bg-surface p-6 border border-line rounded-sm">
         <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Active Leads & Inquiries</h3>
         <div className="flex items-center gap-4">
-          <span className="text-[10px] font-black text-accent uppercase">{inquiries.filter(i => i.status === 'New').length} New</span>
-          <span className="text-[10px] font-black text-data uppercase">{inquiries.filter(i => i.status === 'Won').length} Won</span>
-          <span className="text-[10px] font-black text-muted uppercase">{inquiries.filter(i => !i.assignedToUid).length} Unassigned</span>
+          <span className="text-[10px] font-black text-accent uppercase">{filteredInquiries.filter(i => i.status === 'New').length} New</span>
+          <span className="text-[10px] font-black text-data uppercase">{filteredInquiries.filter(i => i.status === 'Won').length} Won</span>
+          <span className="text-[10px] font-black text-muted uppercase">{filteredInquiries.filter(i => !i.assignedToUid).length} Unassigned</span>
+          {archivedInquiryCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowArchivedInquiries(!showArchivedInquiries)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-sm border transition-colors ${showArchivedInquiries ? 'border-accent/30 bg-accent/10 text-accent' : 'border-line bg-surface text-muted hover:text-ink'}`}
+            >
+              {showArchivedInquiries ? 'Hide Archived' : `Show Archived (${archivedInquiryCount})`}
+            </button>
+          )}
           <button
             type="button"
             onClick={exportInquiriesCSV}
@@ -2790,12 +2981,12 @@ export function AdminDashboard() {
         </div>
       </div>
       <InquiryList
-        inquiries={inquiries}
+        inquiries={filteredInquiries}
         accounts={accounts}
         listings={listings}
-        onUpdateStatus={handleUpdateInquiryStatus}
-        onAssignInquiry={handleAssignInquiry}
         onAddNote={handleAddInquiryNote}
+        onArchive={handleArchiveInquiry}
+        onUnarchive={handleUnarchiveInquiry}
       />
     </div>
   );
@@ -3325,6 +3516,39 @@ export function AdminDashboard() {
               className="btn-industrial py-2 px-4 text-[10px]"
             >
               Open Billing
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-surface border border-line rounded-sm overflow-hidden">
+        <div className="p-6 border-b border-line bg-bg">
+          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Monthly Reports</h3>
+          <p className="text-[10px] font-bold text-muted uppercase mt-1">Send test reports to verify email delivery and report contents</p>
+        </div>
+        <div className="p-8 space-y-4">
+          {testReportResult && (
+            <div className={`rounded-sm border px-4 py-3 text-[10px] font-black uppercase tracking-widest ${testReportResult.type === 'success' ? 'border-data/30 bg-data/10 text-data' : 'border-accent/30 bg-accent/10 text-accent'}`}>
+              {testReportResult.message}
+            </div>
+          )}
+          <div className="flex items-center justify-between py-4 border-b border-line">
+            <div className="flex items-center space-x-4">
+              <div className="p-2 bg-bg border border-line rounded-sm text-muted">
+                <FileText size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-tight text-ink">Platform Report</h4>
+                <p className="text-[10px] font-bold text-muted uppercase">Sends to caleb@forestryequipmentsales.com — includes listings, inquiries, calls, subscriptions</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSendTestReport('platform')}
+              disabled={sendingTestReport === 'platform'}
+              className="btn-industrial py-2 px-4 text-[10px] disabled:opacity-60"
+            >
+              {sendingTestReport === 'platform' ? 'Sending...' : 'Send Test Report'}
             </button>
           </div>
         </div>

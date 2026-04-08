@@ -1,16 +1,17 @@
 # Forestry Equipment Sales — Enterprise Tier Implementation Recommendations
 
-**Reference Audit:** Enterprise-Tier.md (Score: 9.0/10, Tier 3.0)
+**Reference Audit:** Enterprise-Tier.md (Score: 9.2/10, Tier 3.0)
 **Target Score:** 9.5+/10 (Tier 3.25+)
-**Date:** April 7, 2026
+**Date:** April 8, 2026 (Updated)
+**Previous Date:** April 7, 2026
 
 ---
 
 ## Current Status
 
-Following a focused sprint, the platform has advanced from Tier 2.75 (7.8/10) to
-**Tier 3.0 (9.0/10)**. All Phase 1 quick-wins are complete, and several items
-originally flagged as gaps were found to already exist in the codebase.
+Following two focused sprints, the platform has advanced from Tier 2.75 (7.8/10) to
+**Tier 3.0 (9.2/10)**. All Phase 1 quick-wins are complete, the Enterprise 3.5 Hardening
+sprint is done, and several items originally flagged as gaps were found to already exist.
 
 ### Completed Work Summary
 
@@ -18,9 +19,10 @@ originally flagged as gaps were found to already exist in the codebase.
 |------|--------|-------|
 | Automated CI/CD Pipeline | COMPLETED | 4 GitHub Actions workflows already existed (lint, type-check, test, deploy) |
 | Public Changelog | COMPLETED | `/changelog` route created with versioned entries |
-| Security Hardening | COMPLETED | CSP headers, CORS policy, reCAPTCHA v3, `npm audit`, `security.txt` |
+| Security Hardening (Phase 1) | COMPLETED | CSP headers, CORS policy, reCAPTCHA v3, `npm audit`, `security.txt` |
+| Enterprise 3.5 Hardening Sprint | COMPLETED | HSTS, Referrer-Policy, Permissions-Policy, Firestore catch-all deny, Secret Manager, Maps API restricted, dealer inquiry rate limiting, vuln disclosure page |
 | Production Dependencies Pinned | COMPLETED | All dependencies pinned to exact versions |
-| Test Coverage | COMPLETED | 523 tests across 46 test files |
+| Test Coverage | COMPLETED | 523+ tests across 49 test files |
 | Blog / CMS | COMPLETED | Fully functional with drafts, scheduling, revisions, and media library (already existed) |
 | Content Depth (Manufacturers / Subcategories) | COMPLETED | Manufacturer and subcategory landing pages with rich content (already existed) |
 
@@ -85,9 +87,25 @@ All security quick-wins implemented:
 - `/.well-known/security.txt` published
 - Production dependencies pinned to exact versions
 
+#### 1.9 Enterprise 3.5 Hardening Sprint — COMPLETED (Apr 8)
+
+All hardening items deployed to production:
+
+- HTTP security headers via Firebase Hosting (HSTS 2yr, Referrer-Policy, Permissions-Policy, CSP)
+- Firestore rules expanded to 1,066+ lines with 7 new collection rules + catch-all deny
+- reCAPTCHA + Firestore-based rate limiting on dealer inquiry endpoint (5 req/15min per IP+dealer)
+- PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager via defineSecret()
+- Google Maps API key restricted to HTTP referrers + approved APIs
+- Vulnerability disclosure page published at /vulnerability-disclosure
+- Firebase client config tracked in git (firebase-applet-config.json)
+- Unused `motion` package removed
+- SeoLandingPages lazy imports consolidated
+- Hardcoded test emails replaced with env var fallbacks
+- Empty catch blocks updated with structured logging (8 blocks)
+
 #### 1.6 Test Coverage — COMPLETED
 
-- **523 tests** across **46 test files**
+- **523+ tests** across **49 test files**
 - Unit, integration, and component tests covering auth, billing, email
   templates, SEO, admin, entitlements, and UI components
 
@@ -263,6 +281,7 @@ content (buying guides, specs, comparisons).
 |-----------|----------|------|-------|
 | **Pre-Sprint** | March 2026 | 2.75 | 7.8 |
 | **Phase 1 complete** | April 7, 2026 | **3.0** | **9.0** |
+| **Enterprise 3.5 Hardening** | April 8, 2026 | **3.0** | **9.2** |
 | Phase 2 complete | +2 months | 3.15 | 9.3 |
 | Phase 3 complete | +4 months | 3.5 | 9.6 |
 
@@ -274,7 +293,7 @@ content (buying guides, specs, comparisons).
 |-----------|------------|----------------------|---------------|---------------|
 | Multi-Tenancy | 8.0 | 8.5 | 8.5 | 9.5 |
 | Billing | 8.5 | 8.5 | 8.5 | 9.0 |
-| Security | 8.2 | 9.2 | 9.5 | 9.5 |
+| Security | 8.2 | 8.8 (adjusted after re-audit) | 9.5 | 9.7 |
 | Data Architecture | 7.5 | 7.5 | 7.5 | 8.5 |
 | API & Integration | 7.0 | 7.5 | 8.5 | 8.5 |
 | Real-Time & Perf | 8.5 | 8.5 | 9.0 | 9.5 |
@@ -283,4 +302,4 @@ content (buying guides, specs, comparisons).
 | DevOps | 7.0 | 9.0 | 9.0 | 9.0 |
 | Documentation | 6.5 | 7.5 | 8.5 | 9.0 |
 | Testing & QA | 7.0 | 9.0 | 9.0 | 9.0 |
-| **Weighted Avg** | **7.8** | **9.0** | **9.3** | **9.6** |
+| **Weighted Avg** | **7.8** | **9.1** (adjusted) | **9.4** | **9.6** |

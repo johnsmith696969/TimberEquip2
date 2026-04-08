@@ -11974,6 +11974,82 @@ exports.apiProxy = onRequest(
         return res.status(200).send(`(function(){var script=document.currentScript;var dealer=script&&script.dataset?script.dataset.dealer:'';var targetId=script&&script.dataset?script.dataset.target:'';var limit=script&&script.dataset&&script.dataset.limit?script.dataset.limit:'12';var featuredOnly=script&&script.dataset&&script.dataset.featuredOnly?script.dataset.featuredOnly:'false';if(!dealer){console.error('Forestry Equipment Sales dealer embed requires data-dealer.');return;}var target=targetId?document.getElementById(targetId):null;if(!target){target=document.createElement('div');if(script&&script.parentNode){script.parentNode.insertBefore(target,script.nextSibling);}else{document.body.appendChild(target);}}var iframe=document.createElement('iframe');var params=new URLSearchParams();if(limit)params.set('limit',limit);if(featuredOnly)params.set('featuredOnly',featuredOnly);iframe.src='${APP_URL}/api/public/dealers/'+encodeURIComponent(dealer)+'/embed?'+params.toString();iframe.loading='lazy';iframe.style.width='100%';iframe.style.minHeight=(script&&script.dataset&&script.dataset.height?script.dataset.height:'980')+'px';iframe.style.border='0';iframe.style.display='block';iframe.setAttribute('referrerpolicy','strict-origin-when-cross-origin');target.innerHTML='';target.appendChild(iframe);})();`);
       }
 
+      /* ── Backend Spam Scoring ──────────────────────────────────── */
+      function calculateInquirySpamSignal({ buyerName = '', buyerEmail = '', buyerPhone = '', message = '' }) {
+        let score = 0;
+        const flags = [];
+        const combined = `${buyerName} ${buyerEmail} ${message}`.toLowerCase();
+
+        const SPAM_PHRASES = [
+          'whatsapp', 'telegram', 'crypto', 'bitcoin', 'western union', 'wire transfer',
+          'money order', 'cashier check', 'send money', 'bank transfer', 'paypal gift',
+          'zelle me', 'venmo me', 'urgent transfer', 'wire now',
+          'signal me', 'text me at', 'email me at', 'contact me outside',
+          'act now', 'limited time', "don't miss", 'last chance',
+          'click here', 'free shipping', 'no obligation', 'congratulations',
+          "you've been selected", 'dear sir', 'dear friend', 'dear madam',
+        ];
+        const DISPOSABLE_DOMAINS = [
+          'example.com', 'test.com', 'mailinator.com', 'guerrillamail.com',
+          'tempmail.com', 'throwaway.email', 'yopmail.com', 'sharklasers.com',
+          'grr.la', 'dispostable.com', 'maildrop.cc', 'trashmail.com',
+        ];
+
+        // Spam phrase matches
+        for (const phrase of SPAM_PHRASES) {
+          if (combined.includes(phrase)) {
+            score += 15;
+            flags.push(`spam_phrase:${phrase}`);
+          }
+        }
+
+        // Email checks
+        const emailLower = buyerEmail.toLowerCase();
+        if (!emailLower.includes('@')) {
+          score += 25;
+          flags.push('missing_email_at');
+        } else {
+          const domain = emailLower.split('@')[1] || '';
+          if (DISPOSABLE_DOMAINS.includes(domain)) {
+            score += 20;
+            flags.push(`disposable_email:${domain}`);
+          }
+        }
+
+        // Excessive URLs (3+)
+        const urlCount = (message.match(/https?:\/\//gi) || []).length;
+        if (urlCount >= 3) {
+          score += 15;
+          flags.push(`excessive_urls:${urlCount}`);
+        }
+
+        // Excessive CAPS
+        if (message.length > 20) {
+          const upperCount = (message.match(/[A-Z]/g) || []).length;
+          if (upperCount / message.length > 0.5) {
+            score += 10;
+            flags.push('excessive_caps');
+          }
+        }
+
+        // Repeated characters
+        if (/(.)\1{4,}/.test(message)) {
+          score += 10;
+          flags.push('repeated_chars');
+        }
+
+        // Excessive special characters
+        if (message.length > 10) {
+          const nonAlphaNum = (message.match(/[^a-zA-Z0-9\s]/g) || []).length;
+          if (nonAlphaNum / message.length > 0.3) {
+            score += 15;
+            flags.push('excessive_special_chars');
+          }
+        }
+
+        return { score: Math.min(score, 100), flags };
+      }
+
       /* ── Dealer Widget JS (Web Component) ──────────────────────── */
       if (req.method === 'GET' && path === '/public/dealer-widget.js') {
         res.set('Access-Control-Allow-Origin', '*');
@@ -12076,6 +12152,9 @@ exports.apiProxy = onRequest(
           logger.warn('Rate limit check failed for dealer inquiry, proceeding', { error: String(rlErr?.message || rlErr) });
         }
 
+        /* Backend spam scoring */
+        const spamResult = calculateInquirySpamSignal({ buyerName, buyerEmail, buyerPhone, message });
+
         const inquiryDoc = {
           sellerUid: dealer.sellerUid,
           listingId: listingId || null,
@@ -12085,6 +12164,8 @@ exports.apiProxy = onRequest(
           message: message || 'Submitted via dealer widget embed.',
           status: 'New',
           source: 'dealer_widget',
+          spamScore: spamResult.score,
+          spamFlags: spamResult.flags,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
@@ -16258,7 +16339,10 @@ exports.apiProxy = onRequest(
         }
 
         const snapshot = await getDb().collection('inquiries').orderBy('createdAt', 'desc').get();
-        const inquiries = snapshot.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
+        const includeArchived = req.query.includeArchived === '1';
+        const inquiries = snapshot.docs
+          .map((docSnapshot) => serializeInquiryDoc(docSnapshot))
+          .filter((inq) => includeArchived || !inq.archivedAt);
         return res.status(200).json({ inquiries });
       }
 
@@ -16269,8 +16353,89 @@ exports.apiProxy = onRequest(
         }
 
         const snapshot = await getDb().collection('calls').orderBy('createdAt', 'desc').get();
-        const calls = snapshot.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
+        const includeArchived = req.query.includeArchived === '1';
+        const calls = snapshot.docs
+          .map((docSnapshot) => serializeCallDoc(docSnapshot))
+          .filter((c) => includeArchived || !c.archivedAt);
         return res.status(200).json({ calls });
+      }
+
+      // Archive / Unarchive inquiries
+      const archiveInquiryMatch = path.match(/^\/admin\/inquiries\/([^/]+)\/archive$/i);
+      if (req.method === 'PATCH' && archiveInquiryMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const inquiryId = decodeURIComponent(archiveInquiryMatch[1] || '').trim();
+        if (!inquiryId) {
+          return res.status(400).json({ error: 'An inquiry ID is required.' });
+        }
+        const docRef = getDb().collection('inquiries').doc(inquiryId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Inquiry not found.' });
+        }
+        await docRef.update({ archivedAt: new Date().toISOString(), archivedByUid: actor.uid });
+        return res.status(200).json({ success: true });
+      }
+
+      const unarchiveInquiryMatch = path.match(/^\/admin\/inquiries\/([^/]+)\/unarchive$/i);
+      if (req.method === 'PATCH' && unarchiveInquiryMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const inquiryId = decodeURIComponent(unarchiveInquiryMatch[1] || '').trim();
+        if (!inquiryId) {
+          return res.status(400).json({ error: 'An inquiry ID is required.' });
+        }
+        const docRef = getDb().collection('inquiries').doc(inquiryId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Inquiry not found.' });
+        }
+        await docRef.update({ archivedAt: admin.firestore.FieldValue.delete(), archivedByUid: admin.firestore.FieldValue.delete() });
+        return res.status(200).json({ success: true });
+      }
+
+      // Archive / Unarchive calls
+      const archiveCallMatch = path.match(/^\/admin\/calls\/([^/]+)\/archive$/i);
+      if (req.method === 'PATCH' && archiveCallMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const callId = decodeURIComponent(archiveCallMatch[1] || '').trim();
+        if (!callId) {
+          return res.status(400).json({ error: 'A call ID is required.' });
+        }
+        const docRef = getDb().collection('calls').doc(callId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Call not found.' });
+        }
+        await docRef.update({ archivedAt: new Date().toISOString(), archivedByUid: actor.uid });
+        return res.status(200).json({ success: true });
+      }
+
+      const unarchiveCallMatch = path.match(/^\/admin\/calls\/([^/]+)\/unarchive$/i);
+      if (req.method === 'PATCH' && unarchiveCallMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const callId = decodeURIComponent(unarchiveCallMatch[1] || '').trim();
+        if (!callId) {
+          return res.status(400).json({ error: 'A call ID is required.' });
+        }
+        const docRef = getDb().collection('calls').doc(callId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Call not found.' });
+        }
+        await docRef.update({ archivedAt: admin.firestore.FieldValue.delete(), archivedByUid: admin.firestore.FieldValue.delete() });
+        return res.status(200).json({ success: true });
       }
 
       const adminCallRecordingMatch = path.match(/^\/admin\/calls\/([^/]+)\/recording$/i);

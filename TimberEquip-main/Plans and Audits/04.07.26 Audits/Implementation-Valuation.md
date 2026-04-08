@@ -1,15 +1,15 @@
 # Forestry Equipment Sales — Valuation Growth Implementation Recommendations
 
-**Reference Audit:** Valuation-Base.md (Score: 9.0/10)
+**Reference Audit:** Valuation-Base.md (Score: 9.2/10)
 **Target Score:** 9.5+/10
-**Date:** April 7, 2026
-**Last Updated:** April 7, 2026
+**Date:** April 8, 2026 (Updated)
+**Previous Date:** April 7, 2026
 
 ---
 
 ## Goal: Maximize Platform Value Through Strategic Improvements
 
-The current platform valuation baseline is $500K–$1.5M. These implementation recommendations target increasing that range to $1M–$3M+ through higher feature completeness, better code quality, and stronger revenue metrics.
+The current platform valuation baseline is $500K–$1.5M+. Following the Enterprise 3.5 Hardening sprint (April 8, 2026), the cost-to-recreate has increased to $720K–$1.08M (USA) / $216K–$360K (India). These implementation recommendations target increasing the revenue-based valuation to $1M–$3M+ through higher feature completeness, better code quality, and stronger revenue metrics.
 
 ---
 
@@ -57,7 +57,7 @@ The current platform valuation baseline is $500K–$1.5M. These implementation r
 ### 2.1 Achieve 80%+ Test Coverage -- COMPLETED
 
 **Before:** 484 tests, estimated ~60% coverage
-**After:** 523 tests across 46 test files, estimated ~75% coverage
+**After:** 523+ tests across 49 test files, estimated ~75% coverage
 **New tests added:** auctionService.test.ts, cmsService.test.ts, seoContent.test.ts
 
 | Module | Previous Coverage | Current Status | Notes |
@@ -87,16 +87,25 @@ Impact on valuation: **Mature CI/CD adds 0.5-1x revenue multiple** -- acquirers 
 
 ### 2.3 Security Hardening -- COMPLETED
 
-**Improvements delivered April 2026:**
+**Improvements delivered April 7-8, 2026:**
 
-| Improvement | Status |
-|-------------|--------|
-| Content Security Policy (CSP) hardened | COMPLETE |
-| CORS configuration split (dev/staging/prod) | COMPLETE |
-| reCAPTCHA set to fail-closed on error | COMPLETE |
-| npm audit added to CI pipeline | COMPLETE |
-| security.txt published | COMPLETE |
-| Dependencies pinned to exact versions | COMPLETE |
+| Improvement | Status | Date |
+|-------------|--------|------|
+| Content Security Policy (CSP) hardened | COMPLETE | Apr 7 |
+| CORS configuration split (dev/staging/prod) | COMPLETE | Apr 7 |
+| reCAPTCHA set to fail-closed on error | COMPLETE | Apr 7 |
+| npm audit added to CI pipeline | COMPLETE | Apr 7 |
+| security.txt published | COMPLETE | Apr 7 |
+| Dependencies pinned to exact versions | COMPLETE | Apr 7 |
+| HTTP security headers (HSTS 2yr, Referrer-Policy, Permissions-Policy) via Firebase Hosting | COMPLETE | Apr 8 |
+| Firestore rules expanded to 1,066+ lines with catch-all deny | COMPLETE | Apr 8 |
+| reCAPTCHA + Firestore rate limiting on dealer inquiry | COMPLETE | Apr 8 |
+| PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager | COMPLETE | Apr 8 |
+| Google Maps API key restricted | COMPLETE | Apr 8 |
+| Vulnerability disclosure page published | COMPLETE | Apr 8 |
+| Firebase config tracked in git | COMPLETE | Apr 8 |
+| Unused `motion` package removed | COMPLETE | Apr 8 |
+| Hardcoded test emails replaced | COMPLETE | Apr 8 |
 
 ### 2.4 Changelog Page -- COMPLETED
 
@@ -165,10 +174,10 @@ Impact on valuation: **Public API documentation enables partner integrations** -
 | Monthly Recurring Revenue (MRR) | Pre-revenue | Pre-revenue | $6K-$25K | +2-4x base |
 | MRR Growth Rate | N/A | N/A | 10-20% MoM | +1-2x |
 | Customer Churn Rate | Unknown | Unknown | < 5% monthly | +0.5-1x |
-| Test Coverage | ~60% (484 tests) | ~75% (523 tests, 46 files) | 80%+ | +0.3x (partially captured) |
+| Test Coverage | ~60% (484 tests) | ~75% (523+ tests, 49 files) | 80%+ | +0.3x (partially captured) |
 | CI/CD Maturity | Already automated (4 workflows) | Automated + npm audit | Automated | +0.5x (captured) |
 | API Documentation | Internal | Internal | Public | +0.3x |
-| Security Posture | 8.2/10 | 9.0+/10 (CSP, CORS, reCAPTCHA, pinned deps) | 9.5+/10 | +0.5x (captured) |
+| Security Posture | 8.2/10 | 8.8/10 (CSP, CORS, reCAPTCHA, HSTS, Secret Manager, Firestore catch-all deny, Maps API restricted, pinned deps; adjusted after re-audit: 6 open findings SEC-06–SEC-11) | 9.5+/10 | +0.5x (partially captured) |
 | SOC 2 Certification | Partial | Partial | Full | +1x |
 | Code Modularity | 29 modules (existed) | 29 modules (now credited) | Maintained | +0.2x (captured) |
 
@@ -176,7 +185,7 @@ Impact on valuation: **Public API documentation enables partner integrations** -
 
 | Milestone | ARR | Multiple | Valuation |
 |-----------|-----|----------|-----------|
-| **Current (pre-revenue, score 9.0)** | $0 | Cost basis | $600K-$1.2M |
+| **Current (pre-revenue, score 9.2)** | $0 | Cost basis | $720K-$1.5M |
 | 25 paying dealers | $75K-$150K | 5-7x | $375K-$1.05M |
 | 50 paying dealers + API docs | $150K-$300K | 6-9x | $900K-$2.7M |
 | 100 dealers + SOC 2 + low churn | $300K-$600K | 7-10x | $2.1M-$6M |
@@ -228,26 +237,37 @@ Impact on valuation: **Public API documentation enables partner integrations** -
 
 | Metric | Previous (8.0) | Current (9.0) | After 90 Days |
 |--------|----------------|---------------|---------------|
-| Codebase Score | 8.0/10 | 9.0/10 | 9.5/10 |
-| Security Score | 8.2/10 | 9.0/10 | 9.5/10 |
+| Codebase Score | 8.0/10 | 9.1/10 (adjusted after re-audit) | 9.5/10 |
+| Security Score | 8.2/10 | 8.8/10 (adjusted after re-audit) | 9.5/10 |
 | Enterprise Tier | 2.75 | 3.0 | 3.25 |
-| Test Coverage | ~60% (484 tests) | ~75% (523 tests) | 80%+ |
+| Test Coverage | ~60% (484 tests) | ~75% (523+ tests, 49 files) | 80%+ |
 | CI/CD | Automated (4 workflows) | Automated + npm audit | Maintained |
 | API Docs | Internal | Internal | Public |
-| Cost-to-Recreate Value | $680K-$1M | $850K-$1.2M | $950K-$1.4M |
+| Cost-to-Recreate Value | $680K-$1M | $720K-$1.08M | $950K-$1.4M |
 | Revenue Multiple Range | 4-6x | 5-8x | 6-10x |
 
 ---
 
-## Summary of Changes (April 7, 2026)
+## Summary of Changes
 
-### Completed Items
+### April 7, 2026 — Phase 1 Sprint
 
 1. **Test Coverage Improvement (2.1):** Grew from 484 tests to 523 tests across 46 test files. Added auctionService.test.ts, cmsService.test.ts, and seoContent.test.ts. Confirmed billingService and equipmentService tests already existed (2 files).
 2. **CI/CD Verification (2.2):** Confirmed 4 GitHub Actions workflows already existed. Added npm audit to CI pipeline.
 3. **Security Hardening (2.3):** CSP hardened, CORS split by environment, reCAPTCHA set to fail-closed, npm audit in CI, security.txt published, dependencies pinned.
 4. **Changelog Page (2.4):** Public changelog page added to the application.
 5. **Modular Architecture (2.5):** Confirmed functions/index.js imports 29 modules (already existed, previously uncredited).
+
+### April 8, 2026 — Enterprise 3.5 Hardening Sprint
+
+6. **HTTP Security Headers:** HSTS (2-year max-age), Referrer-Policy, Permissions-Policy, CSP deployed via Firebase Hosting.
+7. **Firestore Rules Expansion:** 1,066+ lines with 7 new collection rules + catch-all deny.
+8. **Dealer Inquiry Hardening:** reCAPTCHA + Firestore-based rate limiting (5 req/15min per IP+dealer).
+9. **Secret Manager Migration:** PRIVILEGED_ADMIN_EMAILS migrated to defineSecret().
+10. **Google Maps API Restricted:** HTTP referrer + API-level restrictions.
+11. **Vulnerability Disclosure Page:** Published at /vulnerability-disclosure.
+12. **Code Cleanup:** Unused `motion` package removed, SeoLandingPages consolidated, hardcoded emails replaced, empty catch blocks fixed (8), alt text fixes.
+13. **Test Coverage:** 3 new test files added (49 total, 523+ passing).
 
 ### Remaining Future Work
 

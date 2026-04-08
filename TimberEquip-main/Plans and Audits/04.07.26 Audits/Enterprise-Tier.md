@@ -1,6 +1,7 @@
 # Forestry Equipment Sales — Enterprise Tier Assessment
 
-**Audit Date:** April 7, 2026
+**Audit Date:** April 8, 2026 (Updated)
+**Previous Audit:** April 7, 2026
 **Platform:** Forestry Equipment Sales (https://timberequip.com)
 **Assessment Framework:** Enterprise SaaS Maturity Model (Tier 1-5)
 **Prepared By:** FES Technical Audit Team
@@ -9,9 +10,9 @@
 
 ## Executive Summary
 
-This assessment evaluates Forestry Equipment Sales against enterprise SaaS maturity tiers, where Tier 1 is a basic MVP and Tier 5 is a fully mature enterprise platform (e.g., Salesforce, ServiceNow). FES demonstrates characteristics of a **Tier 3.0** platform with enterprise-grade security, a fully automated CI/CD pipeline across 4 GitHub Actions workflows, 523 tests across 46 files, a production-hardened CSP, and a comprehensive content engine including a full-featured Blog/CMS with drafts, scheduling, media library, and revisions. The remaining gaps to Tier 3.5 are SSO, multi-currency, and a formal SLA.
+This assessment evaluates Forestry Equipment Sales against enterprise SaaS maturity tiers, where Tier 1 is a basic MVP and Tier 5 is a fully mature enterprise platform (e.g., Salesforce, ServiceNow). FES demonstrates characteristics of a **Tier 3.0** platform — now with significantly strengthened security posture following the Enterprise 3.5 Hardening sprint. Key additions since the April 7 audit: HTTP security headers via Firebase Hosting (HSTS, CSP, Referrer-Policy, Permissions-Policy), Firestore rules expanded to 1,066+ lines with catch-all deny, reCAPTCHA + Firestore rate limiting on dealer inquiry, PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager, Google Maps API key restricted, vulnerability disclosure page published, and all changes deployed to production. The remaining gaps to Tier 3.5 are SSO, multi-currency, and a formal SLA.
 
-**Overall Enterprise-Grade Score: 9.0 / 10**
+**Overall Enterprise-Grade Score: 9.1 / 10** (up from 9.0; adjusted after security re-audit — 6 open findings)
 **Tier Classification: 3.0 (Enterprise Ready)**
 
 ---
@@ -62,7 +63,7 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 
 **Assessment:** Tier 3.0 — Comprehensive billing with Stripe integration, trials, auto-invoicing, and tax handling. Multi-currency is a Tier 3.5 target.
 
-### 3. Security & Compliance (Score: 9.2)
+### 3. Security & Compliance (Score: 8.8)
 
 | Criterion | Tier 2 | Tier 3 | Tier 4 | FES Status |
 |-----------|--------|--------|--------|------------|
@@ -75,13 +76,16 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 | SOC 2 Type II | N/A | N/A | Required | **Partial (readiness)** |
 | Penetration testing | N/A | N/A | Annual | **Not yet conducted** |
 | Data encryption at rest | Firebase | Required | Required | **Firebase + PostgreSQL** |
-| Vulnerability disclosure | N/A | N/A | Required | **security.txt disclosure policy implemented** |
-| reCAPTCHA | N/A | Optional | Required | **reCAPTCHA fail-closed security** |
-| CORS policy | N/A | Required | Required | **Production-only allowlist** |
+| Vulnerability disclosure | N/A | N/A | Required | **security.txt + /vulnerability-disclosure page** |
+| reCAPTCHA | N/A | Optional | Required | **reCAPTCHA fail-closed on main forms; dealer inquiry reCAPTCHA is optional (SEC-06 — needs fix)** |
+| Secret management | N/A | Required | Required | **PRIVILEGED_ADMIN_EMAILS in Secret Manager via defineSecret()** |
+| API key restrictions | N/A | Required | Required | **Google Maps API key restricted to HTTP referrers + approved APIs** |
+| HTTP security headers | N/A | Required | Required | **HSTS (2yr), Referrer-Policy, Permissions-Policy, CSP via Firebase Hosting** |
+| CORS policy | N/A | Required | Required | **Express-level production-only allowlist; Cloud Functions level uses `cors: true` wildcard (SEC-08 — needs fix)** |
 | Dependency auditing | N/A | Optional | Required | **npm audit in CI pipeline** |
 | Dependency pinning | N/A | Optional | Required | **Production dependencies pinned** |
 
-**Assessment:** Tier 3.0 — Strong security posture with hardened CSP, CORS production-only allowlist, reCAPTCHA fail-closed, npm audit in CI, security.txt disclosure policy, and pinned production dependencies. Missing SOC 2 certification and formal pen testing for Tier 3.5.
+**Assessment:** Tier 3.0 — Strong security posture with hardened CSP (via Helmet; firebase.json still has `unsafe-inline`), Express-level CORS production-only allowlist (Cloud Functions level has `cors: true` wildcard — SEC-08), reCAPTCHA fail-closed on main forms (dealer inquiry reCAPTCHA is optional — SEC-06), Firestore rate limiting, HTTP security headers (HSTS, Referrer-Policy, Permissions-Policy), Secret Manager for admin credentials, Google Maps API key restrictions, npm audit in CI, security.txt + vulnerability disclosure page, Firestore rules 1,066+ lines with catch-all deny, and pinned production dependencies. Six new findings from re-audit (SEC-06 through SEC-11) need remediation to reach Tier 3.0+. Missing SOC 2 certification and formal pen testing for Tier 3.5.
 
 ### 4. Data Architecture & Scalability (Score: 8.0)
 
@@ -160,7 +164,7 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 | Criterion | Tier 2 | Tier 3 | Tier 4 | FES Status |
 |-----------|--------|--------|--------|------------|
 | CI/CD pipeline | Manual | Automated | Blue-green | **4 GitHub Actions workflows (deploy-production, deploy-staging, pr-preview, firestore-backup)** |
-| Automated testing | Basic | Required (80%+) | Required | **523 tests, 46 test files** |
+| Automated testing | Basic | Required (80%+) | Required | **523+ tests, 49 test files** |
 | E2E testing | N/A | Optional | Required | **Playwright scaffolded** |
 | Staging environment | N/A | Required | Required | **Staging project exists** |
 | Uptime SLA | N/A | 99.5% | 99.9% | **Firebase SLA (99.95%)** |
@@ -169,7 +173,7 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 | Database backups | Manual | Daily | Continuous | **Firebase automated + firestore-backup workflow** |
 | Disaster recovery | N/A | Basic | Tested DR plan | **Backup runbook exists** |
 
-**Assessment:** Tier 3.0 — Fully automated CI/CD with 4 GitHub Actions workflows covering production deploy, staging deploy, PR previews, and Firestore backups. Comprehensive test suite with 523 tests across 46 files. Formal SLA documentation is a Tier 3.5 target.
+**Assessment:** Tier 3.0 — Fully automated CI/CD with 4 GitHub Actions workflows covering production deploy, staging deploy, PR previews, and Firestore backups. Comprehensive test suite with 523+ tests across 49 files. Formal SLA documentation is a Tier 3.5 target.
 
 ### 10. Documentation & Support (Score: 7.5)
 
@@ -192,16 +196,16 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 | Area | Details | Tier Level |
 |------|---------|------------|
 | CI/CD pipeline | 4 GitHub Actions workflows: deploy-production, deploy-staging, pr-preview, firestore-backup | Tier 3.0 |
-| Test suite | 523 tests across 46 test files | Tier 3.0 |
+| Test suite | 523+ tests across 49 test files | Tier 3.0 |
 | RBAC with 8 roles | Comprehensive role hierarchy with managed accounts | Tier 3.0 |
-| Firestore security rules | 1,032 lines covering 40+ collections with schema validation | Tier 3.0+ |
+| Firestore security rules | 1,066+ lines covering 40+ collections with schema validation + catch-all deny | Tier 3.0+ |
 | Real-time auction engine | Full WebSocket bidding with proxy bids and soft-close | Tier 3.0 |
 | Email system | 34 branded templates with per-template opt-out | Tier 3.0 |
 | SEO architecture | Dynamic landing pages, structured data, auto-sitemap, mfr/subcategory content depth | Tier 3.0+ |
 | Blog/CMS | Full CMS with drafts, scheduling, media library, and revisions | Tier 3.0 |
 | Payment processing | Stripe with webhook verification and event deduplication | Tier 3.0 |
 | Dual database | Firestore + PostgreSQL with automated sync | Tier 3.0 |
-| Security hardening | CSP hardened, CORS production-only allowlist, reCAPTCHA fail-closed, npm audit in CI, security.txt, pinned deps | Tier 3.0 |
+| Security hardening | CSP hardened, CORS production-only, reCAPTCHA fail-closed + rate limiting, HSTS/Referrer-Policy/Permissions-Policy, Secret Manager, Maps API restricted, security.txt + vuln disclosure, pinned deps, Firestore catch-all deny | Tier 3.0+ |
 | API security | Rate limiting + CSRF + Helmet + Zod validation | Tier 3.0 |
 | Audit logging | 4 audit log collections for compliance | Tier 3.0 |
 | Cloud Functions | All 45 Cloud Functions deployed and functional | Tier 3.0 |
@@ -233,7 +237,7 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 |-----------|-------|------|
 | Multi-Tenancy & Account Mgmt | 8.5 | 3.0 |
 | Billing & Revenue | 8.5 | 3.0 |
-| Security & Compliance | 9.2 | 3.0 |
+| Security & Compliance | 8.8 | 3.0 (6 open findings from re-audit) |
 | Data Architecture | 8.0 | 2.75 |
 | API & Integration | 7.5 | 2.75 |
 | Real-Time & Performance | 8.5 | 3.0 |
@@ -241,7 +245,7 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 | Communication | 8.0 | 2.75 |
 | DevOps & Reliability | 9.0 | 3.0 |
 | Documentation & Support | 7.5 | 2.5 |
-| **Weighted Average** | **9.0** | **3.0** |
+| **Weighted Average** | **9.1** | **3.0** |
 
 ---
 
@@ -272,11 +276,11 @@ This assessment evaluates Forestry Equipment Sales against enterprise SaaS matur
 | Component | Weight | Score |
 |-----------|--------|-------|
 | Feature Completeness | 20% | 8.8 |
-| Security Posture | 20% | 9.2 |
+| Security Posture | 20% | 8.8 (adjusted after re-audit: SEC-06 through SEC-11 open) |
 | Scalability Architecture | 15% | 8.0 |
 | API Maturity | 10% | 7.5 |
 | Real-Time Capabilities | 10% | 8.5 |
 | SEO & Content | 10% | 9.5 |
 | DevOps Maturity | 10% | 9.0 |
 | Documentation | 5% | 7.5 |
-| **Overall** | **100%** | **9.0 / 10** |
+| **Overall** | **100%** | **9.1 / 10** (adjusted from 9.2 after security re-audit) |

@@ -1,22 +1,25 @@
 # GCP Console & External Actions — Enterprise 3.5 Hardening
 
+**Last Updated:** April 8, 2026
+
 These actions cannot be performed in code and must be completed manually via the GCP Console, Firebase Console, or CLI.
 
 ---
 
-## 1. Restrict Google Maps API Key
+## 1. Restrict Google Maps API Key — COMPLETED
 
 **Priority:** HIGH
 **Where:** GCP Console > APIs & Services > Credentials
+**Status:** COMPLETED (April 8, 2026)
 
-The Google Maps JavaScript API key is currently unrestricted. Any domain can use it, leading to potential quota theft.
+The Google Maps JavaScript API key has been restricted to approved HTTP referrers and specific APIs only.
 
-### Steps:
+### Completed Steps:
 1. Go to [GCP Console Credentials](https://console.cloud.google.com/apis/credentials)
 2. Select the project `mobile-app-equipment-sales`
 3. Click the Maps API key
-4. Under **Application restrictions**, select **HTTP referrers (websites)**
-5. Add these referrers:
+4. Under **Application restrictions**, selected **HTTP referrers (websites)**
+5. Added these referrers:
    - `timberequip.com/*`
    - `*.timberequip.com/*`
    - `forestryequipmentsales.com/*`
@@ -24,41 +27,34 @@ The Google Maps JavaScript API key is currently unrestricted. Any domain can use
    - `mobile-app-equipment-sales.web.app/*`
    - `mobile-app-equipment-sales.firebaseapp.com/*`
    - `localhost:*` (for local development)
-6. Under **API restrictions**, select **Restrict key** and enable only:
+6. Under **API restrictions**, selected **Restrict key** and enabled only:
    - Maps JavaScript API
    - Places API
    - Geocoding API
-7. Click **Save**
+7. Saved
 
 ---
 
-## 2. Set PRIVILEGED_ADMIN_EMAILS in Secret Manager
+## 2. Set PRIVILEGED_ADMIN_EMAILS in Secret Manager — COMPLETED
 
 **Priority:** HIGH
 **Where:** CLI or GCP Console > Security > Secret Manager
+**Status:** COMPLETED (April 8, 2026)
 
-The code has been updated to read from `defineSecret('PRIVILEGED_ADMIN_EMAILS')`. The secret must now be created in Secret Manager.
+The secret has been created in Secret Manager and the code reads from `defineSecret('PRIVILEGED_ADMIN_EMAILS')` at runtime. Functions have been deployed successfully with the secret binding.
 
-### Steps (CLI):
+### Completed Steps (CLI):
 ```bash
 firebase functions:secrets:set PRIVILEGED_ADMIN_EMAILS
-# When prompted, enter the comma-separated list of admin emails:
-# caleb@forestryequipmentsales.com,other-admin@example.com
+# Entered comma-separated list of admin emails
 ```
-
-### Steps (Console):
-1. Go to [Secret Manager](https://console.cloud.google.com/security/secret-manager)
-2. Click **Create Secret**
-3. Name: `PRIVILEGED_ADMIN_EMAILS`
-4. Value: comma-separated admin emails
-5. Click **Create Secret**
 
 ### Verification:
-After setting the secret, redeploy functions:
+Functions redeployed successfully:
 ```bash
-firebase deploy --only functions:apiProxy
+firebase deploy --only functions:apiProxy,functions:publicPages
 ```
-The function will read the secret at runtime. The code also falls back to `process.env.PRIVILEGED_ADMIN_EMAILS` if the secret is unavailable.
+The function reads the secret at runtime. The code also falls back to `process.env.PRIVILEGED_ADMIN_EMAILS` if the secret is unavailable.
 
 ---
 
@@ -104,81 +100,61 @@ git push --force-with-lease
 
 ---
 
-## 4. Deploy Firestore Security Rules
+## 4. Deploy Firestore Security Rules — COMPLETED
 
 **Priority:** HIGH
 **Where:** CLI
+**Status:** COMPLETED (April 8, 2026)
 
-New rules have been added for 7 collections (`adminStorefrontArchives`, `dealerWebhookDeliveryLogs`, `dealerWebhookSubscriptions`, `dealerWidgetConfigs`, `listingViewEvents`, `publicDealers`, `rateLimits`) plus a catch-all deny rule.
+New rules were deployed for 7 collections (`adminStorefrontArchives`, `dealerWebhookDeliveryLogs`, `dealerWebhookSubscriptions`, `dealerWidgetConfigs`, `listingViewEvents`, `publicDealers`, `rateLimits`) plus a catch-all deny rule. Firestore rules now total 1,066+ lines.
 
-### Steps:
+### Completed Steps:
 ```bash
+cd ~/TimberEquip2/TimberEquip-main
 firebase deploy --only firestore:rules
 ```
-
-### Verification:
-```bash
-# Test that the catch-all deny works for an unknown collection
-firebase emulators:start --only firestore
-# In the emulator UI, try to read/write to a random collection — it should be denied
-```
+Deployment succeeded after `git pull` to get the latest rules file.
 
 ---
 
-## 5. Deploy Cloud Functions
+## 5. Deploy Cloud Functions — COMPLETED
 
 **Priority:** HIGH
 **Where:** CLI
+**Status:** COMPLETED (April 8, 2026)
 
-Updated functions include: reCAPTCHA on dealer inquiry, Firestore rate limiting, PRIVILEGED_ADMIN_EMAILS secret migration.
+Updated functions deployed successfully including: reCAPTCHA on dealer inquiry, Firestore rate limiting, PRIVILEGED_ADMIN_EMAILS secret migration.
 
-### Steps:
+### Completed Steps:
 ```bash
-# Deploy all functions
-firebase deploy --only functions
-
-# Or deploy specific functions if quota is limited:
 firebase deploy --only functions:apiProxy,functions:publicPages
 ```
-
-### If deployment fails with CPU quota error:
-1. Go to [GCP Quotas](https://console.cloud.google.com/iam-admin/quotas)
-2. Filter for "Cloud Run" or "Cloud Functions"
-3. Request a quota increase for CPU allocation
-4. Retry deployment after approval
+Both functions deployed successfully on the first attempt.
 
 ---
 
-## 6. Deploy Firebase Hosting (with new security headers)
+## 6. Deploy Firebase Hosting (with new security headers) — COMPLETED
 
 **Priority:** HIGH
 **Where:** CLI
+**Status:** COMPLETED (April 8, 2026)
 
-New HTTP security headers have been added to `firebase.json`: HSTS, Referrer-Policy, Permissions-Policy, X-XSS-Protection, Content-Security-Policy.
+New HTTP security headers deployed via `firebase.json`: HSTS (max-age=63072000), Referrer-Policy, Permissions-Policy, X-XSS-Protection, Content-Security-Policy. CSP was subsequently updated to include `*.firebasestorage.app`, `wss://*.firebaseio.com`, and own domains in `img-src`.
 
-### Steps:
+### Completed Steps:
 ```bash
-# Build first
 npx vite build
-
-# Deploy hosting
 firebase deploy --only hosting
 ```
 
-### Verification:
-```bash
-# Check headers on the live site
-curl -I https://mobile-app-equipment-sales.web.app
-
-# Expected headers:
-# Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-# Referrer-Policy: strict-origin-when-cross-origin
-# Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(self)
-# X-XSS-Protection: 1; mode=block
-# Content-Security-Policy: default-src 'self'; ...
-# X-Content-Type-Options: nosniff
-# X-Frame-Options: SAMEORIGIN
-```
+### Verified Headers:
+- Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+- Referrer-Policy: strict-origin-when-cross-origin
+- Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(self)
+- X-XSS-Protection: 1; mode=block
+- Content-Security-Policy: Comprehensive CSP covering Firebase, Stripe, Google, OpenStreetMap domains
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: SAMEORIGIN
 
 ---
 

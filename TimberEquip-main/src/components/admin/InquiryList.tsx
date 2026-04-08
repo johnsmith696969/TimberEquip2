@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { MessageSquare, User, Phone, Mail, Clock, StickyNote, ShieldAlert, X, Filter, Send } from 'lucide-react';
+import { MessageSquare, User, Phone, Mail, Clock, StickyNote, ShieldAlert, X, Filter, Send, Archive, ArchiveRestore } from 'lucide-react';
 import { Inquiry, Account, Listing } from '../../types';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -8,9 +8,11 @@ interface InquiryListProps {
   inquiries: Inquiry[];
   accounts: Account[];
   listings: Listing[];
-  onUpdateStatus: (id: string, status: Inquiry['status']) => Promise<void> | void;
-  onAssignInquiry: (id: string, assignedToUid: string, assignedToName?: string) => Promise<void> | void;
+  onUpdateStatus?: (id: string, status: Inquiry['status']) => Promise<void> | void;
+  onAssignInquiry?: (id: string, assignedToUid: string, assignedToName?: string) => Promise<void> | void;
   onAddNote: (id: string, text: string) => Promise<void> | void;
+  onArchive?: (id: string) => Promise<void> | void;
+  onUnarchive?: (id: string) => Promise<void> | void;
 }
 
 const PIPELINE_STAGES: Inquiry['status'][] = ['New', 'Contacted', 'Qualified', 'Won', 'Lost'];
@@ -40,7 +42,7 @@ function toMillis(value: unknown): number {
   return 0;
 }
 
-export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onAssignInquiry, onAddNote }: InquiryListProps) {
+export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onAssignInquiry, onAddNote, onArchive, onUnarchive }: InquiryListProps) {
   const { confirm, dialogProps } = useConfirmDialog();
 
   // ── Filter state ────────────────────────────────────────────────
@@ -377,43 +379,90 @@ export function InquiryList({ inquiries, accounts, listings, onUpdateStatus, onA
                 </div>
               </div>
 
-              {/* Sidebar controls */}
+              {/* Sidebar controls — editable for dealers, read-only for admins */}
               <div className="flex flex-row md:flex-col justify-end gap-2 border-t md:border-t-0 md:border-l border-line pt-4 md:pt-0 md:pl-6">
-                <select
-                  value={inquiry.status}
-                  onChange={(e) => onUpdateStatus(inquiry.id, e.target.value as Inquiry['status'])}
-                  className="select-industrial min-w-40"
-                >
-                  {PIPELINE_STAGES.map((stage) => (
-                    <option key={stage} value={stage}>{stage}</option>
-                  ))}
-                </select>
+                {onUpdateStatus ? (
+                  <select
+                    value={inquiry.status}
+                    onChange={(e) => onUpdateStatus(inquiry.id, e.target.value as Inquiry['status'])}
+                    className="select-industrial min-w-40"
+                  >
+                    {PIPELINE_STAGES.map((stage) => (
+                      <option key={stage} value={stage}>{stage}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm border text-center min-w-40 ${STATUS_COLORS[inquiry.status] ?? 'bg-muted/10 text-muted border-muted/20'}`}>
+                    {inquiry.status}
+                  </span>
+                )}
 
-                <select
-                  value={inquiry.assignedToUid || ''}
-                  onChange={async (e) => {
-                    const newValue = e.target.value;
-                    const selected = accounts.find((a) => a.id === newValue);
-                    const staffName = selected?.name || 'Unassigned';
-                    const confirmed = await confirm({
-                      title: 'Assign Inquiry',
-                      message: `Assign this inquiry to ${staffName}?`,
-                      confirmLabel: 'Assign',
-                      variant: 'info',
-                    });
-                    if (!confirmed) {
-                      e.target.value = inquiry.assignedToUid || '';
-                      return;
-                    }
-                    onAssignInquiry(inquiry.id, newValue, selected?.name || undefined);
-                  }}
-                  className="select-industrial min-w-40"
-                >
-                  <option value="">Unassigned</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>{account.name} ({account.role})</option>
-                  ))}
-                </select>
+                {onAssignInquiry ? (
+                  <select
+                    value={inquiry.assignedToUid || ''}
+                    onChange={async (e) => {
+                      const newValue = e.target.value;
+                      const selected = accounts.find((a) => a.id === newValue);
+                      const staffName = selected?.name || 'Unassigned';
+                      const confirmed = await confirm({
+                        title: 'Assign Inquiry',
+                        message: `Assign this inquiry to ${staffName}?`,
+                        confirmLabel: 'Assign',
+                        variant: 'info',
+                      });
+                      if (!confirmed) {
+                        e.target.value = inquiry.assignedToUid || '';
+                        return;
+                      }
+                      onAssignInquiry(inquiry.id, newValue, selected?.name || undefined);
+                    }}
+                    className="select-industrial min-w-40"
+                  >
+                    <option value="">Unassigned</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name} ({account.role})</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm border border-line bg-bg text-muted text-center min-w-40">
+                    {inquiry.assignedToName || 'Unassigned'}
+                  </span>
+                )}
+
+                {/* Archive / Unarchive button */}
+                {inquiry.archivedAt && onUnarchive ? (
+                  <button
+                    onClick={async () => {
+                      const confirmed = await confirm({
+                        title: 'Restore Inquiry',
+                        message: 'Restore this inquiry to the active list?',
+                        confirmLabel: 'Restore',
+                        variant: 'info',
+                      });
+                      if (confirmed) onUnarchive(inquiry.id);
+                    }}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm border border-data/30 bg-data/10 text-data hover:bg-data/20 transition-colors min-w-40"
+                  >
+                    <ArchiveRestore size={14} />
+                    Restore
+                  </button>
+                ) : !inquiry.archivedAt && onArchive ? (
+                  <button
+                    onClick={async () => {
+                      const confirmed = await confirm({
+                        title: 'Archive Inquiry',
+                        message: 'Archive this inquiry? It will be hidden from the default view but retained for reports.',
+                        confirmLabel: 'Archive',
+                        variant: 'warning',
+                      });
+                      if (confirmed) onArchive(inquiry.id);
+                    }}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm border border-muted/30 bg-muted/10 text-muted hover:bg-muted/20 transition-colors min-w-40"
+                  >
+                    <Archive size={14} />
+                    Archive
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

@@ -2,7 +2,8 @@
 
 **Reference Audit:** SEO-Setup.md (Score: 9.2/10)
 **Target Score:** 9.5+/10
-**Date:** April 7, 2026
+**Date:** April 8, 2026 (Updated)
+**Previous Date:** April 7, 2026
 
 ---
 
@@ -196,7 +197,15 @@
 
 ## Completed vs Remaining Work Summary
 
-### Completed (5 items)
+### Enterprise 3.5 Hardening Sprint SEO Improvements (Apr 8)
+
+| Item | Status |
+|------|--------|
+| SeoLandingPages lazy imports consolidated (single module import) | Done |
+| Alt text fixes for listing images (accessibility + SEO) | Done |
+| CSP header deployed via Firebase Hosting (protects OG/meta integrity) | Done |
+
+### Completed (5 items + 3 from hardening sprint)
 
 | Item | Discovery |
 |------|-----------|

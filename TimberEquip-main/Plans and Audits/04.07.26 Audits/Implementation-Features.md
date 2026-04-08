@@ -1,8 +1,9 @@
 # Forestry Equipment Sales — Feature Implementation Recommendations
 
-**Reference Audit:** FES-Overall-Offers.md (Score: 9.1/10)
+**Reference Audit:** FES-Overall-Offers.md (Score: 9.2/10)
 **Target Score:** 9.5+/10
-**Date:** April 7, 2026
+**Date:** April 8, 2026 (Updated)
+**Previous Date:** April 7, 2026
 
 ---
 
@@ -30,6 +31,24 @@ ListingDetail.tsx includes both "Market Match" and "Similar Equipment" sections 
 
 **Status:** COMPLETED (already existed)
 Full comparison functionality is available at `/compare`, allowing side-by-side equipment evaluation.
+
+### Enterprise 3.5 Hardening Sprint — COMPLETED (Apr 8)
+
+The following security and infrastructure features were added:
+
+| Feature | Status |
+|---------|--------|
+| HTTP security headers (HSTS, Referrer-Policy, Permissions-Policy, CSP) via Firebase Hosting | Done |
+| Firestore rules expanded to 1,066+ lines with catch-all deny | Done |
+| reCAPTCHA + Firestore rate limiting on dealer inquiry endpoint | Done |
+| PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager | Done |
+| Google Maps API key restricted | Done |
+| Vulnerability disclosure page at /vulnerability-disclosure | Done |
+| Firebase config tracked in git | Done |
+| Unused `motion` package removed | Done |
+| SeoLandingPages lazy imports consolidated | Done |
+| Alt text fixes for accessibility | Done |
+| 3 new test files added (49 total, 523+ passing) | Done |
 
 ---
 
@@ -134,9 +153,9 @@ Full comparison functionality is available at `/compare`, allowing side-by-side 
 
 | Phase | Features | Duration | Score Impact |
 |-------|----------|----------|-------------|
-| **Already Complete** | Related Equipment, Content Depth, Comparison Tool | -- | Reflected in 9.1 baseline |
+| **Already Complete** | Related Equipment, Content Depth, Comparison Tool, Enterprise 3.5 Hardening | -- | Reflected in 9.2 baseline |
 | Sprint 1 | Push notifications + Video support | 2 weeks | +0.1 |
 | Sprint 2 | Reviews & Ratings + Inspection reports | 2 weeks | +0.1 |
 | Sprint 3 | Advanced search + Messaging | 3 weeks | +0.1 |
 | Sprint 4 | PWA enhancements + Remaining content | 2 weeks | +0.1 |
-| **Total** | | **9 weeks** | **9.1 → 9.5+** |
+| **Total** | | **9 weeks** | **9.2 → 9.5+** |

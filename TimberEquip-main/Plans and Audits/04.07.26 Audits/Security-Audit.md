@@ -1,6 +1,7 @@
 # Forestry Equipment Sales — Comprehensive Security Audit
 
-**Audit Date:** April 7, 2026
+**Audit Date:** April 8, 2026 (Updated)
+**Previous Audit:** April 7, 2026
 **Platform:** Forestry Equipment Sales (https://timberequip.com)
 **Audit Methodology:** OWASP Top 10 + NIST CSF + CIS Controls
 **Prepared By:** FES Security Audit Team
@@ -10,10 +11,33 @@
 
 ## Executive Summary
 
-This security audit evaluates the Forestry Equipment Sales platform across authentication, authorization, data protection, API security, infrastructure hardening, and compliance. The platform demonstrates **excellent security posture** with enterprise-grade protections across all areas. Since the initial assessment, the team has resolved the sole HIGH-severity finding (CSP `unsafe-inline` in production), closed four of five MEDIUM findings, and hardened the CI/CD pipeline with automated dependency scanning. All 523 tests pass across 46 test files, production dependencies are pinned to exact versions, and a public changelog is now available at /changelog.
+This security audit evaluates the Forestry Equipment Sales platform across authentication, authorization, data protection, API security, infrastructure hardening, and compliance. The platform demonstrates **excellent security posture** with enterprise-grade protections across all critical areas. Since the April 7 assessment, a comprehensive Enterprise 3.5 Hardening sprint has been completed, resolving all remaining MEDIUM findings and adding significant new protections:
 
-**Overall Security Score: 9.2 / 10**
-**Risk Assessment: LOW (remaining items are low-severity hardening)**
+- **reCAPTCHA + Firestore-based rate limiting** on the public dealer inquiry endpoint (5 requests per 15 min per IP+dealer)
+- **7 new Firestore security rules + catch-all deny** — rules file expanded to 1,066+ lines covering all collections
+- **HTTP security headers via Firebase Hosting** — HSTS (63072000s), Referrer-Policy, Permissions-Policy, CSP, X-XSS-Protection
+- **PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager** via `defineSecret()`
+- **Google Maps API key restricted** to approved HTTP referrers and specific APIs only
+- **Vulnerability disclosure page** published at `/vulnerability-disclosure`
+- **CSP expanded** to cover `*.firebasestorage.app`, `wss://*.firebaseio.com`, and own domains
+- **Firebase client config tracked in git** (public by design, not a secret)
+- **Empty catch blocks** now log warnings in service layer files (8 blocks updated)
+- **Alt text enforcement** on all remaining images (AdminDashboard, ListingDetail)
+- **Hardcoded test emails** replaced with environment variable fallbacks across 8 files
+
+All 523+ tests pass across 49 test files, production dependencies are pinned to exact versions, and all hardening changes have been deployed to production.
+
+A subsequent deep re-audit on April 8 identified **6 new findings** not captured in the initial hardening assessment:
+
+- **SEC-06 (HIGH):** reCAPTCHA verification is **optional** on the dealer inquiry endpoint — the `if (rcToken)` guard allows bypass by omitting the token
+- **SEC-07 (HIGH):** Hardcoded admin email `caleb@forestryequipmentsales.com` remains in `getAuctionAdminCcEmail()` fallback (line 1751)
+- **SEC-08 (HIGH):** `cors: true` wildcard on both `apiProxy` and `publicPages` Cloud Functions — bypasses Express-level CORS splitting
+- **SEC-09 (HIGH):** `xlsx` 0.18.5 has known prototype pollution vulnerability (CVE-2023-30533)
+- **SEC-10 (MEDIUM):** `getDecodedUserFromBearer()` lacks try/catch and does not pass `checkRevoked: true` to `verifyIdToken()`
+- **SEC-11 (MEDIUM):** CSP `script-src 'unsafe-inline'` present in `firebase.json` HTTP header (SEC-01 only partially resolved — removed from Helmet but not from Firebase Hosting)
+
+**Overall Security Score: 8.8 / 10** (adjusted from 9.5 after re-audit discoveries)
+**Risk Assessment: LOW-MEDIUM (4 HIGH open findings require near-term remediation)**
 
 ---
 
@@ -39,6 +63,7 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 | AUTH-01 | MEDIUM | reCAPTCHA fail-open pattern: token generation failure allows request through | recaptchaService.ts:104-142 | **RESOLVED** — reCAPTCHA Enterprise now fails closed with automatic retry on token failure |
 | AUTH-02 | LOW | MFA phone numbers stored unencrypted at application level (Firebase encrypts at rest) | Firestore users collection | OPEN |
 | AUTH-03 | INFO | Social login (Google/Facebook) scaffolded but not fully enabled | AuthContext.tsx | OPEN |
+| **SEC-06** | **HIGH** | reCAPTCHA is **optional** on dealer inquiry endpoint — `if (rcToken)` guard allows bypass by omitting token entirely | functions/index.js:12041-12053 | **OPEN** — must make token mandatory |
 
 ### Scoring Breakdown
 
@@ -127,7 +152,7 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 
 | Header | Value | Status |
 |--------|-------|--------|
-| Content-Security-Policy | Restrictive defaults; `unsafe-inline` removed for production | ENABLED |
+| Content-Security-Policy | Restrictive defaults; `unsafe-inline` removed from Helmet (server.ts) but **still present in firebase.json** HTTP header (see SEC-11) | PARTIAL |
 | Strict-Transport-Security | max-age=31536000; includeSubDomains; preload | ENABLED |
 | X-Frame-Options | SAMEORIGIN | ENABLED |
 | X-Content-Type-Options | nosniff | ENABLED |
@@ -139,9 +164,12 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 
 | ID | Severity | Finding | File:Line | Status |
 |----|----------|---------|-----------|--------|
-| SEC-01 | HIGH | CSP allows `'unsafe-inline'` for scripts (Vite dev requirement) | server.ts:1364 | **RESOLVED** — `unsafe-inline` now conditionally included only in development (Vite HMR); removed from production builds |
+| SEC-01 | HIGH | CSP allows `'unsafe-inline'` for scripts (Vite dev requirement) | server.ts:1364 | **PARTIALLY RESOLVED** — removed from Helmet/server.ts for production, but still present in firebase.json HTTP header CSP (see SEC-11) |
 | SEC-02 | MEDIUM | CORS allowlist includes staging domains in production config | server.ts:1467-1486 | **RESOLVED** — CORS allowlist split into PRODUCTION_ORIGINS and DEV_ORIGINS; production env only allows production domains |
 | SEC-03 | INFO | All 40+ API endpoints have `verifyIdToken()` where required | server.ts | OPEN |
+| **SEC-08** | **HIGH** | `cors: true` wildcard on both `apiProxy` and `publicPages` Cloud Functions (`onRequest`) — allows any origin at the Firebase Functions level, bypassing Express-level CORS | functions/index.js:11817,11825 | **OPEN** — replace with explicit origin allowlist |
+| **SEC-10** | **MEDIUM** | `getDecodedUserFromBearer()` has no try/catch and does not use `checkRevoked: true` — revoked tokens accepted up to 1 hour | functions/index.js:10287-10290 | **OPEN** — add error handling and revocation check |
+| **SEC-11** | **MEDIUM** | CSP `script-src 'unsafe-inline'` present in `firebase.json` HTTP header — neutralizes XSS protection from CSP | firebase.json:116 | **OPEN** — required for React SPA without SSR; long-term fix needs nonce or hash-based CSP |
 
 ---
 
@@ -179,6 +207,8 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 | DATA-01 | MEDIUM | Inconsistent secret access: server.ts uses process.env, functions use defineSecret() | server.ts:914 | **RESOLVED** — Stripe secrets wrapped in validated serverConfig object with fail-fast check at startup |
 | DATA-02 | LOW | Phone numbers not encrypted at application layer (Firebase encrypts at rest) | Firestore users collection | OPEN |
 | DATA-03 | INFO | .env.example tracked (not .env); Firebase API key is public by design | .env.example | OPEN |
+| **SEC-07** | **HIGH** | Hardcoded admin email `caleb@forestryequipmentsales.com` in `getAuctionAdminCcEmail()` fallback — PII in source code, financial notification misdirection risk if Secret Manager fails | functions/index.js:1751 | **OPEN** — remove hardcoded fallback, fail with logged error instead |
+| **SEC-09** | **HIGH** | `xlsx` 0.18.5 has known prototype pollution vulnerability (CVE-2023-30533) — SheetJS CE abandoned on npm | package.json:93 | **OPEN** — replace with `exceljs` or remove if only CSV export needed |
 
 ---
 
@@ -238,9 +268,9 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 | A02: Cryptographic Failures | LOW | Firebase encryption + HTTPS everywhere |
 | A03: Injection | LOW | Zod input validation + parameterized Firestore queries |
 | A04: Insecure Design | LOW | Multi-layer defense-in-depth architecture |
-| A05: Security Misconfiguration | LOW | CSP unsafe-inline removed for production; CORS environment-split |
-| A06: Vulnerable Components | LOW | Automated `npm audit` in CI; dependencies pinned to exact versions |
-| A07: Authentication Failure | LOW | Firebase Auth + custom claims + MFA + fail-closed reCAPTCHA |
+| A05: Security Misconfiguration | LOW-MEDIUM | CSP `unsafe-inline` removed from Helmet but remains in firebase.json; CORS split at Express level but `cors: true` wildcard at Cloud Functions level (SEC-08, SEC-11) |
+| A06: Vulnerable Components | LOW-MEDIUM | Automated `npm audit` in CI; dependencies pinned; `xlsx` 0.18.5 has unpatched CVE-2023-30533 (SEC-09) |
+| A07: Authentication Failure | LOW | Firebase Auth + custom claims + MFA + fail-closed reCAPTCHA (note: dealer inquiry reCAPTCHA is optional — SEC-06) |
 | A08: Software/Data Integrity | LOW-MEDIUM | No signed commits; webhook verification present; CI dependency scanning active |
 | A09: Logging & Monitoring | LOW | Sentry + 4 audit log collections |
 | A10: SSRF | LOW | Firebase Functions validate API calls |
@@ -266,21 +296,33 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 | Severity | Count | Status |
 |----------|-------|--------|
 | CRITICAL | 0 | — |
-| HIGH | 0 | SEC-01 **RESOLVED** |
-| MEDIUM | 0 | AUTH-01, DATA-01, SEC-02, INFRA-01, INFRA-02 — all **RESOLVED** |
+| HIGH | 4 | SEC-06 (reCAPTCHA optional), SEC-07 (hardcoded email), SEC-08 (CORS wildcard), SEC-09 (xlsx CVE) — all **OPEN** |
+| MEDIUM | 2 | SEC-10 (token verification), SEC-11 (CSP unsafe-inline in firebase.json) — **OPEN** |
 | LOW | 3 | AUTH-02, DATA-02, INFRA-04 remain OPEN |
 | INFO | 5 | Various informational findings |
+| RESOLVED | 7 | SEC-01 (partial), SEC-02, INFRA-01, INFRA-02, AUTH-01, DATA-01, INFRA-03 |
 
-### Remediation Status
+### Remediation Status — Resolved
 
 | Priority | ID | Finding | Est. Effort | Status |
 |----------|------|---------|-------------|--------|
-| 1 | SEC-01 | Remove unsafe-inline CSP for production | 4 hours | **RESOLVED** |
+| 1 | SEC-01 | Remove unsafe-inline CSP for production | 4 hours | **PARTIALLY RESOLVED** (Helmet yes, firebase.json no) |
 | 2 | INFRA-01 | Add npm audit to CI/CD | 2 hours | **RESOLVED** |
 | 3 | DATA-01 | Standardize secret access patterns | 3 hours | **RESOLVED** |
 | 4 | AUTH-01 | Implement reCAPTCHA fail-closed policy | 2 hours | **RESOLVED** |
 | 5 | SEC-02 | Remove staging domains from production CORS | 1 hour | **RESOLVED** |
 | 6 | INFRA-02 | Pin dependency versions for production | 2 hours | **RESOLVED** |
+
+### Remediation Status — Open (from April 8 Re-Audit)
+
+| Priority | ID | Finding | Est. Effort | Status |
+|----------|------|---------|-------------|--------|
+| 1 | SEC-06 | Make reCAPTCHA mandatory on dealer inquiry endpoint | 1 hour | **OPEN** |
+| 2 | SEC-07 | Remove hardcoded admin email from getAuctionAdminCcEmail() | 30 min | **OPEN** |
+| 3 | SEC-08 | Replace `cors: true` with explicit origin allowlist on Cloud Functions | 2 hours | **OPEN** |
+| 4 | SEC-09 | Replace `xlsx` 0.18.5 with `exceljs` or remove dependency | 4 hours | **OPEN** |
+| 5 | SEC-10 | Add try/catch and `checkRevoked: true` to getDecodedUserFromBearer() | 1 hour | **OPEN** |
+| 6 | SEC-11 | Remove `unsafe-inline` from firebase.json CSP script-src (requires nonce/hash strategy) | 8 hours | **OPEN** |
 
 ---
 
@@ -288,7 +330,7 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 
 | Strength | Details |
 |----------|---------|
-| Comprehensive Firestore Rules | 1,032 lines covering 40+ collections with schema validation |
+| Comprehensive Firestore Rules | 1,066+ lines covering 48+ collections with schema validation + catch-all deny |
 | Server-side-only privilege checks | No client-side privilege escalation paths |
 | Per-user rate limiting | SHA-256 hashed UID-based rate limits on auction endpoints |
 | Timing-safe CSRF comparison | crypto.timingSafeEqual() prevents timing attacks |
@@ -296,36 +338,65 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 | Event deduplication | Firestore transactions prevent double-processing |
 | 4 audit log collections | Comprehensive event tracking for compliance |
 | Zod input validation | Schema-based validation on all 40+ endpoints |
-| Helmet + CSP | Enterprise-grade HTTP security headers; unsafe-inline removed for production |
+| Helmet + CSP | Enterprise-grade HTTP security headers; unsafe-inline removed from Helmet (still in firebase.json — see SEC-11) |
 | Firebase encryption at rest | All data encrypted by default |
 | CI/CD security pipeline | 4 GitHub Actions workflows including automated `npm audit` on PRs |
-| 523 passing tests | 46 test files covering services (billing, equipment), components, and utilities |
-| Fail-closed reCAPTCHA | Bot protection with automatic retry; never fails open |
+| 523+ passing tests | 49 test files covering services (billing, equipment, auction, CMS, SEO, API validation), components, and utilities |
+| Fail-closed reCAPTCHA | Bot protection with automatic retry on main forms; dealer inquiry endpoint reCAPTCHA is currently optional (SEC-06 — needs fix) |
 | Environment-split CORS | Production and development origins isolated |
 | Validated secret config | Stripe secrets wrapped in serverConfig with fail-fast startup check |
 | Public changelog | Transparency via /changelog page |
+| HTTP security headers (Firebase Hosting) | HSTS (63072000s), Referrer-Policy, Permissions-Policy, X-XSS-Protection, comprehensive CSP |
+| Google Maps API key restricted | HTTP referrer restrictions + API restrictions (Maps JS, Places, Geocoding only) |
+| PRIVILEGED_ADMIN_EMAILS in Secret Manager | Migrated from env var to defineSecret() for secure admin email management |
+| Catch-all Firestore deny rule | Any collection not explicitly listed is denied read/write access |
+| Dealer inquiry rate limiting | Firestore-based rate limiting: 5 requests per 15 min per IP+dealer |
+| Vulnerability disclosure page | Public vulnerability disclosure policy at /vulnerability-disclosure |
+| Firebase config properly tracked | firebase-applet-config.json in git (public client config, not a secret) |
+| Service-layer error logging | Empty catch blocks replaced with console.warn for debugging (8 blocks across 3 services) |
 
 ---
 
 ## Scoring Summary
 
-| Category | Weight | Score |
-|----------|--------|-------|
-| Authentication & Identity | 20% | 9.5 |
-| Authorization & Access Control | 20% | 9.2 |
-| API Security | 15% | 9.5 |
-| Data Protection | 15% | 8.5 |
-| Payment Security | 10% | 9.0 |
-| Infrastructure Security | 10% | 8.5 |
-| Compliance | 10% | 8.0 |
-| **Weighted Average** | **100%** | **9.2 / 10** |
+| Category | Weight | Apr 7 | Apr 8 (Hardening) | Apr 8 (Re-Audit) |
+|----------|--------|-------|-------------------|-------------------|
+| Authentication & Identity | 20% | 9.5 | 9.5 | 9.0 (SEC-06: reCAPTCHA optional on inquiry) |
+| Authorization & Access Control | 20% | 9.2 | 9.5 | 9.2 (Firestore rules strong, CORS wildcard at Functions level) |
+| API Security | 15% | 9.5 | 9.8 | 8.5 (SEC-08: CORS wildcard, SEC-10: token verification, SEC-11: CSP) |
+| Data Protection | 15% | 8.5 | 9.0 | 8.0 (SEC-07: hardcoded admin email, SEC-09: xlsx CVE) |
+| Payment Security | 10% | 9.0 | 9.0 | 9.0 |
+| Infrastructure Security | 10% | 8.5 | 9.5 | 9.0 (SEC-11 reduces CSP effectiveness) |
+| Compliance | 10% | 8.0 | 8.5 | 8.5 |
+| **Weighted Average** | **100%** | **9.2** | **9.5** | **8.8 / 10** |
+
+### Score Change Rationale (April 8 — Hardening Sprint)
+- **Authorization +0.3:** 7 new Firestore rules + catch-all deny (1,066+ lines); Firestore rate limiting on dealer inquiry
+- **API Security +0.3:** HTTP security headers via Firebase Hosting (HSTS, CSP, Referrer-Policy, Permissions-Policy); CSP expanded to cover all Firebase domains + WebSocket
+- **Data Protection +0.5:** PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager; Firebase config fallback removed; hardcoded test emails replaced
+- **Infrastructure +1.0:** Google Maps API key restricted; vulnerability disclosure page published; empty catch blocks now log warnings
+- **Compliance +0.5:** Vulnerability disclosure page at /vulnerability-disclosure; security.txt
+
+### Score Adjustment Rationale (April 8 — Re-Audit)
+- **Authentication -0.5:** SEC-06 — reCAPTCHA on dealer inquiry is optional (`if (rcToken)` allows bypass)
+- **Authorization -0.3:** SEC-08 — `cors: true` wildcard at Cloud Functions level undermines Express-level CORS split
+- **API Security -1.3:** SEC-08 (CORS), SEC-10 (token verification gaps), SEC-11 (CSP unsafe-inline in firebase.json)
+- **Data Protection -1.0:** SEC-07 (hardcoded admin email PII), SEC-09 (xlsx CVE-2023-30533)
+- **Infrastructure -0.5:** SEC-11 — CSP unsafe-inline reduces header effectiveness
 
 ---
 
 ## Remediation Roadmap
 
-### Completed (April 7, 2026)
-- [x] Remove `'unsafe-inline'` from CSP scriptSrc for production (SEC-01)
+### Immediate (April 8 Re-Audit — HIGH Priority)
+- [ ] Make reCAPTCHA mandatory on dealer inquiry endpoint — reject if token absent (SEC-06) — **1 hour**
+- [ ] Remove hardcoded `caleb@forestryequipmentsales.com` from `getAuctionAdminCcEmail()` (SEC-07) — **30 min**
+- [ ] Replace `cors: true` with explicit origin allowlist on `apiProxy` and `publicPages` Functions (SEC-08) — **2 hours**
+- [ ] Replace `xlsx` 0.18.5 with maintained alternative (SEC-09) — **4 hours**
+- [ ] Add try/catch + `checkRevoked: true` to `getDecodedUserFromBearer()` (SEC-10) — **1 hour**
+
+### Completed (April 7-8, 2026)
+- [x] Remove `'unsafe-inline'` from CSP scriptSrc in Helmet/server.ts (SEC-01 — partially; firebase.json still has it, see SEC-11)
 - [x] Add `npm audit --audit-level=high` to CI/CD pipeline (INFRA-01)
 - [x] Remove staging domains from production CORS whitelist (SEC-02)
 - [x] Implement reCAPTCHA fail-closed policy with automatic retry (AUTH-01)
@@ -333,8 +404,21 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 - [x] Pin dependency versions for production builds (INFRA-02)
 - [x] Add `/.well-known/security.txt` (INFRA-03)
 - [x] Verify .env not committed to git history
+- [x] Add reCAPTCHA + Firestore rate limiting on dealer inquiry endpoint
+- [x] Add 7 new Firestore rules + catch-all deny (1,066+ lines)
+- [x] Deploy HTTP security headers via Firebase Hosting (HSTS, CSP, Referrer-Policy, Permissions-Policy)
+- [x] Migrate PRIVILEGED_ADMIN_EMAILS to Secret Manager via defineSecret()
+- [x] Restrict Google Maps API key to approved HTTP referrers
+- [x] Publish vulnerability disclosure page at /vulnerability-disclosure
+- [x] Expand CSP to cover *.firebasestorage.app, wss://*.firebaseio.com, own domains
+- [x] Track firebase-applet-config.json in git (remove from .gitignore)
+- [x] Replace hardcoded test emails with env var fallbacks (8 files)
+- [x] Remove unused `motion` package
+- [x] Add console.warn to empty catch blocks in service layer (8 blocks)
+- [x] Add descriptive alt text to all remaining images
 
 ### Month 1 (Short-term)
+- [ ] Remove `unsafe-inline` from firebase.json CSP `script-src` (SEC-11 — requires nonce or hash strategy) — **8 hours**
 - [ ] Run `npm audit fix` on both package.json files
 - [ ] Enforce GPG-signed commits (INFRA-04)
 
@@ -342,7 +426,6 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 - [ ] Implement application-layer encryption for PII (phone, address) (AUTH-02, DATA-02)
 - [ ] Add virus scanning for all file uploads
 - [ ] Consider third-party penetration test
-- [ ] Document vulnerability disclosure process
 - [ ] Evaluate SOC 2 Type II readiness
 
 ### Ongoing

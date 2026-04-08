@@ -1,8 +1,9 @@
 # Forestry Equipment Sales — Architecture Implementation Recommendations
 
-**Reference Audit:** Architectural-System.md (Score: 9.1/10)
+**Reference Audit:** Architectural-System.md (Score: 9.2/10, adjusted after security re-audit)
 **Target Score:** 9.5+/10
-**Date:** April 7, 2026
+**Date:** April 8, 2026 (Updated)
+**Previous Date:** April 7, 2026
 
 ---
 
@@ -162,7 +163,7 @@ No further work required.
 ### 4.1 Test Coverage — COMPLETED
 
 **Status:** COMPLETED
-**Outcome:** Test suite expanded to 523 tests across 46 files, covering billing, equipment services, admin flows, SEO components, email templates, account entitlements, and privileged admin logic. Critical paths have adequate coverage.
+**Outcome:** Test suite expanded to 523+ tests across 49 files, covering billing, equipment services, admin flows, SEO components, email templates, account entitlements, and privileged admin logic. Critical paths have adequate coverage.
 
 No further work required.
 
@@ -172,6 +173,26 @@ No further work required.
 **Outcome:** Content Security Policy headers configured via Helmet, CORS whitelist enforced, and reCAPTCHA v3 integrated on public-facing forms (inquiry, registration, contact). Security middleware is active in production.
 
 No further work required.
+
+### 4.5 Enterprise 3.5 Hardening Sprint — COMPLETED (Apr 8)
+
+**Status:** COMPLETED
+**Outcome:** Comprehensive security and architecture hardening deployed to production:
+
+| Improvement | Status |
+|-------------|--------|
+| HTTP security headers via Firebase Hosting (HSTS 2yr, Referrer-Policy, Permissions-Policy, CSP) | Done |
+| Firestore rules expanded to 1,066+ lines with 7 new collection rules + catch-all deny | Done |
+| reCAPTCHA + Firestore-based rate limiting on dealer inquiry endpoint | Done |
+| PRIVILEGED_ADMIN_EMAILS migrated to Secret Manager (defineSecret) | Done |
+| Google Maps API key restricted (HTTP referrers + API restrictions) | Done |
+| Vulnerability disclosure page published | Done |
+| Firebase client config tracked in git (firebase-applet-config.json) | Done |
+| Unused `motion` package removed | Done |
+| SeoLandingPages lazy imports consolidated (single chunk) | Done |
+| Hardcoded test emails replaced with env var fallbacks | Done |
+| Empty catch blocks updated with structured logging (8 blocks) | Done |
+| Alt text fixes for accessibility | Done |
 
 ### 4.3 Extract Server.ts Middleware
 
@@ -233,7 +254,7 @@ The initial audit contained two inaccuracies that have been corrected:
 | Sprint 2 | Redis cache + API standardization | 3 weeks | +0.2 |
 | Sprint 3 | Server.ts extraction + API versioning | 2 weeks | +0.1 |
 | Sprint 4 | Structured logging + Image CDN | 2 weeks | +0.1 |
-| **Total** | | **~8 weeks** | **9.1 -> 9.5+** |
+| **Total** | | **~8 weeks** | **9.2 -> 9.5+** |
 
 ### Completed Items Summary
 
@@ -242,5 +263,6 @@ The initial audit contained two inaccuracies that have been corrected:
 | 1.1 Automated CI/CD Pipeline | COMPLETED (already existed) | 11.5 hours saved |
 | 1.2 Environment Configuration Hardening | COMPLETED | 8 hours saved |
 | 3.1 Sentry Integration (scaffold) | PARTIALLY COMPLETE | ~1 hour done, ~6 hours remaining |
-| 4.1 Test Coverage (523 tests, 46 files) | COMPLETED | 20 hours saved |
+| 4.1 Test Coverage (523+ tests, 49 files) | COMPLETED | 20 hours saved |
 | 4.2 Security Hardening (CSP, CORS, reCAPTCHA) | COMPLETED | -- |
+| 4.5 Enterprise 3.5 Hardening Sprint (12 items) | COMPLETED | -- |

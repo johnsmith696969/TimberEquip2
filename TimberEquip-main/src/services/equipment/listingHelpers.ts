@@ -264,6 +264,26 @@ export async function ensureFeaturedListingCapacity(params: { sellerUid?: string
 
 // ── Inquiry spam detection ──────────────────────────────────────────────────
 
+const SPAM_PHRASES = [
+  // Financial scam
+  'whatsapp', 'telegram', 'crypto', 'bitcoin', 'western union', 'wire transfer',
+  'money order', 'cashier check', 'send money', 'bank transfer', 'paypal gift',
+  'zelle me', 'venmo me', 'urgent transfer', 'wire now',
+  // Off-platform redirect
+  'signal me', 'text me at', 'email me at', 'contact me outside',
+  // Urgency/pressure
+  'act now', 'limited time', 'don\'t miss', 'last chance',
+  // Generic spam
+  'click here', 'free shipping', 'no obligation', 'congratulations',
+  'you\'ve been selected', 'dear sir', 'dear friend', 'dear madam',
+];
+
+const DISPOSABLE_EMAIL_DOMAINS = [
+  'example.com', 'test.com', 'mailinator.com', 'guerrillamail.com',
+  'tempmail.com', 'throwaway.email', 'yopmail.com', 'sharklasers.com',
+  'grr.la', 'dispostable.com', 'maildrop.cc', 'trashmail.com',
+];
+
 export function calculateInquirySpamSignal(input: {
   buyerEmail: string;
   buyerPhone: string;
@@ -275,26 +295,67 @@ export function calculateInquirySpamSignal(input: {
   const flags: string[] = [];
   let score = 0;
 
-  if (!email.includes('@') || email.endsWith('@example.com') || email.endsWith('@test.com')) {
+  // Email checks
+  if (!email.includes('@')) {
     flags.push('suspicious_email');
     score += 25;
+  } else {
+    const domain = email.split('@')[1] || '';
+    if (DISPOSABLE_EMAIL_DOMAINS.includes(domain)) {
+      flags.push('disposable_email');
+      score += 20;
+    }
   }
 
+  // Phone check
   if (phone.replace(/\D/g, '').length < 10) {
     flags.push('invalid_phone');
     score += 20;
   }
 
+  // Message length
   if (message.length < 15) {
     flags.push('very_short_message');
     score += 20;
   }
 
-  const spamPhrases = ['whatsapp', 'telegram', 'crypto', 'western union', 'urgent transfer', 'wire now'];
-  const matchedSpamPhrases = spamPhrases.filter((phrase) => message.includes(phrase));
+  // Spam keyword phrases
+  const matchedSpamPhrases = SPAM_PHRASES.filter((phrase) => message.includes(phrase));
   if (matchedSpamPhrases.length > 0) {
     flags.push('spam_keywords');
     score += Math.min(40, matchedSpamPhrases.length * 15);
+  }
+
+  // Excessive URLs (3+)
+  const urlCount = (message.match(/https?:\/\//g) || []).length;
+  if (urlCount >= 3) {
+    flags.push('excessive_urls');
+    score += 15;
+  }
+
+  // Excessive ALL CAPS (>50% uppercase in messages >20 chars)
+  if (message.length > 20) {
+    const letters = message.replace(/[^a-zA-Z]/g, '');
+    const upper = letters.replace(/[^A-Z]/g, '');
+    if (letters.length > 0 && upper.length / letters.length > 0.5) {
+      flags.push('excessive_caps');
+      score += 10;
+    }
+  }
+
+  // Repeated characters (same char 5+ times consecutively)
+  if (/(.)\1{4,}/i.test(message)) {
+    flags.push('repeated_chars');
+    score += 10;
+  }
+
+  // Excessive special characters (>30% non-alphanumeric)
+  if (message.length > 10) {
+    const nonAlphaNum = message.replace(/[a-zA-Z0-9\s]/g, '').length;
+    if (nonAlphaNum / message.length > 0.3) {
+      flags.push('excessive_special_chars');
+      score += 15;
+    }
   }
 
   return {

@@ -317,6 +317,9 @@ export function Login() {
         setError('Invalid email or password. Use your Forestry Equipment Sales password or reset it if you need a new one.');
       } else if (code === 'auth/too-many-requests') {
         setError('Too many failed attempts. Please wait a moment and try again.');
+      } else if (code.includes('api-key-not-valid')) {
+        console.error('[Auth] API key rejected by Firebase:', code);
+        setError('Firebase configuration error. Please clear your browser cache and cookies, then try again. If the issue persists, contact support.');
       } else {
         setError('Sign-in failed. Please try again.');
       }
@@ -355,6 +358,9 @@ export function Login() {
       const code = googleFailure?.code || '';
       if (code === 'auth/multi-factor-auth-required') {
         await startLoginMfaChallenge(getSmsMultiFactorResolver(googleFailure));
+      } else if (code.includes('api-key-not-valid')) {
+        console.error('[Auth] API key rejected by Firebase during Google sign-in:', code);
+        setError('Firebase configuration error. Please clear your browser cache and cookies, then try again. If the issue persists, contact support.');
       } else if (code === 'auth/unauthorized-domain') {
         setError('Google sign-in is not authorized for this domain in Firebase Auth yet.');
       } else if (code === 'auth/popup-closed-by-user') {

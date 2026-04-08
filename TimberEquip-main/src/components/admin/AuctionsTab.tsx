@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Gavel, Layers, Edit, Trash2, Search, ArrowLeft } from 'lucide-react';
+import { Package, Gavel, Layers, Edit, Trash2, Search, ArrowLeft, Download } from 'lucide-react';
 import { auctionService } from '../../services/auctionService';
 import { equipmentService } from '../../services/equipmentService';
 import type { Auction, AuctionStatus, AuctionLot } from '../../types';
@@ -314,6 +314,29 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
     );
   }
 
+  // ── CSV export ─────────────────────────────────────────────────────────
+
+  const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const exportAuctionsCSV = () => {
+    if (!auctionsList.length) return;
+    const headers = ['ID', 'Title', 'Status', 'Start Time', 'End Time', 'Lot Count', 'Total Bids', 'Total GMV', 'Buyer Premium %', 'Featured', 'Created By', 'Created At'];
+    const rows = auctionsList.map((a) => [
+      a.id, a.title, a.status, a.startTime || '', a.endTime || '',
+      String(a.lotCount || 0), String(a.totalBids || 0), String(a.totalGMV || 0),
+      String(a.defaultBuyerPremiumPercent ?? ''), a.featured ? 'Yes' : 'No',
+      a.createdBy || '', a.createdAt || '',
+    ]);
+    const csv = [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `auctions-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Render helpers ─────────────────────────────────────────────────────
 
   function renderLotManagement() {
@@ -593,12 +616,22 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
             <h2 className="text-lg font-black uppercase tracking-tight">Auction Management</h2>
             <p className="text-xs text-muted mt-1">Create and manage timed online auctions</p>
           </div>
-          <button
-            className="btn-industrial btn-accent"
-            onClick={() => setAuctionEditing({ mode: 'create' })}
-          >
-            + Create Auction
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={exportAuctionsCSV}
+              disabled={!auctionsList.length}
+              className="flex items-center gap-1.5 btn-industrial px-3 py-1.5 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+            >
+              <Download size={11} /> Export CSV
+            </button>
+            <button
+              className="btn-industrial btn-accent"
+              onClick={() => setAuctionEditing({ mode: 'create' })}
+            >
+              + Create Auction
+            </button>
+          </div>
         </div>
 
         {auctionEditing ? (
