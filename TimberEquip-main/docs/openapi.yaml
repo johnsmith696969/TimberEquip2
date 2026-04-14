@@ -1,0 +1,1760 @@
+openapi: 3.1.0
+info:
+  title: Forestry Equipment Sales API
+  version: 1.0.0
+  description: >
+    REST API for the Forestry Equipment Sales marketplace platform.
+    Supports equipment listings, dealer storefronts, auction bidding,
+    Stripe billing, managed team accounts, and content management.
+    All endpoints are served from an Express.js server on Cloud Run.
+  contact:
+    name: Forestry Equipment Sales
+    url: https://forestryequipmentsales.com
+
+servers:
+  - url: https://forestryequipmentsales.com/api/v1
+    description: Production
+
+tags:
+  - name: Health
+    description: Service health checks
+  - name: Public
+    description: Unauthenticated endpoints for marketplace data
+  - name: User
+    description: Authenticated user account operations
+  - name: ManagedRoles
+    description: Dealer team member management
+  - name: Billing
+    description: Stripe billing, checkout, and subscription management
+  - name: Auctions
+    description: Auction bidding, pre-authorization, and lot management
+  - name: Admin
+    description: Administrative operations (user management, feeds, billing, content)
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ── Health ─────────────────────────────────────────────────────────────
+  /health:
+    get:
+      operationId: getHealth
+      tags: [Health]
+      summary: Service health check
+      description: Returns component-level health status for Firestore, Stripe, and overall system.
+      security: []
+      responses:
+        "200":
+          description: Health report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  components:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+                        latencyMs:
+                          type: number
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Public ─────────────────────────────────────────────────────────────
+  /marketplace-stats:
+    get:
+      operationId: getMarketplaceStats
+      tags: [Public]
+      summary: Marketplace statistics
+      description: Aggregated marketplace statistics. Response is cached for 10 minutes.
+      security: []
+      responses:
+        "200":
+          description: Marketplace statistics payload
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /public/sellers/{identity}:
+    get:
+      operationId: getPublicSeller
+      tags: [Public]
+      summary: Public seller profile
+      description: >
+        Resolve a seller by UID or storefront slug. Checks storefronts
+        collection first, then users collection. Cached for 5 minutes.
+      security: []
+      parameters:
+        - name: identity
+          in: path
+          required: true
+          description: User UID or storefront slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Seller profile (null if not found)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  seller:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+        "400":
+          description: Missing identity parameter
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /public/dealers:
+    get:
+      operationId: getPublicDealers
+      tags: [Public]
+      summary: Active dealer directory
+      description: Lists all dealers with active directory subscriptions. Cached for 5 minutes.
+      security: []
+      responses:
+        "200":
+          description: Dealer directory
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dealers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /public/news:
+    get:
+      operationId: getPublicNewsFeed
+      tags: [Public]
+      summary: Public news feed
+      description: Published news articles. Cached for 5 minutes.
+      security: []
+      responses:
+        "200":
+          description: News feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  fetchedAt:
+                    type: string
+                    format: date-time
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /public/news/{id}:
+    get:
+      operationId: getPublicNewsArticle
+      tags: [Public]
+      summary: Single news article
+      description: Retrieve a single published news article by ID. Cached for 5 minutes.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: News article
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  post:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /recaptcha-assess:
+    post:
+      operationId: recaptchaAssess
+      tags: [Public]
+      summary: reCAPTCHA v3 Enterprise validation
+      description: Validates a reCAPTCHA Enterprise token. Rate-limited to 30 requests per minute.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, action]
+              properties:
+                token:
+                  type: string
+                  description: reCAPTCHA token from the client
+                action:
+                  type: string
+                  maxLength: 100
+                  description: Expected reCAPTCHA action name
+      responses:
+        "200":
+          description: Assessment result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pass:
+                    type: boolean
+                  score:
+                    type: number
+                    nullable: true
+        "400":
+          description: Missing token or action
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ── User ───────────────────────────────────────────────────────────────
+  /user/delete:
+    post:
+      operationId: deleteUserAccount
+      tags: [User]
+      summary: Delete user account
+      description: >
+        Permanently deletes the authenticated user's account and all
+        associated data (listings, inquiries, invoices, subscriptions).
+      responses:
+        "200":
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /upload:
+    post:
+      operationId: uploadFile
+      tags: [User]
+      summary: Upload file with moderation
+      description: >
+        Upload a file with automatic virus scanning and AI content moderation
+        (Google Cloud Vision SafeSearch). Images with LIKELY or VERY_LIKELY
+        adult/violence content are rejected.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  file:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      size:
+                        type: integer
+                      mimetype:
+                        type: string
+        "400":
+          description: No file uploaded or content policy violation
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Managed Roles ──────────────────────────────────────────────────────
+  /managed-roles:
+    get:
+      operationId: listManagedRoles
+      tags: [ManagedRoles]
+      summary: List team members
+      description: >
+        List managed sub-accounts for the authenticated dealer. Returns
+        up to 50 members. Admins may pass ownerUid to view another dealer's team.
+      parameters:
+        - name: ownerUid
+          in: query
+          required: false
+          description: Override owner UID (admin only)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Team members list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ManagedUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /managed-roles/{uid}/role:
+    patch:
+      operationId: updateManagedRole
+      tags: [ManagedRoles]
+      summary: Update team member role
+      description: >
+        Change the role of a managed sub-account. Allowed roles are
+        dealer_manager, dealer_staff, and member.
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/ManagedAccountRole"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  role:
+                    $ref: "#/components/schemas/ManagedAccountRole"
+        "400":
+          description: Invalid role
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: User not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /managed-roles/{uid}/lock:
+    post:
+      operationId: lockManagedAccount
+      tags: [ManagedRoles]
+      summary: Lock a team member account
+      description: Locks the managed account and sends a notification email.
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Account locked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  status:
+                    type: string
+                    example: locked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: User not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /managed-roles/{uid}/unlock:
+    post:
+      operationId: unlockManagedAccount
+      tags: [ManagedRoles]
+      summary: Unlock a team member account
+      description: Restores account to active status and sends a notification email.
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Account unlocked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  status:
+                    type: string
+                    example: active
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: User not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /managed-roles/{uid}:
+    delete:
+      operationId: removeManagedAccount
+      tags: [ManagedRoles]
+      summary: Remove a team member
+      description: Soft-deletes the managed account by setting status to "removed".
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: User not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /managed-roles/{uid}/reset-password:
+    post:
+      operationId: resetManagedPassword
+      tags: [ManagedRoles]
+      summary: Send password reset email
+      description: Sends a password reset email to the managed team member.
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Password reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: No email on file for the account
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: User not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Billing ────────────────────────────────────────────────────────────
+  /billing/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [Billing]
+      summary: Stripe webhook handler
+      description: >
+        Receives Stripe webhook events (invoice.paid, invoice.payment_failed,
+        customer.subscription.*, checkout.session.completed, charge.refunded).
+        Verified via Stripe webhook signature. Idempotent via event deduplication.
+      security:
+        - StripeWebhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Stripe event payload
+      responses:
+        "200":
+          description: Event processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                  duplicate:
+                    type: boolean
+        "400":
+          description: Invalid webhook signature
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /billing/create-checkout-session:
+    post:
+      operationId: createCheckoutSession
+      tags: [Billing]
+      summary: Create listing checkout session
+      description: Creates a Stripe Checkout session for a listing subscription plan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckoutSessionRequest"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+                    description: Stripe Checkout redirect URL
+        "400":
+          description: Invalid plan or missing listing ID
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /billing/checkout-session/{sessionId}:
+    get:
+      operationId: getCheckoutSession
+      tags: [Billing]
+      summary: Retrieve checkout session status
+      description: Returns the status of a Stripe Checkout session by ID.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Checkout session details
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /billing/create-portal-session:
+    post:
+      operationId: createPortalSession
+      tags: [Billing]
+      summary: Create Stripe billing portal session
+      description: Opens the Stripe self-service billing portal for subscription management.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                returnPath:
+                  type: string
+                  default: /profile?tab=Account%20Settings
+                  description: Path to redirect after portal session ends (must start with /)
+      responses:
+        "200":
+          description: Portal session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: Stripe billing portal redirect URL
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /billing/cancel-subscription:
+    post:
+      operationId: cancelSubscription
+      tags: [Billing]
+      summary: Cancel subscription at period end
+      description: Cancels the user's active subscription. It remains active until the current billing period ends.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subscriptionId]
+              properties:
+                subscriptionId:
+                  type: string
+                  description: Stripe subscription ID to cancel
+      responses:
+        "200":
+          description: Subscription cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /billing/create-account-checkout-session:
+    post:
+      operationId: createAccountCheckoutSession
+      tags: [Billing]
+      summary: Dealer account upgrade checkout
+      description: Creates a Stripe Checkout session for upgrading a dealer account plan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId]
+              properties:
+                planId:
+                  type: string
+                  description: Seller plan ID (individual_seller, dealer, fleet_dealer)
+                successUrl:
+                  type: string
+                  description: Optional override for the success redirect URL
+                cancelUrl:
+                  type: string
+                  description: Optional override for the cancel redirect URL
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+        "400":
+          description: Invalid seller plan
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /billing/refresh-account-access:
+    post:
+      operationId: refreshAccountAccess
+      tags: [Billing]
+      summary: Refresh access tier from billing plan
+      description: Re-evaluates the user's access tier based on their active billing plan and subscription status.
+      responses:
+        "200":
+          description: Refreshed access summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  # ── Auctions ───────────────────────────────────────────────────────────
+  /auctions/place-bid:
+    post:
+      operationId: placeBid
+      tags: [Auctions]
+      summary: Place a bid on an auction lot
+      description: >
+        Places a bid on an active auction lot. Supports automatic proxy bidding
+        via the optional maxBid field. Runs inside a Firestore transaction
+        to guarantee bid integrity. Extends lot closing time if bid is placed
+        within the anti-sniping window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaceBidRequest"
+      responses:
+        "200":
+          description: Bid accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  bidId:
+                    type: string
+                  currentBid:
+                    type: number
+                  isHighBidder:
+                    type: boolean
+        "400":
+          description: Validation error (invalid amount, lot not open)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Auction or lot not found
+        "409":
+          description: Auction not active or lot not open for bidding
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auctions/retract-bid:
+    post:
+      operationId: retractBid
+      tags: [Auctions]
+      summary: Retract a previously placed bid
+      description: Allows the bidder to retract their own bid from an active lot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auctionId, lotId, bidId]
+              properties:
+                auctionId:
+                  type: string
+                lotId:
+                  type: string
+                bidId:
+                  type: string
+      responses:
+        "200":
+          description: Bid retracted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: Missing or invalid parameters
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Bid, lot, or auction not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auctions/{auctionId}/lots/{lotId}/bids:
+    get:
+      operationId: getLotBids
+      tags: [Auctions]
+      summary: Public bid history
+      description: Returns the bid history for a lot. Bidder IDs are anonymized for privacy.
+      security: []
+      parameters:
+        - name: auctionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lotId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bid history (anonymized)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bids:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        amount:
+                          type: number
+                        anonymizedBidderId:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+                        isAutoBid:
+                          type: boolean
+        "400":
+          description: Missing auctionId or lotId
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auctions/close-lot:
+    post:
+      operationId: closeLot
+      tags: [Auctions]
+      summary: Manually close an auction lot
+      description: Admin-only. Closes and finalizes an auction lot, generates invoice for the winning bidder.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auctionId, lotId]
+              properties:
+                auctionId:
+                  type: string
+                lotId:
+                  type: string
+      responses:
+        "200":
+          description: Lot closed and finalized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auctions/close-expired-lots:
+    post:
+      operationId: closeExpiredLots
+      tags: [Auctions]
+      summary: Batch-close all expired lots
+      description: Admin-only. Finds all lots past their end time and closes them.
+      responses:
+        "200":
+          description: Expired lots closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  closed:
+                    type: integer
+                    description: Number of lots closed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auctions/activate:
+    post:
+      operationId: activateAuction
+      tags: [Auctions]
+      summary: Activate a preview auction
+      description: Admin-only. Transitions an auction from preview status to active, enabling bidding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auctionId]
+              properties:
+                auctionId:
+                  type: string
+      responses:
+        "200":
+          description: Auction activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Auction not found
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auctions/create-preauth-hold:
+    post:
+      operationId: createPreauthHold
+      tags: [Auctions]
+      summary: Create $250 pre-authorization hold
+      description: >
+        Creates a Stripe SetupIntent with a $250 pre-authorization hold
+        to verify the bidder's payment method before allowing auction participation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auctionId]
+              properties:
+                auctionId:
+                  type: string
+      responses:
+        "200":
+          description: Pre-auth hold created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret:
+                    type: string
+                    description: Stripe SetupIntent client secret for frontend confirmation
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /auctions/confirm-preauth:
+    post:
+      operationId: confirmPreauth
+      tags: [Auctions]
+      summary: Confirm pre-authorization hold
+      description: Confirms that the Stripe pre-auth hold is active and records verification on the bidder profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auctionId, setupIntentId]
+              properties:
+                auctionId:
+                  type: string
+                setupIntentId:
+                  type: string
+                  description: Stripe SetupIntent ID to confirm
+      responses:
+        "200":
+          description: Pre-auth confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /auctions/create-identity-session:
+    post:
+      operationId: createIdentitySession
+      tags: [Auctions]
+      summary: Create Stripe Identity verification session
+      description: >
+        Creates a Stripe Identity VerificationSession requiring document
+        and selfie capture for bidder KYC.
+      responses:
+        "200":
+          description: Identity session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret:
+                    type: string
+                    description: Stripe Identity session client secret
+                  verificationSessionId:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  /auctions/process-seller-payout:
+    post:
+      operationId: processSellerPayout
+      tags: [Auctions]
+      summary: Process seller payout
+      description: Admin-only. Processes a seller payout via Stripe transfer for a completed auction invoice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId]
+              properties:
+                invoiceId:
+                  type: string
+                  description: Auction invoice ID to process payout for
+      responses:
+        "200":
+          description: Payout processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          description: Stripe is not configured
+
+  # ── Admin ──────────────────────────────────────────────────────────────
+  /admin/users/create-managed-account:
+    post:
+      operationId: createManagedAccount
+      tags: [Admin]
+      summary: Create a managed sub-account
+      description: >
+        Creates a managed sub-account under the caller's dealer organization
+        or globally (for admins). Validates seat limits for dealer callers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateManagedAccountRequest"
+      responses:
+        "201":
+          description: Managed account created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: New user UID
+                  seatLimit:
+                    type: integer
+                    nullable: true
+                    description: Dealer seat limit (null for admins)
+        "400":
+          description: Missing display name or email
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Email already exists or seat limit reached
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/users/{userId}/verify:
+    post:
+      operationId: verifyUser
+      tags: [Admin]
+      summary: Manually verify a user
+      description: Admin-only. Sets manuallyVerified flag and marks all user listings as verified.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User verified
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          listingsUpdated:
+                            type: integer
+        "400":
+          description: Missing userId
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/users/{userId}/unverify:
+    post:
+      operationId: unverifyUser
+      tags: [Admin]
+      summary: Revoke manual verification
+      description: >
+        Admin-only. Removes manuallyVerified flag. For non-dealer roles,
+        also marks listings as unverified.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verification revoked
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          unverified:
+                            type: boolean
+        "400":
+          description: Missing userId
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/dealer-feeds/ingest:
+    post:
+      operationId: ingestDealerFeed
+      tags: [Admin]
+      summary: Bulk ingest dealer listings
+      description: >
+        Bulk ingest listings from dealer XML/JSON feeds. Supports up to
+        1000 items per request. Supports dry-run mode to preview changes
+        without writing to the database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealerFeedIngestRequest"
+      responses:
+        "200":
+          description: Ingest results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  totalReceived:
+                    type: integer
+                  created:
+                    type: integer
+                  updated:
+                    type: integer
+                  skipped:
+                    type: integer
+                  errorCount:
+                    type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                        reason:
+                          type: string
+                  dryRun:
+                    type: boolean
+        "400":
+          description: Empty items array or exceeds 1000 limit
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/bootstrap:
+    get:
+      operationId: getAdminBootstrap
+      tags: [Admin]
+      summary: Admin dashboard bootstrap data
+      description: >
+        Returns paginated users, recent inquiries, recent calls, and
+        optional overview statistics for the admin dashboard.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+            minimum: 1
+            maximum: 1000
+          description: User page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: User page offset
+        - name: inquiryLimit
+          in: query
+          schema:
+            type: integer
+            default: 500
+            minimum: 1
+            maximum: 2000
+        - name: callLimit
+          in: query
+          schema:
+            type: integer
+            default: 500
+            minimum: 1
+            maximum: 2000
+        - name: includeOverview
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include aggregated overview statistics
+      responses:
+        "200":
+          description: Admin bootstrap data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      offset:
+                        type: integer
+                      limit:
+                        type: integer
+                      hasMore:
+                        type: boolean
+                  inquiries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  calls:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  overview:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  fetchedAt:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/billing/invoices:
+    get:
+      operationId: getAdminInvoices
+      tags: [Admin]
+      summary: All billing invoices
+      description: Admin-only. Returns all invoices ordered by creation date descending.
+      responses:
+        "200":
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/billing/subscriptions:
+    get:
+      operationId: getAdminSubscriptions
+      tags: [Admin]
+      summary: Active subscriptions
+      description: Admin-only. Returns all subscription records.
+      responses:
+        "200":
+          description: Subscription list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/billing/audit-logs:
+    get:
+      operationId: getAdminBillingAuditLogs
+      tags: [Admin]
+      summary: Recent billing audit logs
+      description: Admin-only. Returns the 50 most recent billing audit log entries.
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/content/blog-posts:
+    get:
+      operationId: getAdminBlogPosts
+      tags: [Admin]
+      summary: Blog posts for CMS
+      description: >
+        Returns all blog posts ordered by last update. Requires content
+        role (super_admin, admin, developer, content_manager, editor).
+      responses:
+        "200":
+          description: Blog post list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /admin/content/bootstrap:
+    get:
+      operationId: getContentBootstrap
+      tags: [Admin]
+      summary: Content studio bootstrap
+      description: >
+        Returns posts, media, and content blocks for the content studio.
+        Supports partial responses when individual collections fail to load.
+      responses:
+        "200":
+          description: Content studio data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  media:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  contentBlocks:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  partial:
+                    type: boolean
+                    description: True when one or more sections failed to load
+                  degradedSections:
+                    type: array
+                    items:
+                      type: string
+                  errors:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  fetchedAt:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token
+      description: >
+        Firebase ID token passed as `Authorization: Bearer <token>`.
+        Tokens are verified server-side with `checkRevoked: true`.
+
+    StripeWebhookSignature:
+      type: apiKey
+      in: header
+      name: Stripe-Signature
+      description: >
+        Stripe webhook signature header used to verify event authenticity.
+        See https://docs.stripe.com/webhooks/signatures
+
+  schemas:
+    ApiResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        meta:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            limit:
+              type: integer
+
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code (e.g. VALIDATION_ERROR)
+            message:
+              type: string
+              description: Human-readable error description
+
+    UserRole:
+      type: string
+      enum:
+        - super_admin
+        - admin
+        - developer
+        - pro_dealer
+        - dealer
+        - dealer_manager
+        - dealer_staff
+        - individual_seller
+        - member
+      description: >
+        Platform role hierarchy. super_admin, admin, and developer have
+        full administrative access. Dealer roles have DealerOS access and
+        managed sub-account capabilities.
+
+    ManagedAccountRole:
+      type: string
+      enum:
+        - dealer_manager
+        - dealer_staff
+        - member
+      description: Roles assignable to managed sub-accounts under a dealer organization.
+
+    ListingStatus:
+      type: string
+      enum:
+        - active
+        - pending
+        - sold
+        - archived
+        - draft
+      description: Lifecycle status of an equipment listing.
+
+    ManagedUser:
+      type: object
+      properties:
+        uid:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/ManagedAccountRole"
+        accountStatus:
+          type: string
+          enum: [active, pending, locked, removed]
+        emailVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PlaceBidRequest:
+      type: object
+      required: [auctionId, lotId, amount]
+      properties:
+        auctionId:
+          type: string
+          description: Auction document ID
+        lotId:
+          type: string
+          description: Lot document ID within the auction
+        amount:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          description: Bid amount in USD
+        maxBid:
+          type: number
+          format: double
+          nullable: true
+          description: >
+            Optional proxy bid ceiling. When set, the system will
+            automatically bid on your behalf up to this amount using
+            the minimum increment required to stay as high bidder.
+
+    CreateManagedAccountRequest:
+      type: object
+      required: [displayName, email]
+      properties:
+        displayName:
+          type: string
+          maxLength: 200
+          description: Full name of the new team member
+        email:
+          type: string
+          format: email
+          description: Email address (must be unique across the platform)
+        role:
+          type: string
+          description: Role to assign (dealer_manager, dealer_staff, member)
+        company:
+          type: string
+          description: Company name (defaults to the parent account's company)
+        phoneNumber:
+          type: string
+          description: Contact phone number
+
+    CreateCheckoutSessionRequest:
+      type: object
+      required: [planId, listingId]
+      properties:
+        planId:
+          type: string
+          enum: [individual_seller, dealer, fleet_dealer]
+          description: Listing subscription plan tier
+        listingId:
+          type: string
+          description: ID of the listing to activate
+
+    DealerFeedIngestRequest:
+      type: object
+      required: [dealerId, sourceName, items]
+      properties:
+        dealerId:
+          type: string
+          description: Target dealer UID (admin can specify any; dealers default to own scope)
+        sourceName:
+          type: string
+          maxLength: 200
+          description: Identifier for the feed source
+        items:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          items:
+            type: object
+            additionalProperties: true
+            description: Listing data from the dealer feed
+          description: Array of listing objects to ingest
+        dryRun:
+          type: boolean
+          default: false
+          description: When true, validate and count without writing to the database
+        sourceType:
+          type: string
+          enum: [json, csv, xml, api]
+          default: json
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+
+    Forbidden:
+      description: Insufficient permissions for this operation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Forbidden
+
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Too many requests. Please try again later.
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: An internal error occurred.
