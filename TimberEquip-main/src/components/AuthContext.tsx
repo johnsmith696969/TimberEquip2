@@ -861,7 +861,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAccountBootstrap(null);
     // Clear cached profile from localStorage to prevent stale role data
     if (uid) {
-      try { window.localStorage.removeItem(getCachedProfileStorageKey(uid)); } catch { /* best-effort */ }
+      try { window.localStorage.removeItem(getCachedProfileStorageKey(uid)); } catch (err) { /* localStorage unavailable */ }
     }
     await signOut(auth);
     window.location.href = '/login';

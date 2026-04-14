@@ -1625,8 +1625,56 @@ async function startServer() {
   });
 
   // 7. API Routes
-  app.get('/api/health', (_req, res) => {
-    apiSuccess(res, { status: 'ok', timestamp: new Date().toISOString() });
+
+  // Enhanced health endpoint with component-level checks
+  app.get('/api/health', async (_req, res) => {
+    const timestamp = new Date().toISOString();
+    const components: Record<string, { status: string; latencyMs?: number }> = {};
+    let overall: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
+
+    // Check Firestore
+    const fsStart = Date.now();
+    try {
+      await db.collection('_healthcheck').doc('ping').get();
+      components.firestore = { status: 'healthy', latencyMs: Date.now() - fsStart };
+    } catch {
+      components.firestore = { status: 'unhealthy', latencyMs: Date.now() - fsStart };
+      overall = 'degraded';
+    }
+
+    // Check Stripe
+    if (stripe) {
+      const stripeStart = Date.now();
+      try {
+        await stripe.balance.retrieve();
+        components.stripe = { status: 'healthy', latencyMs: Date.now() - stripeStart };
+      } catch {
+        components.stripe = { status: 'degraded', latencyMs: Date.now() - stripeStart };
+        if (overall === 'healthy') overall = 'degraded';
+      }
+    } else {
+      components.stripe = { status: 'not_configured' };
+    }
+
+    // Server uptime
+    components.server = { status: 'healthy', latencyMs: Math.round(process.uptime() * 1000) };
+
+    const statusCode = overall === 'healthy' ? 200 : 503;
+    res.status(statusCode).json({
+      success: true,
+      data: {
+        status: overall,
+        version: 'v1',
+        timestamp,
+        uptime: Math.round(process.uptime()),
+        components,
+      },
+    });
+  });
+
+  // Public status endpoint (no auth, simplified for external monitoring)
+  app.get('/_status', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
   // 7a. Register route modules

@@ -1143,7 +1143,7 @@ export function ListingDetail() {
                   url: window.location.href,
                 };
                 if (navigator.share) {
-                  try { await navigator.share(shareData); } catch { /* user cancelled */ }
+                  try { await navigator.share(shareData); } catch (err) { /* user cancelled or share unavailable */ }
                 } else {
                   navigator.clipboard.writeText(window.location.href).then(() => {
                     setShareCopied(true);

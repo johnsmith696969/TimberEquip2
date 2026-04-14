@@ -1714,7 +1714,7 @@ export function DealerOS() {
                         try {
                           const secret = await dealerFeedService.revealWebhookSecret(wh.id);
                           setRevealedSecrets((prev) => ({ ...prev, [wh.id]: secret }));
-                        } catch { /* ignore */ }
+                        } catch (err) { /* webhook secret reveal failed — non-critical */ }
                       }}
                       className="btn-industrial px-2 py-1 text-[10px]"
                     >
@@ -1779,7 +1779,7 @@ export function DealerOS() {
                   try {
                     const fresh = await dealerFeedService.getWebhookDeliveryLogs(ownerUid);
                     setWebhookLogs(fresh);
-                  } catch { /* ignore */ }
+                  } catch (err) { /* webhook log refresh failed — non-critical */ }
                   setWebhookLogsLoading(false);
                 }}
               >

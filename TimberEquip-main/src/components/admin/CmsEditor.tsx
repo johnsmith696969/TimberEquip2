@@ -158,7 +158,7 @@ export function CmsEditor({ post, onClose, onSaved }: Props) {
   }, [draftKey]);
 
   const clearDraft = useCallback(() => {
-    try { localStorage.removeItem(draftKey); } catch {}
+    try { localStorage.removeItem(draftKey); } catch (err) { /* localStorage unavailable */ }
     hasUnsavedChanges.current = false;
     setAutoSaveMsg('');
   }, [draftKey]);
