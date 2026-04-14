@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
+import { toMillis } from '../utils/adminFormatters';
 import { auctionService } from '../services/auctionService';
 import {
   AMV_MIN_COMPARABLES,
@@ -1237,7 +1238,7 @@ export function ListingDetail() {
 
             {/* Gallery */}
             <div className="flex flex-col space-y-4">
-              <div className="aspect-[16/9] bg-surface border border-line overflow-hidden relative group">
+              <div className="aspect-[4/3] bg-black/90 border border-line overflow-hidden relative group flex items-center justify-center">
                 <AnimatePresence mode="wait">
                   <motion.img
                     key={activeImage}
@@ -1248,8 +1249,8 @@ export function ListingDetail() {
                     src={galleryImages[activeImage]}
                     alt={activeImageTitle || listing.title}
                     width={1280}
-                    height={720}
-                    className="w-full h-full object-cover object-center cursor-zoom-in"
+                    height={960}
+                    className="max-w-full max-h-full w-auto h-auto object-contain cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
                     fetchPriority={activeImage === 0 ? 'high' : undefined}
@@ -1485,7 +1486,7 @@ export function ListingDetail() {
                 { label: t('listingDetail.location', 'Location'), value: safeLocation, icon: MapPin },
                 { label: t('listingDetail.make', 'Make'), value: safeMake, icon: Info },
                 { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info },
-                ...(listing.updatedAt ? [{ label: t('listingDetail.lastUpdated', 'Last Updated'), value: new Date(listing.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), icon: RefreshCw }] : [])
+                ...(listing.updatedAt && toMillis(listing.updatedAt) ? [{ label: t('listingDetail.lastUpdated', 'Last Updated'), value: new Date(toMillis(listing.updatedAt)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }), icon: RefreshCw }] : [])
               ].map((spec, i) => (
                 <div key={i} className="bg-bg p-6 flex flex-col">
                   <div className="flex items-center space-x-2 mb-2">
