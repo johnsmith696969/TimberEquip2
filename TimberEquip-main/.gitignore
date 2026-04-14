@@ -7,6 +7,7 @@ coverage/
 *.log
 .env*
 !.env.example
+!functions/.env
 .firebase-web-config.local.json
 test-results/
 playwright-report/
