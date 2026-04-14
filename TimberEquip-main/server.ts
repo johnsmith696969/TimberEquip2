@@ -1792,12 +1792,12 @@ async function startServer() {
       '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',
       '/login', '/register', '/sell', '/dealer-os', '/financing', '/profile',
       '/about', '/about-us', '/faq', '/our-team', '/about/our-team', '/contact', '/ad-programs', '/subscription-success', '/logistics',
-      '/auctions', '/privacy', '/terms', '/cookies', '/dmca', '/bookmarks', '/404',
+      '/auctions', '/privacy', '/terms', '/cookies', '/dmca', '/bookmarks', '/status', '/help', '/404',
       '/forestry-equipment-for-sale', '/logging-equipment-for-sale',
     ]);
     const SPA_ROUTE_PREFIXES = [
       '/equipment/', '/listing/', '/seller/', '/blog/', '/categories/',
-      '/manufacturers/', '/states/', '/dealers/',
+      '/manufacturers/', '/states/', '/dealers/', '/help/',
     ];
 
     app.get('*', (req, res) => {

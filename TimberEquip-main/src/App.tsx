@@ -64,6 +64,9 @@ const BidderRegistration = lazy(() => import('./pages/BidderRegistration').then(
 const Calculator = lazy(() => import('./pages/Calculator').then((module) => ({ default: module.Calculator })));
 const Changelog = lazy(() => import('./pages/Changelog').then((module) => ({ default: module.Changelog })));
 const VulnerabilityDisclosure = lazy(() => import('./pages/VulnerabilityDisclosure').then((module) => ({ default: module.VulnerabilityDisclosure })));
+const Status = lazy(() => import('./pages/Status').then((module) => ({ default: module.Status })));
+const HelpCenter = lazy(() => import('./pages/HelpCenter').then((module) => ({ default: module.HelpCenter })));
+const HelpArticle = lazy(() => import('./pages/HelpArticle').then((module) => ({ default: module.HelpArticle })));
 
 function RouteLoadingFallback() {
   return (
@@ -156,6 +159,8 @@ function App() {
                     <Route path="/about" element={<About />} />
                     <Route path="/about-us" element={<About />} />
                     <Route path="/faq" element={<Faq />} />
+                    <Route path="/help" element={<HelpCenter />} />
+                    <Route path="/help/:slug" element={<HelpArticle />} />
                     <Route path="/our-team" element={<OurTeam />} />
                     <Route path="/about/our-team" element={<OurTeam />} />
                     <Route path="/contact" element={<Contact />} />
@@ -171,6 +176,7 @@ function App() {
                     <Route path="/cookies" element={<Cookies />} />
                     <Route path="/dmca" element={<Dmca />} />
                     <Route path="/vulnerability-disclosure" element={<VulnerabilityDisclosure />} />
+                    <Route path="/status" element={<Status />} />
                     <Route path="/changelog" element={<Suspense fallback={<div />}><Changelog /></Suspense>} />
                     <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/unsubscribe" element={<Unsubscribe />} />
