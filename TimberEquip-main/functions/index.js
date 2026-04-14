@@ -164,6 +164,24 @@ const TWILIO_AUTH_TOKEN = defineSecret('TWILIO_AUTH_TOKEN');
 const TWILIO_API_KEY_SID = defineSecret('TWILIO_API_KEY_SID');
 const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
 const PRIVILEGED_ADMIN_EMAILS_SECRET = defineSecret('PRIVILEGED_ADMIN_EMAILS');
+const API_PROXY_SECRETS = [
+  SENDGRID_API_KEY,
+  EMAIL_FROM,
+  FRED_API_KEY,
+  GOOGLE_TRANSLATE_API_KEY,
+  EXCHANGERATE_API_KEY,
+  GOOGLE_MAPS_API_KEY,
+  STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET,
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_API_KEY_SID,
+  TWILIO_API_KEY_SECRET,
+];
+
+if (!String(process.env.PRIVILEGED_ADMIN_EMAILS || '').trim()) {
+  API_PROXY_SECRETS.push(PRIVILEGED_ADMIN_EMAILS_SECRET);
+}
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
@@ -11837,21 +11855,7 @@ exports.apiProxy = onRequest(
   {
     region: 'us-central1',
     cors: ALLOWED_CORS_ORIGINS,
-    secrets: [
-      SENDGRID_API_KEY,
-      EMAIL_FROM,
-      FRED_API_KEY,
-      GOOGLE_TRANSLATE_API_KEY,
-      EXCHANGERATE_API_KEY,
-      GOOGLE_MAPS_API_KEY,
-      STRIPE_SECRET_KEY,
-      STRIPE_WEBHOOK_SECRET,
-      TWILIO_ACCOUNT_SID,
-      TWILIO_AUTH_TOKEN,
-      TWILIO_API_KEY_SID,
-      TWILIO_API_KEY_SECRET,
-      PRIVILEGED_ADMIN_EMAILS_SECRET,
-    ],
+    secrets: API_PROXY_SECRETS,
   },
   async (req, res) => {
     let path = '/';
