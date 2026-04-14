@@ -51,6 +51,7 @@ function runCommand(command, args, options = {}) {
 
 const args = parseArgs(process.argv.slice(2));
 const environment = normalizeEnvironment(args.env || process.env.FIREBASE_ENVIRONMENT);
+const shouldForceDeploy = args.ci || process.env.CI === 'true' || process.env.FIREBASE_DEPLOY_FORCE === 'true';
 
 if (!VALID_ENVIRONMENTS.has(environment)) {
   console.error('Usage: node scripts/firebase-deploy.mjs --env <preview|staging|production> [--scope hosting,functions,firestore:rules] [--channel <id>] [--expires 7d] [--ci]');
@@ -133,6 +134,7 @@ await runCommand(
     projectId,
     '--only',
     scope,
+    ...(shouldForceDeploy ? ['--force'] : []),
   ],
   { cwd: rootDir },
 );
