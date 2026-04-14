@@ -322,7 +322,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {theme === 'light' ? <Moon size={14} className="sm:w-3 sm:h-3" /> : <Sun size={14} className="sm:w-3 sm:h-3" />}
             <span className="hidden sm:inline">{theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}</span>
           </button>
-          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-accent-link font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
+          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-accent-link font-bold hover:underline">{t('layout.sellEquipment', 'Sell Equipment')}</Link>
           {hasDealerOsAccess ? <Link to="/dealer-os" className="text-ink font-bold hover:underline">DealerOS</Link> : null}
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-4">
@@ -417,7 +417,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
               <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
-              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent-link">{t('layout.listEquipment', 'List Equipment')}</Link>
+              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent-link">{t('layout.sellEquipment', 'Sell Equipment')}</Link>
             </div>
             
              <div className="mt-8 pb-12 px-6 flex flex-col space-y-6">

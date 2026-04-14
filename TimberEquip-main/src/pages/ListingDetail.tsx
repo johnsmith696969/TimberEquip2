@@ -1238,7 +1238,7 @@ export function ListingDetail() {
 
             {/* Gallery */}
             <div className="flex flex-col space-y-4">
-              <div className="aspect-[4/3] bg-black/90 border border-line overflow-hidden relative group flex items-center justify-center">
+              <div className="bg-black/90 border border-line overflow-hidden relative group flex items-center justify-center" style={{ minHeight: '320px', maxHeight: '70vh' }}>
                 <AnimatePresence mode="wait">
                   <motion.img
                     key={activeImage}
@@ -1248,9 +1248,7 @@ export function ListingDetail() {
                     transition={{ duration: 0.18 }}
                     src={galleryImages[activeImage]}
                     alt={activeImageTitle || listing.title}
-                    width={1280}
-                    height={960}
-                    className="max-w-full max-h-full w-auto h-auto object-contain cursor-zoom-in"
+                    className="max-w-full max-h-[70vh] w-auto h-auto object-contain cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
                     fetchPriority={activeImage === 0 ? 'high' : undefined}

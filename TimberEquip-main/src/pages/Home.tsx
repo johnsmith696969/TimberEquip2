@@ -262,7 +262,7 @@ export function Home() {
       if (!meta) return [];
       const singularCat = toSingularCategoryLabel(cat);
       const hasWeeklyChange = typeof metric?.weeklyChangePercent === 'number' && Number.isFinite(metric.weeklyChangePercent);
-      const wow = metric && hasWeeklyChange ? `${formatChange(metric.weeklyChangePercent)} WoW` : 'No Data Yet';
+      const weeklyBadge = metric && hasWeeklyChange ? `${formatChange(metric.weeklyChangePercent)} Weekly` : 'No Data Yet';
       const shortPluralCat = cat.replace(' Bunchers', '').replace(' Processors', ' Proc.').replace('Log ', '');
       const shortSingularCat = toSingularCategoryLabel(cat)
         .replace(' Buncher', '')
@@ -275,7 +275,7 @@ export function Home() {
           description: `Average asking price across all active ${singularCat} listings on the platform.`,
           icon: meta.indexIcon,
           iconClass: meta.indexColor,
-          badge: wow,
+          badge: weeklyBadge,
           badgeClass: metric ? 'text-data' : 'text-muted',
           value: typeof metric?.averagePrice === 'number' && Number.isFinite(metric.averagePrice)
             ? formatCurrency(metric.averagePrice, 'USD', 0)
@@ -289,7 +289,7 @@ export function Home() {
           description: `Live active inventory count for ${cat}. Updates as listings are added or sold.`,
           icon: meta.supplyIcon,
           iconClass: meta.supplyColor,
-          badge: wow,
+          badge: weeklyBadge,
           badgeClass: metric ? 'text-accent' : 'text-muted',
           value: typeof metric?.activeCount === 'number' && Number.isFinite(metric.activeCount)
             ? formatNumber(metric.activeCount)
