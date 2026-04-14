@@ -133,8 +133,8 @@ describe('managed-roles routes', () => {
     queryGetMock = vi.fn();
 
     const docFn = vi.fn((id: string) => ({
-      get: () => docGetMock(id),
-      update: (data: unknown) => docUpdateMock(id, data),
+      get: () => (docGetMock as any)(id),
+      update: (data: unknown) => (docUpdateMock as any)(id, data),
     }));
 
     const collectionFn = vi.fn(() => ({
