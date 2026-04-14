@@ -68,18 +68,18 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           create_credentials_file: true
           export_environment_variables: true
-          project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+          project_id: timberequip-staging
 
       - name: Validate staging deploy config
         run: npm run validate:staging:smoke
         env:
-          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_ID: timberequip-staging
           SMOKE_BASE_URL: https://timberequip-staging.web.app
 
       - name: Deploy staging
         run: npm run deploy:staging:ci
         env:
-          FIREBASE_PROJECT_ID_STAGING: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_ID_STAGING: timberequip-staging
           FIREBASE_DEPLOY_SCOPE: ${{ vars.FIREBASE_DEPLOY_SCOPE }}
 
       - name: Smoke test staging routes

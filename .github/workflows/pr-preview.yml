@@ -75,14 +75,14 @@ jobs:
       - name: Validate preview environment config
         run: npm run validate:preview
         env:
-          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_ID: timberequip-staging
 
       - name: Deploy Firebase Hosting preview channel
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ vars.FIREBASE_PROJECT_ID }}
+          projectId: timberequip-staging
           channelId: pr-${{ github.event.pull_request.number }}
           expires: 7d
           entryPoint: TimberEquip-main
