@@ -1798,7 +1798,7 @@ async function startServer() {
     // Known SPA routes — return 200 for these, 404 for everything else
     const SPA_ROUTES = new Set([
       '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',
-      '/login', '/register', '/sell', '/dealer-os', '/financing', '/profile',
+      '/login', '/register', '/sell', '/dealer-os', '/dealer-onboarding', '/financing', '/profile',
       '/about', '/about-us', '/faq', '/our-team', '/about/our-team', '/contact', '/ad-programs', '/subscription-success', '/logistics',
       '/auctions', '/privacy', '/terms', '/cookies', '/dmca', '/bookmarks', '/status', '/help', '/404',
       '/forestry-equipment-for-sale', '/logging-equipment-for-sale',

@@ -50,6 +50,7 @@ const StateMarketLandingPage = lazy(() => seoLandingImport().then((m) => ({ defa
 const StateCategoryLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.StateCategoryLandingPage })));
 const ManufacturerCategoryLandingPage = lazy(() => seoLandingImport().then((m) => ({ default: m.ManufacturerCategoryLandingPage })));
 const DealerOS = lazy(() => import('./pages/DealerOS').then((module) => ({ default: module.DealerOS })));
+const DealerOnboarding = lazy(() => import('./pages/DealerOnboarding'));
 const Profile = lazy(() => import('./pages/Profile').then((module) => ({ default: module.Profile })));
 const SubscriptionSuccess = lazy(() => import('./pages/SubscriptionSuccess').then((module) => ({ default: module.SubscriptionSuccess })));
 const Privacy = lazy(() => import('./pages/Privacy').then((module) => ({ default: module.Privacy })));
@@ -151,6 +152,7 @@ function App() {
                     <Route path="/register" element={<Register />} />
                     <Route path="/sell" element={<ProtectedRoute><SellWorkspaceRoute /></ProtectedRoute>} />
                     <Route path="/dealer-os" element={<ProtectedRoute requireDealerOs><DealerOS /></ProtectedRoute>} />
+                    <Route path="/dealer-onboarding" element={<ProtectedRoute requireDealerOs><DealerOnboarding /></ProtectedRoute>} />
                     <Route path="/account" element={<ProtectedRoute><AccountWorkspaceRedirect /></ProtectedRoute>} />
                     <Route path="/financing" element={<Financing />} />
                     <Route path="/calculator" element={<Suspense fallback={<div />}><Calculator /></Suspense>} />

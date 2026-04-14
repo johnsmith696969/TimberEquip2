@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowUpRight,
@@ -71,6 +71,9 @@ export function DealerOS() {
   const ownerUid = getDealerInventoryOwnerUid(user);
   const featuredCap = getFeaturedListingCap(user);
   const dealerAccess = canAccessDealerOs(user);
+
+  // Redirect new dealers who haven't set up their storefront to the onboarding wizard
+  const needsOnboarding = Boolean(dealerAccess && !user?.storefrontName);
 
   const [listings, setListings] = useState<Listing[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
@@ -722,6 +725,10 @@ export function DealerOS() {
 
   if (!dealerAccess) {
     return null;
+  }
+
+  if (needsOnboarding) {
+    return <Navigate to="/dealer-onboarding" replace />;
   }
 
   return (
