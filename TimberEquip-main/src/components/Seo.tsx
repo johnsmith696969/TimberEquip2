@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { PUBLIC_SITE_URL } from '../utils/siteUrl';
 
 interface SeoProps {
   title: string;
@@ -8,12 +9,13 @@ interface SeoProps {
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
   ogType?: 'website' | 'article' | 'product';
   imagePath?: string;
+  preloadImage?: string;
 }
 
-const BASE_URL = 'https://www.forestryequipmentsales.com';
+const BASE_URL = PUBLIC_SITE_URL;
 const DEFAULT_ROBOTS =
   import.meta.env.VITE_ALLOW_INDEXING === 'true'
-    ? 'index, follow'
+    ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
     : 'noindex, nofollow, noarchive, nosnippet, noimageindex';
 
 function setMetaTag(selector: { name?: string; property?: string }, content: string) {
@@ -37,7 +39,8 @@ export function Seo({
   robots = DEFAULT_ROBOTS,
   jsonLd,
   ogType = 'website',
-  imagePath = '/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+  imagePath = '/Forestry_Equipment_Sales_Logo.png?v=20260405d',
+  preloadImage,
 }: SeoProps) {
   useEffect(() => {
     document.title = title;
@@ -54,6 +57,8 @@ export function Seo({
     setMetaTag({ property: 'og:url' }, canonicalHref);
     setMetaTag({ property: 'og:site_name' }, 'Forestry Equipment Sales');
     setMetaTag({ property: 'og:image' }, imageUrl);
+    setMetaTag({ property: 'og:image:width' }, '1200');
+    setMetaTag({ property: 'og:image:height' }, '630');
     setMetaTag({ name: 'twitter:card' }, 'summary_large_image');
     setMetaTag({ name: 'twitter:title' }, title);
     setMetaTag({ name: 'twitter:description' }, description);
@@ -66,6 +71,19 @@ export function Seo({
       document.head.appendChild(canonical);
     }
     canonical.setAttribute('href', canonicalHref);
+
+    // Preload LCP hero image
+    const existingPreload = document.head.querySelector('#seo-preload-hero') as HTMLLinkElement | null;
+    if (preloadImage) {
+      const preloadLink = existingPreload || document.createElement('link');
+      preloadLink.id = 'seo-preload-hero';
+      preloadLink.rel = 'preload';
+      preloadLink.as = 'image';
+      preloadLink.href = preloadImage;
+      if (!existingPreload) document.head.appendChild(preloadLink);
+    } else if (existingPreload) {
+      existingPreload.remove();
+    }
 
     const existingScript = document.head.querySelector('#seo-json-ld');
     if (existingScript) {
@@ -85,8 +103,13 @@ export function Seo({
       if (currentScript) {
         currentScript.remove();
       }
+      const currentPreload = document.head.querySelector('#seo-preload-hero');
+      if (currentPreload) {
+        currentPreload.remove();
+      }
     };
-  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath]);
+  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath, preloadImage]);
 
   return null;
 }
+

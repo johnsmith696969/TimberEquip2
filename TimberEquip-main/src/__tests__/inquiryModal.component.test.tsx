@@ -27,6 +27,10 @@ vi.mock('../services/recaptchaService', () => ({
   assessRecaptcha: assessRecaptchaMock,
 }));
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
+}));
+
 import { InquiryModal } from '../components/InquiryModal';
 
 const baseListing = {
@@ -52,9 +56,9 @@ describe('InquiryModal component', () => {
 
     const [nameInput, emailInput, phoneInput] = screen.getAllByRole('textbox');
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
-    fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
-    fireEvent.change(phoneInput, { target: { value: '+16126008268' } });
-    const submitButton = screen.getByRole('button', { name: /transmit inquiry/i });
+    fireEvent.change(emailInput, { target: { value: 'admin@example.com' } });
+    fireEvent.change(phoneInput, { target: { value: '+12187200933' } });
+    const submitButton = screen.getByRole('button', { name: /send inquiry/i });
     fireEvent.submit(submitButton.closest('form')!);
 
     expect(await screen.findByText(/review and accept the seller-specific contact consent notice/i)).toBeInTheDocument();
@@ -70,23 +74,23 @@ describe('InquiryModal component', () => {
 
     const [nameInput, emailInput, phoneInput] = screen.getAllByRole('textbox');
     fireEvent.change(nameInput, { target: { value: 'Caleb Happy' } });
-    fireEvent.change(emailInput, { target: { value: 'calebhappy@gmail.com' } });
-    fireEvent.change(phoneInput, { target: { value: '+16126008268' } });
+    fireEvent.change(emailInput, { target: { value: 'admin@example.com' } });
+    fireEvent.change(phoneInput, { target: { value: '+12187200933' } });
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /transmit inquiry/i }));
+    fireEvent.click(screen.getByRole('button', { name: /send inquiry/i }));
 
     await waitFor(() => {
       expect(createInquiryMock).toHaveBeenCalledWith(expect.objectContaining({
         listingId: 'listing-qa-1',
         sellerUid: 'seller-qa-1',
         buyerName: 'Caleb Happy',
-        buyerEmail: 'calebhappy@gmail.com',
+        buyerEmail: 'admin@example.com',
         contactConsentAccepted: true,
         contactConsentScope: 'listing_seller_specific',
       }));
     });
 
-    expect(await screen.findByText(/inquiry transmitted/i)).toBeInTheDocument();
+    expect(await screen.findByText(/inquiry sent/i)).toBeInTheDocument();
 
     const closeTimer = timeoutSpy.mock.calls.find(([, delay]) => delay === 2000)?.[0] as (() => void) | undefined;
     expect(closeTimer).toBeDefined();
@@ -94,19 +98,14 @@ describe('InquiryModal component', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('prompts before closing when there are unsaved changes', async () => {
+  it('closes directly without confirm prompt', async () => {
     const onClose = vi.fn();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     render(<InquiryModal isOpen onClose={onClose} listing={baseListing} />);
 
     fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Caleb Happy' } });
     const closeButton = screen.getAllByRole('button').find((button) => button.querySelector('svg'));
     expect(closeButton).toBeTruthy();
-    fireEvent.click(closeButton!);
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-
     fireEvent.click(closeButton!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

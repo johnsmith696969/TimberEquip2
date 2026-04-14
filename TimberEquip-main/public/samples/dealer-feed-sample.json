@@ -1,6 +1,6 @@
 [
   {
-    "externalId": "fes-sample-skidder-620e",
+    "externalId": "te-sample-skidder-620e",
     "title": "2021 Tigercat 620E Skidder",
     "price": 189500,
     "year": 2021,
@@ -8,16 +8,24 @@
     "make": "Tigercat",
     "model": "620E",
     "category": "Skidders",
+    "subcategory": "Grapple Skidders",
+    "condition": "Used",
     "location": "Roseburg, OR",
     "hours": 3240,
-    "stockNumber": "FES-620E-21",
-    "description": "Clean sample dealer feed unit for onboarding and QA checks.",
+    "stockNumber": "TE-620E-21",
+    "serialNumber": "TIG620E21A001",
+    "description": "Clean 2021 Tigercat 620E grapple skidder, strong undercarriage, good tires, full service history. Dealer-maintained since new.",
     "imageUrls": [
-      "https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=1400&q=80"
-    ]
+      "https://firebasestorage.googleapis.com/v0/b/mobile-app-equipment-sales.firebasestorage.app/o/listings%2Fq8MuucM96sgUfJTKSRNZ%2Fimages%2Fdetail%2F01_media_2019_tigercat_620e.avif?alt=media&token=558ec52d-a3c9-4443-ae29-db434900cca5"
+    ],
+    "specs": {
+      "horsepower": 250,
+      "operatingWeight": "41,000 lbs",
+      "engine": "Tigercat FPT N67"
+    }
   },
   {
-    "externalId": "fes-sample-forwarder-1110g",
+    "externalId": "te-sample-forwarder-1110g",
     "title": "2019 John Deere 1110G Forwarder",
     "price": 254000,
     "year": 2019,
@@ -25,12 +33,45 @@
     "make": "John Deere",
     "model": "1110G",
     "category": "Forwarders",
+    "condition": "Used",
     "location": "Bemidji, MN",
     "hours": 4180,
-    "stockNumber": "FES-1110G-19",
-    "description": "Sample forwarder record used to validate CSV, JSON, and API imports.",
+    "stockNumber": "TE-1110G-19",
+    "serialNumber": "JD1110G19B002",
+    "description": "John Deere 1110G 8-wheel forwarder, 15-ton payload capacity. Recent hydraulic service, Waratah grapple, solid overall condition.",
     "imageUrls": [
-      "https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=1400&q=80"
-    ]
+      "https://firebasestorage.googleapis.com/v0/b/mobile-app-equipment-sales.firebasestorage.app/o/listings%2FR4Z1IDZBI2hsO05F5LAY%2Fimages%2Fdetail%2F01_media_2019_john_deere_1110g.avif?alt=media&token=7a3efca7-6422-4c80-a73c-32ef72bed3c7"
+    ],
+    "specs": {
+      "horsepower": 215,
+      "payload": "15 tons",
+      "engine": "John Deere 6068"
+    }
+  },
+  {
+    "externalId": "te-sample-harvester-bear",
+    "title": "2022 Ponsse Bear Harvester",
+    "price": 415000,
+    "year": 2022,
+    "manufacturer": "Ponsse",
+    "make": "Ponsse",
+    "model": "Bear",
+    "category": "Harvesters",
+    "subcategory": "Wheeled Harvesters",
+    "condition": "Used",
+    "location": "Portland, OR",
+    "hours": 1200,
+    "stockNumber": "TE-BEAR-22",
+    "serialNumber": "PON-BEAR22C003",
+    "description": "Low-hour 2022 Ponsse Bear with H8 harvester head. Cut-to-length system, Opti4G computer, excellent condition. One owner.",
+    "imageUrls": [
+      "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=1400&q=80"
+    ],
+    "specs": {
+      "horsepower": 286,
+      "operatingWeight": "50,700 lbs",
+      "engine": "Mercedes-Benz OM936",
+      "harvesterHead": "Ponsse H8"
+    }
   }
 ]

@@ -29,6 +29,10 @@ vi.mock('../components/Seo', () => ({
   Seo: () => null,
 }));
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
 vi.mock('../components/AuthContext', () => ({
   useAuth: useAuthMock,
 }));
@@ -95,13 +99,13 @@ vi.mock('../utils/sellerPlans', () => ({
     if (planId === 'individual_seller') return 'Owner-Operator Ad Program';
     if (planId === 'dealer') return 'Dealer';
     if (planId === 'fleet_dealer') return 'Pro Dealer';
-    return 'Free Member';
+    return 'Member';
   },
   getSellerPlanPurchaseLabel: (planId?: string | null) => {
     if (planId === 'individual_seller') return 'Owner-Operator Ad Program';
     if (planId === 'dealer') return 'Dealer';
     if (planId === 'fleet_dealer') return 'Pro Dealer';
-    return 'Free Member';
+    return 'Member';
   },
 }));
 
@@ -156,6 +160,10 @@ describe('AdPrograms component', () => {
     renderAdPrograms('/ad-programs?plan=dealer');
 
     expect(await screen.findByText(/new seller subscription/i)).toBeInTheDocument();
+    expect(screen.getByText('$250/MO')).toBeInTheDocument();
+    expect(screen.getByText('$500/MO')).toBeInTheDocument();
+    expect(screen.getByText(/up to 50 active machine listings/i)).toBeInTheDocument();
+    expect(screen.getByText(/up to 150 active machine listings/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in and continue/i })).toBeInTheDocument();
     expect(screen.getByText(/completing checkout will activate the selected plan/i)).toBeInTheDocument();
   });

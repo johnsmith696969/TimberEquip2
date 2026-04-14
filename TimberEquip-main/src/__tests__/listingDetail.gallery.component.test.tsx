@@ -10,6 +10,7 @@ const {
   getSellerListingUsageMock,
   getMarketValueMock,
   getMarketMatchRecommendationsMock,
+  getMarketComparableInsightsMock,
   useAuthMock,
   useLocaleMock,
 } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const {
   getSellerListingUsageMock: vi.fn(),
   getMarketValueMock: vi.fn(),
   getMarketMatchRecommendationsMock: vi.fn(),
+  getMarketComparableInsightsMock: vi.fn(),
   useAuthMock: vi.fn(),
   useLocaleMock: vi.fn(),
 }));
@@ -45,7 +47,9 @@ vi.mock('../services/equipmentService', () => ({
     getSellerListingUsage: getSellerListingUsageMock,
     getMarketValue: getMarketValueMock,
     getMarketMatchRecommendations: getMarketMatchRecommendationsMock,
+    getMarketComparableInsights: getMarketComparableInsightsMock,
     recordListingView: vi.fn().mockResolvedValue(true),
+    getCachedPublicListings: vi.fn().mockReturnValue([]),
   },
 }));
 
@@ -55,6 +59,19 @@ vi.mock('../components/AuthContext', () => ({
 
 vi.mock('../components/LocaleContext', () => ({
   useLocale: useLocaleMock,
+}));
+
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  updateDoc: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../firebase', () => ({
+  db: {},
 }));
 
 vi.mock('../services/recaptchaService', () => ({
@@ -94,8 +111,11 @@ vi.mock('../utils/seoRoutes', () => ({
   buildManufacturerModelPath: vi.fn(() => '/manufacturers/tigercat/1075b'),
   buildManufacturerPath: vi.fn(() => '/manufacturers/tigercat'),
   buildStateCategoryPath: vi.fn(() => '/states/minnesota/forwarders'),
+  getCityFromLocation: vi.fn(() => 'Bemidji'),
   getListingCategoryLabel: vi.fn(() => 'Forwarders'),
+  getListingLocationLabel: vi.fn(() => 'Bemidji, Minnesota, United States'),
   getListingManufacturer: vi.fn(() => 'Tigercat'),
+  getListingStateName: vi.fn(() => 'Minnesota'),
   getStateFromLocation: vi.fn(() => 'Minnesota'),
   isDealerRole: vi.fn(() => true),
 }));
@@ -178,6 +198,7 @@ describe('ListingDetail gallery interactions', () => {
     getSellerListingUsageMock.mockReset();
     getMarketValueMock.mockReset();
     getMarketMatchRecommendationsMock.mockReset();
+    getMarketComparableInsightsMock.mockReset();
 
     useAuthMock.mockReturnValue({
       user: null,
@@ -196,6 +217,10 @@ describe('ListingDetail gallery interactions', () => {
     getSellerListingUsageMock.mockResolvedValue(7);
     getMarketValueMock.mockResolvedValue(355000);
     getMarketMatchRecommendationsMock.mockResolvedValue([]);
+    getMarketComparableInsightsMock.mockResolvedValue({
+      marketValueEstimate: 355000,
+      recommendations: [],
+    });
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -225,28 +250,31 @@ describe('ListingDetail gallery interactions', () => {
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fullscreen' }));
-    expect(screen.getByRole('button', { name: 'Next image' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Next image' }).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next image' })[0]);
     await waitFor(() => {
       expect(screen.getByText('2 / 3')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Close fullscreen image' }));
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Next image' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Close fullscreen image' })).not.toBeInTheDocument();
     });
   });
 
   it('renders technical specifications before market match recommendations', async () => {
-    getMarketMatchRecommendationsMock.mockResolvedValue([
-      makeListing({
-        id: 'listing-2',
-        title: '2020 TIGERCAT 1075B',
-        price: 335000,
-        hours: 3000,
-      }),
-    ]);
+    const matchListing = makeListing({
+      id: 'listing-2',
+      title: '2020 TIGERCAT 1075B',
+      price: 335000,
+      hours: 3000,
+    });
+    getMarketMatchRecommendationsMock.mockResolvedValue([matchListing]);
+    getMarketComparableInsightsMock.mockResolvedValue({
+      marketValueEstimate: 342000,
+      recommendations: [matchListing],
+    });
 
     render(
       <MemoryRouter initialEntries={['/equipment/test-machine--listing-1']}>

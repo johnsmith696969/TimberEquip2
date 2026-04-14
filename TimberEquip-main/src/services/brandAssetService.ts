@@ -11,12 +11,12 @@ export interface BrandAssetUrls {
   manifest: string;
 }
 
-const PUBLIC_ASSET_VERSION = '20260327c';
+const PUBLIC_ASSET_VERSION = '20260407a';
 const versionedAsset = (path: string) => `${path}?v=${PUBLIC_ASSET_VERSION}`;
 
 const DEFAULT_BRAND_ASSET_URLS: BrandAssetUrls = {
-  brandLogo: versionedAsset('/Forestry_Equipment_Sales_Logo.svg'),
-  footerIcon: versionedAsset('/Logo-Transparent.png'),
+  brandLogo: versionedAsset('/Forestry_Equipment_Sales_Light_Mode_Logo.svg'),
+  footerIcon: versionedAsset('/Forestry_Equipment_Sales_Light_Mode_Logo.svg'),
   appleTouchIcon: versionedAsset('/apple-touch-icon.png'),
   faviconSvg: versionedAsset('/Forestry_Equipment_Sales_Favicon.svg'),
   favicon32: versionedAsset('/favicon-32x32.png'),
@@ -46,5 +46,7 @@ export async function applyHeadBrandAssets(): Promise<void> {
   updateHeadLink('link[rel="icon"][type="image/png"][sizes="32x32"]', assets.favicon32);
   updateHeadLink('link[rel="icon"][type="image/png"][sizes="16x16"]', assets.favicon16);
   updateHeadLink('link[rel="icon"]:not([sizes]):not([type])', assets.faviconIco);
+  updateHeadLink('link[rel="shortcut icon"]', assets.faviconIco);
   updateHeadLink('link[rel="manifest"]', assets.manifest);
 }
+

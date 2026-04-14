@@ -4,11 +4,12 @@ import {
   MapPin, Activity, X, Truck, ChevronLeft,
   ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
-  Phone, Calculator, AlertCircle, Landmark
+  Phone, Calculator, AlertCircle, Landmark, RefreshCw, Gavel
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { equipmentService } from '../services/equipmentService';
+import { auctionService } from '../services/auctionService';
 import {
   AMV_MIN_COMPARABLES,
   getAmvMatchRulesSummary,
@@ -18,11 +19,17 @@ import { useAuth } from '../components/AuthContext';
 import { LoginPromptModal } from '../components/LoginPromptModal';
 import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
+import { useTheme } from '../components/ThemeContext';
+import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import WatermarkOverlay from '../components/WatermarkOverlay';
 import { buildListingPath, decodeListingPublicKey, extractListingPublicKeyFromSlug, isPublicQaOrTestRecord, NOINDEX_ROBOTS } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
 import {
   buildCategoryPath,
@@ -32,9 +39,11 @@ import {
   buildManufacturerModelPath,
   buildManufacturerPath,
   buildStateCategoryPath,
+  getCityFromLocation,
   getListingCategoryLabel,
+  getListingLocationLabel,
   getListingManufacturer,
-  getStateFromLocation,
+  getListingStateName,
   isDealerRole,
 } from '../utils/seoRoutes';
 
@@ -91,6 +100,8 @@ export function ListingDetail() {
   const location = useLocation();
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
+  const { theme } = useTheme();
+  const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [listing, setListing] = useState<Listing | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
   const [sellerListingCount, setSellerListingCount] = useState<number | null>(null);
@@ -104,16 +115,24 @@ export function ListingDetail() {
   const [showAMVModal, setShowAMVModal] = useState(false);
   const [showPaymentCalcModal, setShowPaymentCalcModal] = useState(false);
   const [showFullscreenImage, setShowFullscreenImage] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [inquirySent, setInquirySent] = useState(false);
   const [financingSent, setFinancingSent] = useState(false);
   const [shippingSent, setShippingSent] = useState(false);
   const [inquiryConsentAccepted, setInquiryConsentAccepted] = useState(false);
   const [financingConsentAccepted, setFinancingConsentAccepted] = useState(false);
   const [marketMatchRecommendations, setMarketMatchRecommendations] = useState<Listing[]>([]);
+  const [similarEquipment, setSimilarEquipment] = useState<Listing[]>([]);
   const [amvExplanation, setAmvExplanation] = useState<string | null>(null);
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
+  const fullscreenSwipeRef = React.useRef<{ startX: number; startY: number; time: number } | null>(null);
+  const [auctionLot, setAuctionLot] = useState<import('../types').AuctionLot | null>(null);
+  const [auctionBids, setAuctionBids] = useState<import('../types').AuctionBid[]>([]);
+  const [bidAmount, setBidAmount] = useState('');
+  const [bidding, setBidding] = useState(false);
+  const [showBidHistory, setShowBidHistory] = useState(false);
   
   const [inquiryForm, setInquiryForm] = useState({
     name: '',
@@ -147,8 +166,15 @@ export function ListingDetail() {
 
   const getListingUrl = (targetListing?: Listing | null) => {
     if (typeof window !== 'undefined') return window.location.href;
-    return targetListing ? `https://www.forestryequipmentsales.com${buildListingPath(targetListing)}` : '';
+    return targetListing ? buildSiteUrl(buildListingPath(targetListing)) : '';
   };
+
+  const auctionLotPath = listing?.auctionSlug && auctionLot
+    ? `/auctions/${listing.auctionSlug}/lots/${auctionLot.lotNumber}`
+    : '';
+  const auctionRegistrationPath = listing?.auctionSlug
+    ? `/auctions/${listing.auctionSlug}/register?returnTo=${encodeURIComponent(auctionLotPath || `/auctions/${listing.auctionSlug}`)}`
+    : '';
 
   const formatSpecValue = (value: unknown): string => {
     if (Array.isArray(value)) {
@@ -311,43 +337,10 @@ export function ListingDetail() {
             return undefined;
           });
 
-        const computedAmv = await equipmentService
-          .getMarketValue({
-            listingId: listingData.id,
-            category: listingData.category,
-            manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
-            model: listingData.model,
-            price: listingData.price,
-            year: listingData.year,
-            hours: listingData.hours,
-          })
-          .catch((error) => {
-            console.error('Error fetching market value estimate:', error);
-            return null;
-          });
-
-        if (isActive) {
-          setListing((current) =>
-            current && current.id === listingData.id
-              ? {
-                  ...current,
-                  marketValueEstimate: computedAmv,
-                }
-              : current
-          );
-        }
-
-        const explanationPromise = Promise.resolve(
-          computedAmv !== null
-            ? `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`
-            : null
-        );
-
-        const [sellerData, explanation, recommendations] = await Promise.all([
+        const [sellerData, marketComparableInsights] = await Promise.all([
           sellerPromise,
-          explanationPromise,
           equipmentService
-            .getMarketMatchRecommendations({
+            .getMarketComparableInsights({
               listingId: listingData.id,
               category: listingData.category,
               manufacturer: listingData.make || listingData.manufacturer || listingData.brand,
@@ -357,8 +350,11 @@ export function ListingDetail() {
               hours: listingData.hours,
             })
             .catch((error) => {
-              console.error('Error fetching market match recommendations:', error);
-              return [];
+              console.error('Error fetching market comparable insights:', error);
+              return {
+                marketValueEstimate: null,
+                recommendations: [],
+              };
             }),
         ]);
 
@@ -372,8 +368,20 @@ export function ListingDetail() {
             if (isActive) setSellerListingCount(count);
           }).catch(() => { /* non-critical */ });
         }
-        setAmvExplanation(explanation || null);
-        setMarketMatchRecommendations(recommendations);
+        setListing((current) =>
+          current && current.id === listingData.id
+            ? {
+                ...current,
+                marketValueEstimate: marketComparableInsights.marketValueEstimate,
+              }
+            : current
+        );
+        setAmvExplanation(
+          marketComparableInsights.marketValueEstimate !== null
+            ? `AMV is calculated using comparable equipment listings that match ${getAmvMatchRulesSummary().toLowerCase()}`
+            : null
+        );
+        setMarketMatchRecommendations(marketComparableInsights.recommendations);
       } catch (error) {
         console.error('Error fetching listing detail:', error);
         if (isActive) {
@@ -391,6 +399,41 @@ export function ListingDetail() {
       isActive = false;
     };
   }, [id, publicKey, slugPublicKey]);
+
+  // Compute Similar Equipment fallback when no market match recommendations exist
+  useEffect(() => {
+    const cachedListings = equipmentService.getCachedPublicListings();
+
+    if ((loadingMarketMatches && cachedListings.length === 0) || marketMatchRecommendations.length > 0 || !listing) {
+      setSimilarEquipment([]);
+      return;
+    }
+    const price = parseFloat(String(listing.price)) || 0;
+    const subcategory = listing.subcategory || listing.category || '';
+    if (!subcategory || price <= 0) {
+      setSimilarEquipment([]);
+      return;
+    }
+    const getPriceThreshold = (p: number) => {
+      if (p > 600000) return 0.05;
+      if (p > 300000) return 0.15;
+      if (p > 100000) return 0.20;
+      return 0.25;
+    };
+    const threshold = getPriceThreshold(price);
+    const matches = cachedListings
+      .filter((l) => {
+        if (l.id === listing.id) return false;
+        const lSub = l.subcategory || l.category || '';
+        if (lSub.toLowerCase() !== subcategory.toLowerCase()) return false;
+        const lPrice = parseFloat(String(l.price)) || 0;
+        if (lPrice <= 0) return false;
+        return Math.abs(lPrice - price) / price <= threshold;
+      })
+      .sort((a, b) => Math.abs((parseFloat(String(a.price)) || 0) - price) - Math.abs((parseFloat(String(b.price)) || 0) - price))
+      .slice(0, 3);
+    setSimilarEquipment(matches);
+  }, [listing, loadingMarketMatches, marketMatchRecommendations]);
 
   useEffect(() => {
     if (!listing) return;
@@ -428,37 +471,28 @@ export function ListingDetail() {
     return () => media.removeEventListener?.('change', update);
   }, []);
 
-  const hasDirtyInquiryForm = Boolean(
-    inquiryForm.name.trim() || inquiryForm.email.trim() || inquiryForm.phone.trim() || inquiryForm.message.trim()
-  );
+  useEffect(() => {
+    if (!listing?.auctionId) return;
+    const unsub = auctionService.onLotsChange(listing.auctionId, (lots) => {
+      const lot = lots.find(l => l.listingId === listing.id);
+      if (lot) setAuctionLot(lot);
+    });
+    return unsub;
+  }, [listing?.auctionId, listing?.id]);
 
-  const hasDirtyFinancingForm = Boolean(
-    financingForm.name.trim() ||
-      financingForm.email.trim() ||
-      financingForm.phone.trim() ||
-      financingForm.company.trim() ||
-      financingForm.requestedAmount.trim() ||
-      financingForm.message.trim()
-  );
+  useEffect(() => {
+    if (!listing?.auctionId || !auctionLot?.id) return;
+    const unsub = auctionService.onBidsChange(listing.auctionId, auctionLot.id, setAuctionBids);
+    return unsub;
+  }, [listing?.auctionId, auctionLot?.id]);
 
-  const shippingDefaults = createInitialShippingForm(listing);
-  const hasDirtyShippingForm = Boolean(
-    shippingForm.name.trim() ||
-      shippingForm.company.trim() ||
-      shippingForm.phone.trim() ||
-      shippingForm.destination.trim() ||
-      shippingForm.timeline.trim() ||
-      shippingForm.trailerType.trim() ||
-      shippingForm.notes.trim() ||
-      shippingForm.loadReady !== shippingDefaults.loadReady ||
-      shippingForm.email.trim() !== shippingDefaults.email.trim() ||
-      shippingForm.pickupLocation.trim() !== shippingDefaults.pickupLocation.trim()
-  );
-
-  const confirmDiscardChanges = () => window.confirm('Are you sure you want to discard changes?');
   const machineLatitude = toFiniteNumber(listing?.latitude);
   const machineLongitude = toFiniteNumber(listing?.longitude);
-  const machineMapQuery = [listing?.location || '', seller?.storefrontName || seller?.name || '', seller?.location || '']
+  const machineMapQuery = [
+    listing?.location || '',
+    seller?.storefrontName || seller?.name || '',
+    seller?.location || '',
+  ]
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(', ');
@@ -471,7 +505,7 @@ export function ListingDetail() {
   const googleMapsHref = hasMachineMapLink
     ? buildGoogleMapsLink(machineMapQuery || listing?.location || '', machineLatitude, machineLongitude)
     : '';
-  const showMarketMatchRecommendations = loadingMarketMatches || marketMatchRecommendations.length > 0;
+  const showMarketMatchRecommendations = marketMatchRecommendations.length > 0;
   const marketMatchExplainer = 'We recommend machines that match the same manufacturer and model, with +/- 10% of price and hour range.';
 
   useEffect(() => {
@@ -483,28 +517,25 @@ export function ListingDetail() {
     if (!token) return true;
     const pass = await assessRecaptcha(token, action);
     if (!pass) {
-      window.alert('Security check failed. Please try again.');
+      await showAlert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
       return false;
     }
     return true;
   };
 
   const dismissInquiryModal = () => {
-    if (hasDirtyInquiryForm && !inquirySent && !confirmDiscardChanges()) return;
     setShowInquiryModal(false);
     setInquiryForm(createInitialInquiryForm());
     setInquiryConsentAccepted(false);
   };
 
   const dismissFinancingModal = () => {
-    if (hasDirtyFinancingForm && !financingSent && !confirmDiscardChanges()) return;
     setShowFinancingModal(false);
     setFinancingForm(createInitialFinancingForm());
     setFinancingConsentAccepted(false);
   };
 
   const dismissShippingModal = () => {
-    if (hasDirtyShippingForm && !shippingSent && !confirmDiscardChanges()) return;
     setShowShippingModal(false);
     setShippingForm(createInitialShippingForm(listing));
   };
@@ -662,7 +693,7 @@ export function ListingDetail() {
       : rawSellerPhone.replace(/[^\d+]/g, '');
 
     if (!dialablePhone) {
-      window.alert('Seller phone number is not available on this listing yet.');
+      await showAlert({ title: 'Phone Unavailable', message: 'Seller phone number is not available on this listing yet.', variant: 'warning' });
       return;
     }
 
@@ -724,6 +755,8 @@ export function ListingDetail() {
     const terms = `Requested amount: ${formatPrice(payload.requestedAmount, listing.currency || 'USD', 0)}, term: ${payload.termMonths} months, interest: ${payload.interestRatePct.toFixed(2)}%, down payment: ${payload.downPaymentPct}%, est monthly: ${formatPrice(payload.monthlyPaymentEstimate, listing.currency || 'USD', 0)}.`;
     const combinedMessage = [summary, terms, payload.message || ''].filter(Boolean).join(' ');
 
+    const consentAt = new Date().toISOString();
+
     await equipmentService.createInquiry({
       listingId: listing.id,
       sellerUid,
@@ -733,6 +766,10 @@ export function ListingDetail() {
       buyerPhone: payload.buyerPhone,
       message: combinedMessage,
       type: 'Financing',
+      contactConsentAccepted: true,
+      contactConsentVersion: 'financing-calculator-v1',
+      contactConsentScope: 'financing_request_specific',
+      contactConsentAt: consentAt,
     });
 
     await equipmentService.submitFinancingRequest({
@@ -744,19 +781,83 @@ export function ListingDetail() {
       company: payload.company,
       requestedAmount: payload.requestedAmount,
       message: combinedMessage,
+      contactConsentAccepted: true,
+      contactConsentVersion: 'financing-calculator-v1',
+      contactConsentScope: 'financing_request_specific',
+      contactConsentAt: consentAt,
     });
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-bg">
-      <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+    <div className="min-h-screen bg-bg" aria-live="polite" aria-busy={true}>
+      <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
+        <div className="max-w-[1600px] mx-auto">
+          <div className="animate-pulse bg-line/60 rounded-sm h-4 w-40" />
+        </div>
+      </div>
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          <div className="lg:col-span-8 space-y-6">
+            <div className="space-y-2">
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-24" />
+              <div className="animate-pulse bg-surface rounded-sm h-10 w-3/4" />
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-48" />
+            </div>
+            <div className="animate-pulse bg-surface rounded-sm aspect-[16/9] w-full" />
+            <div className="flex gap-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="animate-pulse bg-surface rounded-sm h-16 w-20" />
+              ))}
+            </div>
+          </div>
+          <div className="lg:col-span-4 space-y-6">
+            <div className="animate-pulse bg-surface rounded-sm h-6 w-24" />
+            <div className="animate-pulse bg-surface rounded-sm h-10 w-40" />
+            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
+            <div className="animate-pulse bg-surface rounded-sm h-14 w-full" />
+            <div className="space-y-3 pt-4">
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
+              <div className="animate-pulse bg-surface rounded-sm h-4 w-2/3" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 
   if (!listing) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg">
       <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">{t('listingDetail.notFound', 'Equipment Not Found')}</h2>
-      {loadError ? <p className="text-muted mb-6 max-w-xl text-center">{loadError}</p> : null}
+      {loadError ? (
+        <div className="flex flex-col items-center justify-center text-center">
+          <p className="text-sm font-bold text-muted mb-4 max-w-xl">{loadError}</p>
+          <button
+            onClick={() => {
+              setLoadError('');
+              setLoading(true);
+              const requestedListingId = String(slugDerivedListingId || id || '').trim();
+              if (requestedListingId) {
+                equipmentService.getListing(requestedListingId).then((data) => {
+                  if (data) {
+                    setListing({ ...data, marketValueEstimate: data.marketValueEstimate ?? null });
+                  } else {
+                    setLoadError('This equipment record is temporarily unavailable. Please return to inventory and try again shortly.');
+                  }
+                }).catch((err) => {
+                  console.error('Error retrying listing fetch:', err);
+                  setLoadError(err instanceof Error ? err.message : 'This equipment record is temporarily unavailable right now.');
+                }).finally(() => setLoading(false));
+              } else {
+                setLoading(false);
+              }
+            }}
+            className="btn-industrial btn-accent px-6 py-3 mb-4"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : null}
       <Link to="/search" className="btn-industrial btn-accent">{t('listingDetail.returnToInventory', 'Return to Inventory')}</Link>
     </div>
   );
@@ -765,28 +866,27 @@ export function ListingDetail() {
   const safeYear = toFiniteNumber(listing.year) ?? new Date().getFullYear();
   const safeMake = formatSpecValue(listing.make || listing.manufacturer) || 'Unknown Make';
   const safeModel = formatSpecValue(listing.model) || 'Unknown Model';
-  const safeLocation = formatSpecValue(listing.location) || 'Location Pending';
+  const safeLocation = getListingLocationLabel(listing) || formatSpecValue(listing.location) || 'Location Pending';
   const safeLocationParts = safeLocation
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
-  const safeCityState = [
-    safeLocationParts[0] || '',
-    safeLocationParts.length > 1 ? safeLocationParts[1] : ''
-  ]
-    .filter(Boolean)
-    .join(', ') || safeLocation;
   const safeCondition = formatSpecValue(listing.condition) || 'Unspecified';
   const safeDescription = formatSpecValue(listing.description) || 'No description provided.';
   const safeHours = toFiniteNumber(listing.hours) ?? 0;
   const safePrice = toFiniteNumber(listing.price) ?? 0;
   const safeMarketValueEstimate = toFiniteNumber(listing.marketValueEstimate);
-  const safeSellerName = formatSpecValue(seller?.name) || 'Unknown Seller';
-  const safeSellerLocation = formatSpecValue(seller?.location) || 'Location Not Available';
+  const safeSellerName = formatSpecValue(seller?.name) || formatSpecValue(listing.sellerName) || 'Unknown Seller';
+  const safeSellerLocation = formatSpecValue(seller?.location) || formatSpecValue(listing.location) || 'Location Not Available';
   const safeSellerType = formatSpecValue(seller?.type) || 'Seller';
   const safeSellerLogo = typeof seller?.logo === 'string' ? seller.logo : '';
   const safeSellerId = formatSpecValue(seller?.id) || '';
   const safeSellerTotalListings = toFiniteNumber(seller?.totalListings) ?? 0;
+  const sellerIsVerified = Boolean(
+    listing.sellerVerified
+    || seller?.manuallyVerified
+    || isDealerRole(seller?.role || '')
+  );
 
   const hasAmv = typeof safeMarketValueEstimate === 'number' && safeMarketValueEstimate > 0;
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
@@ -815,7 +915,9 @@ export function ListingDetail() {
   const routeCategory = getListingCategoryLabel(listing) || safeCategory;
   const routeManufacturer = getListingManufacturer(listing) || safeMake;
   const routeModel = formatSpecValue(listing.model).trim();
-  const routeState = getStateFromLocation(listing.location) || safeLocationParts[safeLocationParts.length - 2] || safeLocation;
+  const routeCity = getCityFromLocation(listing.location) || safeLocationParts[0] || '';
+  const routeState = getListingStateName(listing) || safeLocationParts[safeLocationParts.length - 2] || safeLocation;
+  const safeCityState = [routeCity, routeState].filter(Boolean).join(', ') || safeLocation;
   const dealerPath = seller?.id && (seller.storefrontSlug || isDealerRole(seller.role))
     ? buildDealerPath({ id: seller.id, storefrontSlug: seller.storefrontSlug || seller.id })
     : '';
@@ -844,12 +946,12 @@ export function ListingDetail() {
   );
   const detailRobots = !isLiveApprovedListing || isQaOrTestListing ? NOINDEX_ROBOTS : undefined;
   const pricingCard = (
-    <div className="bg-[#1C1917] text-white p-8 rounded-sm shadow-2xl">
+    <div className={`p-8 rounded-sm shadow-2xl ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border border-line'}`}>
       <div className="flex flex-col mb-8">
         <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Listed Price</span>
         <div className="flex items-baseline space-x-3">
           <span className="text-4xl font-black tracking-tighter">{formatPrice(safePrice, listing.currency || 'USD', 0)}</span>
-          <span className="text-white/40 text-xs font-bold uppercase">{t('listingDetail.exclVat', 'Excl. VAT')}</span>
+          <span className={`text-xs font-bold uppercase ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>{t('listingDetail.exclVat', 'Excl. VAT')}</span>
         </div>
       </div>
 
@@ -862,31 +964,31 @@ export function ListingDetail() {
         </button>
         <button
           onClick={handleCallSeller}
-          className="btn-industrial w-full py-5 text-base bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]"
+          className={`btn-industrial w-full py-5 text-base ${theme === 'dark' ? 'bg-white/10 border-white/20 hover:bg-white hover:text-[#1C1917]' : 'bg-ink text-bg border-line hover:opacity-90'}`}
         >
           <Phone size={18} className="mr-3" />
           {t('listingDetail.callSeller', 'Call Seller')}
         </button>
       </div>
 
-      <div className="flex items-center justify-center space-x-6 pt-6 border-t border-white/10">
+      <div className={`flex items-center justify-center space-x-6 pt-6 border-t ${theme === 'dark' ? 'border-white/10' : 'border-line'}`}>
         <button
           onClick={() => setShowPaymentCalcModal(true)}
-          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+          className={`flex items-center text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/60 hover:text-white' : 'text-muted hover:text-ink'}`}
         >
           <Calculator size={14} className="mr-2" />
           {t('listingDetail.calcPayment', 'Calc Payment')}
         </button>
         <button
           onClick={() => setShowFinancingModal(true)}
-          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+          className={`flex items-center text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/60 hover:text-white' : 'text-muted hover:text-ink'}`}
         >
           <Landmark size={14} className="mr-2" />
           {t('listingDetail.financing', 'Financing')}
         </button>
         <button
           onClick={() => setShowShippingModal(true)}
-          className="flex items-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white"
+          className={`flex items-center text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/60 hover:text-white' : 'text-muted hover:text-ink'}`}
         >
           <Truck size={14} className="mr-2" />
           {t('listingDetail.logistics', 'Logistics')}
@@ -900,23 +1002,24 @@ export function ListingDetail() {
     routeCategory ? { label: routeCategory, path: buildCategoryPath(routeCategory) } : null,
     routeManufacturer ? { label: routeManufacturer, path: buildManufacturerCategoryPath(routeManufacturer, routeCategory || '') } : null,
     routeManufacturer && routeModel ? { label: routeModel, path: buildManufacturerModelPath(routeManufacturer, routeModel) } : null,
-    routeState ? { label: `${routeState}`, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
+    routeCity ? { label: routeCity, path: `/search?location=${encodeURIComponent(routeCity)}` } : null,
+    routeState ? { label: routeState, path: buildStateCategoryPath(routeState, routeCategory || '') } : null,
     dealerPath ? { label: seller?.storefrontName || safeSellerName, path: dealerPath } : null,
   ].filter((entry): entry is { label: string; path: string } => Boolean(entry) && Boolean(entry.path));
-  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 5);
+  const uniqueRouteLinks = Array.from(new Map(routeLinks.map((entry) => [entry.path, entry])).values()).slice(0, 6);
   const breadcrumbItems = [
     {
       '@type': 'ListItem',
       position: 1,
       name: 'Home',
-      item: 'https://www.forestryequipmentsales.com/',
+      item: buildSiteUrl('/'),
     },
     routeCategory
       ? {
           '@type': 'ListItem',
           position: 2,
           name: `${routeCategory} For Sale`,
-          item: `https://www.forestryequipmentsales.com${buildCategoryPath(routeCategory)}`,
+          item: buildSiteUrl(buildCategoryPath(routeCategory)),
         }
       : null,
     routeManufacturer
@@ -924,7 +1027,7 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 3 : 2,
           name: routeManufacturer,
-          item: `https://www.forestryequipmentsales.com${buildManufacturerPath(routeManufacturer)}`,
+          item: buildSiteUrl(buildManufacturerPath(routeManufacturer)),
         }
       : null,
     routeManufacturer && routeModel
@@ -932,14 +1035,14 @@ export function ListingDetail() {
           '@type': 'ListItem',
           position: routeCategory ? 4 : 3,
           name: `${routeManufacturer} ${routeModel}`,
-          item: `https://www.forestryequipmentsales.com${buildManufacturerModelPath(routeManufacturer, routeModel)}`,
+          item: buildSiteUrl(buildManufacturerModelPath(routeManufacturer, routeModel)),
         }
       : null,
     {
       '@type': 'ListItem',
       position: routeManufacturer && routeModel ? (routeCategory ? 5 : 4) : routeManufacturer ? (routeCategory ? 4 : 3) : routeCategory ? 3 : 2,
       name: detailSeoHeadline,
-      item: `https://www.forestryequipmentsales.com${listingPath}`,
+      item: buildSiteUrl(listingPath),
     },
   ].filter(Boolean);
   const detailJsonLd = {
@@ -958,7 +1061,7 @@ export function ListingDetail() {
         sku: listing.id,
         mpn: listing.serialNumber || undefined,
         image: galleryImages.slice(0, 10),
-        url: `https://www.forestryequipmentsales.com${listingPath}`,
+        url: buildSiteUrl(listingPath),
         brand: {
           '@type': 'Brand',
           name: routeManufacturer,
@@ -980,7 +1083,7 @@ export function ListingDetail() {
           })),
         offers: {
           '@type': 'Offer',
-          url: `https://www.forestryequipmentsales.com${listingPath}`,
+          url: buildSiteUrl(listingPath),
           priceCurrency: listing.currency || 'USD',
           availability: String(listing.status || 'active').toLowerCase() === 'sold'
             ? 'https://schema.org/SoldOut'
@@ -990,7 +1093,7 @@ export function ListingDetail() {
           seller: {
             '@type': 'Organization',
             name: seller?.storefrontName || safeSellerName,
-            url: dealerPath ? `https://www.forestryequipmentsales.com${dealerPath}` : undefined,
+            url: dealerPath ? buildSiteUrl(dealerPath) : undefined,
           },
         },
       },
@@ -1013,7 +1116,7 @@ export function ListingDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-bg pb-24">
+    <div className="min-h-screen bg-bg pb-24" aria-live="polite" aria-busy={false}>
       <Seo
         title={detailSeoTitle}
         description={detailSeoDescription}
@@ -1032,20 +1135,29 @@ export function ListingDetail() {
           </Link>
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => {
-                const url = window.location.href;
+              onClick={async () => {
+                const shareData = {
+                  title: `${safeYear} ${safeMake} ${safeModel} for Sale`,
+                  text: `Check out this ${safeYear} ${safeMake} ${safeModel} on Forestry Equipment Sales`,
+                  url: window.location.href,
+                };
                 if (navigator.share) {
-                  navigator.share({ title: `${safeYear} ${safeMake} ${safeModel}`, url }).catch(() => {});
+                  try { await navigator.share(shareData); } catch { /* user cancelled */ }
                 } else {
-                  navigator.clipboard.writeText(url).then(() => {
-                    window.alert('Link copied to clipboard');
+                  navigator.clipboard.writeText(window.location.href).then(() => {
+                    setShareCopied(true);
+                    setTimeout(() => setShareCopied(false), 2000);
                   }).catch(() => {});
                 }
               }}
-              className="p-2 text-muted hover:text-ink"
-            ><Share2 size={18} /></button>
-            <button 
+              className="p-2 text-muted hover:text-ink relative"
+              aria-label="Share listing"
+            >
+              {shareCopied ? <CheckCircle2 size={18} className="text-accent" /> : <Share2 size={18} />}
+            </button>
+            <button
               onClick={handleToggleFavorite}
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               className={`p-2 transition-colors ${isFavorite ? 'text-accent' : 'text-muted hover:text-ink'}`}
             >
               <Bookmark size={18} fill={isFavorite ? 'currentColor' : 'none'} />
@@ -1107,49 +1219,69 @@ export function ListingDetail() {
               )}
             </div>
 
+            {listing.auctionId && auctionLot && (
+              <div className="flex items-center gap-4 py-3 px-4 bg-surface border border-line rounded-sm mb-4">
+                <Gavel size={16} className="text-accent flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <Link to={auctionLotPath || `/auctions/${listing.auctionSlug || ''}`} className="font-black text-xs uppercase tracking-widest hover:text-accent">
+                    Auction Lot #{auctionLot.lotNumber}
+                  </Link>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="label-micro block">Closes</span>
+                  <span className="text-xs font-black">{auctionLot.endTime ? new Date(auctionLot.endTime).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'TBD'}</span>
+                </div>
+              </div>
+            )}
+
             {/* Gallery */}
             <div className="flex flex-col space-y-4">
               <div className="aspect-[16/9] bg-surface border border-line overflow-hidden relative group">
                 <AnimatePresence mode="wait">
-                  <motion.img 
+                  <motion.img
                     key={activeImage}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    src={galleryImages[activeImage]} 
+                    transition={{ duration: 0.18 }}
+                    src={galleryImages[activeImage]}
                     alt={activeImageTitle || listing.title}
-                    className="w-full h-full object-cover cursor-zoom-in"
+                    width={1280}
+                    height={720}
+                    className="w-full h-full object-cover object-center cursor-zoom-in"
                     onClick={hasGallery ? openFullscreenImage : undefined}
                     referrerPolicy="no-referrer"
+                    fetchPriority={activeImage === 0 ? 'high' : undefined}
                   />
                 </AnimatePresence>
                 <WatermarkOverlay index={activeImage} />
 
                 {/* Navigation Arrows */}
                 <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
+                  <button
                     onClick={showPrevImage}
-                    className="p-2 bg-ink/50 text-white rounded-full hover:bg-ink transition-colors"
+                    aria-label="Previous image"
+                    className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronLeft size={24} />
                   </button>
-                  <button 
+                  <button
                     onClick={showNextImage}
-                    className="p-2 bg-ink/50 text-white rounded-full hover:bg-ink transition-colors"
+                    aria-label="Next image"
+                    className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronRight size={24} />
                   </button>
                 </div>
 
-                <div className="absolute bottom-4 right-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm">
+                <div className="absolute bottom-4 right-4 bg-black/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm">
                   {activeImage + 1} / {galleryImages.length}
                 </div>
 
                 {hasGallery && (
                   <button
                     onClick={openFullscreenImage}
-                    className="absolute bottom-4 left-4 bg-ink/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-ink transition-colors"
+                    className="absolute bottom-4 left-4 bg-black/80 backdrop-blur-md text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-black transition-colors"
                   >
                     {t('listingDetail.fullscreen', 'Fullscreen')}
                   </button>
@@ -1157,14 +1289,17 @@ export function ListingDetail() {
               </div>
               <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
                 {galleryImages.map((img, i) => (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => setActiveImage(i)}
+                    aria-label={galleryImageTitles[i] || `View photo ${i + 1} of ${galleryImages.length}`}
                     className={`aspect-square border-2 transition-all overflow-hidden ${activeImage === i ? 'border-accent' : 'border-line hover:border-muted'}`}
                   >
                     <img
                       src={img}
                       alt={galleryImageTitles[i] || `${listing.title} photo ${i + 1}`}
+                      width={200}
+                      height={200}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                       loading="lazy"
@@ -1181,7 +1316,105 @@ export function ListingDetail() {
             </div>
 
             <div className="lg:hidden">
-              {pricingCard}
+              {listing.auctionId && auctionLot && (auctionLot.status === 'active' || auctionLot.status === 'extended' || auctionLot.status === 'preview' || auctionLot.status === 'upcoming') ? (
+                <div className="border border-line rounded-sm p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="label-micro">Auction Lot #{auctionLot.lotNumber}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
+                      auctionLot.status === 'active' || auctionLot.status === 'extended' ? 'bg-accent/10 text-accent' : 'bg-muted/10 text-muted'
+                    }`}>{auctionLot.status === 'extended' ? 'Extended' : auctionLot.status}</span>
+                  </div>
+
+                  <div>
+                    <span className="label-micro">{auctionLot.currentBid > 0 ? 'Current Bid' : 'Starting Bid'}</span>
+                    <div className="text-2xl font-black">${(auctionLot.currentBid || auctionLot.startingBid).toLocaleString()}</div>
+                    {auctionLot.bidCount > 0 && <span className="text-[10px] text-muted">{auctionLot.bidCount} bid{auctionLot.bidCount !== 1 ? 's' : ''}</span>}
+                  </div>
+
+                  {auctionLot.endTime && (
+                    <div>
+                      <span className="label-micro">Time Remaining</span>
+                      <div className="text-sm font-black">{auctionService.formatTimeRemaining(auctionLot.endTime)}</div>
+                    </div>
+                  )}
+
+                  {auctionLot.hasReserve && (
+                    <div className={`text-[10px] font-bold ${auctionLot.reserveMet ? 'text-accent' : 'text-muted'}`}>
+                      {auctionLot.reserveMet ? '✓ Reserve met' : 'Reserve not met'}
+                    </div>
+                  )}
+
+                  {(auctionLot.status === 'active' || auctionLot.status === 'extended') && (
+                    <>
+                      <div>
+                        <label htmlFor="bid-amount-gallery" className="label-micro mb-1 block">Your Max Bid</label>
+                        <div className="flex gap-2">
+                          <input
+                            id="bid-amount-gallery"
+                            type="number"
+                            className="input-industrial flex-1"
+                            placeholder={`Min $${((auctionLot.currentBid || auctionLot.startingBid) + auctionService.getBidIncrement(auctionLot.currentBid || auctionLot.startingBid)).toLocaleString()}`}
+                            value={bidAmount}
+                            onChange={(e) => setBidAmount(e.target.value)}
+                          />
+                          <button
+                            className="btn-industrial btn-accent"
+                            disabled={bidding}
+                            onClick={() => {
+                              if (auctionLotPath) {
+                                window.location.href = auctionLotPath;
+                              }
+                            }}
+                          >
+                            {bidding ? 'Opening…' : 'Open Lot'}
+                          </button>
+                        </div>
+                        <p className="text-[9px] text-muted mt-1">{auctionLot.buyerPremiumPercent}% buyer premium applies</p>
+                      </div>
+                    </>
+                  )}
+
+                  {(auctionLot.status === 'upcoming' || auctionLot.status === 'preview') && (
+                    <div className="text-center py-2">
+                      <p className="text-xs text-muted">Bidding opens {auctionLot.startTime ? new Date(auctionLot.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}</p>
+                      <Link to={`/login?redirect=${encodeURIComponent(auctionRegistrationPath)}`} className="btn-industrial btn-accent w-full mt-2">
+                        Register to Bid
+                      </Link>
+                    </div>
+                  )}
+
+                  <button
+                    className="text-[10px] text-muted hover:text-ink transition-colors w-full text-left"
+                    onClick={() => setShowBidHistory(!showBidHistory)}
+                  >
+                    {showBidHistory ? '▾' : '▸'} Bid History ({auctionBids.length})
+                  </button>
+                  {showBidHistory && (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {auctionBids.length === 0 ? (
+                        <p className="text-[10px] text-muted">No bids yet</p>
+                      ) : (
+                        auctionBids.map((bid) => (
+                          <div key={bid.id} className="flex justify-between text-[10px]">
+                            <span className="text-muted">{bid.bidderAnonymousId}</span>
+                            <span className="font-bold">${bid.amount.toLocaleString()}</span>
+                            <span className="text-muted">{new Date(bid.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  <div className="border-t border-line pt-3 space-y-1 text-[10px] text-muted">
+                    <p>Payment due within {auctionLot.paymentDeadlineDays || 3} days</p>
+                    <p>Removal by {auctionLot.removalDeadlineDays || 14} days after payment</p>
+                    <p>Pickup: {auctionLot.pickupLocation || listing.location}</p>
+                    <p>Condition: As is, where is</p>
+                  </div>
+                </div>
+              ) : (
+                pricingCard
+              )}
             </div>
 
             {listingVideos.length > 0 && (
@@ -1224,7 +1457,7 @@ export function ListingDetail() {
                               <a
                                 href={descriptor.src}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="btn-industrial btn-accent px-4 py-3 text-[10px]"
                               >
                                 Open Video
@@ -1250,7 +1483,8 @@ export function ListingDetail() {
                 { label: t('listingDetail.condition', 'Condition'), value: safeCondition, icon: ShieldCheck },
                 { label: t('listingDetail.location', 'Location'), value: safeLocation, icon: MapPin },
                 { label: t('listingDetail.make', 'Make'), value: safeMake, icon: Info },
-                { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info }
+                { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info },
+                ...(listing.updatedAt ? [{ label: t('listingDetail.lastUpdated', 'Last Updated'), value: new Date(listing.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), icon: RefreshCw }] : [])
               ].map((spec, i) => (
                 <div key={i} className="bg-bg p-6 flex flex-col">
                   <div className="flex items-center space-x-2 mb-2">
@@ -1402,115 +1636,260 @@ export function ListingDetail() {
                     {marketMatchExplainer}
                   </p>
                 </div>
-                {!loadingMarketMatches && marketMatchRecommendations.length > 0 ? (
-                  <span className="label-micro">{formatNumber(marketMatchRecommendations.length)} live matches</span>
-                ) : null}
+                <span className="label-micro">{formatNumber(marketMatchRecommendations.length)} live matches</span>
               </div>
 
-              {loadingMarketMatches ? (
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="overflow-hidden border border-line bg-surface">
-                      <div className="aspect-[4/3] animate-pulse bg-line" />
-                      <div className="space-y-3 p-5">
-                        <div className="h-3 w-24 animate-pulse bg-line" />
-                        <div className="h-6 w-3/4 animate-pulse bg-line" />
-                        <div className="h-4 w-1/2 animate-pulse bg-line" />
-                        <div className="h-10 w-full animate-pulse bg-line" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : marketMatchRecommendations.length > 0 ? (
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                  {marketMatchRecommendations.map((match, matchIdx) => {
-                    const matchImage =
-                      match.imageVariants?.[0]?.thumbnailUrl ||
-                      match.images?.find(Boolean) ||
-                      LISTING_IMAGE_PLACEHOLDER;
-                    const matchPath = buildListingPath(match);
-                    const yearDelta = Math.abs((match.year || 0) - safeYear);
-                    const hoursDeltaPercent = safeHours > 0
-                      ? Math.abs((((match.hours || 0) - safeHours) / safeHours) * 100)
-                      : 0;
-                    const priceDeltaPercent = safePrice > 0
-                      ? Math.abs((((match.price || 0) - safePrice) / safePrice) * 100)
-                      : 0;
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                {marketMatchRecommendations.map((match, matchIdx) => {
+                  const matchImage =
+                    match.imageVariants?.[0]?.thumbnailUrl ||
+                    match.images?.find(Boolean) ||
+                    LISTING_IMAGE_PLACEHOLDER;
+                  const matchPath = buildListingPath(match);
+                  const yearDelta = Math.abs((match.year || 0) - safeYear);
+                  const hoursDeltaPercent = safeHours > 0
+                    ? Math.abs((((match.hours || 0) - safeHours) / safeHours) * 100)
+                    : 0;
+                  const priceDeltaPercent = safePrice > 0
+                    ? Math.abs((((match.price || 0) - safePrice) / safePrice) * 100)
+                    : 0;
 
-                    return (
-                      <Link
-                        key={match.id}
-                        to={matchPath}
-                        className="group overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
-                      >
-                        <div className="aspect-[4/3] overflow-hidden bg-bg relative">
-                          <img
-                            src={matchImage}
-                            alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                          <WatermarkOverlay index={matchIdx} />
+                  return (
+                    <Link
+                      key={match.id}
+                      to={matchPath}
+                      className="group overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
+                    >
+                      <div className="aspect-[4/3] overflow-hidden bg-bg relative">
+                        <img
+                          src={matchImage}
+                          alt={match.title || `${match.year} ${match.make || match.manufacturer || ''} ${match.model}`}
+                          width={400}
+                          height={300}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <WatermarkOverlay index={matchIdx} />
+                      </div>
+                      <div className="space-y-4 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="label-micro">{match.make || match.manufacturer || match.brand || 'Market Match'}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-accent">
+                            {priceDeltaPercent.toFixed(1)}% price
+                          </span>
                         </div>
-                        <div className="space-y-4 p-5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="label-micro">{match.make || match.manufacturer || match.brand || 'Market Match'}</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-accent">
-                              {priceDeltaPercent.toFixed(1)}% price
-                            </span>
+                        <div>
+                          <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
+                            {match.year || 'Unknown Year'} {match.make || match.manufacturer || match.brand || 'Unknown Make'} {match.model || 'Unknown Model'}
+                          </h4>
+                          <p className="mt-2 text-sm font-medium text-muted">{match.location || 'Location pending'}</p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 border border-line bg-bg p-3 text-center">
+                          <div>
+                            <p className="label-micro">Price</p>
+                            <p className="mt-2 text-sm font-black tracking-tight">{formatPrice(match.price || 0, match.currency || 'USD', 0)}</p>
                           </div>
                           <div>
-                            <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
-                              {match.year || 'Unknown Year'} {match.make || match.manufacturer || match.brand || 'Unknown Make'} {match.model || 'Unknown Model'}
-                            </h4>
-                            <p className="mt-2 text-sm font-medium text-muted">{match.location || 'Location pending'}</p>
+                            <p className="label-micro">Year Delta</p>
+                            <p className="mt-2 text-sm font-black tracking-tight">{yearDelta} yr</p>
                           </div>
-                          <div className="grid grid-cols-3 gap-3 border border-line bg-bg p-3 text-center">
-                            <div>
-                              <p className="label-micro">Price</p>
-                              <p className="mt-2 text-sm font-black tracking-tight">{formatPrice(match.price || 0, match.currency || 'USD', 0)}</p>
-                            </div>
-                            <div>
-                              <p className="label-micro">Year Delta</p>
-                              <p className="mt-2 text-sm font-black tracking-tight">{yearDelta} yr</p>
-                            </div>
-                            <div>
-                              <p className="label-micro">Hours Delta</p>
-                              <p className="mt-2 text-sm font-black tracking-tight">{hoursDeltaPercent.toFixed(1)}%</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-muted">
-                            <span>{formatNumber(match.hours || 0)} hrs</span>
-                            <span className="flex items-center gap-1 text-accent">
-                              View listing <ChevronRight size={12} />
-                            </span>
+                          <div>
+                            <p className="label-micro">Hours Delta</p>
+                            <p className="mt-2 text-sm font-black tracking-tight">{hoursDeltaPercent.toFixed(1)}%</p>
                           </div>
                         </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : null}
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-muted">
+                          <span>{formatNumber(match.hours || 0)} hrs</span>
+                          <span className="flex items-center gap-1 text-accent">
+                            View listing <ChevronRight size={12} />
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
             ) : null}
+
+            {/* Similar Equipment (fallback when no market matches) */}
+            {!showMarketMatchRecommendations && similarEquipment.length > 0 && (
+              <div className="flex flex-col space-y-6">
+                <div className="flex items-center justify-between border-b border-line pb-4">
+                  <h3 className="text-xl font-black uppercase tracking-tighter">Similar Equipment</h3>
+                  <span className="label-micro">{similarEquipment.length} listings</span>
+                </div>
+                <div className="relative group/scroll">
+                  <div className="flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {similarEquipment.map((sim, simIdx) => {
+                      const simImage =
+                        sim.imageVariants?.[0]?.thumbnailUrl ||
+                        sim.images?.find(Boolean) ||
+                        LISTING_IMAGE_PLACEHOLDER;
+                      const simPath = buildListingPath(sim);
+                      return (
+                        <Link
+                          key={sim.id}
+                          to={simPath}
+                          className="group min-w-[280px] max-w-[320px] flex-shrink-0 snap-start overflow-hidden border border-line bg-surface transition-transform duration-200 hover:-translate-y-1"
+                        >
+                          <div className="aspect-[4/3] overflow-hidden bg-bg relative">
+                            <img
+                              src={simImage}
+                              alt={sim.title || `${sim.year} ${sim.make || sim.manufacturer || ''} ${sim.model}`}
+                              width={400}
+                              height={300}
+                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <WatermarkOverlay index={simIdx} />
+                          </div>
+                          <div className="space-y-3 p-5">
+                            <span className="label-micro">{sim.make || sim.manufacturer || sim.brand || sim.subcategory || ''}</span>
+                            <h4 className="text-base font-black uppercase tracking-tight transition-colors group-hover:text-accent">
+                              {sim.year || ''} {sim.make || sim.manufacturer || ''} {sim.model || ''}
+                            </h4>
+                            <div className="flex items-center justify-between">
+                              <span className="text-lg font-black tracking-tight">{formatPrice(sim.price || 0, sim.currency || 'USD', 0)}</span>
+                              <span className="text-[10px] font-bold text-muted uppercase">{formatNumber(sim.hours || 0)} hrs</span>
+                            </div>
+                            <p className="text-[10px] font-medium text-muted">{sim.location || ''}</p>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  {similarEquipment.length > 1 && (
+                    <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 flex justify-between pointer-events-none px-1">
+                      <div className="w-8 h-8 bg-black/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: -300, behavior: 'smooth' }); }}>
+                        <ChevronLeft size={16} />
+                      </div>
+                      <div className="w-8 h-8 bg-black/70 text-white flex items-center justify-center rounded-full opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-auto cursor-pointer" onClick={(e) => { e.preventDefault(); const container = (e.currentTarget.closest('.group\\/scroll') as HTMLElement)?.querySelector('.overflow-x-auto'); if (container) container.scrollBy({ left: 300, behavior: 'smooth' }); }}>
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar (Right) */}
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-8">
               <div className="hidden lg:block">
-                {pricingCard}
+                {listing.auctionId && auctionLot && (auctionLot.status === 'active' || auctionLot.status === 'extended' || auctionLot.status === 'preview' || auctionLot.status === 'upcoming') ? (
+                  <div className="border border-line rounded-sm p-4 space-y-4 sticky top-20">
+                    <div className="flex items-center justify-between">
+                      <span className="label-micro">Auction Lot #{auctionLot.lotNumber}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
+                        auctionLot.status === 'active' || auctionLot.status === 'extended' ? 'bg-accent/10 text-accent' : 'bg-muted/10 text-muted'
+                      }`}>{auctionLot.status === 'extended' ? 'Extended' : auctionLot.status}</span>
+                    </div>
+
+                    <div>
+                      <span className="label-micro">{auctionLot.currentBid > 0 ? 'Current Bid' : 'Starting Bid'}</span>
+                      <div className="text-2xl font-black">${(auctionLot.currentBid || auctionLot.startingBid).toLocaleString()}</div>
+                      {auctionLot.bidCount > 0 && <span className="text-[10px] text-muted">{auctionLot.bidCount} bid{auctionLot.bidCount !== 1 ? 's' : ''}</span>}
+                    </div>
+
+                    {auctionLot.endTime && (
+                      <div>
+                        <span className="label-micro">Time Remaining</span>
+                        <div className="text-sm font-black">{auctionService.formatTimeRemaining(auctionLot.endTime)}</div>
+                      </div>
+                    )}
+
+                    {auctionLot.hasReserve && (
+                      <div className={`text-[10px] font-bold ${auctionLot.reserveMet ? 'text-accent' : 'text-muted'}`}>
+                        {auctionLot.reserveMet ? '✓ Reserve met' : 'Reserve not met'}
+                      </div>
+                    )}
+
+                    {(auctionLot.status === 'active' || auctionLot.status === 'extended') && (
+                      <>
+                        <div>
+                          <label htmlFor="bid-amount-sidebar" className="label-micro mb-1 block">Your Max Bid</label>
+                          <div className="flex gap-2">
+                            <input
+                              id="bid-amount-sidebar"
+                              type="number"
+                              className="input-industrial flex-1"
+                              placeholder={`Min $${((auctionLot.currentBid || auctionLot.startingBid) + auctionService.getBidIncrement(auctionLot.currentBid || auctionLot.startingBid)).toLocaleString()}`}
+                              value={bidAmount}
+                              onChange={(e) => setBidAmount(e.target.value)}
+                            />
+                            <button
+                              className="btn-industrial btn-accent"
+                              disabled={bidding}
+                              onClick={() => {
+                                if (auctionLotPath) {
+                                  window.location.href = auctionLotPath;
+                                }
+                              }}
+                            >
+                              {bidding ? 'Opening…' : 'Open Lot'}
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-muted mt-1">{auctionLot.buyerPremiumPercent}% buyer premium applies</p>
+                        </div>
+                      </>
+                    )}
+
+                    {(auctionLot.status === 'upcoming' || auctionLot.status === 'preview') && (
+                      <div className="text-center py-2">
+                        <p className="text-xs text-muted">Bidding opens {auctionLot.startTime ? new Date(auctionLot.startTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}</p>
+                        <Link to={`/login?redirect=${encodeURIComponent(auctionRegistrationPath)}`} className="btn-industrial btn-accent w-full mt-2">
+                          Register to Bid
+                        </Link>
+                      </div>
+                    )}
+
+                    <button
+                      className="text-[10px] text-muted hover:text-ink transition-colors w-full text-left"
+                      onClick={() => setShowBidHistory(!showBidHistory)}
+                    >
+                      {showBidHistory ? '▾' : '▸'} Bid History ({auctionBids.length})
+                    </button>
+                    {showBidHistory && (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {auctionBids.length === 0 ? (
+                          <p className="text-[10px] text-muted">No bids yet</p>
+                        ) : (
+                          auctionBids.map((bid) => (
+                            <div key={bid.id} className="flex justify-between text-[10px]">
+                              <span className="text-muted">{bid.bidderAnonymousId}</span>
+                              <span className="font-bold">${bid.amount.toLocaleString()}</span>
+                              <span className="text-muted">{new Date(bid.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    <div className="border-t border-line pt-3 space-y-1 text-[10px] text-muted">
+                      <p>Payment due within {auctionLot.paymentDeadlineDays || 3} days</p>
+                      <p>Removal by {auctionLot.removalDeadlineDays || 14} days after payment</p>
+                      <p>Pickup: {auctionLot.pickupLocation || listing.location}</p>
+                      <p>Condition: As is, where is</p>
+                    </div>
+                  </div>
+                ) : (
+                  pricingCard
+                )}
               </div>
 
               {/* Seller Card */}
-              {seller && (
+              {(seller || listing.sellerName || listing.sellerUid || listing.sellerId) && (
               <div className="bg-surface border border-line p-8">
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex flex-col">
                     <span className="label-micro mb-2">
-                      {listing.sellerVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
+                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
                     </span>
                     <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
                     <a 
@@ -1525,7 +1904,7 @@ export function ListingDetail() {
                   </div>
                   <div className="w-16 h-16 bg-bg border border-line p-2 flex items-center justify-center">
                     {safeSellerLogo ? (
-                      <img src={safeSellerLogo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                      <img src={safeSellerLogo} alt={`${listing?.sellerName || 'Seller'} logo`} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                     ) : (
                       <span className="text-[10px] font-black uppercase tracking-widest text-muted text-center">Seller</span>
                     )}
@@ -1540,12 +1919,39 @@ export function ListingDetail() {
                 </div>
 
                 <div className="flex flex-col space-y-3">
-                  <div className={`flex items-center space-x-3 text-xs font-bold ${listing.sellerVerified ? 'text-data' : 'text-muted'}`}>
+                  <div className={`flex items-center space-x-3 text-xs font-bold ${sellerIsVerified ? 'text-data' : 'text-muted'}`}>
                     <ShieldCheck size={16} />
                     <span className="uppercase tracking-widest">
-                      {listing.sellerVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
+                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
                     </span>
                   </div>
+                  {['super_admin', 'admin'].includes(user?.role || '') && seller?.id && (
+                    <button
+                      onClick={async () => {
+                        const newVal = !seller.manuallyVerified;
+                        const action = newVal ? 'verify' : 'unverify';
+                        try {
+                          const idToken = await auth.currentUser?.getIdToken();
+                          if (!idToken) return;
+                          const resp = await fetch(`/api/admin/users/${encodeURIComponent(seller.id)}/${action}`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                            body: '{}',
+                          });
+                          if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({}));
+                            throw new Error(err?.error || `Failed to ${action} seller`);
+                          }
+                          setSeller((prev) => prev ? { ...prev, manuallyVerified: newVal } : prev);
+                        } catch (err) {
+                          console.error('Failed to update verification:', err);
+                        }
+                      }}
+                      className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline text-left"
+                    >
+                      {seller.manuallyVerified ? 'Remove Manual Verification' : 'Manually Verify Seller'}
+                    </button>
+                  )}
                   <div className="flex items-center space-x-3 text-xs font-bold text-muted">
                     <Clock size={16} />
                     <span className="uppercase tracking-widest">
@@ -1555,7 +1961,7 @@ export function ListingDetail() {
                   </div>
                 </div>
 
-                <Link to={dealerPath || `/seller/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
+                <Link to={dealerPath || `/dealers/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
                   {t('listingDetail.viewFullProfile', 'View Full Profile')}
                 </Link>
               </div>
@@ -1585,7 +1991,7 @@ export function ListingDetail() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80"
+              className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             />
 
             <motion.div
@@ -1604,7 +2010,6 @@ export function ListingDetail() {
               </button>
 
               <TransformWrapper
-                key={activeImage}
                 initialScale={1}
                 minScale={1}
                 maxScale={5}
@@ -1613,7 +2018,7 @@ export function ListingDetail() {
                 doubleClick={{ disabled: true }}
                 centerOnInit
               >
-                {({ zoomIn, zoomOut, resetTransform }) => (
+                {(ref) => { const { zoomIn, zoomOut, resetTransform, state } = ref as unknown as ReactZoomPanPinchRef; return (
                   <>
                     <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
                       <button onClick={() => zoomOut()} className="px-3 py-2 bg-black/65 text-white text-xs font-black rounded-sm hover:bg-black transition-colors">-</button>
@@ -1621,23 +2026,49 @@ export function ListingDetail() {
                       <button onClick={() => resetTransform()} className="px-3 py-2 bg-black/65 text-white text-xs font-black rounded-sm hover:bg-black transition-colors">Reset</button>
                     </div>
 
-                    <TransformComponent wrapperClass="w-full h-full !overflow-visible" contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10">
-                      <div className="relative inline-block">
-                        <AnimatePresence mode="wait">
-                          <motion.img
-                            key={galleryImages[activeImage]}
+                    <TransformComponent
+                      wrapperClass="w-full h-full !overflow-visible"
+                      contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10"
+                      wrapperProps={{
+                        onTouchStart: (e: React.TouchEvent) => {
+                          if (e.touches.length === 1) {
+                            fullscreenSwipeRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, time: Date.now() };
+                          }
+                        },
+                        onTouchEnd: (e: React.TouchEvent) => {
+                          if (!fullscreenSwipeRef.current || state.scale > 1.05) { fullscreenSwipeRef.current = null; return; }
+                          const touch = e.changedTouches[0];
+                          const dx = touch.clientX - fullscreenSwipeRef.current.startX;
+                          const dy = touch.clientY - fullscreenSwipeRef.current.startY;
+                          const elapsed = Date.now() - fullscreenSwipeRef.current.time;
+                          fullscreenSwipeRef.current = null;
+                          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && elapsed < 500) {
+                            resetTransform();
+                            if (dx < 0) showNextImage();
+                            else showPrevImage();
+                          }
+                        },
+                      }}
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.div
+                          key={activeImage}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.18 }}
+                          onAnimationStart={() => resetTransform()}
+                          className="relative inline-block"
+                        >
+                          <img
                             src={galleryImages[activeImage]}
                             alt={activeImageTitle || listing.title}
                             className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
                             referrerPolicy="no-referrer"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.12 }}
                           />
-                        </AnimatePresence>
-                        <WatermarkOverlay index={activeImage} />
-                      </div>
+                          <WatermarkOverlay index={activeImage} />
+                        </motion.div>
+                      </AnimatePresence>
                     </TransformComponent>
 
                     <button
@@ -1655,7 +2086,7 @@ export function ListingDetail() {
                       <ChevronRight size={22} />
                     </button>
                   </>
-                )}
+                ); }}
               </TransformWrapper>
             </motion.div>
           </div>
@@ -1674,18 +2105,21 @@ export function ListingDetail() {
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             ></motion.div>
             
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="inquiry-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
+                  <h3 id="inquiry-modal-title" className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
                 </div>
-                <button onClick={dismissInquiryModal} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissInquiryModal} aria-label="Close inquiry form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -1703,20 +2137,22 @@ export function ListingDetail() {
                   <form onSubmit={handleInquirySubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col space-y-2">
-                        <label className="label-micro">Full Name</label>
-                        <input 
+                        <label htmlFor="inquiry-name" className="label-micro">Full Name</label>
+                        <input
+                          id="inquiry-name"
                           required
-                          type="text" 
+                          type="text"
                           className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                           value={inquiryForm.name}
                           onChange={(e) => setInquiryForm({...inquiryForm, name: e.target.value})}
                         />
                       </div>
                       <div className="flex flex-col space-y-2">
-                        <label className="label-micro">Email Address</label>
-                        <input 
+                        <label htmlFor="inquiry-email" className="label-micro">Email Address</label>
+                        <input
+                          id="inquiry-email"
                           required
-                          type="email" 
+                          type="email"
                           className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                           value={inquiryForm.email}
                           onChange={(e) => setInquiryForm({...inquiryForm, email: e.target.value})}
@@ -1724,18 +2160,20 @@ export function ListingDetail() {
                       </div>
                     </div>
                     <div className="flex flex-col space-y-2">
-                      <label className="label-micro">Phone Number</label>
-                      <input 
+                      <label htmlFor="inquiry-phone" className="label-micro">Phone Number</label>
+                      <input
+                        id="inquiry-phone"
                         required
-                        type="tel" 
+                        type="tel"
                         className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                         value={inquiryForm.phone}
                         onChange={(e) => setInquiryForm({...inquiryForm, phone: e.target.value})}
                       />
                     </div>
                     <div className="flex flex-col space-y-2">
-                      <label className="label-micro">Message / Requirements</label>
-                      <textarea 
+                      <label htmlFor="inquiry-message" className="label-micro">Message / Requirements</label>
+                      <textarea
+                        id="inquiry-message"
                         required
                         rows={4}
                         className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
@@ -1782,18 +2220,21 @@ export function ListingDetail() {
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             ></motion.div>
             
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="amv-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Market Logic</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
+                  <h3 id="amv-modal-title" className="text-2xl font-black tracking-tighter uppercase">AMV Calculation</h3>
                 </div>
-                <button onClick={() => setShowAMVModal(false)} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={() => setShowAMVModal(false)} aria-label="Close AMV modal" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -1849,18 +2290,21 @@ export function ListingDetail() {
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             ></motion.div>
             
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="financing-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Credit Center</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
+                  <h3 id="financing-modal-title" className="text-2xl font-black tracking-tighter uppercase">Financing Estimator</h3>
                 </div>
-                <button onClick={dismissFinancingModal} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissFinancingModal} aria-label="Close financing form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -1936,17 +2380,20 @@ export function ListingDetail() {
             ></motion.div>
 
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shipping-modal-title"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden"
             >
-              <div className="bg-ink text-white p-8 flex justify-between items-center">
+              <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Logistics</span>
-                  <h3 className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>
+                  <h3 id="shipping-modal-title" className="text-2xl font-black tracking-tighter uppercase">Trucking Request</h3>
                 </div>
-                <button onClick={dismissShippingModal} className="p-2 hover:bg-white/10 transition-colors">
+                <button onClick={dismissShippingModal} aria-label="Close shipping form" className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-ink/5'}`}>
                   <X size={24} />
                 </button>
               </div>
@@ -1985,9 +2432,33 @@ export function ListingDetail() {
                       <input required type="tel" placeholder="PHONE" className="input-industrial" value={shippingForm.phone} onChange={(e) => setShippingForm({ ...shippingForm, phone: e.target.value })} />
                     </div>
 
-                    <input required type="text" placeholder="PICKUP CITY / STATE" className="input-industrial w-full" value={shippingForm.pickupLocation} onChange={(e) => setShippingForm({ ...shippingForm, pickupLocation: e.target.value })} />
+                    <GooglePlacesInput
+                      required
+                      value={shippingForm.pickupLocation}
+                      onChange={(value) => setShippingForm({ ...shippingForm, pickupLocation: value })}
+                      onSelect={(place) =>
+                        setShippingForm((prev) => ({
+                          ...prev,
+                          pickupLocation: place.formattedAddress || prev.pickupLocation,
+                        }))
+                      }
+                      placeholder="Pickup address, city, state, or ZIP"
+                      className="space-y-0"
+                    />
 
-                    <input required type="text" placeholder="DELIVERY CITY / STATE / COUNTRY" className="input-industrial w-full" value={shippingForm.destination} onChange={(e) => setShippingForm({ ...shippingForm, destination: e.target.value })} />
+                    <GooglePlacesInput
+                      required
+                      value={shippingForm.destination}
+                      onChange={(value) => setShippingForm({ ...shippingForm, destination: value })}
+                      onSelect={(place) =>
+                        setShippingForm((prev) => ({
+                          ...prev,
+                          destination: place.formattedAddress || prev.destination,
+                        }))
+                      }
+                      placeholder="Delivery address, city, state, or ZIP"
+                      className="space-y-0"
+                    />
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <select className="input-industrial" value={shippingForm.timeline} onChange={(e) => setShippingForm({ ...shippingForm, timeline: e.target.value })}>
@@ -2045,6 +2516,7 @@ export function ListingDetail() {
         onSubmitFinancingRequest={submitFinanceRequestFromCalculator}
       />
 
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

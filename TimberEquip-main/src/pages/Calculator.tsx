@@ -8,9 +8,11 @@ import {
 import { motion } from 'framer-motion';
 import { useLocale } from '../components/LocaleContext';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
 
 export function Calculator() {
   const { formatPrice } = useLocale();
+  const { theme } = useTheme();
   const [amount, setAmount] = useState(250000);
   const [downPayment, setDownPayment] = useState(50000);
   const [term, setTerm] = useState(60);
@@ -103,7 +105,7 @@ export function Calculator() {
                     <select 
                       value={term}
                       onChange={(e) => setTerm(Number(e.target.value))}
-                      className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                      className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent"
                     >
                       {[24, 36, 48, 60, 72, 84].map(t => (
                         <option key={t} value={t}>{t} Months</option>
@@ -115,7 +117,7 @@ export function Calculator() {
                       <label className="label-micro">Interest Rate (APR %)</label>
                       <span className="text-xs font-black text-data uppercase tracking-widest">Prime: 6.25%</span>
                     </div>
-                    <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                    <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                       <div className="p-4 text-muted">
                         <Percent size={18} />
                       </div>
@@ -149,27 +151,27 @@ export function Calculator() {
           {/* Results Sidebar */}
           <div className="lg:col-span-5">
             <div className="sticky top-24 space-y-8">
-              <div className="bg-ink text-white p-12 rounded-sm shadow-2xl relative overflow-hidden">
+              <div className={`${theme === 'dark' ? 'bg-[#1C1917] text-white border border-white/10' : 'bg-surface text-ink border border-line'} p-12 rounded-sm shadow-2xl relative overflow-hidden`}>
                 <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                
+
                 <div className="relative z-10">
                   <span className="label-micro text-accent mb-4 block">Estimated Monthly Payment</span>
                   <div className="flex items-end space-x-2 mb-12">
-                    <span className="text-6xl font-black tracking-tighter text-white">{formatPrice(Math.round(monthlyPayment), 'USD', 0)}</span>
-                    <span className="text-sm font-bold text-white/40 uppercase mb-3">/ Month</span>
+                    <span className="text-6xl font-black tracking-tighter text-ink">{formatPrice(Math.round(monthlyPayment), 'USD', 0)}</span>
+                    <span className={`text-sm font-bold uppercase mb-3 ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>/ Month</span>
                   </div>
 
-                  <div className="space-y-6 border-t border-white/10 pt-8 mb-12">
+                  <div className={`space-y-6 border-t ${theme === 'dark' ? 'border-white/10' : 'border-line'} pt-8 mb-12`}>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Total Principal</span>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>Total Principal</span>
                       <span className="text-sm font-black tracking-tight">{formatPrice(amount - downPayment, 'USD', 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Total Interest</span>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>Total Interest</span>
                       <span className="text-sm font-black tracking-tight">{formatPrice(Math.round((monthlyPayment * term) - (amount - downPayment)), 'USD', 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Total Cost</span>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>Total Cost</span>
                       <span className="text-sm font-black tracking-tight text-accent">{formatPrice(Math.round(monthlyPayment * term), 'USD', 0)}</span>
                     </div>
                   </div>

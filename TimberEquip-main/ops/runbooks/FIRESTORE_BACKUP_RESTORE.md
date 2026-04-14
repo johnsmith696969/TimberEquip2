@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This runbook defines the Forestry Equipment Sales baseline backup posture for Firestore:
+This runbook defines the TimberEquip baseline backup posture for Firestore:
 
 - daily managed exports to Cloud Storage
 - 30-day retention on the dedicated backup bucket

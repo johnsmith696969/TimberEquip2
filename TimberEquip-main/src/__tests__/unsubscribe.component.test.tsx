@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Unsubscribe } from '../pages/Unsubscribe';
 
+vi.mock('../components/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
+}));
+
 describe('Unsubscribe page', () => {
   const fetchMock = vi.fn();
 
@@ -37,6 +41,29 @@ describe('Unsubscribe page', () => {
 
     expect(await screen.findByText('Buyer')).toBeInTheDocument();
     expect(screen.getByText('buyer@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop Optional Emails' })).toBeInTheDocument();
+  });
+
+  it('loads correctly for an email-only unsubscribe link', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        email: 'outside@example.com',
+        displayName: 'outside@example.com',
+        scope: 'optional',
+        emailNotificationsEnabled: true,
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/unsubscribe?email=outside@example.com&scope=optional&token=test-token']}>
+        <Routes>
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect((await screen.findAllByText('outside@example.com')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Stop Optional Emails' })).toBeInTheDocument();
   });
 

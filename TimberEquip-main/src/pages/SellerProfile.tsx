@@ -5,13 +5,9 @@ import {
   Phone,
   Globe,
   ShieldCheck,
-  Star,
   Clock,
   Package,
-  TrendingUp,
-  Activity,
   MessageSquare,
-  CheckCircle2,
   Edit3,
   Save,
   X as CloseIcon,
@@ -23,16 +19,22 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { useAuth } from '../components/AuthContext';
+import { LoginPromptModal } from '../components/LoginPromptModal';
 import { Seller, Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { buildDealerPath, getListingCategoryLabel, isDealerRole, normalizeSeoSlug, titleCaseSlug } from '../utils/seoRoutes';
 import { useTheme } from '../components/ThemeContext';
 import { evaluateRouteQuality } from '../utils/seoRouteQuality';
 import { buildListingPath } from '../utils/listingPath';
+import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { setPendingFavoriteIntent } from '../utils/pendingFavorite';
+import { buildSiteUrl } from '../utils/siteUrl';
+import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
 
-const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin']);
-const STOREFRONT_ADMIN_ROLES = new Set(['admin', 'super_admin', 'developer']);
+const STOREFRONT_EDIT_ROLES = new Set(['individual_seller', 'dealer', 'pro_dealer']);
+const STOREFRONT_ADMIN_ROLES = new Set<string>();
 
 function roleLabel(role?: string): string {
   switch (role) {
@@ -70,10 +72,19 @@ function normalizeWebsiteHref(value?: string): string {
   return `https://${normalized}`;
 }
 
+function buildStorefrontLocationSummary(place: {
+  city?: string;
+  state?: string;
+  country?: string;
+  formattedAddress?: string;
+}) {
+  return [place.city, place.state, place.country].filter(Boolean).join(', ') || String(place.formattedAddress || '').trim();
+}
+
 export function SellerProfile() {
   const { id, categorySlug } = useParams<{ id: string; categorySlug?: string }>();
   const location = useLocation();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAuthenticated, toggleFavorite } = useAuth();
   const { theme } = useTheme();
   const [seller, setSeller] = useState<Seller | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -81,6 +92,10 @@ export function SellerProfile() {
   const [isEditing, setIsEditing] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [compareList, setCompareList] = useState<string[]>([]);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [storefrontSearchQuery, setStorefrontSearchQuery] = useState('');
+  const [storefrontDisplayCount, setStorefrontDisplayCount] = useState(24);
 
   const [editData, setEditData] = useState({
     storefrontName: '',
@@ -88,6 +103,8 @@ export function SellerProfile() {
     storefrontTagline: '',
     storefrontDescription: '',
     location: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
     phone: '',
     email: '',
     website: '',
@@ -106,6 +123,22 @@ export function SellerProfile() {
   const canEditStorefront = Boolean(currentUser && ((isOwner && canManageOwnStorefront) || canManageAnyStorefront));
   const isDealerRoute = location.pathname.startsWith('/dealers/');
   const isInventoryRoute = location.pathname.endsWith('/inventory');
+  const favoriteIds = normalizeListingIdList(currentUser?.favorites);
+
+  const handleToggleFavorite = (listingId: string) => {
+    const nid = normalizeListingId(listingId);
+    if (!nid) return;
+    if (!isAuthenticated) {
+      setPendingFavoriteIntent(nid, `${location.pathname}${location.search}${location.hash}`);
+      setShowLoginModal(true);
+      return;
+    }
+    void toggleFavorite(nid);
+  };
+
+  const toggleCompare = (listingId: string) => {
+    setCompareList((prev) => prev.includes(listingId) ? prev.filter((x) => x !== listingId) : [...prev, listingId]);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -133,6 +166,8 @@ export function SellerProfile() {
             storefrontTagline: sellerData.storefrontTagline || '',
             storefrontDescription: sellerData.storefrontDescription || '',
             location: sellerData.location || '',
+            latitude: typeof sellerData.latitude === 'number' ? sellerData.latitude : null,
+            longitude: typeof sellerData.longitude === 'number' ? sellerData.longitude : null,
             phone: sellerData.phone || '',
             email: sellerData.email || '',
             website: sellerData.website || '',
@@ -216,6 +251,8 @@ export function SellerProfile() {
         storefrontTagline: editData.storefrontTagline.trim(),
         storefrontDescription: editData.storefrontDescription.trim(),
         location: editData.location.trim(),
+        latitude: editData.latitude,
+        longitude: editData.longitude,
         phone: editData.phone.trim(),
         email: editData.email.trim(),
         website: editData.website.trim(),
@@ -237,6 +274,8 @@ export function SellerProfile() {
               storefrontTagline: editData.storefrontTagline.trim(),
               storefrontDescription: editData.storefrontDescription.trim(),
               location: editData.location.trim(),
+              latitude: editData.latitude ?? undefined,
+              longitude: editData.longitude ?? undefined,
               phone: editData.phone.trim(),
               email: editData.email.trim(),
               website: editData.website.trim(),
@@ -300,11 +339,11 @@ export function SellerProfile() {
     );
   }
 
-  const coverImage = seller.coverPhotoUrl || 'https://picsum.photos/seed/forestry-equipment-sales-storefront/1920/720';
-  const logoImage = seller.logo || 'https://picsum.photos/seed/forestry-equipment-sales-logo/260/260';
+  const coverImage = seller.coverPhotoUrl || 'https://picsum.photos/seed/timberequip-storefront/1920/720';
+  const logoImage = seller.logo || 'https://picsum.photos/seed/timberequip-logo/260/260';
   const headline = seller.storefrontName || seller.name;
-  const tagline = seller.storefrontTagline || 'Managed storefront built for serious machine visibility, direct buyer contact, and clean inventory presentation.';
-  const description = seller.storefrontDescription || 'This storefront is managed on Forestry Equipment Sales with branded inventory, verified seller controls, and direct lead routing.';
+  const tagline = seller.storefrontTagline || '';
+  const description = seller.storefrontDescription || '';
   const preferredDealerPath = buildDealerPath(seller);
   const storefrontCategoryLinks = (() => {
     const counts = new Map<string, number>();
@@ -322,9 +361,9 @@ export function SellerProfile() {
       }))
       .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
   })();
-  const dealerRouteQuality = isDealerRoute
-    ? evaluateRouteQuality(categorySlug ? 'dealerCategory' : 'dealer', filteredListings.length, {
-        fallbackPath: categorySlug ? `${preferredDealerPath}/inventory` : '/dealers',
+  const dealerRouteQuality = isDealerRoute && categorySlug
+    ? evaluateRouteQuality('dealerCategory', filteredListings.length, {
+        fallbackPath: `${preferredDealerPath}/inventory`,
       })
     : null;
 
@@ -343,29 +382,56 @@ export function SellerProfile() {
       return preferredDealerPath;
     }
 
-    return `/seller/${seller.storefrontSlug || seller.id}`;
+    return `/dealers/${seller.storefrontSlug || seller.id}`;
   })();
 
+  const isDealer = isDealerRole(seller.role);
+  const postalAddress =
+    seller.street1 || seller.city || seller.state || seller.country || seller.location
+      ? {
+          '@type': 'PostalAddress',
+          streetAddress: [seller.street1, seller.street2].filter(Boolean).join(', ') || seller.location || undefined,
+          addressLocality: seller.city || undefined,
+          addressRegion: seller.state || undefined,
+          postalCode: seller.postalCode || undefined,
+          addressCountry: seller.country || undefined,
+        }
+      : undefined;
+  const areaServed = [
+    ...sanitizeServiceAreaScopes(seller.serviceAreaScopes, 8),
+    ...(seller.serviceAreaStates || []),
+    ...(seller.serviceAreaCounties || []),
+  ].filter(Boolean);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
       {
-        '@type': 'Organization',
+        '@type': isDealer ? 'LocalBusiness' : 'Organization',
         name: headline,
-        url: `https://www.forestryequipmentsales.com${canonicalPath}`,
+        url: buildSiteUrl(canonicalPath),
         logo: logoImage,
+        image: coverImage,
         description,
         email: seller.email || undefined,
         telephone: seller.phone || undefined,
-        address: seller.location || undefined,
+        address: postalAddress,
+        geo:
+          typeof seller.latitude === 'number' && typeof seller.longitude === 'number'
+            ? {
+                '@type': 'GeoCoordinates',
+                latitude: seller.latitude,
+                longitude: seller.longitude,
+              }
+            : undefined,
+        areaServed: areaServed.length ? areaServed : undefined,
       },
       {
         '@type': 'BreadcrumbList',
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.forestryequipmentsales.com/' },
-          { '@type': 'ListItem', position: 2, name: 'Dealers', item: 'https://www.forestryequipmentsales.com/dealers' },
-          { '@type': 'ListItem', position: 3, name: headline, item: `https://www.forestryequipmentsales.com${preferredDealerPath}` },
-          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: `https://www.forestryequipmentsales.com${canonicalPath}` }] : []),
+          { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+          { '@type': 'ListItem', position: 2, name: 'Dealers', item: buildSiteUrl('/dealers') },
+          { '@type': 'ListItem', position: 3, name: headline, item: buildSiteUrl(preferredDealerPath) },
+          ...(categorySlug ? [{ '@type': 'ListItem', position: 4, name: titleCaseSlug(categorySlug), item: buildSiteUrl(canonicalPath) }] : []),
         ],
       },
       {
@@ -374,7 +440,7 @@ export function SellerProfile() {
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
+          url: buildSiteUrl(buildListingPath(listing)),
           item: {
             '@type': 'Product',
             name: `${listing.year} ${listing.make || listing.manufacturer || listing.brand || ''} ${listing.model || ''}`.trim(),
@@ -389,8 +455,6 @@ export function SellerProfile() {
   const sellerWebsiteHref = normalizeWebsiteHref(seller.website);
   const sellerPhoneHref = seller.phone ? `tel:${toDialablePhone(seller.phone)}` : '';
   const sellerEmailHref = seller.email ? `mailto:${seller.email}` : '';
-  const activeCategoryCount = storefrontCategoryLinks.length;
-  const averageListingsPerCategory = activeCategoryCount > 0 ? Math.round(filteredListings.length / activeCategoryCount) : filteredListings.length;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -406,7 +470,7 @@ export function SellerProfile() {
       <section className={`px-4 md:px-8 relative overflow-hidden border-b border-line ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
         <div className="absolute inset-0">
           <img src={coverImage} alt={`${headline} cover`} className={`w-full h-full object-cover ${theme === 'dark' ? 'opacity-30' : 'opacity-20 saturate-[0.85] brightness-110'}`} referrerPolicy="no-referrer" />
-          <div className={`absolute inset-0 ${theme === 'dark' ? 'bg-gradient-to-r from-black/90 via-black/70 to-black/45' : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76'}`} />
+          <div className={`absolute inset-0 ${theme === 'dark' ? 'bg-gradient-to-r from-black/90 via-black/70 to-black/45' : 'bg-gradient-to-r from-white/70 via-white/55 to-white/35'}`} />
         </div>
 
         <div className="max-w-[1600px] mx-auto relative z-10 py-20 md:py-24">
@@ -470,7 +534,7 @@ export function SellerProfile() {
                         className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
                       />
                       <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/50 break-all">
-                        forestryequipmentsales.com/seller/{editData.storefrontSlug || 'your-storefront-slug'}
+                        forestryequipmentsales.com/dealers/{editData.storefrontSlug || 'your-storefront-slug'}
                       </p>
                     </div>
                     <div>
@@ -492,11 +556,26 @@ export function SellerProfile() {
                     </div>
                     <div>
                       <label className="label-micro text-white/40 block mb-2">Location</label>
-                      <input
-                        type="text"
+                      <GooglePlacesInput
+                        mode="city"
                         value={editData.location}
-                        onChange={(e) => setEditData({ ...editData, location: e.target.value })}
-                        className="w-full bg-black/50 border border-white/20 text-white p-3 text-sm focus:border-accent outline-none"
+                        onChange={(value) => setEditData((prev) => ({ ...prev, location: value }))}
+                        onSelect={(place) => {
+                          const nextLocation = buildStorefrontLocationSummary(place);
+                          setEditData((prev) => ({
+                            ...prev,
+                            location: nextLocation || prev.location,
+                            latitude: typeof place.latitude === 'number' ? place.latitude : prev.latitude,
+                            longitude: typeof place.longitude === 'number' ? place.longitude : prev.longitude,
+                          }));
+                        }}
+                        placeholder="Search city, state, or province with Google"
+                        helperText="Use a Google-verified location so your storefront geography stays clean and linkable."
+                        inputClassName="w-full bg-black/50 border-white/20 text-white placeholder:text-white/35 focus:border-accent"
+                        dropdownClassName="border-white/15 bg-ink/95"
+                        optionClassName="border-white/10 hover:bg-white/5"
+                        helperTextClassName="text-white/45"
+                        leadingIconClassName="text-white/45"
                       />
                     </div>
                     <div>
@@ -585,19 +664,12 @@ export function SellerProfile() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
                 <div className="flex flex-col">
                   <span className="label-micro text-white/40 mb-1">Location</span>
                   <div className="flex items-center text-sm font-bold">
                     <MapPin size={14} className="mr-2 text-accent" />
                     {seller.location || 'Unknown'}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="label-micro text-white/40 mb-1">Rating</span>
-                  <div className="flex items-center text-sm font-bold">
-                    <Star size={14} className="mr-2 text-accent" fill="currentColor" />
-                    {seller.rating} / 5.0
                   </div>
                 </div>
                 <div className="flex flex-col">
@@ -640,6 +712,25 @@ export function SellerProfile() {
                 <a
                   href={sellerPhoneHref || undefined}
                   className={`btn-industrial flex-1 py-3 bg-white/10 border-white/20 hover:bg-white hover:text-ink ${sellerPhoneHref ? '' : 'pointer-events-none opacity-50'}`}
+                  onClick={() => {
+                    if (!seller || !sellerPhoneHref) return;
+                    equipmentService.createCallLog({
+                      listingId: '',
+                      listingTitle: `Storefront: ${seller.name || 'Unknown'}`,
+                      sellerId: seller.id || id || '',
+                      sellerUid: seller.id || id || '',
+                      sellerName: seller.name || 'Unknown Seller',
+                      sellerPhone: seller.phone || '',
+                      callerUid: currentUser?.uid || null,
+                      callerName: (currentUser?.displayName || currentUser?.email || 'Guest User').trim(),
+                      callerEmail: currentUser?.email || '',
+                      callerPhone: String(currentUser?.phoneNumber || ''),
+                      duration: 0,
+                      status: 'Initiated',
+                      source: 'seller_profile',
+                      isAuthenticated: Boolean(currentUser?.uid),
+                    }).catch(() => {});
+                  }}
                 >
                   <Phone size={14} className="mr-2" />
                   Call
@@ -660,15 +751,24 @@ export function SellerProfile() {
       </section>
 
       <section className="py-24 px-4 md:px-8 max-w-[1600px] mx-auto">
-        <div className="flex justify-between items-end mb-16 border-b border-line pb-8">
-          <div>
+        <div className="mb-16 flex flex-col gap-6 border-b border-line pb-8 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
             <span className="label-micro text-accent mb-2 block">Storefront Inventory</span>
             <h2 className="text-4xl font-black uppercase tracking-tighter">
               {categorySlug ? `${titleCaseSlug(categorySlug)} ` : 'Current '}<span className="text-muted">Equipment</span>
             </h2>
           </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-xs font-bold uppercase tracking-widest text-muted">{filteredListings.length} Results</span>
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
+            <input
+              type="text"
+              value={storefrontSearchQuery}
+              onChange={(e) => { setStorefrontSearchQuery(e.target.value); setStorefrontDisplayCount(24); }}
+              placeholder="Search inventory..."
+              className="input-industrial w-full px-3 text-[10px] font-bold uppercase tracking-widest sm:w-64 md:w-48"
+            />
+            <span className="text-xs font-bold uppercase tracking-widest text-muted sm:text-right">
+              {filteredListings.length} Results
+            </span>
           </div>
         </div>
 
@@ -693,63 +793,61 @@ export function SellerProfile() {
         ) : null}
 
         <div className="industrial-grid">
-          {filteredListings.map((listing) => (
-            <div key={listing.id}>
-              <ListingCard listing={listing} />
-            </div>
-          ))}
+          {(() => {
+            const sq = storefrontSearchQuery.toLowerCase();
+            const searched = sq
+              ? filteredListings.filter((l) => [l.title, l.category, l.make, l.model, l.location].some((f) => String(f || '').toLowerCase().includes(sq)))
+              : filteredListings;
+            return searched.slice(0, storefrontDisplayCount).map((listing) => {
+              const nid = normalizeListingId(listing.id);
+              return (
+                <div key={listing.id}>
+                  <ListingCard
+                    listing={listing}
+                    isFavorite={!!nid && favoriteIds.includes(nid)}
+                    isComparing={!!nid && compareList.includes(nid)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleCompare={toggleCompare}
+                  />
+                </div>
+              );
+            });
+          })()}
         </div>
-      </section>
 
-      <section className="py-24 bg-surface px-4 md:px-8">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-1 bg-line border border-line">
-            <div className="bg-bg p-12 flex flex-col">
-              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-sm w-fit mb-8">
-                <TrendingUp size={24} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Inventory Coverage</h4>
-              <p className="text-xs text-muted leading-relaxed mb-8">
-                This storefront currently publishes live inventory across active machine families and gives buyers a direct path into filtered dealer search.
-              </p>
-              <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">{activeCategoryCount}</span>
-                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Active Categories</span>
-              </div>
-            </div>
+        {(() => {
+          const sq = storefrontSearchQuery.toLowerCase();
+          const total = sq
+            ? filteredListings.filter((l) => [l.title, l.category, l.make, l.model, l.location].some((f) => String(f || '').toLowerCase().includes(sq))).length
+            : filteredListings.length;
+          return total > storefrontDisplayCount ? (
+            <button
+              type="button"
+              onClick={() => setStorefrontDisplayCount((prev) => prev + 24)}
+              className="mt-8 w-full py-4 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+            >
+              Load More Equipment ({total - storefrontDisplayCount} remaining)
+            </button>
+          ) : null;
+        })()}
 
-            <div className="bg-bg p-12 flex flex-col">
-              <div className="p-3 bg-orange-500/10 text-orange-500 rounded-sm w-fit mb-8">
-                <Activity size={24} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Buyer Contact Paths</h4>
-              <p className="text-xs text-muted leading-relaxed mb-8">
-                Buyers can use your direct storefront email, phone, website, and inventory inquiry flow from one public dealer page.
-              </p>
-              <div className="mt-auto flex items-end space-x-2">
-                <span className="text-3xl font-black tracking-tighter">{[sellerEmailHref, sellerPhoneHref, sellerWebsiteHref].filter(Boolean).length}</span>
-                <span className="text-[10px] font-bold text-muted uppercase mb-1.5">Live Channels</span>
-              </div>
-            </div>
-
-            <div className="bg-bg p-12 flex flex-col">
-              <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-sm w-fit mb-8">
-                <ShieldCheck size={24} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-widest mb-4">Storefront Readiness</h4>
-              <p className="text-xs text-muted leading-relaxed mb-8">
-                Logo, cover image, profile messaging, dealer route structure, and category filtering are all exposed through the managed storefront layer.
-              </p>
-              <div className="mt-auto flex items-center space-x-2 text-data">
-                <CheckCircle2 size={18} />
-                <span className="text-xs font-black uppercase tracking-widest">
-                  {seller.verified ? 'Verified And Search Ready' : `${averageListingsPerCategory} Avg Units / Category`}
-                </span>
-              </div>
-            </div>
+        {compareList.length > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-bg px-6 py-3 rounded-sm shadow-2xl flex items-center gap-4">
+            <span className="text-[10px] font-black uppercase tracking-widest">{compareList.length} selected</span>
+            <Link
+              to={`/compare?ids=${compareList.join(',')}`}
+              className="btn-industrial btn-accent px-4 py-2 text-[10px]"
+            >
+              Compare
+            </Link>
+            <button onClick={() => setCompareList([])} className="text-[10px] font-black uppercase tracking-widest text-muted hover:text-bg">
+              Clear
+            </button>
           </div>
-        </div>
+        )}
       </section>
+
+      <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 }

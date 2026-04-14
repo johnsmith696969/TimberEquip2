@@ -1,0 +1,11 @@
+connectorId: dealers
+generate:
+  javascriptSdk:
+    outputDir: ../../src/lib/dataconnect/generated/dealers
+    package: "@dataconnect/generated-timberequip-dealers"
+    packageJsonDir: ../..
+    react: true
+  adminNodeSdk:
+    outputDir: ../../functions/generated/dataconnect/dealers
+    package: "@dataconnect/admin-generated-timberequip-dealers"
+    packageJsonDir: ../../functions

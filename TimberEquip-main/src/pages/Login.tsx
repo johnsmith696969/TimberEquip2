@@ -8,17 +8,23 @@ import {
   AlertCircle,
   CheckCircle2,
   KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
 import {
   signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   type MultiFactorResolver,
   type RecaptchaVerifier,
 } from 'firebase/auth';
 
+import { AlertMessage } from '../components/AlertMessage';
 import { useAuth } from '../components/AuthContext';
-import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { verifyRecaptchaAction } from '../services/recaptchaService';
 import {
   completeSmsMfaSignIn,
   createVisibleRecaptchaVerifier,
@@ -29,8 +35,7 @@ import {
   startSmsMfaSignIn,
   type SmsMfaFactorSummary,
 } from '../services/mfaService';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
-import { appendReturnToParam } from '../utils/sellerAccess';
+import { appendReturnToParam, getDefaultAccountWorkspacePath } from '../utils/sellerAccess';
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 import { useTheme } from '../components/ThemeContext';
@@ -41,6 +46,7 @@ export function Login() {
   const { theme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,22 +62,22 @@ export function Login() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaVerifying, setMfaVerifying] = useState(false);
+  const [stayLoggedIn, setStayLoggedIn] = useState(true);
   const mfaRecaptchaRef = useRef<RecaptchaVerifier | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail, isAuthenticated } = useAuth();
+  const { login, loginWithGoogle, sendPasswordReset, sendVerificationEmail, isAuthenticated, user: authUser } = useAuth();
   const stateReason = (location.state as { reason?: string; email?: string } | null)?.reason || '';
   const stateEmail = (location.state as { reason?: string; email?: string } | null)?.email || '';
   const queryRedirectTargetRaw = new URLSearchParams(location.search).get('redirect') || '';
-  const queryRedirectTarget = queryRedirectTargetRaw.startsWith('/') ? queryRedirectTargetRaw : '';
+  const queryRedirectTarget = queryRedirectTargetRaw.startsWith('/') && !queryRedirectTargetRaw.startsWith('//') ? queryRedirectTargetRaw : '';
   const redirectTarget = typeof (location.state as { from?: unknown } | null)?.from === 'string'
     ? ((location.state as { from: string }).from || '')
     : queryRedirectTarget;
   const stateReturnToRaw = typeof (location.state as { returnTo?: unknown } | null)?.returnTo === 'string'
     ? String((location.state as { returnTo: string }).returnTo || '').trim()
     : '';
-  const stateReturnTo = stateReturnToRaw.startsWith('/') ? stateReturnToRaw : '';
-  const hasFirebaseSession = Boolean(auth.currentUser);
+  const stateReturnTo = stateReturnToRaw.startsWith('/') && !stateReturnToRaw.startsWith('//') ? stateReturnToRaw : '';
   const hasResolvedSession = Boolean(isAuthenticated);
 
   useEffect(() => {
@@ -100,10 +106,7 @@ export function Login() {
     mfaRecaptchaRef.current = null;
   }, []);
 
-  const signedInEmail = auth.currentUser?.email?.trim().toLowerCase() || email.trim().toLowerCase();
-  const postSignInTarget = isPrivilegedAdminEmail(signedInEmail)
-    ? '/admin'
-    : redirectTarget || '/profile';
+  const postSignInTarget = redirectTarget || getDefaultAccountWorkspacePath(authUser);
   const postSignInHref = postSignInTarget.startsWith('/sell')
     ? appendReturnToParam(postSignInTarget, stateReturnTo)
     : postSignInTarget;
@@ -117,7 +120,7 @@ export function Login() {
   const registerHref = registerParams.toString() ? `/register?${registerParams.toString()}` : '/register';
 
   useEffect(() => {
-    if ((!hasResolvedSession && !hasFirebaseSession) || mfaResolver) {
+    if (!hasResolvedSession || mfaResolver) {
       return;
     }
 
@@ -128,7 +131,7 @@ export function Login() {
     }, 750);
 
     return () => window.clearTimeout(fallbackRedirect);
-  }, [hasFirebaseSession, hasResolvedSession, mfaResolver, navigate, postSignInHref]);
+  }, [hasResolvedSession, mfaResolver, navigate, postSignInHref]);
 
   const resetMfaChallenge = (notice = '') => {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
@@ -201,7 +204,7 @@ export function Login() {
       if (recaptchaContainer) recaptchaContainer.innerHTML = '';
       setMfaFactor(factor);
       setMfaVerificationId(verificationId);
-      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for ForestryEquipmentSales.com. Enter it below to finish signing in.`);
+      setInfoMessage(`Verification code sent to ${factor.phoneNumber || 'your enrolled mobile number'} for Forestry Equipment Sales.com. Enter it below to finish signing in.`);
     } catch (mfaError) {
       resetRecaptchaVerifier(mfaRecaptchaRef.current);
       mfaRecaptchaRef.current = null;
@@ -249,14 +252,19 @@ export function Login() {
     setResetError('');
 
     try {
-      const rcToken = await getRecaptchaToken('PASSWORD_RESET');
-      if (rcToken) await assessRecaptcha(rcToken, 'PASSWORD_RESET');
+      const recaptchaPassed = await verifyRecaptchaAction('PASSWORD_RESET');
+      if (!recaptchaPassed) {
+        setResetError('Security check failed. Please refresh and try again.');
+        return;
+      }
       await sendPasswordReset(resetEmail.trim());
       setResetSent(true);
     } catch (resetFailure: any) {
       const code = resetFailure?.code || '';
       if (code === 'auth/user-not-found') {
-        setResetError('No account found with that email address.');
+        // Show success to prevent user enumeration
+        setResetSent(true);
+        return;
       } else if (code === 'auth/invalid-email') {
         setResetError('Please enter a valid email address.');
       } else if (code === 'auth/too-many-requests') {
@@ -278,17 +286,15 @@ export function Login() {
     setInfoMessage('');
 
     try {
-      const rcToken = await getRecaptchaToken('LOGIN');
-      if (rcToken) {
-        const pass = await assessRecaptcha(rcToken, 'LOGIN');
-        if (!pass) {
-          setError('Security check failed. Please try again.');
-          setLoading(false);
-          return;
-        }
+      const recaptchaPassed = await verifyRecaptchaAction('LOGIN');
+      if (!recaptchaPassed) {
+        setError('Security check failed. Please refresh and try again.');
+        setLoading(false);
+        return;
       }
 
-      await login(email, password);
+      await setPersistence(auth, stayLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+      await login(email.trim(), password);
       const currentUser = auth.currentUser;
       if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
         const verificationEmailSent = await sendVerificationEmail();
@@ -308,11 +314,14 @@ export function Login() {
       if (code === 'auth/multi-factor-auth-required') {
         await startLoginMfaChallenge(getSmsMultiFactorResolver(loginFailure));
       } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        setError('Invalid email or password. Try signing in with Google below.');
+        setError('Invalid email or password. Use your Forestry Equipment Sales password or reset it if you need a new one.');
       } else if (code === 'auth/too-many-requests') {
         setError('Too many failed attempts. Please wait a moment and try again.');
+      } else if (code.includes('api-key-not-valid')) {
+        console.error('[Auth] API key rejected by Firebase:', code);
+        setError('Firebase configuration error. Please clear your browser cache and cookies, then try again. If the issue persists, contact support.');
       } else {
-        setError('Login failed. Please try again or use Google sign-in.');
+        setError('Sign-in failed. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -330,6 +339,7 @@ export function Login() {
         return;
       }
 
+      await setPersistence(auth, stayLoggedIn ? browserLocalPersistence : browserSessionPersistence);
       await loginWithGoogle();
       const currentUser = auth.currentUser;
       if (REQUIRE_EMAIL_VERIFICATION && currentUser && !currentUser.emailVerified) {
@@ -348,6 +358,9 @@ export function Login() {
       const code = googleFailure?.code || '';
       if (code === 'auth/multi-factor-auth-required') {
         await startLoginMfaChallenge(getSmsMultiFactorResolver(googleFailure));
+      } else if (code.includes('api-key-not-valid')) {
+        console.error('[Auth] API key rejected by Firebase during Google sign-in:', code);
+        setError('Firebase configuration error. Please clear your browser cache and cookies, then try again. If the issue persists, contact support.');
       } else if (code === 'auth/unauthorized-domain') {
         setError('Google sign-in is not authorized for this domain in Firebase Auth yet.');
       } else if (code === 'auth/popup-closed-by-user') {
@@ -357,7 +370,8 @@ export function Login() {
       } else if (code === 'auth/account-exists-with-different-credential') {
         setError('This email already exists with a different sign-in method. Use your password login first.');
       } else {
-        setError('Google sign-in failed. Please try again.');
+        console.error('Google sign-in error:', code, googleFailure);
+        setError(code ? `Google sign-in failed (${code}). Please try again.` : 'Google sign-in failed. Please try again.');
       }
     } finally {
       setGoogleLoading(false);
@@ -366,7 +380,7 @@ export function Login() {
 
   const disablePrimaryAuth = loading || googleLoading || !!mfaResolver;
 
-  if ((hasResolvedSession || hasFirebaseSession) && !mfaResolver) {
+  if (hasResolvedSession && !mfaResolver) {
     return <Navigate replace to={postSignInHref} />;
   }
 
@@ -385,25 +399,27 @@ export function Login() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl bg-bg border border-line shadow-2xl relative z-10 overflow-hidden"
       >
-        <div className={`p-12 ${theme === 'dark' ? 'bg-[#0a0a0a] text-white' : 'bg-surface text-ink border-b border-line'}`}>
+        <div className={`p-12 ${theme === 'dark' ? 'bg-bg text-white' : 'bg-surface text-ink border-b border-line'}`}>
           <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2 block">Member Login</span>
           <h1 className={`text-4xl font-black tracking-tighter uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
-            Forestry Equipment <br /> <span className="text-accent">Sales</span>
+            <span className="text-accent">Forestry Equipment</span> Sales
           </h1>
         </div>
 
         <div className="p-12">
           <form onSubmit={handleLogin} className="space-y-8">
             <div className="flex flex-col space-y-2">
-              <label className="label-micro">Email Address</label>
-              <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+              <label htmlFor="login-email" className="label-micro">Email Address</label>
+              <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                 <div className="p-3 text-muted">
                   <Mail size={18} />
                 </div>
                 <input
+                  id="login-email"
                   required
                   type="email"
                   placeholder="EMAIL@EXAMPLE.COM"
+                  autoComplete="email"
                   className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -414,7 +430,7 @@ export function Login() {
 
             <div className="flex flex-col space-y-2">
               <div className="flex justify-between items-center">
-                <label className="label-micro">Password</label>
+                <label htmlFor="login-password" className="label-micro">Password</label>
                 <button
                   type="button"
                   className="text-[10px] font-bold text-accent uppercase hover:underline"
@@ -428,24 +444,35 @@ export function Login() {
                   Forgot Password?
                 </button>
               </div>
-              <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+              <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                 <div className="p-3 text-muted">
                   <Lock size={18} />
                 </div>
                 <input
+                  id="login-password"
                   required
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   placeholder="************"
+                  autoComplete="current-password"
                   className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-widest"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={disablePrimaryAuth}
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="p-3 text-muted hover:text-ink transition-colors"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
-              <input type="checkbox" className="w-4 h-4 border-line rounded-sm accent-accent" id="remember" />
+              <input type="checkbox" className="w-4 h-4 border-line rounded-sm accent-accent" id="remember" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
               <label htmlFor="remember" className="text-[10px] font-bold text-muted uppercase tracking-widest cursor-pointer">
                 Stay Logged In
               </label>
@@ -454,6 +481,7 @@ export function Login() {
             <button
               type="submit"
               disabled={disablePrimaryAuth}
+              aria-disabled={disablePrimaryAuth}
               className="btn-industrial btn-accent w-full py-5 text-base flex items-center justify-center"
             >
               {loading ? (
@@ -491,12 +519,13 @@ export function Login() {
               )}
 
               <div className="space-y-2">
-                <label className="label-micro">Verification Code</label>
-                <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                <label htmlFor="login-mfa-code" className="label-micro">Verification Code</label>
+                <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                   <div className="p-3 text-muted">
                     <KeyRound size={18} />
                   </div>
                   <input
+                    id="login-mfa-code"
                     required
                     type="text"
                     inputMode="numeric"
@@ -541,17 +570,11 @@ export function Login() {
           ) : null}
 
           {infoMessage ? (
-            <div className="mt-4 flex items-start space-x-3 bg-data/10 border border-data/30 p-4 rounded-sm">
-              <CheckCircle2 className="text-data flex-shrink-0 mt-0.5" size={16} />
-              <p className="text-xs font-medium text-data">{infoMessage}</p>
-            </div>
+            <AlertMessage severity="info" className="mt-4">{infoMessage}</AlertMessage>
           ) : null}
 
           {error ? (
-            <div className="mt-4 flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
-              <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-              <p className="text-xs font-medium text-red-500">{error}</p>
-            </div>
+            <AlertMessage severity="error" className="mt-4">{error}</AlertMessage>
           ) : null}
 
           <div className="mt-6">
@@ -559,12 +582,16 @@ export function Login() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-line" />
               </div>
-              <span className="relative bg-bg px-4 text-[10px] font-bold text-muted uppercase tracking-widest">Or continue with</span>
+              <span className="relative bg-bg px-4 text-[10px] font-bold text-muted uppercase tracking-widest">Google is optional</span>
             </div>
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-muted">
+              Use email and password for Forestry Equipment Sales-native accounts. Google sign-in is only for accounts that were started with Google.
+            </p>
             <button
               type="button"
               onClick={handleGoogleLogin}
               disabled={disablePrimaryAuth}
+              aria-disabled={disablePrimaryAuth}
               className="mt-4 w-full btn-industrial py-4 flex items-center justify-center space-x-3 hover:border-accent/50 transition-colors"
             >
               {googleLoading ? (
@@ -612,7 +639,7 @@ export function Login() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0 bg-bg flex flex-col z-20"
             >
-              <div className="bg-[#0a0a0a] text-white p-12 flex justify-between items-center">
+              <div className="bg-ink text-white p-12 flex justify-between items-center">
                 <div className="flex flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-2">Account Recovery</span>
                   <h2 className="text-3xl font-black tracking-tighter uppercase leading-none text-white">
@@ -657,7 +684,7 @@ export function Login() {
                     <form onSubmit={handlePasswordReset} className="space-y-6">
                       <div className="flex flex-col space-y-2">
                         <label className="label-micro">Email Address</label>
-                        <div className="flex items-center bg-surface border border-line p-1 rounded-sm focus-within:border-accent transition-colors">
+                        <div className="flex items-center bg-surface border-b border-line p-1 focus-within:border-accent transition-colors">
                           <div className="p-3 text-muted">
                             <Mail size={18} />
                           </div>
@@ -665,6 +692,7 @@ export function Login() {
                             required
                             type="email"
                             placeholder="EMAIL@EXAMPLE.COM"
+                            autoComplete="email"
                             className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                             value={resetEmail}
                             onChange={(e) => setResetEmail(e.target.value)}
@@ -673,15 +701,13 @@ export function Login() {
                       </div>
 
                       {resetError ? (
-                        <div className="flex items-start space-x-3 bg-red-500/10 border border-red-500/30 p-4 rounded-sm">
-                          <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-                          <p className="text-xs font-medium text-red-500">{resetError}</p>
-                        </div>
+                        <AlertMessage severity="error">{resetError}</AlertMessage>
                       ) : null}
 
                       <button
                         type="submit"
                         disabled={resetLoading}
+                        aria-disabled={resetLoading}
                         className="btn-industrial btn-accent w-full py-5 text-base flex items-center justify-center"
                       >
                         {resetLoading ? (

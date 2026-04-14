@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Layers, Package, Plus, Trash2 } from 'lucide-react';
+import { collection, query, where, getCountFromServer } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { type FullEquipmentTaxonomy, taxonomyService } from '../../services/taxonomyService';
 
 const EMPTY_TAXONOMY: FullEquipmentTaxonomy = {};
@@ -26,6 +28,44 @@ export function TaxonomyManager() {
   const [removeManufacturerSelection, setRemoveManufacturerSelection] = useState('');
   const [removeModelSelection, setRemoveModelSelection] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [usageCount, setUsageCount] = useState<number | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+
+  const fetchUsageCount = useCallback(async (
+    type: 'category' | 'subcategory' | 'manufacturer' | 'model',
+    categoryVal: string,
+    subcategoryVal: string,
+    manufacturerVal: string,
+    modelVal: string
+  ) => {
+    setUsageLoading(true);
+    setUsageCount(null);
+    try {
+      const listingsRef = collection(db, 'listings');
+      const constraints = [where('status', 'in', ['active', 'pending'])];
+
+      if (type === 'category') {
+        constraints.push(where('category', '==', categoryVal));
+      } else if (type === 'subcategory') {
+        constraints.push(where('category', '==', categoryVal));
+        constraints.push(where('subcategory', '==', subcategoryVal));
+      } else if (type === 'manufacturer') {
+        constraints.push(where('category', '==', categoryVal));
+        constraints.push(where('make', '==', manufacturerVal));
+      } else {
+        constraints.push(where('category', '==', categoryVal));
+        constraints.push(where('make', '==', manufacturerVal));
+        constraints.push(where('model', '==', modelVal));
+      }
+
+      const snapshot = await getCountFromServer(query(listingsRef, ...constraints));
+      setUsageCount(snapshot.data().count);
+    } catch {
+      setUsageCount(null);
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
 
   const loadTaxonomy = async () => {
     try {
@@ -43,6 +83,13 @@ export function TaxonomyManager() {
   useEffect(() => {
     void loadTaxonomy();
   }, []);
+
+  useEffect(() => {
+    if (!confirmRemove) {
+      setUsageCount(null);
+      setUsageLoading(false);
+    }
+  }, [confirmRemove]);
 
   const categoryOptions = useMemo(
     () => Object.keys(taxonomy).sort((left, right) => left.localeCompare(right)),
@@ -181,6 +228,51 @@ export function TaxonomyManager() {
 
     return { categoryCount, subcategoryCount, manufacturerCount, modelCount };
   }, [categoryOptions, taxonomy]);
+
+  const removeCascadeWarning = useMemo(() => {
+    if (!confirmRemove) return '';
+
+    if (removeType === 'category') {
+      const categoryData = taxonomy[removeCategorySelection] || {};
+      const subcategoryCount = Object.keys(categoryData).length;
+      const manufacturerCount = Object.values(categoryData).reduce(
+        (total, subcategory) => total + Object.keys(subcategory || {}).length, 0
+      );
+      const modelCount = Object.values(categoryData).reduce(
+        (total, subcategory) =>
+          total + Object.values(subcategory || {}).reduce(
+            (mfgTotal, models) => mfgTotal + (models?.length || 0), 0
+          ), 0
+      );
+      if (subcategoryCount === 0 && manufacturerCount === 0 && modelCount === 0) return '';
+      const parts: string[] = [];
+      if (subcategoryCount > 0) parts.push(`${subcategoryCount} subcategor${subcategoryCount === 1 ? 'y' : 'ies'}`);
+      if (manufacturerCount > 0) parts.push(`${manufacturerCount} manufacturer${manufacturerCount === 1 ? '' : 's'}`);
+      if (modelCount > 0) parts.push(`${modelCount} model${modelCount === 1 ? '' : 's'}`);
+      return `This will also remove ${parts.join(' and ')}.`;
+    }
+
+    if (removeType === 'subcategory') {
+      const subcategoryData = taxonomy[removeCategorySelection]?.[removeSubcategorySelection] || {};
+      const manufacturerCount = Object.keys(subcategoryData).length;
+      const modelCount = Object.values(subcategoryData).reduce(
+        (total, models) => total + (models?.length || 0), 0
+      );
+      if (manufacturerCount === 0 && modelCount === 0) return '';
+      const parts: string[] = [];
+      if (manufacturerCount > 0) parts.push(`${manufacturerCount} manufacturer${manufacturerCount === 1 ? '' : 's'}`);
+      if (modelCount > 0) parts.push(`${modelCount} model${modelCount === 1 ? '' : 's'}`);
+      return `This will also remove ${parts.join(' and ')}.`;
+    }
+
+    if (removeType === 'manufacturer') {
+      const models = taxonomy[removeCategorySelection]?.[removeSubcategorySelection]?.[removeManufacturerSelection] || [];
+      if (models.length === 0) return '';
+      return `This will also remove ${models.length} model${models.length === 1 ? '' : 's'}.`;
+    }
+
+    return '';
+  }, [confirmRemove, removeType, removeCategorySelection, removeSubcategorySelection, removeManufacturerSelection, taxonomy]);
 
   const handleAction = async (actionKey: string, action: () => Promise<FullEquipmentTaxonomy>, reset: () => void, successMessage: string) => {
     try {
@@ -582,7 +674,16 @@ export function TaxonomyManager() {
           {!confirmRemove ? (
             <button
               type="button"
-              onClick={() => setConfirmRemove(true)}
+              onClick={() => {
+                setConfirmRemove(true);
+                void fetchUsageCount(
+                  removeType,
+                  removeCategorySelection,
+                  removeSubcategorySelection,
+                  removeManufacturerSelection,
+                  removeModelSelection
+                );
+              }}
               disabled={
                 !removeCategorySelection ||
                 (removeType !== 'category' && !removeSubcategorySelection) ||
@@ -595,35 +696,57 @@ export function TaxonomyManager() {
               <span>Remove {removeType}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  void handleAction(
-                    `remove-${removeType}`,
-                    () => {
-                      if (removeType === 'category') return taxonomyService.removeCategory(removeCategorySelection);
-                      if (removeType === 'subcategory') return taxonomyService.removeSubcategory(removeCategorySelection, removeSubcategorySelection);
-                      if (removeType === 'manufacturer') return taxonomyService.removeManufacturer(removeCategorySelection, removeSubcategorySelection, removeManufacturerSelection);
-                      return taxonomyService.removeModel(removeCategorySelection, removeSubcategorySelection, removeManufacturerSelection, removeModelSelection);
-                    },
-                    () => setConfirmRemove(false),
-                    `${removeType.charAt(0).toUpperCase() + removeType.slice(1)} removed from taxonomy.`
-                  )
-                }
-                disabled={!!pendingAction}
-                className="btn-industrial bg-accent text-white py-3 px-5 disabled:opacity-60 flex items-center gap-2"
-              >
-                <Trash2 size={14} />
-                <span>{pendingAction?.startsWith('remove-') ? 'Removing...' : 'Confirm Remove'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmRemove(false)}
-                className="btn-industrial py-3 px-5"
-              >
-                Cancel
-              </button>
+            <div className="space-y-3">
+              {removeCascadeWarning && (
+                <div className="rounded-sm border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-2">
+                  <AlertCircle size={14} />
+                  <span>{removeCascadeWarning}</span>
+                </div>
+              )}
+              <div className="rounded-sm border border-line bg-surface px-4 py-3 text-[10px] font-black uppercase tracking-widest text-muted flex items-center gap-2">
+                <AlertCircle size={14} />
+                {usageLoading ? (
+                  <span>Checking active listings...</span>
+                ) : usageCount !== null && usageCount > 0 ? (
+                  <span className="text-accent">
+                    Used in {usageCount} active {usageCount === 1 ? 'listing' : 'listings'}. Deleting it will not remove it from existing listings.
+                  </span>
+                ) : usageCount === 0 ? (
+                  <span>Not used in any active listings.</span>
+                ) : (
+                  <span>Unable to check listing usage.</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void handleAction(
+                      `remove-${removeType}`,
+                      () => {
+                        if (removeType === 'category') return taxonomyService.removeCategory(removeCategorySelection);
+                        if (removeType === 'subcategory') return taxonomyService.removeSubcategory(removeCategorySelection, removeSubcategorySelection);
+                        if (removeType === 'manufacturer') return taxonomyService.removeManufacturer(removeCategorySelection, removeSubcategorySelection, removeManufacturerSelection);
+                        return taxonomyService.removeModel(removeCategorySelection, removeSubcategorySelection, removeManufacturerSelection, removeModelSelection);
+                      },
+                      () => setConfirmRemove(false),
+                      `${removeType.charAt(0).toUpperCase() + removeType.slice(1)} removed from taxonomy.`
+                    )
+                  }
+                  disabled={!!pendingAction}
+                  className="btn-industrial bg-accent text-white py-3 px-5 disabled:opacity-60 flex items-center gap-2"
+                >
+                  <Trash2 size={14} />
+                  <span>{pendingAction?.startsWith('remove-') ? 'Removing...' : 'Confirm Remove'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmRemove(false)}
+                  className="btn-industrial py-3 px-5"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>

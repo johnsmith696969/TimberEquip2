@@ -1,0 +1,206 @@
+## Billing connector — Subscription, Invoice & Seller Application operations
+## Used by server.ts webhook handlers and Cloud Functions admin SDK.
+
+# ─── Queries ────────────────────────────────────────────────────────────
+
+query GetSubscriptionsByUser($userId: String!) @auth(level: NO_ACCESS) {
+  billingSubscriptions(where: { userId: { eq: $userId } }, orderBy: [{ createdAt: DESC }]) {
+    id
+    userId
+    listingId
+    planId
+    planName
+    listingCap
+    status
+    stripeSubscriptionId
+    currentPeriodEnd
+    cancelAtPeriodEnd
+    createdAt
+    updatedAt
+  }
+}
+
+query GetActiveSubscriptionForListing($listingId: String!) @auth(level: NO_ACCESS) {
+  billingSubscriptions(
+    where: { listingId: { eq: $listingId }, status: { eq: "active" } }
+    limit: 1
+  ) {
+    id
+    userId
+    planId
+    status
+    currentPeriodEnd
+    cancelAtPeriodEnd
+  }
+}
+
+query GetSubscriptionByStripeId($stripeId: String!) @auth(level: NO_ACCESS) {
+  billingSubscriptions(where: { stripeSubscriptionId: { eq: $stripeId } }, limit: 1) {
+    id
+    userId
+    listingId
+    planId
+    status
+    currentPeriodEnd
+    cancelAtPeriodEnd
+  }
+}
+
+query GetInvoicesByUser($userId: String!, $limit: Int = 50) @auth(level: NO_ACCESS) {
+  invoices(where: { userId: { eq: $userId } }, limit: $limit, orderBy: [{ createdAt: DESC }]) {
+    id
+    userId
+    listingId
+    stripeInvoiceId
+    amount
+    currency
+    status
+    items
+    source
+    paidAt
+    createdAt
+  }
+}
+
+query GetSellerApplicationsByUser($userId: String!) @auth(level: NO_ACCESS) {
+  sellerProgramApplications(where: { userId: { eq: $userId } }, orderBy: [{ createdAt: DESC }]) {
+    id
+    userId
+    planId
+    status
+    legalFullName
+    companyName
+    statementLabel
+    legalScope
+    legalTermsVersion
+    createdAt
+    updatedAt
+  }
+}
+
+# ─── Mutations ──────────────────────────────────────────────────────────
+
+mutation UpsertSubscription(
+  $id: String!,
+  $userId: String!,
+  $listingId: String,
+  $planId: String!,
+  $planName: String,
+  $listingCap: Int,
+  $status: String!,
+  $stripeSubscriptionId: String,
+  $currentPeriodEnd: Timestamp,
+  $cancelAtPeriodEnd: Boolean
+) @auth(level: NO_ACCESS) @transaction {
+  billingSubscription_upsert(data: {
+    id: $id,
+    userId: $userId,
+    listingId: $listingId,
+    planId: $planId,
+    planName: $planName,
+    listingCap: $listingCap,
+    status: $status,
+    stripeSubscriptionId: $stripeSubscriptionId,
+    currentPeriodEnd: $currentPeriodEnd,
+    cancelAtPeriodEnd: $cancelAtPeriodEnd
+  })
+}
+
+mutation UpsertInvoice(
+  $id: String!,
+  $userId: String!,
+  $listingId: String,
+  $stripeInvoiceId: String,
+  $stripeCheckoutSessionId: String,
+  $amount: Int!,
+  $currency: String,
+  $status: String!,
+  $items: Any,
+  $source: String,
+  $paidAt: Timestamp
+) @auth(level: NO_ACCESS) @transaction {
+  invoice_upsert(data: {
+    id: $id,
+    userId: $userId,
+    listingId: $listingId,
+    stripeInvoiceId: $stripeInvoiceId,
+    stripeCheckoutSessionId: $stripeCheckoutSessionId,
+    amount: $amount,
+    currency: $currency,
+    status: $status,
+    items: $items,
+    source: $source,
+    paidAt: $paidAt
+  })
+}
+
+mutation UpsertSellerApplication(
+  $id: String!,
+  $userId: String!,
+  $planId: String,
+  $status: String,
+  $stripeCustomerId: String,
+  $stripeSubscriptionId: String,
+  $legalFullName: String,
+  $legalTitle: String,
+  $companyName: String,
+  $billingEmail: String,
+  $phoneNumber: String,
+  $website: String,
+  $country: String,
+  $taxIdOrVat: String,
+  $notes: String,
+  $statementLabel: String,
+  $legalScope: String,
+  $legalTermsVersion: String,
+  $legalAcceptedAtIso: String,
+  $acceptedTerms: Boolean,
+  $acceptedPrivacy: Boolean,
+  $acceptedRecurringBilling: Boolean,
+  $acceptedVisibilityPolicy: Boolean,
+  $acceptedAuthority: Boolean,
+  $source: String
+) @auth(level: NO_ACCESS) @transaction {
+  sellerProgramApplication_upsert(data: {
+    id: $id,
+    userId: $userId,
+    planId: $planId,
+    status: $status,
+    stripeCustomerId: $stripeCustomerId,
+    stripeSubscriptionId: $stripeSubscriptionId,
+    legalFullName: $legalFullName,
+    legalTitle: $legalTitle,
+    companyName: $companyName,
+    billingEmail: $billingEmail,
+    phoneNumber: $phoneNumber,
+    website: $website,
+    country: $country,
+    taxIdOrVat: $taxIdOrVat,
+    notes: $notes,
+    statementLabel: $statementLabel,
+    legalScope: $legalScope,
+    legalTermsVersion: $legalTermsVersion,
+    legalAcceptedAtIso: $legalAcceptedAtIso,
+    acceptedTerms: $acceptedTerms,
+    acceptedPrivacy: $acceptedPrivacy,
+    acceptedRecurringBilling: $acceptedRecurringBilling,
+    acceptedVisibilityPolicy: $acceptedVisibilityPolicy,
+    acceptedAuthority: $acceptedAuthority,
+    source: $source
+  })
+}
+
+mutation UpdateSubscriptionStatus($id: String!, $status: String!, $cancelAtPeriodEnd: Boolean, $currentPeriodEnd: Timestamp) @auth(level: NO_ACCESS) @transaction {
+  billingSubscription_update(id: $id, data: {
+    status: $status,
+    cancelAtPeriodEnd: $cancelAtPeriodEnd,
+    currentPeriodEnd: $currentPeriodEnd
+  })
+}
+
+mutation UpdateInvoiceStatus($id: String!, $status: String!, $paidAt: Timestamp) @auth(level: NO_ACCESS) @transaction {
+  invoice_update(id: $id, data: {
+    status: $status,
+    paidAt: $paidAt
+  })
+}

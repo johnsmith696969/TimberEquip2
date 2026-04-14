@@ -3,12 +3,13 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { THIN_ROUTE_ROBOTS, evaluateRouteQuality, filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { PUBLIC_SEO_COLLECTIONS } = require('./public-seo-read-model.js');
 const { buildListingPublicPath } = require('./listing-public-paths.js');
+const { isDealerSellerRole, isOperatorOnlyRole } = require('./role-scopes.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const PUBLIC_PAGES_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
-const DEFAULT_BASE_URL = 'https://www.forestryequipmentsales.com';
+const DEFAULT_BASE_URL = 'https://timberequip.com';
 const MARKET_ROUTE_LABELS = Object.freeze({
   logging: 'logging-equipment-for-sale',
   forestry: 'forestry-equipment-for-sale',
@@ -111,6 +112,10 @@ const MARKETPLACE_CATEGORY_FAMILIES = Object.freeze({
     ],
   },
 });
+const SERVICE_AREA_SCOPE_OPTIONS = Object.freeze(['State', 'USA', 'Canada', 'Global']);
+const SERVICE_AREA_SCOPE_LOOKUP = new Map(
+  SERVICE_AREA_SCOPE_OPTIONS.map((value) => [String(value).toLowerCase(), value])
+);
 
 function normalizeNonEmptyString(value, fallback = '') {
   const normalized = String(value || '').trim();
@@ -150,6 +155,18 @@ function getDb() {
 function normalizeText(value, fallback = '') {
   const normalized = String(value || '').trim();
   return normalized || fallback;
+}
+
+function normalizeServiceAreaScopes(value, maxItems = 8) {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean)
+    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(entry.toLowerCase()) || null)
+    .filter(Boolean);
+
+  return [...new Set(normalized)].slice(0, maxItems);
 }
 
 function normalizeSeoSlug(value, fallback = '') {
@@ -375,23 +392,46 @@ async function loadSellerRecords(sellerUids) {
     const userData = userDocs[index]?.exists ? userDocs[index].data() || {} : {};
     const storefrontData = storefrontDocs[index]?.exists ? storefrontDocs[index].data() || {} : {};
     const merged = { ...userData, ...storefrontData };
+    if (isOperatorOnlyRole(merged.role)) {
+      return;
+    }
 
     sellerMap.set(sellerUid, {
       id: sellerUid,
       uid: sellerUid,
       storefrontSlug: normalizeText(merged.storefrontSlug, sellerUid),
+      canonicalPath: `/dealers/${normalizeText(merged.storefrontSlug, sellerUid)}`,
       storefrontName: normalizeText(merged.storefrontName || merged.displayName || merged.name, 'Dealer Storefront'),
       storefrontTagline: normalizeText(merged.storefrontTagline),
       storefrontDescription: normalizeText(merged.storefrontDescription || merged.about),
+      businessName: normalizeText(merged.businessName || merged.company),
+      street1: normalizeText(merged.street1),
+      street2: normalizeText(merged.street2),
+      city: normalizeText(merged.city),
+      state: normalizeText(merged.state),
+      county: normalizeText(merged.county),
+      postalCode: normalizeText(merged.postalCode),
+      country: normalizeText(merged.country),
+      latitude: Number.isFinite(Number(merged.latitude)) ? Number(merged.latitude) : undefined,
+      longitude: Number.isFinite(Number(merged.longitude)) ? Number(merged.longitude) : undefined,
       location: normalizeText(merged.location),
       phone: normalizeText(merged.phone || merged.phoneNumber),
       email: normalizeText(merged.email),
       website: normalizeText(merged.website),
-      logo: normalizeText(merged.logo || merged.photoURL),
+      logo: normalizeText(merged.logo || merged.storefrontLogoUrl || merged.photoURL || merged.profileImage),
       coverPhotoUrl: normalizeText(merged.coverPhotoUrl),
+      serviceAreaScopes: normalizeServiceAreaScopes(merged.serviceAreaScopes, 8),
+      serviceAreaStates: Array.isArray(merged.serviceAreaStates) ? merged.serviceAreaStates.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      serviceAreaCounties: Array.isArray(merged.serviceAreaCounties) ? merged.serviceAreaCounties.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      servicesOfferedCategories: Array.isArray(merged.servicesOfferedCategories) ? merged.servicesOfferedCategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+      servicesOfferedSubcategories: Array.isArray(merged.servicesOfferedSubcategories) ? merged.servicesOfferedSubcategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
       role: normalizeText(merged.role),
       createdAtIso: timestampToIso(merged.createdAt),
-      verified: Boolean(merged.verified ?? true),
+      verified: Boolean(
+        merged.manuallyVerified === true
+          || isDealerSellerRole(normalizeText(merged.role))
+          || merged.verified === true
+      ),
     });
   });
 
@@ -477,6 +517,7 @@ async function loadPublicInventoryFromReadModel() {
           ...data,
           storefrontSlug: normalizeText(data.storefrontSlug, docSnap.id),
           storefrontName: normalizeText(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+          serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
         },
       ];
     })
@@ -655,6 +696,7 @@ function baseStyles() {
       --surface-strong: #ffffff;
       --line: #d7d0bf;
       --ink: #1e2522;
+      --secondary: #334155;
       --muted: #5c685f;
       --accent: #1e6b52;
       --accent-soft: rgba(30, 107, 82, 0.12);
@@ -680,9 +722,17 @@ function baseStyles() {
     .nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
     .nav a { padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(30, 107, 82, 0.12); background: rgba(255, 255, 255, 0.7); font-size: 0.84rem; font-weight: 700; color: var(--muted); }
     .nav a:hover { border-color: rgba(30, 107, 82, 0.32); color: var(--accent); background: var(--surface-strong); }
-    .hero { padding: 56px 0 30px; }
+    .hero { position: relative; padding: 56px 0 30px; }
+    .hero-with-image { min-height: 520px; display: flex; align-items: flex-end; overflow: hidden; }
+    .hero-content { position: relative; z-index: 1; width: min(100%, 820px); }
+    .hero-with-image .hero-content { padding-top: 176px; padding-bottom: 6px; }
+    .hero-media { position: absolute; inset: 0; background: #111827; }
+    .hero-media img { width: 100%; height: 100%; object-fit: cover; object-position: center center; }
+    .hero-media::before { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.3); }
+    .hero-media::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 34%, rgba(255, 255, 255, 0.55) 70%, rgba(255, 255, 255, 0.35) 100%); }
     .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
-    .hero h1 { margin: 18px 0 16px; font-size: clamp(2.4rem, 5vw, 4.75rem); line-height: 0.95; letter-spacing: -0.05em; text-transform: uppercase; max-width: 14ch; }
+    .hero h1 { margin: 18px 0 16px; font-size: clamp(2.4rem, 5vw, 4.75rem); line-height: 0.95; letter-spacing: -0.05em; text-transform: uppercase; max-width: 14ch; color: var(--ink); }
+    .hero h1 .hero-secondary { color: #16A34A; }
     .hero p { margin: 0; max-width: 68ch; color: var(--muted); font-size: 1.02rem; line-height: 1.75; }
     .hero-grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 28px; }
     .stat { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.82); box-shadow: var(--shadow); }
@@ -732,6 +782,9 @@ function baseStyles() {
     @media (max-width: 640px) {
       .shell { width: min(calc(100% - 24px), var(--max)); }
       .hero { padding-top: 38px; }
+      .hero-with-image { min-height: 460px; }
+      .hero-with-image .hero-content { padding-top: 148px; }
+      .hero-media::after { background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.84) 36%, rgba(255, 255, 255, 0.58) 70%, rgba(255, 255, 255, 0.38) 100%); }
       .hero h1 { max-width: none; }
       .hero-grid { grid-template-columns: minmax(0, 1fr); }
       .section { padding: 20px; }
@@ -753,17 +806,17 @@ function renderHead({ title, description, canonicalUrl, jsonLd, robots = 'index,
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
-    <meta property="og:image" content="${escapeHtml(DEFAULT_BASE_URL)}/Forestry_Equipment_Sales_Logo.png?v=20260327c" />
+    <meta property="og:image" content="${escapeHtml(DEFAULT_BASE_URL)}/Forestry_Equipment_Sales_Logo.png?v=20260407a" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260327c" />
-    <link rel="icon" type="image/svg+xml" href="/Forestry_Equipment_Sales_Favicon.svg?v=20260327c" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260327c" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260327c" />
-    <link rel="shortcut icon" href="/favicon.ico?v=20260327c" />
-    <link rel="manifest" href="/site.webmanifest?v=20260327c" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260407a" />
+    <link rel="icon" type="image/svg+xml" href="/Forestry_Equipment_Sales_Favicon.svg?v=20260407a" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260407a" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260407a" />
+    <link rel="shortcut icon" href="/favicon.ico?v=20260407a" />
+    <link rel="manifest" href="/site.webmanifest?v=20260407a" />
     <style>${baseStyles()}</style>
     ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ''}
   `;
@@ -779,10 +832,10 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
     <header class="topbar">
       <div class="shell topbar-inner">
         <a class="brand" href="/">
-          <img src="/Forestry_Equipment_Sales_Logo.svg?v=20260327c" alt="Forestry Equipment Sales" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260327c';" />
+          <img src="/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=20260407a" alt="Forestry Equipment Sales" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260407a';" />
           <span class="brand-copy">
-            <strong>Hybrid Marketplace</strong>
-            <span>Dealer hub, clean routes, and crawlable equipment inventory.</span>
+            <strong>Forestry Equipment Sales</strong>
+            <span>Browse equipment inventory, dealers, categories, manufacturers, and states.</span>
           </span>
         </a>
         <nav class="nav" aria-label="Primary">
@@ -798,18 +851,18 @@ function renderShell({ title, description, canonicalUrl, body, jsonLd, robots })
     ${body}
     <footer>
       <div class="shell">
-        <div class="footer-card">
-          <div class="footer-brand">
-            <img src="/Logo-Transparent.png?v=20260327c" alt="Forestry Equipment Sales logo" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Favicon_512x512.png?v=20260327c';" />
-            <span class="footer-copy">
-              <strong>Forestry Equipment Sales Marketplace</strong>
-              <span>Dealer storefronts, live inventory, embeds, and lead-ready public pages.</span>
-            </span>
-          </div>
-          <div class="pill-row">
-            <span class="pill">JSON Feed Ready</span>
+          <div class="footer-card">
+            <div class="footer-brand">
+              <img src="/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=20260407a" alt="Forestry Equipment Sales logo" onerror="this.onerror=null;this.src='/Forestry_Equipment_Sales_Logo.png?v=20260407a';" />
+              <span class="footer-copy">
+                <strong>Forestry Equipment Sales Marketplace</strong>
+                <span>Dealer storefronts, live inventory, and clean public routes for buyers and sellers.</span>
+              </span>
+            </div>
+            <div class="pill-row">
+            <span class="pill">Live Inventory</span>
             <span class="pill">Dealer Storefronts</span>
-            <span class="pill">Search + SEO</span>
+            <span class="pill">Market Routes</span>
           </div>
         </div>
       </div>
@@ -1063,19 +1116,37 @@ function buildDealerJsonLd(seller, listings, canonicalUrl, breadcrumbs = []) {
     '@context': 'https://schema.org',
     '@graph': [
       {
-        '@type': 'Organization',
+        '@type': 'LocalBusiness',
         name: seller.storefrontName,
         description: seller.storefrontDescription || seller.storefrontTagline || 'Dealer storefront with live equipment inventory.',
         url: canonicalUrl,
         logo: seller.logo || undefined,
+        image: seller.coverPhotoUrl || seller.logo || undefined,
         telephone: seller.phone || undefined,
         email: seller.email || undefined,
-        address: seller.location
+        address: seller.street1 || seller.city || seller.state || seller.location
           ? {
               '@type': 'PostalAddress',
-              addressLocality: seller.location,
+              streetAddress: [seller.street1, seller.street2].filter(Boolean).join(', ') || seller.location || undefined,
+              addressLocality: seller.city || undefined,
+              addressRegion: seller.state || undefined,
+              postalCode: seller.postalCode || undefined,
+              addressCountry: seller.country || undefined,
             }
           : undefined,
+        geo:
+          typeof seller.latitude === 'number' && typeof seller.longitude === 'number'
+            ? {
+                '@type': 'GeoCoordinates',
+                latitude: seller.latitude,
+                longitude: seller.longitude,
+              }
+            : undefined,
+        areaServed: [
+          ...(Array.isArray(seller.serviceAreaScopes) ? seller.serviceAreaScopes : []),
+          ...(Array.isArray(seller.serviceAreaStates) ? seller.serviceAreaStates : []),
+          ...(Array.isArray(seller.serviceAreaCounties) ? seller.serviceAreaCounties : []),
+        ].filter(Boolean),
       },
       ...(breadcrumbs.length ? [buildBreadcrumbJsonLd(breadcrumbs, canonicalUrl)] : []),
       buildListingItemList(`${seller.storefrontName} inventory`, listings, seller.storefrontName),
@@ -1083,8 +1154,28 @@ function buildDealerJsonLd(seller, listings, canonicalUrl, breadcrumbs = []) {
   };
 }
 
+function renderHeroMedia({ heroImageUrl, heroImageAlt = '', heroImagePosition = 'center center', heroImageScale = 1 }) {
+  if (!heroImageUrl) {
+    return '';
+  }
+
+  return `
+    <div class="hero-media"${heroImageAlt ? '' : ' aria-hidden="true"'}>
+      <img
+        src="${escapeHtml(heroImageUrl)}"
+        alt="${escapeHtml(heroImageAlt)}"
+        loading="eager"
+        decoding="async"
+        style="object-position:${escapeHtml(heroImagePosition)};transform:scale(${escapeHtml(String(heroImageScale))});"
+      />
+    </div>
+  `;
+}
+
 function renderInventoryPage({
   title,
+  heroTitlePrimary,
+  heroTitleSecondary,
   eyebrow,
   description,
   canonicalUrl,
@@ -1098,7 +1189,12 @@ function renderInventoryPage({
   primaryAction,
   secondaryAction,
   jsonLd,
+  heroImageUrl,
+  heroImageAlt,
+  heroImagePosition,
+  heroImageScale,
 }) {
+  const hasHeroImage = Boolean(heroImageUrl);
   return renderShell({
     title,
     description,
@@ -1107,10 +1203,14 @@ function renderInventoryPage({
     robots,
     body: `
       <main>
-        <section class="shell hero">
+        <section class="${hasHeroImage ? 'hero hero-with-image' : 'shell hero'}">
+          ${renderHeroMedia({ heroImageUrl, heroImageAlt, heroImagePosition, heroImageScale })}
+          ${hasHeroImage ? '<div class="shell hero-content">' : ''}
           <span class="eyebrow">${escapeHtml(eyebrow)}</span>
           ${renderBreadcrumbs(breadcrumbs)}
-          <h1>${escapeHtml(title)}</h1>
+          <h1>${heroTitleSecondary
+            ? `${escapeHtml(heroTitlePrimary || title)} <br /><span class="hero-secondary">${escapeHtml(heroTitleSecondary)}</span>`
+            : escapeHtml(heroTitlePrimary || title)}</h1>
           <p>${escapeHtml(intro)}</p>
           <div class="hero-actions">
             ${primaryAction ? `<a class="button button-primary" href="${escapeHtml(primaryAction.href)}">${escapeHtml(primaryAction.label)}</a>` : ''}
@@ -1128,12 +1228,13 @@ function renderInventoryPage({
               )
               .join('')}
           </div>
+          ${hasHeroImage ? '</div>' : ''}
         </section>
         <section class="shell section">
           <div class="section-head">
             <div>
-              <span class="tagline">Functional Public Layer</span>
-              <h2>Why This Route Exists</h2>
+              <span class="tagline">Marketplace Overview</span>
+              <h2>What You Can Do Here</h2>
             </div>
           </div>
           <p class="lede">${escapeHtml(description)}</p>
@@ -1145,8 +1246,8 @@ function renderInventoryPage({
         <section class="shell section">
           <div class="section-head">
             <div>
-              <span class="tagline">Marketplace Functionality</span>
-              <h2>Built For Search And Dealers</h2>
+              <span class="tagline">Buyer And Dealer Benefits</span>
+              <h2>Built For Equipment Discovery</h2>
             </div>
           </div>
           ${renderFeatureCards(featureCards)}
@@ -1268,6 +1369,8 @@ function buildSharedSections(listings, sellerMap, options = {}) {
 
 function renderIndexPage({
   title,
+  heroTitlePrimary,
+  heroTitleSecondary,
   eyebrow,
   description,
   canonicalUrl,
@@ -1278,7 +1381,12 @@ function renderIndexPage({
   items,
   emptyMessage,
   jsonLd,
+  heroImageUrl,
+  heroImageAlt,
+  heroImagePosition,
+  heroImageScale,
 }) {
+  const hasHeroImage = Boolean(heroImageUrl);
   return renderShell({
     title,
     description,
@@ -1287,10 +1395,14 @@ function renderIndexPage({
     robots,
     body: `
       <main>
-        <section class="shell hero">
+        <section class="${hasHeroImage ? 'hero hero-with-image' : 'shell hero'}">
+          ${renderHeroMedia({ heroImageUrl, heroImageAlt, heroImagePosition, heroImageScale })}
+          ${hasHeroImage ? '<div class="shell hero-content">' : ''}
           <span class="eyebrow">${escapeHtml(eyebrow)}</span>
           ${renderBreadcrumbs(breadcrumbs)}
-          <h1>${escapeHtml(title)}</h1>
+          <h1>${heroTitleSecondary
+            ? `${escapeHtml(heroTitlePrimary || title)} <br /><span class="hero-secondary">${escapeHtml(heroTitleSecondary)}</span>`
+            : escapeHtml(heroTitlePrimary || title)}</h1>
           <p>${escapeHtml(intro)}</p>
           <div class="hero-grid">
             <article class="stat">
@@ -1307,9 +1419,10 @@ function renderIndexPage({
             </article>
             <article class="stat">
               <div class="stat-label">Use Case</div>
-              <div class="stat-value">Dealer Hub</div>
+              <div class="stat-value">Route Index</div>
             </article>
           </div>
+          ${hasHeroImage ? '</div>' : ''}
         </section>
         <section class="shell section">
           <div class="section-head">
@@ -1567,6 +1680,8 @@ function renderQuotaFallbackPage(req, res) {
       eyebrow: 'Category Directory',
       description: 'The marketplace category directory is online while live listing counts retry.',
       intro: 'This route is the stable category entry point for the public marketplace. Live listing counts are temporarily unavailable, but the canonical directory path remains active.',
+      heroImageUrl: '/page-photos/bagged-firewood.jpg',
+      heroImageAlt: 'Bagged firewood stacks',
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: 'Categories', path: '/categories' },
@@ -1645,6 +1760,10 @@ function renderQuotaFallbackPage(req, res) {
       eyebrow: 'Dealer Directory',
       description: 'The dealer directory remains online while live inventory route data retries.',
       intro: 'This directory is the public dealer hub for the marketplace. Live seller counts are temporarily unavailable, but the canonical dealer directory and search entry points remain online.',
+      heroImageUrl: '/page-photos/dealers.png',
+      heroImageAlt: 'Forestry Equipment Sales dealer network',
+      heroImagePosition: 'center 42%',
+      heroImageScale: 1.08,
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: 'Dealers', path: '/dealers' },
@@ -1667,7 +1786,7 @@ function renderQuotaFallbackPage(req, res) {
     };
   }
 
-  const canonicalPath = /^\/(forestry-equipment-for-sale|categories|manufacturers|states|dealers)$/i.test(pathname)
+  const canonicalPath = /^\/$|^\/(forestry-equipment-for-sale|categories|manufacturers|states|dealers)$/i.test(pathname)
     ? pathname
     : '/forestry-equipment-for-sale';
 
@@ -1703,7 +1822,7 @@ function renderQuotaFallbackPage(req, res) {
           {
             eyebrow: 'Recovery',
             title: 'Live inventory will repopulate automatically',
-            description: 'Once Firestore read capacity is available again, the hybrid public pages will resume serving live marketplace data.',
+            description: 'Once Firestore read capacity is available again, live marketplace data will repopulate automatically.',
           },
         ],
         sections: page.sections,
@@ -1711,13 +1830,18 @@ function renderQuotaFallbackPage(req, res) {
         primaryAction: page.primaryAction,
         secondaryAction: page.secondaryAction,
         jsonLd: buildCollectionJsonLd(page.title, page.description, `${baseUrl}${canonicalPath}`, [], page.breadcrumbs),
+        heroImageUrl: page.heroImageUrl,
+        heroImageAlt: page.heroImageAlt,
+        heroImagePosition: page.heroImagePosition,
+        heroImageScale: page.heroImageScale,
       })
     );
   return true;
 }
 
-function isHybridPublicPath(pathname) {
+function isPublicSeoPath(pathname) {
   return [
+    /^\/$/i,
     /^\/sitemap\.xml$/i,
     /^\/logging-equipment-for-sale$/i,
     /^\/forestry-equipment-for-sale$/i,
@@ -1773,6 +1897,97 @@ async function renderRoute(req, res) {
   const statesDirectoryDoc = routeIndex?.byPath.get('/states');
   const dealersDirectoryDoc = routeIndex?.byPath.get('/dealers');
 
+  if (/^\/$/i.test(pathname)) {
+    const marketListings = marketHubDoc?.listings?.length ? marketHubDoc.listings : inventory.listings;
+    const marketStats = marketHubDoc?.stats || stats;
+    const marketCategories = marketHubDoc?.topCategories?.length ? marketHubDoc.topCategories : shared.topCategories;
+    const marketManufacturers = marketHubDoc?.topManufacturers?.length ? marketHubDoc.topManufacturers : shared.topManufacturers;
+    const marketStates = marketHubDoc?.topStates?.length ? marketHubDoc.topStates : shared.topStates;
+    const marketDealers = marketHubDoc?.topDealers?.length
+      ? marketHubDoc.topDealers.map((dealer) => ({
+          seller: {
+            id: dealer.id,
+            storefrontName: dealer.label,
+            storefrontSlug: dealer.path.split('/')[2] || dealer.id,
+            location: dealer.subtext || '',
+            logo: dealer.image || '',
+          },
+          count: dealer.count,
+        }))
+      : shared.topDealers;
+
+    res.status(200).type('html').send(
+      renderInventoryPage({
+        title: 'New & Used Logging Equipment For Sale | Forestry Equipment Sales',
+        eyebrow: 'Marketplace Home',
+        description: 'Buy and sell new and used logging equipment, forestry equipment, dealer inventory, and high-intent machine categories from one crawlable marketplace.',
+        canonicalUrl: `${baseUrl}/`,
+        intro: 'The commercial homepage is built to push authority into categories, manufacturers, state routes, dealer storefronts, and live inventory instead of trapping buyers inside filters.',
+        breadcrumbs: [{ label: 'Home', path: '/' }],
+        stats: [
+          { label: 'Live Listings', value: marketStats.listingCount },
+          { label: 'Categories', value: marketCategories.length },
+          { label: 'Manufacturers', value: marketStats.manufacturerCount },
+          { label: 'Dealers', value: marketStats.dealerCount || marketDealers.length },
+        ],
+        featureCards: [
+          {
+            eyebrow: 'Commercial SEO',
+            title: 'Built for buying and selling equipment',
+            description: 'The homepage is intentionally inventory-led so search engines and buyers can move directly into the strongest commercial route families.',
+          },
+          {
+            eyebrow: 'Dealer Authority',
+            title: 'Dealer storefronts with real inventory',
+            description: 'Qualified dealers get crawlable public pages with structured business data, service coverage, and internal links back into machine categories.',
+          },
+          {
+            eyebrow: 'Route Graph',
+            title: 'Categories, brands, states, and listings connect cleanly',
+            description: 'The public graph is designed to compete with large classified marketplaces by linking every important entity family together.',
+          },
+        ],
+        sections: [
+          {
+            eyebrow: 'Categories',
+            title: 'Browse Top Equipment Categories',
+            description: 'Machine-intent route families with live listing coverage.',
+            html: renderLinkCards(marketCategories),
+          },
+          {
+            eyebrow: 'Manufacturers',
+            title: 'Browse Top Manufacturers',
+            description: 'Brand-intent landing pages backed by live inventory and related routes.',
+            html: renderLinkCards(marketManufacturers),
+          },
+          {
+            eyebrow: 'States',
+            title: 'Browse Priority States',
+            description: 'Regional inventory discovery for buyers looking near active dealer coverage.',
+            html: renderLinkCards(marketStates),
+          },
+          {
+            eyebrow: 'Dealer Storefronts',
+            title: 'Featured Dealers',
+            description: 'Inventory-backed storefronts with direct routes into public dealer pages.',
+            html: renderDealerCards(marketDealers),
+          },
+        ],
+        listings: marketListings,
+        primaryAction: { href: '/forestry-equipment-for-sale', label: 'Browse Market Hub' },
+        secondaryAction: { href: '/search', label: 'Open Search App' },
+        jsonLd: buildCollectionJsonLd(
+          'Forestry Equipment Sales',
+          'Buy and sell new and used logging equipment, forestry equipment, dealer inventory, and manufacturer routes on one crawlable marketplace.',
+          `${baseUrl}/`,
+          marketListings,
+          [{ label: 'Home', path: '/' }]
+        ),
+      })
+    );
+    return true;
+  }
+
   if (/^\/forestry-equipment-for-sale$/i.test(pathname)) {
     const title = 'Forestry Equipment For Sale';
     const description = 'Browse forestry equipment, dealer storefronts, manufacturer routes, and state inventory pages from one crawlable marketplace hub.';
@@ -1795,10 +2010,10 @@ async function renderRoute(req, res) {
       : shared.topDealers;
     const html = renderInventoryPage({
       title,
-      eyebrow: 'Hybrid SEO Hub',
+      eyebrow: 'Equipment Discovery',
       description,
       canonicalUrl: `${baseUrl}${pathname}`,
-      intro: 'This hybrid landing page is the canonical public front door for equipment discovery. It pairs live marketplace inventory with cleaner route architecture so buyers can browse inventory, dealers, and related route families without getting dropped into a heavy app flow first.',
+      intro: 'The canonical public front door for equipment discovery. Browse live marketplace inventory, dealers, and related categories with fast server-rendered pages optimized for search engines.',
       breadcrumbs: [
         { label: 'Home', path: '/' },
         { label: title, path: pathname },
@@ -1811,7 +2026,7 @@ async function renderRoute(req, res) {
       ],
       featureCards: [
         {
-          eyebrow: 'Hybrid Delivery',
+          eyebrow: 'Server-Rendered',
           title: 'Server-rendered public routes',
           description: 'These pages ship complete metadata and content in the first response instead of waiting for client-side React metadata updates.',
         },
@@ -1823,7 +2038,7 @@ async function renderRoute(req, res) {
         {
           eyebrow: 'Lower friction',
           title: 'Less decorative UI, more utility',
-          description: 'The public layer focuses on inventory density, route context, and direct actions while the app handles auth, management, and advanced filters.',
+          description: 'These routes keep inventory, dealer coverage, and direct buyer actions front and center.',
         },
       ],
       sections: [
@@ -1875,11 +2090,15 @@ async function renderRoute(req, res) {
     res.status(200).type('html').send(
       renderIndexPage({
         title: 'Equipment Categories',
+        heroTitlePrimary: 'Equipment',
+        heroTitleSecondary: 'Categories',
         eyebrow: 'Category Directory',
         description: 'Browse the major equipment families currently represented in live approved inventory, then drill into filtered marketplace search.',
         canonicalUrl: `${baseUrl}/categories`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
         intro: 'This index highlights the main equipment families buyers actually see on the marketplace today, including logging equipment, land clearing equipment, trucks, trailers, and specialty categories backed by live approved inventory.',
+        heroImageUrl: '/page-photos/bagged-firewood.jpg',
+        heroImageAlt: 'Bagged firewood stacks',
         breadcrumbs,
         statValue,
         items,
@@ -1904,7 +2123,7 @@ async function renderRoute(req, res) {
         description: 'Browse make-specific route hubs generated from live approved marketplace listings.',
         canonicalUrl: `${baseUrl}/manufacturers`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'This is the lighter-weight public manufacturer index designed for crawlability, ad landing pages, and faster buyer discovery.',
+        intro: 'Use this manufacturer index to browse brands, model families, and machine categories with direct paths into live inventory.',
         breadcrumbs,
         statValue,
         items,
@@ -1929,7 +2148,7 @@ async function renderRoute(req, res) {
         description: 'Browse state-level inventory routes generated from live marketplace locations.',
         canonicalUrl: `${baseUrl}/states`,
         robots: items.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'These regional routes give the marketplace cleaner geographic landing pages for buyers, dealers, and organic search.',
+        intro: 'Choose a state to see live inventory located there, then move into the categories, manufacturers, and listings that fit your search.',
         breadcrumbs,
         statValue,
         items,
@@ -2563,11 +2782,13 @@ async function renderRoute(req, res) {
     res.status(200).type('html').send(
       renderInventoryPage({
         title: 'Equipment Dealers',
+        heroTitlePrimary: 'Equipment',
+        heroTitleSecondary: 'Dealers',
         eyebrow: 'Dealer Directory',
         description: 'Browse dealer storefronts backed by live marketplace inventory, clean public URLs, and direct paths into inventory or feeds.',
         canonicalUrl: `${baseUrl}/dealers`,
         robots: dealers.length ? undefined : THIN_ROUTE_ROBOTS,
-        intro: 'This directory is the lighter-weight public dealer surface for the marketplace. It gives dealers more usable public URLs and gives buyers a clearer path into real storefront inventory.',
+        intro: 'Browse dealer storefronts with clean public URLs, live inventory, and direct paths into each seller\'s available equipment.',
         breadcrumbs: [
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },
@@ -2582,7 +2803,7 @@ async function renderRoute(req, res) {
           {
             eyebrow: 'Dealer Hub',
             title: 'Storefront-first public surface',
-            description: 'This page is designed to make dealer inventory and contact surfaces more visible than the older generic UI.',
+            description: 'This page keeps dealer inventory, business details, and contact paths easy to find at a glance.',
           },
           {
             eyebrow: 'Feed Ecosystem',
@@ -2616,6 +2837,10 @@ async function renderRoute(req, res) {
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },
         ]),
+        heroImageUrl: '/page-photos/dealers.png',
+        heroImageAlt: 'Forestry Equipment Sales dealer network',
+        heroImagePosition: 'center 42%',
+        heroImageScale: 1.08,
       })
     );
     return true;
@@ -2649,6 +2874,20 @@ async function renderRoute(req, res) {
     const feedUrl = `${baseUrl}/api/public/dealers/${encodeURIComponent(seller.storefrontSlug || seller.id)}/feed.json`;
     const embedUrl = `${baseUrl}/api/public/dealers/${encodeURIComponent(seller.storefrontSlug || seller.id)}/embed?limit=12`;
     const resolvedCategory = routeCategory ? filteredListings[0]?.subcategory || titleCaseSlug(routeCategory) : '';
+    const addressSummary = [
+      [seller.street1, seller.street2].filter(Boolean).join(', '),
+      [seller.city, seller.state, seller.postalCode].filter(Boolean).join(', '),
+      seller.country,
+    ].filter(Boolean).join(' | ') || seller.location || 'Location pending';
+    const serviceAreaSummary = [
+      ...(seller.serviceAreaScopes || []),
+      ...(seller.serviceAreaStates || []),
+      ...(seller.serviceAreaCounties || []),
+    ].filter(Boolean).slice(0, 8).join(', ') || 'Service area pending';
+    const servicesOfferedSummary = [
+      ...(seller.servicesOfferedSubcategories || []),
+      ...(seller.servicesOfferedCategories || []),
+    ].filter(Boolean).slice(0, 8).join(', ') || 'Services pending';
     const pageTitle = resolvedCategory
       ? `${seller.storefrontName} ${resolvedCategory} Inventory`
       : `${seller.storefrontName} Equipment Inventory`;
@@ -2666,7 +2905,7 @@ async function renderRoute(req, res) {
         intro:
           seller.storefrontDescription ||
           seller.storefrontTagline ||
-          `${seller.storefrontName} has a cleaner public storefront here so buyers can see real inventory, routes, and contact paths before jumping into the heavier app experience.`,
+          `${seller.storefrontName} has a clean public storefront where buyers can review live inventory, route links, and contact details in one place.`,
         breadcrumbs: [
           { label: 'Home', path: '/' },
           { label: 'Dealers', path: '/dealers' },
@@ -2676,7 +2915,7 @@ async function renderRoute(req, res) {
         stats: [
           { label: 'Live Listings', value: filteredListings.length },
           { label: 'Dealer Categories', value: visibleCategoryLinks.length },
-          { label: 'Location', value: seller.location || 'Pending' },
+          { label: 'Location', value: seller.city && seller.state ? `${seller.city}, ${seller.state}` : seller.location || 'Pending' },
           { label: 'Feed', value: 'Ready' },
         ],
         featureCards: [
@@ -2703,9 +2942,10 @@ async function renderRoute(req, res) {
             description: 'Use these direct paths to reach the dealer or syndicate their inventory.',
             html: `
               <div class="card-grid">
-                <article class="feature-card"><div class="feature-card-body"><span class="pill">Location</span><strong style="margin-top:14px;">${escapeHtml(seller.location || 'Location pending')}</strong></div></article>
+                <article class="feature-card"><div class="feature-card-body"><span class="pill">Address</span><strong style="margin-top:14px;">${escapeHtml(addressSummary)}</strong></div></article>
                 <article class="feature-card"><div class="feature-card-body"><span class="pill">Phone</span><strong style="margin-top:14px;">${escapeHtml(seller.phone || 'Contact via listing inquiry')}</strong></div></article>
-                <article class="feature-card"><div class="feature-card-body"><span class="pill">Email</span><strong style="margin-top:14px;">${escapeHtml(seller.email || 'Use the listing contact form')}</strong></div></article>
+                <article class="feature-card"><div class="feature-card-body"><span class="pill">Service Area</span><strong style="margin-top:14px;">${escapeHtml(serviceAreaSummary)}</strong></div></article>
+                <article class="feature-card"><div class="feature-card-body"><span class="pill">Services Offered</span><strong style="margin-top:14px;">${escapeHtml(servicesOfferedSummary)}</strong></div></article>
                 <article class="feature-card"><div class="feature-card-body"><span class="pill">Inventory Feed</span><strong style="margin-top:14px;"><a href="${escapeHtml(feedUrl)}">${escapeHtml(feedUrl)}</a></strong></div></article>
               </div>
               <div class="section-actions">
@@ -2747,7 +2987,30 @@ async function handlePublicPagesRequest(req, res, next) {
       return;
     }
 
-    if (!isHybridPublicPath(req.path || '/')) {
+    if (req.query && (req.query.__asset_recovery !== undefined || req.query._asset_recovery !== undefined)) {
+      const searchParams = new URLSearchParams();
+      Object.entries(req.query).forEach(([key, value]) => {
+        if (key === '__asset_recovery' || key === '_asset_recovery') return;
+
+        if (Array.isArray(value)) {
+          value.forEach((entry) => {
+            if (entry !== undefined && entry !== null && String(entry).length > 0) {
+              searchParams.append(key, String(entry));
+            }
+          });
+          return;
+        }
+
+        if (value !== undefined && value !== null && String(value).length > 0) {
+          searchParams.set(key, String(value));
+        }
+      });
+
+      res.redirect(302, `${req.path || '/'}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+      return;
+    }
+
+    if (!isPublicSeoPath(req.path || '/')) {
       if (typeof next === 'function') return next();
       res.status(404).send('Not found');
       return;
@@ -2758,7 +3021,7 @@ async function handlePublicPagesRequest(req, res, next) {
       return next();
     }
   } catch (error) {
-    console.error('Failed to render hybrid public page:', error);
+    console.error('Failed to render public page:', error);
     if (isFirestoreQuotaError(error) && renderQuotaFallbackPage(req, res)) {
       return;
     }
@@ -2789,5 +3052,6 @@ async function handlePublicPagesRequest(req, res, next) {
 
 module.exports = {
   handlePublicPagesRequest,
-  isHybridPublicPath,
+  isPublicSeoPath,
 };
+

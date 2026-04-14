@@ -3,14 +3,14 @@ import path from 'path';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { templates } = require('../functions/email-templates/index.js');
+const { templates, withEmailPreferenceFooter } = require('../functions/email-templates/index.js');
 
 const SENDGRID_API_KEY = String(process.env.SENDGRID_API_KEY || '').trim();
 const SENDGRID_AUTH_HEADER = String(process.env.SENDGRID_AUTH_HEADER || '').trim();
 const AUTHORIZATION_HEADER = SENDGRID_AUTH_HEADER || (SENDGRID_API_KEY ? `Bearer ${SENDGRID_API_KEY}` : '');
 
 const SENDGRID_API_BASE = 'https://api.sendgrid.com/v3';
-const APP_URL = String(process.env.SENDGRID_APP_URL || process.env.APP_URL || 'https://www.forestryequipmentsales.com').trim().replace(/\/+$/, '');
+const APP_URL = String(process.env.SENDGRID_APP_URL || process.env.APP_URL || 'https://timberequip.com').trim().replace(/\/+$/, '');
 const LISTING_URL = `${APP_URL}/equipment/2020-tigercat-635h-skidder`;
 const DASHBOARD_URL = `${APP_URL}/profile`;
 const SEARCH_URL = `${APP_URL}/search`;
@@ -36,16 +36,23 @@ function buildSharedTemplateData() {
   listingTitle: token('listingTitle'),
   listingUrl: token('listingUrl'),
   message: token('message'),
+  unsubscribeUrl: token('unsubscribeUrl'),
   displayName: token('displayName'),
   verificationLink: token('verificationLink'),
+  intro: token('intro'),
+  resetUrl: token('resetUrl'),
+  changedAt: token('changedAt'),
   planName: token('planName'),
   expiryDate: token('expiryDate'),
   renewUrl: token('renewUrl'),
   dashboardUrl: token('dashboardUrl'),
+  callerNumber: token('callerNumber'),
+  callTimestamp: token('callTimestamp'),
   reviewEta: token('reviewEta'),
   reason: token('reason'),
   invoiceNumber: token('invoiceNumber'),
   amountPaid: token('amountPaid'),
+  amountDue: token('amountDue'),
   currency: token('currency'),
   hostedInvoiceUrl: token('hostedInvoiceUrl'),
   invoicePdfUrl: token('invoicePdfUrl'),
@@ -72,6 +79,10 @@ function buildSharedTemplateData() {
   temporaryPassword: token('temporaryPassword'),
   loginUrl: token('loginUrl'),
   resetLink: token('resetLink'),
+  retryDate: token('retryDate'),
+  actorName: token('actorName'),
+  dealerName: token('dealerName'),
+  billingUrl: token('billingUrl'),
   inquiryType: 'Inquiry',
   sellerUid: token('sellerUid'),
   listingId: token('listingId'),
@@ -124,9 +135,29 @@ function buildTemplateSpecs() {
     render: () => templates.welcomeVerification(SHARED_TEMPLATE_DATA),
   },
   {
+    key: 'passwordReset',
+    name: templateName('Password Reset'),
+    render: () => templates.passwordReset(SHARED_TEMPLATE_DATA),
+  },
+  {
+    key: 'passwordResetSuccess',
+    name: templateName('Password Reset Success'),
+    render: () => templates.passwordResetSuccess(SHARED_TEMPLATE_DATA),
+  },
+  {
     key: 'subscriptionExpiring',
     name: templateName('Subscription Expiring'),
     render: () => templates.subscriptionExpiring(SHARED_TEMPLATE_DATA),
+  },
+  {
+    key: 'voicemailNotification',
+    name: templateName('Voicemail Notification'),
+    render: () => templates.voicemailNotification(SHARED_TEMPLATE_DATA),
+  },
+  {
+    key: 'dealerWidgetInquiryNotification',
+    name: templateName('Dealer Widget Inquiry Notification'),
+    render: () => templates.dealerWidgetInquiryNotification(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'listingApproved',
@@ -152,6 +183,11 @@ function buildTemplateSpecs() {
     key: 'subscriptionExpired',
     name: templateName('Subscription Expired'),
     render: () => templates.subscriptionExpired(SHARED_TEMPLATE_DATA),
+  },
+  {
+    key: 'paymentFailedPastDue',
+    name: templateName('Payment Failed Past Due'),
+    render: () => templates.paymentFailedPastDue(SHARED_TEMPLATE_DATA),
   },
   {
     key: 'mediaKitRequest',
@@ -209,6 +245,16 @@ function buildTemplateSpecs() {
     render: () => templates.managedAccountInvite(SHARED_TEMPLATE_DATA),
   },
   {
+    key: 'accountLocked',
+    name: templateName('Account Locked'),
+    render: () => templates.accountLocked(SHARED_TEMPLATE_DATA),
+  },
+  {
+    key: 'accountUnlocked',
+    name: templateName('Account Unlocked'),
+    render: () => templates.accountUnlocked(SHARED_TEMPLATE_DATA),
+  },
+  {
     key: 'adminInquiryAlert',
     name: templateName('Admin Inquiry Alert'),
     render: () => templates.adminInquiryAlert(SHARED_TEMPLATE_DATA),
@@ -234,6 +280,16 @@ function buildTemplateSpecs() {
     render: () => templates.dealerMonthlyReportAdminSummary(SHARED_TEMPLATE_DATA),
   },
   ];
+}
+
+function renderTemplateWithFooter(spec) {
+  const rendered = spec.render();
+  return {
+    ...rendered,
+    html: withEmailPreferenceFooter(rendered.html, {
+      unsubscribeUrl: token('unsubscribeUrl'),
+    }),
+  };
 }
 
 function htmlToPlainText(html) {
@@ -305,7 +361,6 @@ async function updateVersion(templateId, versionId, spec, rendered) {
     method: 'PATCH',
     body: JSON.stringify({
       active: 1,
-      editor: 'code',
       name: `${spec.key} synced from code`,
       subject: rendered.subject,
       html_content: rendered.html,
@@ -322,7 +377,7 @@ async function main() {
   const results = [];
 
   for (const spec of TEMPLATE_SPECS) {
-    const rendered = spec.render();
+    const rendered = renderTemplateWithFooter(spec);
     let template = byName.get(spec.name);
     let action = 'updated';
 
@@ -373,7 +428,7 @@ async function main() {
 
 if (process.env.PRINT_SENDGRID_TEMPLATE_SPECS === '1') {
   const printable = buildTemplateSpecs().map((spec) => {
-    const rendered = spec.render();
+    const rendered = renderTemplateWithFooter(spec);
     return {
       key: spec.key,
       name: spec.name,

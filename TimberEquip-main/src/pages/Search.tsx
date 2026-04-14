@@ -9,15 +9,17 @@ import {
   Save,
   Bell,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
-import { taxonomyService, EquipmentTaxonomy } from '../services/taxonomyService';
+import { taxonomyService, type FullEquipmentTaxonomy } from '../services/taxonomyService';
 import { Listing, AlertPreferences } from '../types';
 import { ListingCard } from '../components/ListingCard';
 import { InquiryModal } from '../components/InquiryModal';
+import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useAuth } from '../components/AuthContext';
@@ -26,11 +28,45 @@ import { useLocale } from '../components/LocaleContext';
 import { auth } from '../firebase';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { startPerformanceTrace } from '../services/performance';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
+import { expandRegionName, getListingStateName, normalizeRegionName, normalizeSeoSlug } from '../utils/seoRoutes';
+import { AlertMessage } from '../components/AlertMessage';
+import { buildSiteUrl } from '../utils/siteUrl';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
+import { MultiSelectDropdown, type MultiSelectOption } from '../components/MultiSelectDropdown';
+import { reverseGeocode, type GooglePlaceSelection } from '../services/placesService';
+import {
+  getTaxonomyCategoryOptions,
+  getTaxonomyManufacturerOptions,
+  getTaxonomyModelOptions,
+  getTaxonomySubcategoryOptions,
+  resolveListingTaxonomySelection,
+  type ResolvedEquipmentTaxonomySelection,
+} from '../utils/equipmentTaxonomy';
 
-type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular';
+type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
+type SearchViewMode = 'grid' | 'list';
+
+const MULTI_SELECT_KEYS = new Set(['manufacturer', 'model', 'subcategory', 'condition', 'state', 'country', 'attachment', 'feature']);
+
+const parseMultiValue = (value: string): string[] =>
+  value ? value.split('|').map((v) => v.trim()).filter(Boolean) : [];
+
+const joinMultiValue = (values: string[]): string =>
+  values.filter(Boolean).join('|');
+
+const normalizeRegionMultiValue = (value: string): string =>
+  joinMultiValue(Array.from(new Set(parseMultiValue(value).map((entry) => expandRegionName(entry)).filter(Boolean))));
+
+export interface CategoryRouteInfo {
+  categoryName: string;
+  slug: string;
+  isTopLevel: boolean;
+}
 
 interface SearchFilters {
   q: string;
@@ -48,6 +84,8 @@ interface SearchFilters {
   maxHours: string;
   condition: string;
   location: string;
+  locationCenterLat: string;
+  locationCenterLng: string;
   locationRadius: string;
   attachment: string;
   feature: string;
@@ -74,6 +112,8 @@ const DEFAULT_FILTERS: SearchFilters = {
   maxHours: '',
   condition: '',
   location: '',
+  locationCenterLat: '',
+  locationCenterLng: '',
   locationRadius: '',
   attachment: '',
   feature: '',
@@ -82,7 +122,56 @@ const DEFAULT_FILTERS: SearchFilters = {
   sortBy: 'newest'
 };
 
+const matchesOptionValue = (candidate: string | undefined, selected: string): boolean => {
+  const normalizedCandidate = normalize(candidate);
+  const normalizedSelected = normalize(selected);
+  if (!normalizedCandidate || !normalizedSelected) return false;
+  return (
+    normalizedCandidate === normalizedSelected ||
+    normalizedCandidate.includes(normalizedSelected) ||
+    normalizedSelected.includes(normalizedCandidate)
+  );
+};
+
+const matchesEquipmentFilterSet = (
+  listing: ResolvedEquipmentTaxonomySelection,
+  activeFilters: Pick<SearchFilters, 'category' | 'subcategory' | 'manufacturer' | 'model'>,
+  excludeKey?: 'category' | 'subcategory' | 'manufacturer' | 'model'
+): boolean => {
+  if (excludeKey !== 'category' && activeFilters.category) {
+    if (!matchesOptionValue(listing.category, activeFilters.category)) return false;
+  }
+
+  if (excludeKey !== 'subcategory' && activeFilters.subcategory) {
+    const selectedSubcategories = parseMultiValue(activeFilters.subcategory);
+    if (!selectedSubcategories.some((selected) => matchesOptionValue(listing.subcategory, selected))) return false;
+  }
+
+  if (excludeKey !== 'manufacturer' && activeFilters.manufacturer) {
+    const selectedManufacturers = parseMultiValue(activeFilters.manufacturer);
+    if (!selectedManufacturers.some((selected) => matchesOptionValue(listing.manufacturer, selected))) return false;
+  }
+
+  if (excludeKey !== 'model' && activeFilters.model) {
+    const selectedModels = parseMultiValue(activeFilters.model);
+    if (!selectedModels.some((selected) => matchesOptionValue(listing.model, selected))) return false;
+  }
+
+  return true;
+};
+
 const LOCATION_RADIUS_OPTIONS = ['25', '50', '100', '250', '500', '1000'];
+const SEARCH_VIEW_MODE_SESSION_KEY = 'fes-search-view-mode';
+
+const getInitialSearchViewMode = (): SearchViewMode => {
+  if (typeof window === 'undefined') return 'grid';
+  try {
+    const saved = window.sessionStorage.getItem(SEARCH_VIEW_MODE_SESSION_KEY);
+    return saved === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+};
 
 const DEFAULT_ALERT_PREFERENCES: AlertPreferences = {
   newListingAlerts: true,
@@ -111,6 +200,32 @@ const parseLocationCoordinates = (value: string): { lat: number; lng: number } |
 
   return { lat, lng };
 };
+
+const getLocationFilterCenter = (
+  filters: Pick<SearchFilters, 'location' | 'locationCenterLat' | 'locationCenterLng'>
+): { lat: number; lng: number } | null => {
+  const lat = parseNumber(filters.locationCenterLat);
+  const lng = parseNumber(filters.locationCenterLng);
+
+  if (lat !== undefined && lng !== undefined && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+    return { lat, lng };
+  }
+
+  return parseLocationCoordinates(filters.location);
+};
+
+const buildLocationSelectionLabel = (place: GooglePlaceSelection): string =>
+  [place.city, place.state, place.country].filter(Boolean).join(', ') || place.formattedAddress || '';
+
+const buildLocationFilterState = (
+  location: string,
+  latitude?: number | null,
+  longitude?: number | null
+): Pick<SearchFilters, 'location' | 'locationCenterLat' | 'locationCenterLng'> => ({
+  location,
+  locationCenterLat: typeof latitude === 'number' && Number.isFinite(latitude) ? String(latitude) : '',
+  locationCenterLng: typeof longitude === 'number' && Number.isFinite(longitude) ? String(longitude) : '',
+});
 
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
@@ -174,9 +289,20 @@ const getRelevanceScore = (listing: Listing, query: string): number => {
 };
 
 const uniqueSorted = (values: Array<string | undefined>): string[] =>
-  Array.from(new Set(values.filter((value): value is string => !!value && value.trim().length > 0))).sort((a, b) =>
+  Array.from(new Set(values.filter((value): value is string => !!value && value.trim().length > 0).map((v) => v.trim()))).sort((a, b) =>
     a.localeCompare(b)
   );
+
+/** Case-insensitive dedup that normalizes to UPPERCASE — use for manufacturer, model, attachments, features */
+const uniqueSortedUpper = (values: Array<string | undefined>): string[] => {
+  const seen = new Map<string, string>();
+  for (const v of values) {
+    if (!v || !v.trim()) continue;
+    const key = v.trim().toUpperCase();
+    if (!seen.has(key)) seen.set(key, key);
+  }
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+};
 
 const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   ...DEFAULT_FILTERS,
@@ -185,7 +311,7 @@ const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   subcategory: params.get('subcategory') || '',
   manufacturer: params.get('manufacturer') || '',
   model: params.get('model') || '',
-  state: params.get('state') || '',
+  state: normalizeRegionMultiValue(params.get('state') || ''),
   country: params.get('country') || '',
   minPrice: params.get('minPrice') || '',
   maxPrice: params.get('maxPrice') || '',
@@ -195,6 +321,8 @@ const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   maxHours: params.get('maxHours') || '',
   condition: params.get('condition') || '',
   location: params.get('location') || '',
+  locationCenterLat: params.get('locationCenterLat') || '',
+  locationCenterLng: params.get('locationCenterLng') || '',
   locationRadius: params.get('locationRadius') || DEFAULT_FILTERS.locationRadius,
   attachment: params.get('attachment') || '',
   feature: params.get('feature') || '',
@@ -221,25 +349,52 @@ const applyDependentFilterResets = (
   value: string
 ): SearchFilters => {
   const next = { ...previous, [key]: value };
+  if (key === 'location') {
+    next.locationCenterLat = '';
+    next.locationCenterLng = '';
+  }
   if (key === 'category') {
     next.subcategory = '';
     next.manufacturer = '';
+    next.model = '';
   }
   if (key === 'subcategory') {
     next.manufacturer = '';
+    next.model = '';
+  }
+  if (key === 'manufacturer') {
+    next.model = '';
   }
   return next;
 };
 
 const countActiveFilters = (filters: SearchFilters): number =>
-  Object.entries(filters).filter(([key, value]) => key !== 'sortBy' && Boolean(value)).length;
+  Object.entries(filters).reduce((count, [key, value]) => {
+    if (key === 'sortBy' || key === 'locationCenterLat' || key === 'locationCenterLng' || !value) return count;
+    if (MULTI_SELECT_KEYS.has(key)) return count + parseMultiValue(value).length;
+    return count + 1;
+  }, 0);
 
 const areFiltersEqual = (a: SearchFilters, b: SearchFilters): boolean =>
   (Object.keys(DEFAULT_FILTERS) as Array<keyof SearchFilters>).every((key) => a[key] === b[key]);
 
+const multiSummary = (value: string, singular: string, plural: string): string => {
+  const count = parseMultiValue(value).length;
+  if (count === 0) return '';
+  if (count === 1) return parseMultiValue(value)[0];
+  return `${count} ${plural}`;
+};
+
 const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey): string => {
   if (key === 'equipment') {
-    return [filters.category, filters.subcategory, filters.manufacturer, filters.model, filters.state, filters.country].filter(Boolean).join(' / ') || 'Category, make, model';
+    return [
+      filters.category,
+      multiSummary(filters.subcategory, 'subcategory', 'subcategories'),
+      multiSummary(filters.manufacturer, 'manufacturer', 'manufacturers'),
+      multiSummary(filters.model, 'model', 'models'),
+      multiSummary(filters.state, 'state', 'states'),
+      multiSummary(filters.country, 'country', 'countries'),
+    ].filter(Boolean).join(' / ') || 'Category, make, model';
   }
   if (key === 'pricing') {
     return [
@@ -249,25 +404,25 @@ const getFilterSectionSummary = (filters: SearchFilters, key: FilterSectionKey):
     ].filter(Boolean).join(' | ') || 'Price, year, hours';
   }
   if (key === 'specs') {
-    return [filters.condition, filters.attachment, filters.feature, filters.stockNumber || filters.serialNumber ? 'IDs set' : '']
+    return [multiSummary(filters.condition, 'condition', 'conditions'), filters.attachment, filters.feature, filters.stockNumber || filters.serialNumber ? 'IDs set' : '']
       .filter(Boolean)
       .join(' | ') || 'Condition, features, IDs';
   }
-  return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : ''].filter(Boolean).join(' | ') || 'Location and radius';
+  return [filters.location, filters.locationRadius ? `${filters.locationRadius} mi` : '', multiSummary(filters.state, 'state', 'states'), multiSummary(filters.country, 'country', 'countries')].filter(Boolean).join(' | ') || 'Location and radius';
 };
 
-function FilterSectionPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
+function FilterSectionPanel({ open, children, allowOverflow = false }: { open: boolean; children: React.ReactNode; allowOverflow?: boolean }) {
   return (
     <motion.div
       initial={false}
       animate={open ? 'open' : 'collapsed'}
       variants={{
-        open: { height: 'auto', opacity: 1 },
-        collapsed: { height: 0, opacity: 0 },
+        open: { height: 'auto', opacity: 1, overflow: allowOverflow ? 'visible' : 'hidden' },
+        collapsed: { height: 0, opacity: 0, overflow: 'hidden' },
       }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className="overflow-hidden"
-      aria-hidden={!open}
+      className={!open ? 'overflow-hidden' : (allowOverflow ? 'overflow-visible' : 'overflow-hidden')}
+      {...(!open ? { inert: true as unknown as boolean } : {})}
     >
       <div className="border-t border-line bg-surface/40 p-4 space-y-4">
         {children}
@@ -276,16 +431,17 @@ function FilterSectionPanel({ open, children }: { open: boolean; children: React
   );
 }
 
-const PAGE_SIZE = 18;
+const PAGE_SIZE = 21;
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
-export function Search() {
+export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } = {}) {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
-  const { t, formatNumber } = useLocale();
+  const { t, formatNumber, formatPrice } = useLocale();
+  const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [allListings, setAllListings] = useState<Listing[]>(() => getInitialCachedListings());
-  const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy>({});
+  const [fullTaxonomy, setFullTaxonomy] = useState<FullEquipmentTaxonomy>({});
   const [loading, setLoading] = useState(() => getInitialCachedListings().length === 0);
   const [inventoryNotice, setInventoryNotice] = useState('');
   const [inventoryError, setInventoryError] = useState('');
@@ -303,17 +459,38 @@ export function Search() {
     }
     void toggleFavorite(normalizedId);
   };
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<SearchViewMode>(() => getInitialSearchViewMode());
   const [showFilters, setShowFilters] = useState(true);
   const [compareList, setCompareList] = useState<string[]>([]);
-  const [filters, setFilters] = useState<SearchFilters>(() => getInitialFilters(searchParams));
-  const [draftFilters, setDraftFilters] = useState<SearchFilters>(() => getInitialFilters(searchParams));
+  const [filters, setFilters] = useState<SearchFilters>(() => {
+    const initial = getInitialFilters(searchParams);
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        initial.category = initial.category || categoryRoute.categoryName;
+      } else {
+        initial.subcategory = initial.subcategory || categoryRoute.categoryName;
+      }
+    }
+    return initial;
+  });
+  const [draftFilters, setDraftFilters] = useState<SearchFilters>(() => {
+    const initial = getInitialFilters(searchParams);
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        initial.category = initial.category || categoryRoute.categoryName;
+      } else {
+        initial.subcategory = initial.subcategory || categoryRoute.categoryName;
+      }
+    }
+    return initial;
+  });
   const [openSections, setOpenSections] = useState<Record<FilterSectionKey, boolean>>({
     equipment: true,
     pricing: false,
     specs: false,
     location: false,
   });
+  const [pageSize] = useState(PAGE_SIZE);
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertEmail, setAlertEmail] = useState('');
@@ -321,7 +498,20 @@ export function Search() {
   const [savingSearch, setSavingSearch] = useState(false);
   const [alertPreferences, setAlertPreferences] = useState<AlertPreferences>(DEFAULT_ALERT_PREFERENCES);
   const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
+  const [financingListing, setFinancingListing] = useState<Listing | null>(null);
+  const [auctionOnly, setAuctionOnly] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoLocating, setGeoLocating] = useState(false);
   const favoriteIds = normalizeListingIdList(user?.favorites);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(SEARCH_VIEW_MODE_SESSION_KEY, viewMode);
+    } catch {
+      // Ignore storage failures and keep the in-memory preference.
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -343,7 +533,7 @@ export function Search() {
       try {
         const [listingsResult, taxonomyResult] = await Promise.allSettled([
           equipmentService.getListings({ inStockOnly: false, sortBy: 'newest' }),
-          taxonomyService.getTaxonomy()
+          taxonomyService.getFullTaxonomy()
         ]);
 
         if (listingsResult.status === 'fulfilled') {
@@ -366,7 +556,7 @@ export function Search() {
         }
 
         if (taxonomyResult.status === 'fulfilled') {
-          setTaxonomy(taxonomyResult.value);
+          setFullTaxonomy(taxonomyResult.value);
           loadTrace?.putMetric('taxonomy_category_count', Object.keys(taxonomyResult.value).length);
           loadTrace?.putAttribute('taxonomy_source', 'live');
         } else {
@@ -402,17 +592,9 @@ export function Search() {
   }, [user?.email]);
 
   const closeAlertModal = () => {
-    const defaultEmail = user?.email || '';
-    const hasUnsavedChanges =
-      savedSearchName.trim().length > 0 ||
-      alertEmail.trim() !== defaultEmail.trim() ||
-      JSON.stringify(alertPreferences) !== JSON.stringify(DEFAULT_ALERT_PREFERENCES);
-
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
-
     setShowAlertModal(false);
     setSavedSearchName('');
-    setAlertEmail(defaultEmail);
+    setAlertEmail(user?.email || '');
     setAlertPreferences(DEFAULT_ALERT_PREFERENCES);
   };
 
@@ -422,6 +604,13 @@ export function Search() {
 
   useEffect(() => {
     const parsed = getInitialFilters(searchParams);
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        parsed.category = categoryRoute.categoryName;
+      } else {
+        parsed.subcategory = categoryRoute.categoryName;
+      }
+    }
     if (!areFiltersEqual(parsed, filters)) {
       setFilters(parsed);
       setDraftFilters(parsed);
@@ -430,53 +619,134 @@ export function Search() {
 
   useEffect(() => {
     const params = serializeFiltersToParams(filters);
+    if (categoryRoute) {
+      params.delete(categoryRoute.isTopLevel ? 'category' : 'subcategory');
+    }
     setSearchParams(params, { replace: true, preventScrollReset: true });
   }, [filters, setSearchParams]);
 
-  const taxonomyCategories = useMemo(() => Object.keys(taxonomy).sort((a, b) => a.localeCompare(b)), [taxonomy]);
-
-  const taxonomySubcategories = useMemo(() => {
-    if (!filters.category || !taxonomy[filters.category]) return [];
-    return Object.keys(taxonomy[filters.category]).sort((a, b) => a.localeCompare(b));
-  }, [filters.category, taxonomy]);
-
-  const taxonomyManufacturers = useMemo(() => {
-    if (!filters.category || !filters.subcategory) return [];
-    return [...(taxonomy[filters.category]?.[filters.subcategory] || [])].sort((a, b) => a.localeCompare(b));
-  }, [filters.category, filters.subcategory, taxonomy]);
-
-  const listingCategories = useMemo(() => uniqueSorted(allListings.map((listing) => listing.category)), [allListings]);
-  const listingSubcategories = useMemo(
-    () => uniqueSorted(allListings.map((listing) => listing.subcategory || listing.category)),
-    [allListings]
+  const equipmentDraftFilters = useMemo(
+    () => ({
+      category: draftFilters.category,
+      subcategory: draftFilters.subcategory,
+      manufacturer: draftFilters.manufacturer,
+      model: draftFilters.model,
+    }),
+    [draftFilters.category, draftFilters.subcategory, draftFilters.manufacturer, draftFilters.model]
   );
 
-  const manufacturerOptions = useMemo(() => {
-    const listingManufacturers = uniqueSorted(
-      allListings.map((listing) => listing.make || listing.manufacturer || listing.brand)
-    );
-    return uniqueSorted([...taxonomyManufacturers, ...listingManufacturers]);
-  }, [allListings, taxonomyManufacturers]);
-
-  const modelOptions = useMemo(() => {
-    const narrowed = allListings.filter((listing) => {
-      if (!filters.manufacturer) return true;
-      return normalize(listing.make || listing.manufacturer || listing.brand).includes(normalize(filters.manufacturer));
+  const resolvedListingEquipment = useMemo(() => {
+    const byId = new Map<string, ResolvedEquipmentTaxonomySelection>();
+    const byReference = new WeakMap<Listing, ResolvedEquipmentTaxonomySelection>();
+    const items = allListings.map((listing) => {
+      const resolved = resolveListingTaxonomySelection(fullTaxonomy, listing);
+      byReference.set(listing, resolved);
+      if (listing.id) {
+        byId.set(String(listing.id), resolved);
+      }
+      return { listing, resolved };
     });
-    return uniqueSorted(narrowed.map((listing) => listing.model));
-  }, [allListings, filters.manufacturer]);
 
-  const attachmentOptions = useMemo(
-    () => uniqueSorted(allListings.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : []))),
-    [allListings]
+    return {
+      items,
+      get(listing: Listing): ResolvedEquipmentTaxonomySelection {
+        return (
+          byReference.get(listing) ||
+          byId.get(String(listing.id || '')) ||
+          resolveListingTaxonomySelection(fullTaxonomy, listing)
+        );
+      },
+    };
+  }, [allListings, fullTaxonomy]);
+
+  const categoryOptions = useMemo(
+    () => {
+      const inventoryCategories = uniqueSorted(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'category'))
+          .map(({ resolved }) => resolved.category)
+      );
+      return inventoryCategories.length ? inventoryCategories : getTaxonomyCategoryOptions(fullTaxonomy);
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
   );
+
+  const subcategoryOptions = useMemo(
+    () => {
+      const inventorySubcategories = uniqueSorted(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'subcategory'))
+          .map(({ resolved }) => resolved.subcategory)
+      );
+      return inventorySubcategories.length
+        ? inventorySubcategories
+        : getTaxonomySubcategoryOptions(fullTaxonomy, equipmentDraftFilters.category);
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
+
+  const manufacturerOptions = useMemo(
+    () => {
+      const inventoryManufacturers = uniqueSortedUpper(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'manufacturer'))
+          .map(({ resolved }) => resolved.manufacturer)
+      );
+      return inventoryManufacturers.length
+        ? inventoryManufacturers
+        : uniqueSortedUpper(
+            getTaxonomyManufacturerOptions(
+              fullTaxonomy,
+              equipmentDraftFilters.category,
+              parseMultiValue(equipmentDraftFilters.subcategory)
+            )
+          );
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
+
+  const modelOptions = useMemo(
+    () => {
+      const inventoryModels = uniqueSortedUpper(
+        resolvedListingEquipment.items
+          .filter(({ resolved }) => matchesEquipmentFilterSet(resolved, equipmentDraftFilters, 'model'))
+          .map(({ resolved }) => resolved.model)
+      );
+      return inventoryModels.length
+        ? inventoryModels
+        : uniqueSortedUpper(
+            getTaxonomyModelOptions(
+              fullTaxonomy,
+              equipmentDraftFilters.category,
+              parseMultiValue(equipmentDraftFilters.subcategory),
+              parseMultiValue(equipmentDraftFilters.manufacturer)
+            )
+          );
+    },
+    [equipmentDraftFilters, fullTaxonomy, resolvedListingEquipment]
+  );
+
+  const attachmentOptions = useMemo(() => {
+    const narrowed = allListings.filter((listing) => {
+      const resolved = resolvedListingEquipment.get(listing);
+      if (filters.category && !matchesOptionValue(resolved.category, filters.category)) return false;
+      if (filters.subcategory) {
+        const selected = parseMultiValue(filters.subcategory);
+        if (!selected.some((value) => matchesOptionValue(resolved.subcategory, value))) return false;
+      }
+      return true;
+    });
+    return uniqueSortedUpper(narrowed.flatMap((listing) => (Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [])));
+  }, [allListings, filters.category, filters.subcategory, resolvedListingEquipment]);
 
   const locationParts = useMemo(() => {
     return allListings.map((listing) => {
       const raw = listing.location || '';
       const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
-      const country = parts.length > 0 ? parts[parts.length - 1] : '';
-      const state = parts.length > 1 ? parts[parts.length - 2] : '';
+      // 2-part: "City, State" → state=parts[1], country defaults to "United States"
+      // 3+-part: "City, State, Country" → state=parts[-2], country=parts[-1]
+      const country = parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : '');
+      const state = getListingStateName(listing);
       return { state, country };
     });
   }, [allListings]);
@@ -484,19 +754,26 @@ export function Search() {
   const stateOptions = useMemo(() => uniqueSorted(locationParts.map((part) => part.state)), [locationParts]);
   const countryOptions = useMemo(() => uniqueSorted(locationParts.map((part) => part.country)), [locationParts]);
 
-  const featureOptions = useMemo(
-    () =>
-      uniqueSorted(
-        allListings.flatMap((listing) => {
-          const topLevel = Array.isArray(listing.features) ? listing.features : [];
-          const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
-          return [...topLevel, ...specLevel];
-        })
-      ),
-    [allListings]
-  );
+  const featureOptions = useMemo(() => {
+    const narrowed = allListings.filter((listing) => {
+      if (filters.category && normalize(listing.category) !== normalize(filters.category)) return false;
+      if (filters.subcategory) {
+        const selected = parseMultiValue(filters.subcategory).map(normalize);
+        if (!selected.some((s) => normalize(listing.subcategory) === s)) return false;
+      }
+      return true;
+    });
+    return uniqueSortedUpper(
+      narrowed.flatMap((listing) => {
+        const topLevel = Array.isArray(listing.features) ? listing.features : [];
+        const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
+        return [...topLevel, ...specLevel];
+      })
+    );
+  }, [allListings, filters.category, filters.subcategory]);
 
-  const filteredListings = useMemo(() => {
+  // Shared filter function used by both filteredListings and faceted counts
+  const matchesFilters = useMemo(() => {
     const minPrice = parseNumber(filters.minPrice);
     const maxPrice = parseNumber(filters.maxPrice);
     const minYear = parseNumber(filters.minYear);
@@ -504,14 +781,16 @@ export function Search() {
     const minHours = parseNumber(filters.minHours);
     const maxHours = parseNumber(filters.maxHours);
     const radius = parseNumber(filters.locationRadius);
-    const center = parseLocationCoordinates(filters.location);
+    const center = getLocationFilterCenter(filters);
 
-    let results = allListings.filter((listing) => {
+    return (listing: Listing, excludeKey?: keyof SearchFilters): boolean => {
+      const resolvedEquipment = resolvedListingEquipment.get(listing);
       if ((listing.status || 'active') === 'sold') return false;
 
-      if (filters.q) {
+      if (excludeKey !== 'q' && filters.q) {
         const q = normalize(filters.q);
         const matchesKeyword =
+          normalize(listing.id).includes(q) ||
           normalize(listing.title).includes(q) ||
           normalize(listing.make || listing.manufacturer || listing.brand).includes(q) ||
           normalize(listing.model).includes(q) ||
@@ -521,38 +800,36 @@ export function Search() {
         if (!matchesKeyword) return false;
       }
 
-      if (filters.category) {
-        const normalizedCategory = normalize(filters.category);
-        const categoryMatch =
-          normalize(listing.category) === normalizedCategory ||
-          normalize(listing.subcategory) === normalizedCategory;
-        if (!categoryMatch) return false;
+      if (excludeKey !== 'category' && filters.category) {
+        if (!matchesOptionValue(resolvedEquipment.category, filters.category)) return false;
       }
 
-      if (filters.subcategory) {
-        const normalizedSubcategory = normalize(filters.subcategory);
-        const subcategoryMatch =
-          normalize(listing.subcategory) === normalizedSubcategory || normalize(listing.category) === normalizedSubcategory;
-        if (!subcategoryMatch) return false;
+      if (excludeKey !== 'subcategory' && filters.subcategory) {
+        const selected = parseMultiValue(filters.subcategory);
+        if (!selected.some((value) => matchesOptionValue(resolvedEquipment.subcategory, value))) return false;
       }
 
-      if (filters.manufacturer) {
-        const make = normalize(listing.make || listing.manufacturer || listing.brand);
-        if (!make.includes(normalize(filters.manufacturer))) return false;
+      if (excludeKey !== 'manufacturer' && filters.manufacturer) {
+        const selected = parseMultiValue(filters.manufacturer);
+        if (!selected.some((value) => matchesOptionValue(resolvedEquipment.manufacturer, value))) return false;
       }
 
-      if (filters.model && !normalize(listing.model).includes(normalize(filters.model))) return false;
+      if (excludeKey !== 'model' && filters.model) {
+        const selected = parseMultiValue(filters.model);
+        if (!selected.some((value) => matchesOptionValue(resolvedEquipment.model, value))) return false;
+      }
 
-      if (filters.state) {
+      if (excludeKey !== 'state' && filters.state) {
+        const selected = parseMultiValue(filters.state).map(normalizeRegionName);
+        const listingState = normalizeRegionName(getListingStateName(listing));
+        if (!selected.some((state) => listingState === state)) return false;
+      }
+
+      if (excludeKey !== 'country' && filters.country) {
+        const selected = parseMultiValue(filters.country).map(normalize);
         const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
-        const listingState = locationParts.length > 1 ? locationParts[locationParts.length - 2] : '';
-        if (!normalize(listingState).includes(normalize(filters.state))) return false;
-      }
-
-      if (filters.country) {
-        const locationParts = (listing.location || '').split(',').map((part) => part.trim()).filter(Boolean);
-        const listingCountry = locationParts.length > 0 ? locationParts[locationParts.length - 1] : '';
-        if (!normalize(listingCountry).includes(normalize(filters.country))) return false;
+        const listingCountry = normalize(locationParts.length >= 3 ? locationParts[locationParts.length - 1] : (locationParts.length >= 1 ? 'United States' : ''));
+        if (!selected.some((s) => listingCountry.includes(s))) return false;
       }
 
       if (minPrice !== undefined && listing.price < minPrice) return false;
@@ -562,16 +839,17 @@ export function Search() {
       if (minHours !== undefined && listing.hours < minHours) return false;
       if (maxHours !== undefined && listing.hours > maxHours) return false;
 
-      if (filters.condition && normalize(listing.condition) !== normalize(filters.condition)) return false;
+      if (excludeKey !== 'condition' && filters.condition) {
+        const selected = parseMultiValue(filters.condition).map(normalize);
+        if (!selected.some((s) => normalize(listing.condition) === s)) return false;
+      }
 
       if (filters.location) {
         const locationTextMatch = normalize(listing.location).includes(normalize(filters.location));
-
         if (radius !== undefined && radius > 0 && center) {
           const coords = getListingCoords(listing);
           if (coords.lat !== undefined && coords.lng !== undefined) {
-            const withinRadius = distanceMiles(center.lat, center.lng, coords.lat, coords.lng) <= radius;
-            if (!withinRadius) return false;
+            if (distanceMiles(center.lat, center.lng, coords.lat, coords.lng) > radius) return false;
           } else if (!locationTextMatch) {
             return false;
           }
@@ -580,35 +858,151 @@ export function Search() {
         }
       }
 
-      if (filters.attachment) {
-        const attachments = Array.isArray(listing.specs?.attachments) ? listing.specs.attachments : [];
-        const hasAttachment = attachments.some((attachment) => normalize(attachment).includes(normalize(filters.attachment)));
-        if (!hasAttachment) return false;
+      if (excludeKey !== 'attachment' && filters.attachment) {
+        const selectedAttachments = parseMultiValue(filters.attachment).map(normalize);
+        const attachments = Array.isArray(listing.specs?.attachments) ? listing.specs.attachments.map(normalize) : [];
+        if (!selectedAttachments.some((s) => attachments.some((a) => a.includes(s)))) return false;
       }
 
-      if (filters.feature) {
-        const topLevel = Array.isArray(listing.features) ? listing.features : [];
-        const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features : [];
-        const hasFeature = [...topLevel, ...specLevel].some((feature) => normalize(feature).includes(normalize(filters.feature)));
-        if (!hasFeature) return false;
+      if (excludeKey !== 'feature' && filters.feature) {
+        const selectedFeatures = parseMultiValue(filters.feature).map(normalize);
+        const topLevel = Array.isArray(listing.features) ? listing.features.map(normalize) : [];
+        const specLevel = Array.isArray(listing.specs?.features) ? listing.specs.features.map(normalize) : [];
+        const allFeatures = [...topLevel, ...specLevel];
+        if (!selectedFeatures.some((s) => allFeatures.some((f) => f.includes(s)))) return false;
       }
 
       if (filters.stockNumber && !normalize(listing.stockNumber).includes(normalize(filters.stockNumber))) return false;
       if (filters.serialNumber && !normalize(listing.serialNumber).includes(normalize(filters.serialNumber))) return false;
 
       return true;
-    });
+    };
+  }, [filters, resolvedListingEquipment]);
 
+  // Faceted counts: for each multi-select field, count matches excluding that field
+  const facetedCounts = useMemo(() => {
+    const countField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string, upper = false): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const listing of allListings) {
+        if (!matchesFilters(listing, excludeKey)) continue;
+        const raw = accessor(listing);
+        if (!raw) continue;
+        const key = upper ? raw.trim().toUpperCase() : raw.trim();
+        if (key) map.set(key, (map.get(key) || 0) + 1);
+      }
+      return map;
+    };
+
+    const countLocationField = (excludeKey: keyof SearchFilters, partIndex: 'state' | 'country'): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const listing of allListings) {
+        if (!matchesFilters(listing, excludeKey)) continue;
+        const val = partIndex === 'state'
+          ? getListingStateName(listing)
+          : (() => {
+            const parts = (listing.location || '').split(',').map((p) => p.trim()).filter(Boolean);
+            return parts.length >= 3 ? parts[parts.length - 1] : (parts.length >= 1 ? 'United States' : '');
+          })();
+        if (val) map.set(val, (map.get(val) || 0) + 1);
+      }
+      return map;
+    };
+
+    const countArrayField = (excludeKey: keyof SearchFilters, accessor: (l: Listing) => string[], upper = false): Map<string, number> => {
+      const map = new Map<string, number>();
+      for (const listing of allListings) {
+        if (!matchesFilters(listing, excludeKey)) continue;
+        for (const raw of accessor(listing)) {
+          if (!raw) continue;
+          const key = upper ? raw.trim().toUpperCase() : raw.trim();
+          if (key) map.set(key, (map.get(key) || 0) + 1);
+        }
+      }
+      return map;
+    };
+
+    return {
+      subcategory: countField('subcategory', (l) => resolvedListingEquipment.get(l).subcategory),
+      manufacturer: countField('manufacturer', (l) => resolvedListingEquipment.get(l).manufacturer, true),
+      model: countField('model', (l) => resolvedListingEquipment.get(l).model, true),
+      condition: countField('condition', (l) => l.condition),
+      state: countLocationField('state', 'state'),
+      country: countLocationField('country', 'country'),
+      attachment: countArrayField('attachment', (l) => Array.isArray(l.specs?.attachments) ? l.specs.attachments : [], true),
+      feature: countArrayField('feature', (l) => [...(Array.isArray(l.features) ? l.features : []), ...(Array.isArray(l.specs?.features) ? l.specs.features : [])], true),
+    };
+  }, [allListings, matchesFilters, resolvedListingEquipment]);
+
+  // Build MultiSelectOption arrays from options + faceted counts
+  const manufacturerMultiOptions: MultiSelectOption[] = useMemo(
+    () => manufacturerOptions.map((v) => ({ value: v, count: facetedCounts.manufacturer.get(v) || 0 })),
+    [manufacturerOptions, facetedCounts.manufacturer]
+  );
+
+  const modelMultiOptions: MultiSelectOption[] = useMemo(
+    () => modelOptions.map((v) => ({ value: v, count: facetedCounts.model.get(v) || 0 })),
+    [modelOptions, facetedCounts.model]
+  );
+
+  const conditionMultiOptions: MultiSelectOption[] = useMemo(
+    () => ['New', 'Used', 'Rebuilt'].map((v) => ({ value: v, count: facetedCounts.condition.get(v) || 0 })),
+    [facetedCounts.condition]
+  );
+
+  const stateMultiOptions: MultiSelectOption[] = useMemo(
+    () => stateOptions.map((v) => ({ value: v, count: facetedCounts.state.get(v) || 0 })),
+    [stateOptions, facetedCounts.state]
+  );
+
+  const countryMultiOptions: MultiSelectOption[] = useMemo(
+    () => countryOptions.map((v) => ({ value: v, count: facetedCounts.country.get(v) || 0 })),
+    [countryOptions, facetedCounts.country]
+  );
+
+  const attachmentMultiOptions: MultiSelectOption[] = useMemo(
+    () => attachmentOptions.map((v) => ({ value: v, count: facetedCounts.attachment.get(v) || 0 })),
+    [attachmentOptions, facetedCounts.attachment]
+  );
+
+  const featureMultiOptions: MultiSelectOption[] = useMemo(
+    () => featureOptions.map((v) => ({ value: v, count: facetedCounts.feature.get(v) || 0 })),
+    [featureOptions, facetedCounts.feature]
+  );
+
+  const filteredListings = useMemo(() => {
+    let results = allListings.filter((listing) => matchesFilters(listing));
+
+    if (auctionOnly) {
+      results = results.filter((l) => l.auctionId);
+    }
+
+    const featuredFirst = (a: Listing, b: Listing) => Number(!!b.featured) - Number(!!a.featured);
     if (filters.sortBy === 'price_asc') {
-      results = [...results].sort((a, b) => a.price - b.price);
+      results = [...results].sort((a, b) => featuredFirst(a, b) || a.price - b.price);
     } else if (filters.sortBy === 'price_desc') {
-      results = [...results].sort((a, b) => b.price - a.price);
+      results = [...results].sort((a, b) => featuredFirst(a, b) || b.price - a.price);
     } else if (filters.sortBy === 'popular') {
-      results = [...results].sort((a, b) => b.views + b.leads * 3 - (a.views + a.leads * 3));
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (b.views + b.leads * 3 - (a.views + a.leads * 3)));
     } else if (filters.sortBy === 'relevance') {
-      results = [...results].sort((a, b) => getRelevanceScore(b, filters.q) - getRelevanceScore(a, filters.q));
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (getRelevanceScore(b, filters.q) - getRelevanceScore(a, filters.q)));
+    } else if (filters.sortBy === 'nearest' && userCoords) {
+      results = [...results].sort((a, b) => {
+        const fd = featuredFirst(a, b);
+        if (fd !== 0) return fd;
+        const aCoords = getListingCoords(a);
+        const bCoords = getListingCoords(b);
+        const aDist = (aCoords.lat != null && aCoords.lng != null)
+          ? distanceMiles(userCoords.lat, userCoords.lng, aCoords.lat, aCoords.lng)
+          : Infinity;
+        const bDist = (bCoords.lat != null && bCoords.lng != null)
+          ? distanceMiles(userCoords.lat, userCoords.lng, bCoords.lat, bCoords.lng)
+          : Infinity;
+        return aDist - bDist;
+      });
     } else {
       results = [...results].sort((a, b) => {
+        const fd = featuredFirst(a, b);
+        if (fd !== 0) return fd;
         const aTime = new Date(a.createdAt).getTime() || 0;
         const bTime = new Date(b.createdAt).getTime() || 0;
         return bTime - aTime;
@@ -616,11 +1010,11 @@ export function Search() {
     }
 
     return results;
-  }, [allListings, filters]);
+  }, [allListings, matchesFilters, filters.sortBy, filters.q, userCoords, auctionOnly]);
 
   // Reset pagination whenever the result set changes (new filters applied)
   useEffect(() => {
-    setDisplayCount(PAGE_SIZE);
+    setDisplayCount(pageSize);
   }, [filteredListings]);
 
   const displayedListings = filteredListings.slice(0, displayCount);
@@ -642,9 +1036,72 @@ export function Search() {
     setDraftFilters(DEFAULT_FILTERS);
   };
 
+  const handleDraftMultiSelect = (key: keyof SearchFilters, selected: string[]) => {
+    handleDraftFilterChange(key, joinMultiValue(selected));
+  };
+
+  const removeMultiValue = (key: keyof SearchFilters, valueToRemove: string) => {
+    const current = parseMultiValue(filters[key]);
+    const updated = joinMultiValue(current.filter((v) => v !== valueToRemove));
+    const next = { ...filters, [key]: updated };
+    setFilters(next);
+    setDraftFilters(next);
+  };
+
+  const handleUseMyLocation = () => {
+    setGeoLocating(true);
+    if (!navigator.geolocation) {
+      const fallback = user?.location;
+      if (fallback) {
+        handleDraftFilterChange('location', fallback);
+        handleFilterChange('location', fallback);
+      } else {
+        showAlert({ title: 'Location Unavailable', message: 'Geolocation is not supported by your browser. Please enter your location manually.' });
+      }
+      setGeoLocating(false);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const coords = { lat: latitude, lng: longitude };
+        setUserCoords(coords);
+        const geoLabel = await reverseGeocode(latitude, longitude).catch(() => null);
+        const locationLabel = geoLabel || user?.location?.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        const nextLocationState = {
+          ...buildLocationFilterState(locationLabel, latitude, longitude),
+          locationRadius: '500',
+          sortBy: 'nearest' as SortBy,
+        };
+        setDraftFilters((prev) => ({ ...prev, ...nextLocationState }));
+        setFilters((prev) => ({ ...prev, ...nextLocationState }));
+        setGeoLocating(false);
+      },
+      () => {
+        const fallback = user?.location;
+        if (fallback) {
+          handleDraftFilterChange('location', fallback);
+          handleFilterChange('location', fallback);
+        } else {
+          showAlert({ title: 'Location Unavailable', message: 'Unable to retrieve your location. Please enter it manually or allow location access in your browser settings.' });
+        }
+        setGeoLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+  };
+
   const resetFilters = () => {
-    setFilters(DEFAULT_FILTERS);
-    setDraftFilters(DEFAULT_FILTERS);
+    const base = { ...DEFAULT_FILTERS };
+    if (categoryRoute) {
+      if (categoryRoute.isTopLevel) {
+        base.category = categoryRoute.categoryName;
+      } else {
+        base.subcategory = categoryRoute.categoryName;
+      }
+    }
+    setFilters(base);
+    setDraftFilters(base);
   };
 
   const toggleSection = (section: FilterSectionKey) => {
@@ -673,7 +1130,7 @@ export function Search() {
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'SAVE_SEARCH_ALERT');
         if (!pass) {
-          alert('Security check failed. Please try again.');
+          await showAlert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
           return;
         }
       }
@@ -699,10 +1156,10 @@ export function Search() {
       setAlertEmail(user?.email || currentUser.email || '');
       setAlertPreferences(DEFAULT_ALERT_PREFERENCES);
       setPendingSaveSearch(false);
-      alert('Saved search and alerts are active.');
+      await showAlert({ title: 'Search Saved', message: 'Saved search and alerts are active.', variant: 'info' });
     } catch (error) {
       console.error('Error saving search:', error);
-      alert(error instanceof Error ? error.message : 'Unable to save search right now.');
+      await showAlert({ title: 'Error', message: error instanceof Error ? error.message : 'Unable to save search right now.', variant: 'warning' });
     } finally {
       setSavingSearch(false);
     }
@@ -712,43 +1169,185 @@ export function Search() {
     setCompareList((prev) => (prev.includes(id) ? prev.filter((listingId) => listingId !== id) : [...prev, id]));
   };
 
-  const seoTitle = filters.q
-    ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
-    : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
+  const isCategoryPage = !!categoryRoute;
+  const categoryLabel = categoryRoute?.categoryName || '';
+  const categorySlugPath = categoryRoute ? `/categories/${categoryRoute.slug}` : '/search';
+  const visibleActiveFilterCount = countActiveFilters(filters) - (isCategoryPage ? 1 : 0);
 
-  const seoDescription =
-    'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
+  const seoTitle = isCategoryPage
+    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | Forestry Equipment Sales`
+    : filters.q
+      ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
+      : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
 
-  const itemListJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name: 'In-Stock Logging Equipment Listings',
-    itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      url: `https://www.forestryequipmentsales.com${buildListingPath(listing)}`,
-      item: {
-        '@type': 'Product',
-        name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
-        sku: listing.id,
-        brand: {
-          '@type': 'Brand',
-          name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales'
-        },
-        offers: {
-          '@type': 'Offer',
-          priceCurrency: listing.currency || 'USD',
-          price: listing.price,
-          availability: 'https://schema.org/InStock'
-        }
+  const seoDescription = isCategoryPage
+    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on Forestry Equipment Sales.`
+    : 'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
+
+  const seoRobots = isCategoryPage ? undefined : 'noindex, follow';
+  const seoCanonical = categorySlugPath;
+
+  const itemListJsonLd: Record<string, unknown> = isCategoryPage
+    ? {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'CollectionPage',
+            name: `${categoryLabel} for Sale`,
+            description: seoDescription,
+            url: buildSiteUrl(categorySlugPath),
+          },
+          {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+              { '@type': 'ListItem', position: 2, name: 'Categories', item: buildSiteUrl('/categories') },
+              { '@type': 'ListItem', position: 3, name: categoryLabel, item: buildSiteUrl(categorySlugPath) },
+            ],
+          },
+          {
+            '@type': 'ItemList',
+            name: `${categoryLabel} inventory`,
+            itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
+              '@type': 'ListItem',
+              position: index + 1,
+              url: buildSiteUrl(buildListingPath(listing)),
+              item: {
+                '@type': 'Product',
+                name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
+                sku: listing.id,
+                brand: {
+                  '@type': 'Brand',
+                  name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
+                },
+                offers: {
+                  '@type': 'Offer',
+                  priceCurrency: listing.currency || 'USD',
+                  price: listing.price,
+                  availability: 'https://schema.org/InStock',
+                },
+              },
+            })),
+          },
+        ],
       }
-    }))
-  };
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: 'In-Stock Logging Equipment Listings',
+        itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          url: buildSiteUrl(buildListingPath(listing)),
+          item: {
+            '@type': 'Product',
+            name: `${listing.year} ${listing.make || listing.manufacturer || ''} ${listing.model}`.trim(),
+            sku: listing.id,
+            brand: {
+              '@type': 'Brand',
+              name: listing.make || listing.manufacturer || listing.brand || 'Forestry Equipment Sales',
+            },
+            offers: {
+              '@type': 'Offer',
+              priceCurrency: listing.currency || 'USD',
+              price: listing.price,
+              availability: 'https://schema.org/InStock',
+            },
+          },
+        })),
+      };
 
   return (
     <div className="flex flex-col min-h-screen bg-bg">
-      <Seo title={seoTitle} description={seoDescription} canonicalPath="/search" jsonLd={itemListJsonLd} />
-      <Breadcrumbs />
+      <Seo title={seoTitle} description={seoDescription} canonicalPath={seoCanonical} robots={seoRobots} jsonLd={itemListJsonLd} />
+      <Breadcrumbs items={isCategoryPage ? [
+        { label: 'Home', path: '/' },
+        { label: 'Categories', path: '/categories' },
+        { label: categoryLabel, path: categorySlugPath },
+      ] : undefined} />
+
+      {/* Category page header */}
+      {isCategoryPage && (
+        <div className="bg-surface border-b border-line px-4 md:px-8 py-10">
+          <div className="max-w-[1600px] mx-auto">
+            <span className="label-micro text-accent mb-3 block">Equipment Category</span>
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">{categoryLabel} <span className="text-muted">For Sale</span></h2>
+            <p className="text-xs text-muted font-medium max-w-2xl">
+              Browse {filteredListings.length.toLocaleString()} new and used {categoryLabel.toLowerCase()} listings from dealers and private sellers.
+              {' '}Filter by manufacturer, price, condition, and more.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Active filter pills bar */}
+      {visibleActiveFilterCount > 0 && (
+        <div className="bg-surface border-b border-line px-4 md:px-8 py-3 overflow-x-auto">
+          <div className="max-w-[1600px] mx-auto flex items-center gap-2 whitespace-nowrap">
+            <span className="text-[9px] font-black uppercase tracking-widest text-muted mr-1 flex-shrink-0">Filters:</span>
+            {(Object.entries(filters) as [keyof SearchFilters, string][])
+              .filter(([key, value]) => {
+                if (key === 'sortBy' || key === 'locationCenterLat' || key === 'locationCenterLng' || !value) return false;
+                if (categoryRoute?.isTopLevel && key === 'category') return false;
+                if (!categoryRoute?.isTopLevel && categoryRoute && key === 'subcategory') return false;
+                return true;
+              })
+              .flatMap(([key, value]) => {
+                const labels: Record<string, string> = {
+                  q: 'Search', category: 'Category', subcategory: 'Subcategory', manufacturer: 'Manufacturer',
+                  model: 'Model', state: 'State', country: 'Country', minPrice: 'Min Price', maxPrice: 'Max Price',
+                  minYear: 'Min Year', maxYear: 'Max Year', minHours: 'Min Hours', maxHours: 'Max Hours',
+                  condition: 'Condition', location: 'Location', locationRadius: 'Radius', attachment: 'Attachment',
+                  feature: 'Feature', stockNumber: 'Stock #', serialNumber: 'Serial #',
+                };
+                const label = labels[key] || key;
+
+                // Multi-select fields: render one pill per value
+                if (MULTI_SELECT_KEYS.has(key) && value.includes('|')) {
+                  return parseMultiValue(value).map((v) => (
+                    <button
+                      key={`${key}-${v}`}
+                      onClick={() => removeMultiValue(key, v)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-line text-[10px] font-bold uppercase tracking-wider hover:border-accent transition-colors rounded-sm flex-shrink-0"
+                    >
+                      <span className="text-muted">{label}:</span>
+                      <span className="text-ink">{v}</span>
+                      <X size={10} className="text-muted hover:text-ink ml-0.5" />
+                    </button>
+                  ));
+                }
+
+                return [(
+                  <button
+                    key={key}
+                    onClick={() => {
+                      const updated = {
+                        ...filters,
+                        [key]: '',
+                        ...(key === 'location'
+                          ? { locationCenterLat: '', locationCenterLng: '' }
+                          : {}),
+                      };
+                      setFilters(updated);
+                      setDraftFilters(updated);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-bg border border-line text-[10px] font-bold uppercase tracking-wider hover:border-accent transition-colors rounded-sm flex-shrink-0"
+                  >
+                    <span className="text-muted">{label}:</span>
+                    <span className="text-ink">{value}</span>
+                    <X size={10} className="text-muted hover:text-ink ml-0.5" />
+                  </button>
+                )];
+              })}
+            <button
+              onClick={resetFilters}
+              className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline flex-shrink-0 ml-2"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-surface border-b border-line py-8 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto">
@@ -761,13 +1360,15 @@ export function Search() {
               <div className="flex items-center bg-bg border border-line rounded-sm p-0.5">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-sm ${viewMode === 'grid' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
+                  aria-label="Grid view"
+                  className={`p-2.5 rounded-sm ${viewMode === 'grid' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
                 >
                   <Grid size={14} />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-sm ${viewMode === 'list' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
+                  aria-label="List view"
+                  className={`p-2.5 rounded-sm ${viewMode === 'list' ? 'bg-ink text-bg' : 'text-muted hover:text-ink'}`}
                 >
                   <List size={14} />
                 </button>
@@ -795,6 +1396,7 @@ export function Search() {
                   <button
                     type="button"
                     onClick={() => toggleSection('equipment')}
+                    aria-expanded={openSections.equipment}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -807,14 +1409,15 @@ export function Search() {
                   </button>
                   <FilterSectionPanel open={openSections.equipment}>
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Category</span>
+                        <label htmlFor="search-category" className="label-micro">Category</label>
                         <select
+                          id="search-category"
                           value={draftFilters.category}
                           onChange={(e) => handleDraftFilterChange('category', e.target.value)}
                           className="select-industrial w-full"
                         >
                           <option value="">All Categories</option>
-                          {uniqueSorted([...taxonomyCategories, ...listingCategories]).map((category) => (
+                          {categoryOptions.map((category) => (
                             <option key={category} value={category}>
                               {category}
                             </option>
@@ -823,52 +1426,44 @@ export function Search() {
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Subcategory</span>
+                        <label htmlFor="search-subcategory" className="label-micro">Subcategory</label>
                         <select
+                          id="search-subcategory"
                           value={draftFilters.subcategory}
                           onChange={(e) => handleDraftFilterChange('subcategory', e.target.value)}
                           className="select-industrial w-full"
                         >
                           <option value="">All Subcategories</option>
-                          {uniqueSorted([...taxonomySubcategories, ...listingSubcategories]).map((subcategory) => (
-                            <option key={subcategory} value={subcategory}>
-                              {subcategory}
+                          {subcategoryOptions.map((sub) => (
+                            <option key={sub} value={sub}>
+                              {sub}
                             </option>
                           ))}
                         </select>
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Manufacturer / Brand</span>
-                        <select
-                          value={draftFilters.manufacturer}
-                          onChange={(e) => handleDraftFilterChange('manufacturer', e.target.value)}
-                          className="select-industrial w-full"
-                        >
-                          <option value="">All Manufacturers</option>
-                          {manufacturerOptions.map((manufacturer) => (
-                            <option key={manufacturer} value={manufacturer}>
-                              {manufacturer}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Model</span>
-                        <input
-                          type="text"
-                          list="model-suggestions"
-                          placeholder="e.g. 855E"
-                          className="input-industrial w-full"
-                          value={draftFilters.model}
-                          onChange={(e) => handleDraftFilterChange('model', e.target.value)}
+                        <label className="label-micro">Make</label>
+                        <MultiSelectDropdown
+                          label="Makes"
+                          placeholder="All Makes"
+                          options={manufacturerMultiOptions}
+                          selected={parseMultiValue(draftFilters.manufacturer)}
+                          onChange={(sel) => handleDraftMultiSelect('manufacturer', sel)}
+                          searchable
                         />
-                        <datalist id="model-suggestions">
-                          {modelOptions.slice(0, 150).map((model) => (
-                            <option key={model} value={model} />
-                          ))}
-                        </datalist>
+                      </div>
+
+                      <div className="flex flex-col space-y-2">
+                        <label className="label-micro">Model</label>
+                        <MultiSelectDropdown
+                          label="Models"
+                          placeholder="All Models"
+                          options={modelMultiOptions}
+                          selected={parseMultiValue(draftFilters.model)}
+                          onChange={(sel) => handleDraftMultiSelect('model', sel)}
+                          searchable
+                        />
                       </div>
                   </FilterSectionPanel>
                 </div>
@@ -877,6 +1472,7 @@ export function Search() {
                   <button
                     type="button"
                     onClick={() => toggleSection('pricing')}
+                    aria-expanded={openSections.pricing}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -890,8 +1486,9 @@ export function Search() {
                   <FilterSectionPanel open={openSections.pricing}>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Min Price</span>
+                          <label htmlFor="search-min-price" className="label-micro">Min Price</label>
                           <input
+                            id="search-min-price"
                             type="number"
                             placeholder="0"
                             className="input-industrial w-full"
@@ -900,8 +1497,9 @@ export function Search() {
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Max Price</span>
+                          <label htmlFor="search-max-price" className="label-micro">Max Price</label>
                           <input
+                            id="search-max-price"
                             type="number"
                             placeholder="No Max"
                             className="input-industrial w-full"
@@ -913,8 +1511,9 @@ export function Search() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Min Year</span>
+                          <label htmlFor="search-min-year" className="label-micro">Min Year</label>
                           <input
+                            id="search-min-year"
                             type="number"
                             placeholder="1990"
                             className="input-industrial w-full"
@@ -923,8 +1522,9 @@ export function Search() {
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Max Year</span>
+                          <label htmlFor="search-max-year" className="label-micro">Max Year</label>
                           <input
+                            id="search-max-year"
                             type="number"
                             placeholder={String(new Date().getFullYear())}
                             className="input-industrial w-full"
@@ -936,8 +1536,9 @@ export function Search() {
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Min Hours</span>
+                          <label htmlFor="search-min-hours" className="label-micro">Min Hours</label>
                           <input
+                            id="search-min-hours"
                             type="number"
                             placeholder="0"
                             className="input-industrial w-full"
@@ -946,8 +1547,9 @@ export function Search() {
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Max Hours</span>
+                          <label htmlFor="search-max-hours" className="label-micro">Max Hours</label>
                           <input
+                            id="search-max-hours"
                             type="number"
                             placeholder="20000"
                             className="input-industrial w-full"
@@ -963,6 +1565,7 @@ export function Search() {
                   <button
                     type="button"
                     onClick={() => toggleSection('specs')}
+                    aria-expanded={openSections.specs}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -975,58 +1578,46 @@ export function Search() {
                   </button>
                   <FilterSectionPanel open={openSections.specs}>
                       <div className="flex flex-col space-y-2">
-                        <span className="label-micro">Condition</span>
-                        <select
-                          value={draftFilters.condition}
-                          onChange={(e) => handleDraftFilterChange('condition', e.target.value)}
-                          className="select-industrial w-full"
-                        >
-                          <option value="">All Conditions</option>
-                          <option value="New">New</option>
-                          <option value="Used">Used</option>
-                          <option value="Rebuilt">Rebuilt</option>
-                        </select>
+                        <label className="label-micro">Condition</label>
+                        <MultiSelectDropdown
+                          label="Condition"
+                          placeholder="All Conditions"
+                          options={conditionMultiOptions}
+                          selected={parseMultiValue(draftFilters.condition)}
+                          onChange={(sel) => handleDraftMultiSelect('condition', sel)}
+                          searchable={false}
+                        />
+                      </div>
+
+                      <div className="flex flex-col space-y-2">
+                        <label className="label-micro">Attachments</label>
+                        <MultiSelectDropdown
+                          label="Attachments"
+                          placeholder="All Attachments"
+                          options={attachmentMultiOptions}
+                          selected={parseMultiValue(draftFilters.attachment)}
+                          onChange={(sel) => handleDraftMultiSelect('attachment', sel)}
+                          searchable
+                        />
+                      </div>
+
+                      <div className="flex flex-col space-y-2">
+                        <label className="label-micro">Features</label>
+                        <MultiSelectDropdown
+                          label="Features"
+                          placeholder="All Features"
+                          options={featureMultiOptions}
+                          selected={parseMultiValue(draftFilters.feature)}
+                          onChange={(sel) => handleDraftMultiSelect('feature', sel)}
+                          searchable
+                        />
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Attachment</span>
+                          <label htmlFor="search-stock-number" className="label-micro">Stock #</label>
                           <input
-                            type="text"
-                            list="attachment-suggestions"
-                            placeholder="e.g. Grapple"
-                            className="input-industrial w-full"
-                            value={draftFilters.attachment}
-                            onChange={(e) => handleDraftFilterChange('attachment', e.target.value)}
-                          />
-                          <datalist id="attachment-suggestions">
-                            {attachmentOptions.slice(0, 150).map((attachment) => (
-                              <option key={attachment} value={attachment} />
-                            ))}
-                          </datalist>
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Feature</span>
-                          <input
-                            type="text"
-                            list="feature-suggestions"
-                            placeholder="e.g. Winch"
-                            className="input-industrial w-full"
-                            value={draftFilters.feature}
-                            onChange={(e) => handleDraftFilterChange('feature', e.target.value)}
-                          />
-                          <datalist id="feature-suggestions">
-                            {featureOptions.slice(0, 150).map((feature) => (
-                              <option key={feature} value={feature} />
-                            ))}
-                          </datalist>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Stock #</span>
-                          <input
+                            id="search-stock-number"
                             type="text"
                             placeholder="Stock number"
                             className="input-industrial w-full"
@@ -1035,8 +1626,9 @@ export function Search() {
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Serial #</span>
+                          <label htmlFor="search-serial-number" className="label-micro">Serial #</label>
                           <input
+                            id="search-serial-number"
                             type="text"
                             placeholder="Serial number"
                             className="input-industrial w-full"
@@ -1048,10 +1640,11 @@ export function Search() {
                   </FilterSectionPanel>
                 </div>
 
-                <div className="border border-line bg-bg rounded-sm overflow-hidden">
+                <div className="border border-line bg-bg rounded-sm">
                   <button
                     type="button"
                     onClick={() => toggleSection('location')}
+                    aria-expanded={openSections.location}
                     className="w-full flex items-center justify-between px-4 py-3 text-left"
                   >
                     <div>
@@ -1062,65 +1655,73 @@ export function Search() {
                     </div>
                     {openSections.location ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
-                  <FilterSectionPanel open={openSections.location}>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-2 flex flex-col space-y-2">
-                          <span className="label-micro">Location / Center</span>
-                          <input
-                            type="text"
-                            placeholder="City/State or lat,lng"
-                            className="input-industrial w-full"
-                            value={draftFilters.location}
-                            onChange={(e) => handleDraftFilterChange('location', e.target.value)}
-                          />
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Radius (mi)</span>
-                          <select
-                            value={draftFilters.locationRadius}
-                            onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
-                            className="select-industrial w-full"
-                          >
-                            <option value="">Any radius</option>
-                            {LOCATION_RADIUS_OPTIONS.map((radius) => (
-                              <option key={radius} value={radius}>
-                                {radius}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                  <FilterSectionPanel open={openSections.location} allowOverflow>
+                      <div className="flex flex-col space-y-2">
+                        <label htmlFor="search-location" className="label-micro">Location</label>
+                        <GooglePlacesInput
+                          id="search-location"
+                          mode="address"
+                          showIcon={false}
+                          value={draftFilters.location}
+                          onChange={(value) => handleDraftFilterChange('location', value)}
+                          onSelect={(place) => {
+                            const nextLocation = buildLocationSelectionLabel(place);
+                            setDraftFilters((prev) => ({
+                              ...prev,
+                              ...buildLocationFilterState(nextLocation, place.latitude, place.longitude),
+                            }));
+                          }}
+                          placeholder="Address, city, state, or ZIP"
+                          className="space-y-0"
+                        />
                       </div>
+                      <div className="flex flex-col space-y-2">
+                        <label htmlFor="search-radius" className="label-micro">Radius (mi)</label>
+                        <select
+                          id="search-radius"
+                          value={draftFilters.locationRadius}
+                          onChange={(e) => handleDraftFilterChange('locationRadius', e.target.value)}
+                          className="select-industrial w-full"
+                        >
+                          <option value="">Select</option>
+                          {LOCATION_RADIUS_OPTIONS.map((radius) => (
+                            <option key={radius} value={radius}>
+                              {radius}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleUseMyLocation}
+                        disabled={geoLocating}
+                        className="btn-industrial w-full py-2 text-[10px] mt-2"
+                      >
+                        <MapPin size={12} className="mr-2" />
+                        {geoLocating ? 'Locating...' : 'Use My Location'}
+                      </button>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">State / Province</span>
-                          <select
-                            value={draftFilters.state}
-                            onChange={(e) => handleDraftFilterChange('state', e.target.value)}
-                            className="select-industrial w-full"
-                          >
-                            <option value="">All States</option>
-                            {stateOptions.map((state) => (
-                              <option key={state} value={state}>
-                                {state}
-                              </option>
-                            ))}
-                          </select>
+                          <label className="label-micro">State / Province</label>
+                          <MultiSelectDropdown
+                            label="States / Provinces"
+                            placeholder="All States"
+                            options={stateMultiOptions}
+                            selected={parseMultiValue(draftFilters.state)}
+                            onChange={(sel) => handleDraftMultiSelect('state', sel)}
+                          />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <span className="label-micro">Country</span>
-                          <select
-                            value={draftFilters.country}
-                            onChange={(e) => handleDraftFilterChange('country', e.target.value)}
-                            className="select-industrial w-full"
-                          >
-                            <option value="">All Countries</option>
-                            {countryOptions.map((country) => (
-                              <option key={country} value={country}>
-                                {country}
-                              </option>
-                            ))}
-                          </select>
+                          <label className="label-micro">Country</label>
+                          <MultiSelectDropdown
+                            label="Countries"
+                            placeholder="All Countries"
+                            options={countryMultiOptions}
+                            selected={parseMultiValue(draftFilters.country)}
+                            onChange={(sel) => handleDraftMultiSelect('country', sel)}
+                          />
                         </div>
                       </div>
                   </FilterSectionPanel>
@@ -1137,12 +1738,12 @@ export function Search() {
               </div>
             </div>
 
-            <div className="bg-[#0a0a0a] p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
+            <div className="bg-surface p-6 rounded-sm shadow-xl border border-accent/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Bell size={48} className="text-accent" />
               </div>
               <div className="relative z-10 space-y-4">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-white">Enable Alerts</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-ink">Enable Alerts</h4>
                 <p className="text-[9px] font-bold text-muted uppercase tracking-widest leading-relaxed">
                   {t('search.alertsDescription', 'Get notified the moment in-stock assets matching your filters hit the platform.')}
                 </p>
@@ -1165,12 +1766,12 @@ export function Search() {
                 className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
               />
               <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
                 className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-sm border border-line bg-bg p-8 shadow-2xl"
               >
-                <button onClick={closeAlertModal} className="absolute top-4 right-4 text-muted hover:text-ink">
+                <button onClick={closeAlertModal} aria-label="Close alert modal" className="absolute top-4 right-4 text-muted hover:text-ink">
                   <X size={20} />
                 </button>
 
@@ -1199,8 +1800,9 @@ export function Search() {
                     </div>
 
                     <div className="flex flex-col space-y-2 text-left">
-                      <span className="label-micro">Saved Search Name</span>
+                      <label htmlFor="search-alert-name" className="label-micro">Saved Search Name</label>
                       <input
+                        id="search-alert-name"
                         type="text"
                         value={savedSearchName}
                         onChange={(e) => setSavedSearchName(e.target.value)}
@@ -1210,8 +1812,9 @@ export function Search() {
                     </div>
 
                     <div className="flex flex-col space-y-2 text-left">
-                      <span className="label-micro">Email Address</span>
+                      <label htmlFor="search-alert-email" className="label-micro">Email Address</label>
                       <input
+                        id="search-alert-email"
                         type="email"
                         value={alertEmail}
                         onChange={(e) => setAlertEmail(e.target.value)}
@@ -1274,14 +1877,14 @@ export function Search() {
           )}
         </AnimatePresence>
 
-        <div className="flex-1">
-          <div className="flex justify-between items-center mb-10 border-b border-line pb-6">
-            <div className="flex items-center space-x-4">
+        <div className="flex-1" aria-live="polite" aria-busy={loading}>
+          <div className="mb-10 flex flex-col gap-4 border-b border-line pb-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
               <span className="text-sm font-black uppercase tracking-tighter">
                 {formatNumber(filteredListings.length)}{filters.category ? ` ${filters.category}` : ` ${t('search.machines', 'Machines')}`} {t('search.available', 'Available')}
               </span>
               <div className="h-4 w-px bg-line"></div>
-              <div className="flex items-center text-muted text-[10px] font-bold uppercase tracking-widest">
+              <div className="flex min-w-0 items-center text-muted text-[10px] font-bold uppercase tracking-widest">
                 <ArrowUpDown size={12} className="mr-2" />
                 {t('search.sortBy', 'Sort By')}:
                 <select
@@ -1291,28 +1894,38 @@ export function Search() {
                     handleFilterChange('sortBy', nextSort);
                     handleDraftFilterChange('sortBy', nextSort);
                   }}
-                  className="bg-transparent border-none focus:ring-0 cursor-pointer text-ink ml-1 pl-2"
+                  aria-label="Sort by"
+                  className="ml-1 min-w-0 bg-bg border-none pl-2 font-bold text-ink cursor-pointer focus:ring-0"
                 >
                   <option value="newest">{t('search.sortNewest', 'Newest')}</option>
                   <option value="price_asc">{t('search.sortPriceLowHigh', 'Price: Low to High')}</option>
                   <option value="price_desc">{t('search.sortPriceHighLow', 'Price: High to Low')}</option>
                   <option value="relevance">{t('search.sortRelevance', 'Relevance')}</option>
                   <option value="popular">{t('search.sortPopular', 'Popular')}</option>
+                  <option value="nearest">{t('search.sortNearest', 'Nearest First')}</option>
                 </select>
               </div>
+              <button
+                className={`w-full shrink-0 whitespace-nowrap rounded-sm border px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-colors sm:w-auto sm:px-2 sm:py-1 ${
+                  auctionOnly ? 'bg-accent text-white border-accent' : 'bg-transparent text-muted border-line hover:border-ink'
+                }`}
+                onClick={() => setAuctionOnly(!auctionOnly)}
+              >
+                Auction Items
+              </button>
             </div>
           </div>
 
           {inventoryError ? (
-            <div className="mb-6 rounded-sm border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent">
+            <AlertMessage severity="error" className="mb-6">
               {inventoryError}
-            </div>
+            </AlertMessage>
           ) : null}
 
           {inventoryNotice ? (
-            <div className="mb-6 rounded-sm border border-data/20 bg-data/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-data">
+            <AlertMessage severity="info" className="mb-6">
               {inventoryNotice}
-            </div>
+            </AlertMessage>
           ) : null}
 
           {loading ? (
@@ -1327,14 +1940,16 @@ export function Search() {
                 {t('search.showing', 'Showing')} <span className="text-ink">{formatNumber(displayedListings.length)}</span> {t('search.of', 'of')}{' '}
                 <span className="text-ink">{formatNumber(filteredListings.length)}</span> {t('search.listings', 'Listings')}
               </div>
-              <div className={viewMode === 'grid' ? 'industrial-grid' : 'flex flex-col space-y-1'}>
+              <div className={viewMode === 'grid' ? 'industrial-grid' : 'flex flex-col space-y-4'}>
                 {displayedListings.map((listing) => (
                   <div key={listing.id}>
                     <ListingCard
                       listing={listing}
+                      viewMode={viewMode}
                       isFavorite={favoriteIds.includes(normalizeListingId(listing.id))}
                       onToggleFavorite={handleToggleFavorite}
                       onInquire={(selected) => setSelectedListingForInquiry(selected)}
+                      onFinancing={(selected) => setFinancingListing(selected)}
                       isComparing={compareList.includes(normalizeListingId(listing.id))}
                       onToggleCompare={toggleCompare}
                     />
@@ -1344,13 +1959,13 @@ export function Search() {
               {displayCount < filteredListings.length && (
                 <div className="mt-12 flex flex-col items-center space-y-3">
                   <button
-                    onClick={() => setDisplayCount((prev) => prev + PAGE_SIZE)}
+                    onClick={() => setDisplayCount((prev) => prev + pageSize)}
                     className="btn-industrial btn-accent py-4 px-12"
                   >
                     {t('search.loadMore', 'Load More')}
                   </button>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                    {formatNumber(Math.min(displayCount + PAGE_SIZE, filteredListings.length))} {t('search.of', 'of')}{' '}
+                    {formatNumber(Math.min(displayCount + pageSize, filteredListings.length))} {t('search.of', 'of')}{' '}
                     {formatNumber(filteredListings.length)} {t('search.afterLoad', 'after load')}
                   </span>
                 </div>
@@ -1387,6 +2002,54 @@ export function Search() {
         )}
       </AnimatePresence>
 
+      {financingListing && (
+        <PaymentCalculatorModal
+          isOpen={!!financingListing}
+          onClose={() => setFinancingListing(null)}
+          equipmentName={`${financingListing.year || ''} ${financingListing.make || financingListing.manufacturer || ''} ${financingListing.model || ''}`.trim()}
+          price={typeof financingListing.price === 'number' ? financingListing.price : 0}
+          currency={financingListing.currency || 'USD'}
+          onSubmitFinancingRequest={async (payload) => {
+            if (!financingListing) return;
+            const sellerUid = financingListing.sellerUid || financingListing.sellerId || '';
+            const summary = `Payment calculator financing request for ${financingListing.title || `${financingListing.year || ''} ${financingListing.make || financingListing.manufacturer || ''} ${financingListing.model || ''}`.trim()}.`;
+            const terms = `Requested amount: ${formatPrice(payload.requestedAmount, financingListing.currency || 'USD', 0)}, term: ${payload.termMonths} months, interest: ${payload.interestRatePct.toFixed(2)}%, down payment: ${payload.downPaymentPct}%, est monthly: ${formatPrice(payload.monthlyPaymentEstimate, financingListing.currency || 'USD', 0)}.`;
+            const combinedMessage = [summary, terms, payload.message || ''].filter(Boolean).join(' ');
+            const consentAt = new Date().toISOString();
+
+            await equipmentService.createInquiry({
+              listingId: financingListing.id,
+              sellerUid,
+              sellerId: sellerUid,
+              buyerName: payload.buyerName,
+              buyerEmail: payload.buyerEmail,
+              buyerPhone: payload.buyerPhone,
+              message: combinedMessage,
+              type: 'Financing',
+              contactConsentAccepted: true,
+              contactConsentVersion: 'financing-calculator-v1',
+              contactConsentScope: 'financing_request_specific',
+              contactConsentAt: consentAt,
+            });
+
+            await equipmentService.submitFinancingRequest({
+              listingId: financingListing.id,
+              sellerUid,
+              applicantName: payload.buyerName,
+              applicantEmail: payload.buyerEmail,
+              applicantPhone: payload.buyerPhone,
+              company: payload.company,
+              requestedAmount: payload.requestedAmount,
+              message: combinedMessage,
+              contactConsentAccepted: true,
+              contactConsentVersion: 'financing-calculator-v1',
+              contactConsentScope: 'financing_request_specific',
+              contactConsentAt: consentAt,
+            });
+          }}
+        />
+      )}
+
       <AnimatePresence>
         {compareList.length > 0 && (
           <motion.div
@@ -1406,9 +2069,10 @@ export function Search() {
                     const listing = filteredListings.find((item) => item.id === id) || allListings.find((item) => item.id === id);
                     return listing ? (
                       <div key={id} className="relative w-12 h-12 rounded-sm border-2 border-ink overflow-hidden group">
-                        <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />
+                        <img src={listing.images[0]} alt={`${listing.year || ''} ${listing.make || listing.manufacturer || ''} ${listing.model || ''} - ${listing.category || 'Equipment'}`.replace(/\s+/g, ' ').trim()} className="w-full h-full object-cover" />
                         <button
                           onClick={() => toggleCompare(id)}
+                          aria-label="Remove from comparison"
                           className="absolute inset-0 bg-accent/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X size={14} />
@@ -1447,6 +2111,8 @@ export function Search() {
         }}
         message={t('search.loginPrompt', 'Sign in to bookmark equipment and track your saved listings.')}
       />
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

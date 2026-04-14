@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Menu, X, Sun, Moon,
   User, LogOut,
   Bookmark,
   ChevronDown,
-  Facebook, Linkedin, Mail, Youtube,
+  Facebook,
+  Linkedin,
+  Mail,
+  Youtube,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
@@ -13,17 +16,14 @@ import { Currency, Language } from '../types';
 import { useAuth } from './AuthContext';
 import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { userService } from '../services/userService';
-import { appendReturnToParam, canAccessDealerOs, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
-import { isPrivilegedAdminEmail } from '../utils/privilegedAdmin';
-
-const ADMIN_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
-const BRAND_ASSET_VERSION = '20260327c';
-const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo.svg?v=${BRAND_ASSET_VERSION}`;
+import { appendReturnToParam, canAccessDealerOs, getDefaultAccountWorkspacePath, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
+const BRAND_ASSET_VERSION = '20260407a';
+const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO = `/Logo-Transparent.png?v=${BRAND_ASSET_VERSION}`;
-const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Favicon_512x512.png?v=${BRAND_ASSET_VERSION}`;
+const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -40,6 +40,42 @@ const CURRENCY_SYMBOLS: Record<Currency, string> = {
   HUF: 'HUF',
 };
 
+const LANGUAGE_OPTIONS: ReadonlyArray<{ code: Language; label: string; flag: string }> = [
+  { code: 'EN', label: 'English (Default)', flag: '\u{1F1FA}\u{1F1F8}' },
+  { code: 'FR', label: 'Francais', flag: '\u{1F1EB}\u{1F1F7}' },
+  { code: 'DE', label: 'Deutsch', flag: '\u{1F1E9}\u{1F1EA}' },
+  { code: 'ES', label: 'Espanol', flag: '\u{1F1EA}\u{1F1F8}' },
+  { code: 'SV', label: 'Svenska', flag: '\u{1F1F8}\u{1F1EA}' },
+  { code: 'FI', label: 'Suomi', flag: '\u{1F1EB}\u{1F1EE}' },
+  { code: 'PL', label: 'Polski', flag: '\u{1F1F5}\u{1F1F1}' },
+  { code: 'IT', label: 'Italiano', flag: '\u{1F1EE}\u{1F1F9}' },
+  { code: 'CS', label: 'Cestina', flag: '\u{1F1E8}\u{1F1FF}' },
+  { code: 'RO', label: 'Romana', flag: '\u{1F1F7}\u{1F1F4}' },
+  { code: 'LV', label: 'Latviesu', flag: '\u{1F1F1}\u{1F1FB}' },
+  { code: 'PT', label: 'Portugues', flag: '\u{1F1F5}\u{1F1F9}' },
+  { code: 'SK', label: 'Slovencina', flag: '\u{1F1F8}\u{1F1F0}' },
+  { code: 'ET', label: 'Eesti', flag: '\u{1F1EA}\u{1F1EA}' },
+  { code: 'NO', label: 'Norsk', flag: '\u{1F1F3}\u{1F1F4}' },
+  { code: 'DA', label: 'Dansk', flag: '\u{1F1E9}\u{1F1F0}' },
+  { code: 'HU', label: 'Magyar', flag: '\u{1F1ED}\u{1F1FA}' },
+  { code: 'LT', label: 'Lietuviu', flag: '\u{1F1F1}\u{1F1F9}' },
+];
+
+const CURRENCY_OPTIONS: ReadonlyArray<{ key: string; code: Currency; label: string }> = [
+  { key: 'USD', code: 'USD', label: 'US Dollar' },
+  { key: 'CAD', code: 'CAD', label: 'Canadian Dollar' },
+  { key: 'EUR', code: 'EUR', label: 'Euro' },
+  { key: 'GBP', code: 'GBP', label: 'British Pound' },
+  { key: 'SEK', code: 'SEK', label: 'Swedish Krona' },
+  { key: 'NOK', code: 'NOK', label: 'Norwegian Krone' },
+  { key: 'DKK', code: 'DKK', label: 'Danish Krone' },
+  { key: 'CHF', code: 'CHF', label: 'Swiss Franc' },
+  { key: 'PLN', code: 'PLN', label: 'Polish Zloty' },
+  { key: 'CZK', code: 'CZK', label: 'Czech Koruna' },
+  { key: 'RON', code: 'RON', label: 'Romanian Leu' },
+  { key: 'HUF', code: 'HUF', label: 'Hungarian Forint' },
+];
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, currency, setCurrency, t } = useLocale();
@@ -47,6 +83,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const headerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
+  const footerLogo = theme === 'dark' ? DARK_HEADER_LOGO : LIGHT_HEADER_LOGO;
   const headerLogoAlt = 'Forestry Equipment Sales';
   const [headerLogoSrc, setHeaderLogoSrc] = useState(headerLogo);
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
@@ -57,52 +94,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const hasAdminAccess = !!(
-    user && (
-      (user.role && ADMIN_ROLES.includes(user.role)) ||
-      isPrivilegedAdminEmail(user.email)
-    )
-  );
+  const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
+  const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
+  const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
-  const accountRoute = hasAdminAccess ? '/admin' : hasDealerOsAccess ? '/dealer-os' : '/profile';
   const footerSocialLinks = [
     { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales' },
+    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline' },
     { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales' },
     { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com' },
-    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline' },
   ];
-
-  useEffect(() => {
-    const pageTitles: Record<string, string> = {
-      '/': 'Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales',
-      '/search': `Forestry Equipment Sales | ${t('layout.inventory', 'Inventory')}`,
-      '/sell': `Forestry Equipment Sales | ${t('layout.sellEquipment', 'Sell Equipment')}`,
-      '/categories': `Forestry Equipment Sales | ${t('layout.categories', 'Categories')}`,
-      '/auctions': `Forestry Equipment Sales | ${t('layout.auctions', 'Auctions')}`,
-      '/financing': `Forestry Equipment Sales | ${t('layout.financing', 'Financing')}`,
-      '/logistics': 'Forestry Equipment Sales | Logistics',
-      '/dealers': 'Forestry Equipment Sales | Dealer Network',
-      '/blog': `Forestry Equipment Sales | ${t('layout.equipmentNews', 'Equipment News')}`,
-      '/ad-programs': 'Ad Programs | Forestry Equipment Sales',
-      '/profile': 'Profile | Forestry Equipment Sales',
-      '/admin': 'Admin Dashboard | Forestry Equipment Sales',
-      '/bookmarks': 'Saved Equipment | Forestry Equipment Sales',
-      '/contact': 'Forestry Equipment Sales | Contact Forestry Equipment Sales',
-      '/about': 'About Us | Forestry Equipment Sales',
-      '/about-us': 'About Us | Forestry Equipment Sales',
-      '/our-team': 'Our Team | Forestry Equipment Sales',
-      '/about/our-team': 'Our Team | Forestry Equipment Sales',
-      '/faq': 'FAQ | Forestry Equipment Sales',
-      '/privacy': 'Privacy Policy | Forestry Equipment Sales',
-      '/terms': 'Terms Of Use | Forestry Equipment Sales',
-      '/cookies': 'Cookie Policy | Forestry Equipment Sales',
-      '/dmca': 'DMCA Policy | Forestry Equipment Sales',
-    };
-
-    if (pageTitles[location.pathname]) {
-      document.title = pageTitles[location.pathname];
-    }
-  }, [location.pathname, t]);
 
   useEffect(() => {
     setIsMenuOpen(false);
@@ -118,41 +119,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
     navigate(normalized ? `/search?q=${encodeURIComponent(normalized)}` : '/search');
   };
 
-  const LANGUAGE_OPTIONS: ReadonlyArray<{ code: Language; label: string; flag: string }> = [
-    { code: 'EN', label: 'English (Default)', flag: '🇺🇸' },
-    { code: 'FR', label: 'Francais', flag: '🇫🇷' },
-    { code: 'DE', label: 'Deutsch', flag: '🇩🇪' },
-    { code: 'ES', label: 'Espanol', flag: '🇪🇸' },
-    { code: 'SV', label: 'Svenska', flag: '🇸🇪' },
-    { code: 'FI', label: 'Suomi', flag: '🇫🇮' },
-    { code: 'PL', label: 'Polski', flag: '🇵🇱' },
-    { code: 'IT', label: 'Italiano', flag: '🇮🇹' },
-    { code: 'CS', label: 'Cestina', flag: '🇨🇿' },
-    { code: 'RO', label: 'Romana', flag: '🇷🇴' },
-    { code: 'LV', label: 'Latviesu', flag: '🇱🇻' },
-    { code: 'PT', label: 'Portugues', flag: '🇵🇹' },
-    { code: 'SK', label: 'Slovencina', flag: '🇸🇰' },
-    { code: 'ET', label: 'Eesti', flag: '🇪🇪' },
-    { code: 'NO', label: 'Norsk', flag: '🇳🇴' },
-    { code: 'DA', label: 'Dansk', flag: '🇩🇰' },
-    { code: 'HU', label: 'Magyar', flag: '🇭🇺' },
-    { code: 'LT', label: 'Lietuviu', flag: '🇱🇹' },
-  ];
+  const quickSearchTapStyle: React.CSSProperties = {
+    WebkitTapHighlightColor: 'transparent',
+  };
 
-  const CURRENCY_OPTIONS: ReadonlyArray<{ key: string; code: Currency; label: string }> = [
-    { key: 'USD', code: 'USD', label: 'US Dollar' },
-    { key: 'CAD', code: 'CAD', label: 'Canadian Dollar' },
-    { key: 'EUR', code: 'EUR', label: 'Euro' },
-    { key: 'GBP', code: 'GBP', label: 'British Pound' },
-    { key: 'SEK', code: 'SEK', label: 'Swedish Krona' },
-    { key: 'NOK', code: 'NOK', label: 'Norwegian Krone' },
-    { key: 'DKK', code: 'DKK', label: 'Danish Krone' },
-    { key: 'CHF', code: 'CHF', label: 'Swiss Franc' },
-    { key: 'PLN', code: 'PLN', label: 'Polish Zloty' },
-    { key: 'CZK', code: 'CZK', label: 'Czech Koruna' },
-    { key: 'RON', code: 'RON', label: 'Romanian Leu' },
-    { key: 'HUF', code: 'HUF', label: 'Hungarian Forint' },
-  ];
+  const renderQuickSearchBar = () => (
+    <div className="py-2 px-4 md:px-8 bg-bg border-b border-line" style={quickSearchTapStyle}>
+      <div className="max-w-[900px] mx-auto flex items-center">
+        <form
+          onSubmit={handleSearch}
+          className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-none focus-within:border-line focus-within:outline-none focus-within:ring-0"
+          style={{
+            ...quickSearchTapStyle,
+            boxShadow: 'none',
+          }}
+        >
+          <input
+            type="text"
+            aria-label="Search equipment"
+            placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
+            className="bg-transparent border-none font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
+            style={{
+              ...quickSearchTapStyle,
+              fontSize: '16px',
+              boxShadow: 'none',
+            }}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button
+            type="submit"
+            aria-label="Search"
+            className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
+            style={quickSearchTapStyle}
+          >
+            <Search size={16} />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 
   const [selectedCurrencyKey, setSelectedCurrencyKey] = useState<string>(() => {
     const initial = CURRENCY_OPTIONS.find((option) => option.code === currency) || CURRENCY_OPTIONS[0];
@@ -162,7 +168,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const selectedCurrency = CURRENCY_OPTIONS.find((c) => c.key === selectedCurrencyKey) || CURRENCY_OPTIONS[0];
   const selectedCurrencySymbol = CURRENCY_SYMBOLS[selectedCurrency.code] || selectedCurrency.code;
   const hydratedProfileUidRef = useRef<string | null>(null);
-  const selectorButtonClass = 'flex items-center gap-2 px-2 py-1 rounded hover:bg-line/50 transition-colors text-muted text-[9px] font-bold';
+  const selectorButtonClass = 'flex items-center gap-2 min-h-[44px] min-w-[44px] p-2 rounded hover:bg-line/50 transition-colors text-muted text-[9px] font-bold';
   const selectorMenuClass = 'absolute top-full left-0 mt-1 bg-surface border border-line rounded shadow-lg z-50';
 
   useEffect(() => {
@@ -191,9 +197,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [currDropdownOpen, setCurrDropdownOpen] = useState(false);
+  const mobileMenuTrapRef = useFocusTrap(isMenuOpen);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsMenuOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isMenuOpen]);
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:px-6 focus:py-3 focus:bg-accent focus:text-white focus:text-sm focus:font-bold focus:uppercase focus:tracking-wider">
+        Skip to main content
+      </a>
       {/* Top Bar */}
       <div className="bg-surface border-b border-line py-2.5 px-3 md:px-8 flex justify-between items-center gap-2 text-[11px] font-medium uppercase tracking-wider">
         <div className="flex items-center gap-1 sm:gap-4 min-w-0">
@@ -205,6 +222,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }}
               className={selectorButtonClass}
               aria-label={t('layout.languageLabel', 'Language')}
+              aria-expanded={langDropdownOpen}
+              aria-haspopup="listbox"
               title={selectedLanguage.label}
             >
               <span className="sm:hidden">{selectedLanguage.code}</span>
@@ -216,10 +235,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ChevronDown size={12} className="shrink-0" />
             </button>
             {langDropdownOpen && (
-              <div className={`${selectorMenuClass} min-w-[180px]`}>
+              <div role="listbox" aria-label={t('layout.languageLabel', 'Language')} className={`${selectorMenuClass} min-w-[180px]`}>
                 {LANGUAGE_OPTIONS.map((lang) => (
                   <button
                     key={lang.code}
+                    role="option"
+                    aria-selected={language === lang.code}
                     onClick={() => {
                       setLanguage(lang.code);
                       if (user?.uid) {
@@ -250,6 +271,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }}
               className={selectorButtonClass}
               aria-label={t('layout.currencyLabel', 'Currency')}
+              aria-expanded={currDropdownOpen}
+              aria-haspopup="listbox"
               title={selectedCurrency.label}
             >
               <span className="sm:hidden">{selectedCurrencySymbol}</span>
@@ -260,10 +283,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ChevronDown size={12} className="shrink-0" />
             </button>
             {currDropdownOpen && (
-              <div className={`${selectorMenuClass} min-w-[150px] max-h-72 overflow-y-auto`}>
+              <div role="listbox" aria-label={t('layout.currencyLabel', 'Currency')} className={`${selectorMenuClass} min-w-[150px] max-h-72 overflow-y-auto`}>
                 {CURRENCY_OPTIONS.map((curr) => (
                   <button
                     key={curr.key}
+                    role="option"
+                    aria-selected={selectedCurrencyKey === curr.key}
                     onClick={() => {
                       setSelectedCurrencyKey(curr.key);
                       setCurrency(curr.code);
@@ -297,7 +322,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {theme === 'light' ? <Moon size={14} className="sm:w-3 sm:h-3" /> : <Sun size={14} className="sm:w-3 sm:h-3" />}
             <span className="hidden sm:inline">{theme === 'light' ? t('layout.duskMode', 'Dusk Mode') : t('layout.lightMode', 'Light Mode')}</span>
           </button>
-          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-accent font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
+          <Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="text-accent-link font-bold hover:underline">{t('layout.listEquipment', 'List Equipment')}</Link>
           {hasDealerOsAccess ? <Link to="/dealer-os" className="text-ink font-bold hover:underline">DealerOS</Link> : null}
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-4">
@@ -320,6 +345,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <img
             src={headerLogoSrc}
             alt={headerLogoAlt}
+            width={200}
+            height={64}
             className="h-14 md:h-16 w-auto object-contain"
             onError={() => {
               setHeaderLogoSrc((current) => current === HEADER_LOGO_FALLBACK ? current : HEADER_LOGO_FALLBACK);
@@ -331,22 +358,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <nav className="hidden lg:flex items-center space-x-8 text-xs font-bold uppercase tracking-widest">
           <Link to="/search" className="hover:text-accent transition-colors">{t('layout.inventory', 'Inventory')}</Link>
           <Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link>
-          <Link to="/ad-programs" className="hover:text-accent transition-colors text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link>
+          <Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
           <Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.auctions', 'Auctions')}</Link>
           <Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financing', 'Financing')}</Link>
+          <Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealers')}</Link>
           <Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link>
         </nav>
         <div className="flex items-center space-x-4">
-          <Link to="/bookmarks" className="p-2 text-muted hover:text-ink relative" aria-label="Bookmarks">
+          <Link to="/bookmarks" className="p-2 text-muted hover:text-ink relative focus:ring-2 focus:ring-accent focus:ring-offset-2" aria-label="Bookmarks">
             <Bookmark size={20} />
             {isAuthenticated && (user?.favorites?.length ?? 0) > 0 && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-accent rounded-full"></span>
             )}
           </Link>
           
-          <button 
-            className="lg:hidden p-2 text-ink"
+          <button
+            className="lg:hidden p-2 text-ink focus:ring-2 focus:ring-accent focus:ring-offset-2"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isMenuOpen}
           >
             {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -354,40 +384,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Persistent Quick Search Bar */}
-      <div className="sticky top-0 z-40 bg-bg border-b border-line py-2 px-4 md:px-8 shadow-sm">
-        <div className="max-w-[900px] mx-auto flex items-center">
-          <form onSubmit={handleSearch} className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-[border-color,box-shadow] focus-within:border-accent/50 focus-within:shadow-[0_0_0_3px_rgba(22,163,74,0.18)] focus-within:outline-none focus-within:ring-0">
-            <input
-              type="text"
-              placeholder={t('layout.quickSearchPlaceholder', 'Quick search equipment…')}
-              className="bg-transparent border-none text-xs font-medium focus:ring-0 focus:outline-none w-full px-4 py-2.5 placeholder:text-muted/50 text-ink appearance-none"
-              style={{ fontSize: '16px' }}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <button
-              type="submit"
-              aria-label="Search"
-              className="p-2.5 text-muted hover:text-accent transition-colors flex-shrink-0 outline-none ring-0 focus:outline-none focus:ring-0"
-            >
-              <Search size={16} />
-            </button>
-          </form>
-        </div>
-      </div>
+      {renderQuickSearchBar()}
 
       {/* Mobile Menu */}
       <AnimatePresence>
         {isMenuOpen && (
-          <motion.div 
+          <motion.div
+            ref={mobileMenuTrapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
             initial={{ opacity: 0, x: '100%' }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: '100%' }}
              className="fixed inset-0 bg-bg z-[100] overflow-y-auto flex flex-col shadow-2xl"
           >
-            <button 
+            <button
               className="absolute top-6 right-6 p-3 bg-surface border border-line rounded-sm text-ink hover:bg-ink hover:text-bg transition-colors"
               onClick={() => setIsMenuOpen(false)}
+              aria-label="Close menu"
             >
               <X size={24} />
             </button>
@@ -395,11 +410,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
              <div className="flex flex-col space-y-8 text-2xl font-black tracking-tighter uppercase pt-20 px-6">
               <Link to="/search" onClick={() => setIsMenuOpen(false)}>{t('layout.inventory', 'Inventory')}</Link>
               <Link to="/categories" onClick={() => setIsMenuOpen(false)}>{t('layout.categories', 'Categories')}</Link>
-              <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link>
+              <Link to="/manufacturers" onClick={() => setIsMenuOpen(false)}>Manufacturers</Link>
+              <Link to="/states" onClick={() => setIsMenuOpen(false)}>Browse by State</Link>
+              <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
               <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
+              <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
-              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent">{t('layout.listEquipment', 'List Equipment')}</Link>
+              <Link to={listEquipmentHref} state={listEquipmentState} onClick={() => { handleListEquipmentClick(); setIsMenuOpen(false); }} className="text-accent-link">{t('layout.listEquipment', 'List Equipment')}</Link>
             </div>
             
              <div className="mt-8 pb-12 px-6 flex flex-col space-y-6">
@@ -459,7 +477,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
               <div className="flex items-center justify-between border-t border-line pt-6">
                 <span className="label-micro">{t('layout.theme', 'Theme')}</span>
-                <button onClick={toggleTheme} className="p-2 bg-surface rounded-full">
+                <button onClick={toggleTheme} className="p-2 bg-surface rounded-full" aria-label={theme === 'light' ? 'Switch to dusk mode' : 'Switch to light mode'}>
                   {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                 </button>
               </div>
@@ -470,7 +488,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         {children}
       </main>
 
@@ -483,8 +501,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="lg:col-span-2 flex flex-col space-y-8">
               <Link to="/" className="flex items-center">
                 <img
-                  src={FOOTER_LOGO}
+                  src={footerLogo}
                   alt="Forestry Equipment Sales"
+                  width={180}
+                  height={48}
                   className="h-12 w-auto max-w-[180px] object-contain"
                   onError={(event) => {
                     const target = event.currentTarget;
@@ -503,6 +523,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     href={url}
                     aria-label={label}
                     title={label}
+                    target={url.startsWith('http') ? '_blank' : undefined}
+                    rel={url.startsWith('http') ? 'noopener noreferrer' : undefined}
                     className="w-10 h-10 border border-line flex items-center justify-center hover:bg-ink hover:text-bg transition-all group"
                   >
                     <Icon size={18} className="group-hover:scale-110 transition-transform" />
@@ -516,6 +538,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
                 <li><Link to="/search" className="hover:text-accent transition-colors">{t('layout.browseInventory', 'Browse Inventory')}</Link></li>
                 <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
+                <li><Link to="/manufacturers" className="hover:text-accent transition-colors">Manufacturers</Link></li>
+                <li><Link to="/states" className="hover:text-accent transition-colors">Browse by State</Link></li>
                 <li><Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.liveAuctions', 'Live Auctions')}</Link></li>
                 <li><Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>
@@ -525,7 +549,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="text-[11px] font-black uppercase tracking-[0.2em] mb-8 text-ink">{t('layout.partnership', 'Partnership')}</h4>
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
-                <li><Link to="/ad-programs" className="hover:text-accent transition-colors text-accent">{t('layout.adPrograms', 'Ad Programs')}</Link></li>
+                <li><Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link></li>
                 <li><Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealer Network')}</Link></li>
                 <li><Link to="/logistics" className="hover:text-accent transition-colors">{t('layout.globalLogistics', 'Global Logistics')}</Link></li>
                 <li><Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link></li>
@@ -549,9 +573,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <span className="label-micro block mb-2">{t('layout.customerSupport', 'Customer Support')}</span>
                   <a
                     href="tel:+12187200933"
-                    className="text-sm font-black tracking-tight hover:text-accent transition-colors"
+                    className="text-sm font-black tracking-tight hover:text-accent transition-colors block"
                   >
                     (218) 720-0933
+                  </a>
+                  <a
+                    href="mailto:support@forestryequipmentsales.com"
+                    className="mt-2 block break-all text-xs font-semibold normal-case tracking-normal text-muted transition-colors hover:text-accent"
+                  >
+                    support@forestryequipmentsales.com
                   </a>
                 </div>
                 <div className="bg-bg border border-line p-5 rounded-sm">
@@ -569,13 +599,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center space-x-4">
               <span>{t('layout.siteCopyright', '© 2026 FORESTRY EQUIPMENT SALES | LOGGING EQUIPMENT MARKETPLACE.')}</span>
               <span className="hidden md:inline text-line">|</span>
-              <span className="text-ink">EST. 2002</span>
+              <span className="text-ink">FORESTRY EQUIPMENT SALES</span>
             </div>
             <div className="flex flex-wrap gap-x-8 gap-y-2 mt-6 md:mt-0">
-              <Link to="/privacy" className="hover:text-ink transition-colors">{t('layout.privacyPolicy', 'Privacy Policy')}</Link>
-              <Link to="/terms" className="hover:text-ink transition-colors">{t('layout.termsOfService', 'Terms of Service')}</Link>
-              <Link to="/cookies" className="hover:text-ink transition-colors">{t('layout.cookiePolicy', 'Cookie Policy')}</Link>
-              <Link to="/dmca" className="hover:text-ink transition-colors">{t('layout.dmcaPolicy', 'DMCA Policy')}</Link>
+              <Link to="/privacy" className="hover:text-ink transition-colors inline-flex items-center min-h-[44px]">{t('layout.privacyPolicy', 'Privacy Policy')}</Link>
+              <Link to="/terms" className="hover:text-ink transition-colors inline-flex items-center min-h-[44px]">{t('layout.termsOfService', 'Terms of Service')}</Link>
+              <Link to="/cookies" className="hover:text-ink transition-colors inline-flex items-center min-h-[44px]">{t('layout.cookiePolicy', 'Cookie Policy')}</Link>
+              <Link to="/dmca" className="hover:text-ink transition-colors inline-flex items-center min-h-[44px]">{t('layout.dmcaPolicy', 'DMCA Policy')}</Link>
             </div>
           </div>
         </div>
@@ -583,3 +613,4 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

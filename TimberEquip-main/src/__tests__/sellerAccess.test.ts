@@ -6,6 +6,7 @@ import {
   hasSellerWorkspaceAccess,
   canUserPostListings,
   canAccessDealerOs,
+  getDefaultAccountWorkspacePath,
   getFeaturedListingCap,
   getManagedListingCap,
   getListEquipmentPath,
@@ -16,12 +17,13 @@ import {
   clearRememberedSellerReturnTo,
 } from '../utils/sellerAccess';
 import type { UserProfile } from '../types';
+import { UNLIMITED_LISTING_CAP } from '../utils/listingCaps';
 
 function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
   return {
     uid: 'test-uid',
     email: 'test@example.com',
-    role: 'buyer',
+    role: 'member',
     displayName: 'Test User',
     ...overrides,
   } as UserProfile;
@@ -48,8 +50,8 @@ describe('hasAdminPublishingAccess', () => {
     expect(hasAdminPublishingAccess(makeUser({ role: 'dealer' }))).toBe(false);
   });
 
-  it('returns false for buyer', () => {
-    expect(hasAdminPublishingAccess(makeUser({ role: 'buyer' }))).toBe(false);
+  it('returns false for member', () => {
+    expect(hasAdminPublishingAccess(makeUser({ role: 'member' }))).toBe(false);
   });
 
   it('returns false for null', () => {
@@ -114,8 +116,8 @@ describe('hasActiveSellerSubscription', () => {
 });
 
 describe('hasSellerWorkspaceAccess', () => {
-  it('returns true for admin', () => {
-    expect(hasSellerWorkspaceAccess(makeUser({ role: 'super_admin' }))).toBe(true);
+  it('returns false for admin operator accounts', () => {
+    expect(hasSellerWorkspaceAccess(makeUser({ role: 'super_admin' }))).toBe(false);
   });
 
   it('returns true for active role-backed dealer access when entitlement is lagging', () => {
@@ -128,6 +130,7 @@ describe('hasSellerWorkspaceAccess', () => {
         effectiveSellerCapability: 'none',
         sellerAccessMode: 'none',
         sellerWorkspaceAccess: false,
+        adminWorkspaceAccess: false,
         canPostListings: false,
         dealerOsAccess: false,
         publicListingVisibility: 'hidden_due_to_billing',
@@ -148,21 +151,21 @@ describe('hasSellerWorkspaceAccess', () => {
     }))).toBe(true);
   });
 
-  it('returns false for plain buyer', () => {
-    expect(hasSellerWorkspaceAccess(makeUser({ role: 'buyer' }))).toBe(false);
+  it('returns false for plain member', () => {
+    expect(hasSellerWorkspaceAccess(makeUser({ role: 'member' }))).toBe(false);
   });
 });
 
 describe('canUserPostListings', () => {
   it('delegates to hasSellerWorkspaceAccess', () => {
-    expect(canUserPostListings(makeUser({ role: 'super_admin' }))).toBe(true);
-    expect(canUserPostListings(makeUser({ role: 'buyer' }))).toBe(false);
+    expect(canUserPostListings(makeUser({ role: 'super_admin' }))).toBe(false);
+    expect(canUserPostListings(makeUser({ role: 'member' }))).toBe(false);
   });
 });
 
 describe('canAccessDealerOs', () => {
-  it('returns true for admin', () => {
-    expect(canAccessDealerOs(makeUser({ role: 'admin' }))).toBe(true);
+  it('returns false for admin operators', () => {
+    expect(canAccessDealerOs(makeUser({ role: 'admin' }))).toBe(false);
   });
 
   it('returns false for dealer with active status but no subscription', () => {
@@ -175,6 +178,7 @@ describe('canAccessDealerOs', () => {
         effectiveSellerCapability: 'none',
         sellerAccessMode: 'none',
         sellerWorkspaceAccess: false,
+        adminWorkspaceAccess: false,
         canPostListings: false,
         dealerOsAccess: false,
         publicListingVisibility: 'hidden_due_to_billing',
@@ -218,6 +222,27 @@ describe('canAccessDealerOs', () => {
   });
 });
 
+describe('getDefaultAccountWorkspacePath', () => {
+  it('routes admin roles to the admin workspace', () => {
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'admin' }))).toBe('/admin');
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'content_manager' }))).toBe('/admin');
+  });
+
+  it('routes active dealers to DealerOS', () => {
+    expect(getDefaultAccountWorkspacePath(makeUser({
+      role: 'dealer',
+      accountStatus: 'active',
+      accountAccessSource: 'subscription',
+      activeSubscriptionPlanId: 'dealer',
+      subscriptionStatus: 'active',
+    }))).toBe('/dealer-os');
+  });
+
+  it('falls back to the profile workspace for non-seller members', () => {
+    expect(getDefaultAccountWorkspacePath(makeUser({ role: 'member' }))).toBe('/profile');
+  });
+});
+
 describe('getFeaturedListingCap', () => {
   it('returns 3 for dealer', () => {
     expect(getFeaturedListingCap(makeUser({ role: 'dealer' }))).toBe(3);
@@ -227,12 +252,12 @@ describe('getFeaturedListingCap', () => {
     expect(getFeaturedListingCap(makeUser({ role: 'pro_dealer' }))).toBe(6);
   });
 
-  it('returns 1 for individual_seller', () => {
-    expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(1);
+  it('returns 0 for individual_seller (purchasable at $20/each)', () => {
+    expect(getFeaturedListingCap(makeUser({ role: 'individual_seller' }))).toBe(0);
   });
 
-  it('returns 0 for buyer', () => {
-    expect(getFeaturedListingCap(makeUser({ role: 'buyer' }))).toBe(0);
+  it('returns 0 for member', () => {
+    expect(getFeaturedListingCap(makeUser({ role: 'member' }))).toBe(0);
   });
 });
 
@@ -246,7 +271,7 @@ describe('getManagedListingCap', () => {
   });
 
   it('returns pro dealer fallback cap', () => {
-    expect(getManagedListingCap(makeUser({ role: 'pro_dealer', listingCap: 0 }))).toBe(150);
+    expect(getManagedListingCap(makeUser({ role: 'pro_dealer', listingCap: 0 }))).toBe(UNLIMITED_LISTING_CAP);
   });
 
   it('returns null for admin unlimited access', () => {
@@ -260,11 +285,11 @@ describe('getListEquipmentPath', () => {
   });
 
   it('returns /ad-programs for user without posting access', () => {
-    expect(getListEquipmentPath(makeUser({ role: 'buyer' }), true)).toBe('/ad-programs?intent=list-equipment');
+    expect(getListEquipmentPath(makeUser({ role: 'member' }), true)).toBe('/ad-programs?intent=list-equipment');
   });
 
-  it('returns /sell for user with posting access', () => {
-    expect(getListEquipmentPath(makeUser({ role: 'super_admin' }), true)).toBe('/sell');
+  it('routes admin operators into admin inventory', () => {
+    expect(getListEquipmentPath(makeUser({ role: 'super_admin' }), true)).toBe('/admin?tab=listings');
   });
 });
 

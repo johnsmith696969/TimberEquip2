@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import { createServer as createHttpServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
@@ -7,6 +8,7 @@ import crypto from 'crypto';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
@@ -14,9 +16,43 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import multer from 'multer';
 import { captureServerException, initializeServerSentry } from './sentry.server.js';
+import { setupAuctionSockets } from './src/server/auctionSocketServer.js';
+import { registerPublicRoutes } from './src/server/routes/public.js';
+import { registerUserRoutes } from './src/server/routes/user.js';
+import { registerAdminRoutes } from './src/server/routes/admin.js';
+import { registerBillingRoutes } from './src/server/routes/billing.js';
+import { registerAuctionRoutes } from './src/server/routes/auctions.js';
+import { registerManagedRolesRoutes } from './src/server/routes/managed-roles.js';
+import type { Server as SocketIOServer } from 'socket.io';
+import type { AuctionTimerManager } from './src/server/auctionTimerManager.js';
+// Validation schemas are now imported by individual route modules
 
 dotenv.config();
 initializeServerSentry();
+
+// ── Standardized API Response Helpers ─────────────────────────────────────────
+// All new endpoints should use these helpers for consistent response envelopes.
+// Existing endpoints will be migrated incrementally.
+function apiSuccess<T>(res: express.Response, data: T, meta?: Record<string, unknown>) {
+  return res.json({ success: true, data, ...(meta ? { meta } : {}) });
+}
+
+function apiError(res: express.Response, status: number, code: string, message: string) {
+  return res.status(status).json({ success: false, error: { code, message } });
+}
+
+function apiPaginated<T>(res: express.Response, data: T[], pagination: { total: number; page: number; limit: number }) {
+  return res.json({ success: true, data, meta: { pagination } });
+}
+
+// Startup env var validation — warn on missing recommended vars
+{
+  const recommended = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RECAPTCHA_API_KEY'];
+  const missing = recommended.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    console.warn(`[startup] Missing recommended environment variables: ${missing.join(', ')}`);
+  }
+}
 
 process.on('uncaughtException', (error) => {
   captureServerException(error, {
@@ -44,7 +80,7 @@ try {
   };
   sharedPublicPagesProxy = typeof publicPagesModule.handlePublicPagesRequest === 'function' ? publicPagesModule.handlePublicPagesRequest : null;
 } catch (error) {
-  console.warn('Unable to load hybrid public pages handler for local routes.', error);
+  console.warn('Unable to load public pages handler for local routes.', error);
 }
 
 try {
@@ -69,6 +105,60 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const auth = admin.auth();
 
+// ── Email Infrastructure (SendGrid via functions/) ──────────────────────────
+let emailTemplates: Record<string, (...args: any[]) => { subject: string; html: string }> | null = null;
+let sgMailModule: { setApiKey: (key: string) => void; send: (msg: Record<string, unknown>) => Promise<unknown> } | null = null;
+let emailConfigured = false;
+
+try {
+  const emailTemplatesModule = require(path.join(__dirname, 'functions', 'email-templates', 'index.js')) as {
+    templates: Record<string, (...args: any[]) => { subject: string; html: string }>;
+  };
+  emailTemplates = emailTemplatesModule.templates || null;
+} catch (emailTemplateError) {
+  console.warn('[email] Unable to load email templates from functions/email-templates:', emailTemplateError);
+}
+
+try {
+  sgMailModule = require(path.join(__dirname, 'functions', 'node_modules', '@sendgrid', 'mail')) as typeof sgMailModule;
+  const sendgridApiKey = String(process.env.SENDGRID_API_KEY || '').trim();
+  if (sgMailModule && sendgridApiKey) {
+    sgMailModule.setApiKey(sendgridApiKey);
+    emailConfigured = true;
+  } else {
+    console.warn('[email] SENDGRID_API_KEY not set; email notifications will be skipped.');
+  }
+} catch (sgError) {
+  console.warn('[email] Unable to load @sendgrid/mail from functions/node_modules:', sgError);
+}
+
+const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@forestryequipmentsales.com').trim();
+const APP_BASE_URL = String(process.env.APP_URL || 'https://timberequip.com').replace(/\/+$/, '');
+
+async function sendServerEmail({ to, cc, subject, html }: { to: string; cc?: string | string[]; subject: string; html: string }): Promise<void> {
+  if (!emailConfigured || !sgMailModule) {
+    console.warn(`[email] Skipping email to ${to}: email not configured.`);
+    return;
+  }
+  const recipients = (Array.isArray(to) ? to : [to]).map((r: string) => String(r || '').trim()).filter(Boolean);
+  if (recipients.length === 0) return;
+  const ccList = (Array.isArray(cc) ? cc : (cc ? [cc] : []))
+    .map((addr: string) => String(addr || '').trim())
+    .filter(Boolean);
+
+  for (const recipient of recipients) {
+    const msg: Record<string, unknown> = {
+      to: recipient,
+      from: EMAIL_FROM_ADDRESS,
+      subject,
+      html,
+    };
+    if (ccList.length > 0) msg.cc = ccList;
+    await sgMailModule.send(msg);
+  }
+  console.log(`[email] Sent "${subject}" to ${recipients.join(', ')}`);
+}
+
 type MarketplaceStatsPayload = {
   monthlyActiveBuyers: number;
   avgEquipmentValue: number;
@@ -87,8 +177,7 @@ type ManagedAccountRole =
   | 'dealer_manager'
   | 'dealer_staff'
   | 'individual_seller'
-  | 'member'
-  | 'buyer';
+  | 'member';
 
 type DealerFeedItem = {
   externalId?: string;
@@ -106,6 +195,13 @@ type DealerFeedItem = {
   description?: string;
   location?: string;
   images?: string[];
+  imageUrls?: string[];
+  imageTitles?: string[];
+  videoUrls?: string[];
+  stockNumber?: string;
+  serialNumber?: string;
+  dealerSourceUrl?: string;
+  sourceUrl?: string;
   specs?: Record<string, unknown>;
 };
 
@@ -215,13 +311,13 @@ function normalizeRole(value: unknown): ManagedAccountRole {
   if (normalized === 'dealer_manager') return 'dealer_manager';
   if (normalized === 'dealer_staff') return 'dealer_staff';
   if (normalized === 'individual_seller') return 'individual_seller';
-  if (normalized === 'member') return 'member';
-  return 'buyer';
+  if (normalized === 'member' || normalized === 'buyer') return 'member';
+  return 'member';
 }
 
 function canCreateManagedRole(parentRole: ManagedAccountRole, childRole: ManagedAccountRole): boolean {
-  const adminManagedRoles: ManagedAccountRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'member', 'buyer'];
-  const dealerManagedRoles: ManagedAccountRole[] = ['dealer_manager', 'dealer_staff', 'member', 'buyer'];
+  const adminManagedRoles: ManagedAccountRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'dealer_manager', 'dealer_staff', 'member'];
+  const dealerManagedRoles: ManagedAccountRole[] = ['dealer_manager', 'dealer_staff', 'member'];
 
   if (parentRole === 'super_admin') return true;
   if (parentRole === 'admin' || parentRole === 'developer') return adminManagedRoles.includes(childRole);
@@ -229,8 +325,16 @@ function canCreateManagedRole(parentRole: ManagedAccountRole, childRole: Managed
   return false;
 }
 
+const PRIVILEGED_ADMIN_EMAILS: ReadonlySet<string> = new Set(
+  (process.env.PRIVILEGED_ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
 function isPrivilegedAdminEmail(email: unknown): boolean {
-  return String(email || '').trim().toLowerCase() === 'caleb@forestryequipmentsales.com';
+  const normalized = String(email || '').trim().toLowerCase();
+  return normalized.length > 0 && PRIVILEGED_ADMIN_EMAILS.has(normalized);
 }
 
 function canAdministrateAccountRole(role: unknown): boolean {
@@ -429,14 +533,14 @@ function serializeCallDoc(docSnapshot: FirebaseFirestore.QueryDocumentSnapshot):
 }
 
 function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
     phone: normalizeNonEmptyString(data.phone),
@@ -459,14 +563,14 @@ function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<s
 }
 
 function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
     phone: normalizeNonEmptyString(data.phoneNumber),
@@ -498,11 +602,17 @@ function hasActiveDealerDirectorySubscription(data: Record<string, unknown> = {}
     return false;
   }
 
+  // If a subscription record exists, verify it is active/trialing.
+  // If no subscription is set yet, allow the dealer through so the
+  // directory populates while Firestore data is bootstrapped.
   const activeSubscriptionPlanId = normalizeNonEmptyString(data.activeSubscriptionPlanId).toLowerCase();
   const subscriptionStatus = normalizeNonEmptyString(data.subscriptionStatus).toLowerCase();
+  if (activeSubscriptionPlanId && subscriptionStatus) {
+    return ['dealer', 'fleet_dealer'].includes(activeSubscriptionPlanId)
+      && ['active', 'trialing'].includes(subscriptionStatus);
+  }
 
-  return ['dealer', 'fleet_dealer'].includes(activeSubscriptionPlanId)
-    && ['active', 'trialing'].includes(subscriptionStatus);
+  return true;
 }
 
 function buildMarketplaceListingPayload(listingId: string, rawListing: Record<string, unknown>): Record<string, unknown> {
@@ -664,17 +774,40 @@ async function buildAdminOverviewBootstrapPayload() {
   };
 }
 
-function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sourceName: string) {
+function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sourceName: string, existingListing?: Record<string, any>) {
+  const existing = existingListing && typeof existingListing === 'object' ? existingListing : {} as Record<string, any>;
   const externalId = normalizeNonEmptyString(item.externalId);
   const make = normalizeNonEmptyString(item.make || item.manufacturer, 'Unknown');
   const model = normalizeNonEmptyString(item.model, 'Unknown');
   const title = normalizeNonEmptyString(item.title, `${make} ${model}`.trim());
   const category = normalizeNonEmptyString(item.category, 'Uncategorized');
 
-  const year = normalizeFiniteNumber(item.year, new Date().getFullYear());
-  const price = Math.max(0, normalizeFiniteNumber(item.price, 0));
-  const hours = Math.max(0, normalizeFiniteNumber(item.hours, 0));
-  const images = normalizeImageUrls(item.images);
+  const year = normalizeFiniteNumber(item.year, normalizeFiniteNumber(existing.year, 0));
+  const rawPrice = item.price !== undefined && item.price !== null && item.price !== '' ? Number(item.price) : NaN;
+  const existPrice = existing.price !== undefined && existing.price !== null ? Number(existing.price) : NaN;
+  const price = Math.max(0, Number.isFinite(rawPrice) ? rawPrice : Number.isFinite(existPrice) ? existPrice : 0);
+  const callForPrice = !Number.isFinite(rawPrice) && !Number.isFinite(existPrice);
+  const hours = Math.max(0, normalizeFiniteNumber(item.hours, normalizeFiniteNumber(existing.hours, 0)));
+  const images = normalizeImageUrls(item.images || item.imageUrls);
+
+  // Preserve existing status/approval/payment on re-sync (match Firebase Functions behavior)
+  const existingStatus = normalizeNonEmptyString(existing.status).toLowerCase();
+  const existingApprovalStatus = normalizeNonEmptyString(existing.approvalStatus).toLowerCase();
+  const existingPaymentStatus = normalizeNonEmptyString(existing.paymentStatus).toLowerCase();
+
+  let status = 'pending';
+  if (existingStatus === 'sold') status = 'sold';
+  else if (['active', 'pending'].includes(existingStatus)) status = existingStatus;
+
+  let approvalStatus = 'pending';
+  if (existingApprovalStatus === 'rejected') approvalStatus = 'rejected';
+  else if (['approved', 'pending'].includes(existingApprovalStatus)) approvalStatus = existingApprovalStatus;
+
+  let paymentStatus = 'pending';
+  if (existingPaymentStatus === 'failed') paymentStatus = 'failed';
+  else if (['paid', 'pending'].includes(existingPaymentStatus)) paymentStatus = existingPaymentStatus;
+
+  const existingExternalSource = existing.externalSource && typeof existing.externalSource === 'object' ? existing.externalSource : {};
 
   return {
     sellerUid,
@@ -687,26 +820,40 @@ function normalizeDealerFeedListing(item: DealerFeedItem, sellerUid: string, sou
     model,
     year,
     price,
+    callForPrice: callForPrice && !existing.callForPrice ? true : Boolean(existing.callForPrice),
     currency: normalizeNonEmptyString(item.currency, 'USD'),
     hours,
     condition: normalizeNonEmptyString(item.condition, 'Used'),
     description: normalizeNonEmptyString(item.description, `${title} imported from dealer feed.`),
     location: normalizeNonEmptyString(item.location, 'Unknown'),
     images,
-    specs: item.specs && typeof item.specs === 'object' ? item.specs : {},
-    featured: false,
-    views: 0,
-    leads: 0,
-    status: 'pending',
-    approvalStatus: 'pending',
-    paymentStatus: 'pending',
-    marketValueEstimate: null,
-    sellerVerified: true,
-    qualityValidated: true,
+    imageTitles: Array.isArray(item.imageTitles) ? item.imageTitles.slice(0, images.length) : [],
+    videoUrls: Array.isArray(item.videoUrls) ? item.videoUrls.filter((u: string) => /^https?:\/\//i.test(u)).slice(0, 6) : [],
+    stockNumber: normalizeNonEmptyString(item.stockNumber),
+    serialNumber: normalizeNonEmptyString(item.serialNumber),
+    specs: {
+      ...(existing.specs && typeof existing.specs === 'object' ? existing.specs : {}),
+      ...(item.specs && typeof item.specs === 'object' ? item.specs : {}),
+    },
+    featured: Boolean(existing.featured),
+    views: Number(existing.views || 0),
+    leads: Number(existing.leads || 0),
+    status,
+    approvalStatus,
+    paymentStatus,
+    marketValueEstimate: existing.marketValueEstimate ?? null,
+    sellerVerified: existing.sellerVerified !== false,
+    qualityValidated: existing.qualityValidated !== false,
+    dataSource: 'dealer' as const,
     externalSource: {
+      ...existingExternalSource,
       sourceName,
       externalId,
-      importedAt: admin.firestore.FieldValue.serverTimestamp(),
+      stockNumber: normalizeNonEmptyString(item.stockNumber),
+      serialNumber: normalizeNonEmptyString(item.serialNumber),
+      dealerSourceUrl: normalizeNonEmptyString(item.dealerSourceUrl),
+      importedAt: existingExternalSource.importedAt || admin.firestore.FieldValue.serverTimestamp(),
+      lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
@@ -814,9 +961,16 @@ async function scanFileForViruses(buffer: Buffer): Promise<boolean> {
   return true; // File is clean
 }
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeSecretKey
-  ? new Stripe(stripeSecretKey, {
+// --- Validated server config (fail-fast on missing secrets) ---
+// Note: server.ts runs on Cloud Run where process.env is the standard
+// secret injection mechanism. Cloud Functions use defineSecret() instead.
+const serverConfig = {
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+};
+
+const stripe = serverConfig.stripeSecretKey
+  ? new Stripe(serverConfig.stripeSecretKey, {
       apiVersion: '2026-02-25.clover',
     })
   : null;
@@ -831,30 +985,32 @@ type ListingCheckoutPlan = {
   priceId?: string;
 };
 
+const UNLIMITED_LISTING_CAP = 99999;
+
 const LISTING_CHECKOUT_PLANS: Record<ListingCheckoutPlanId, ListingCheckoutPlan> = {
   individual_seller: {
     id: 'individual_seller',
     name: 'Owner Operator Ad Program',
     amountUsd: 39,
     listingCap: 1,
-    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || process.env.STRIPE_PRODUCT_INDIVIDUAL || 'prod_UBpeOgS2Xbot2e',
-    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || process.env.STRIPE_PRICE_INDIVIDUAL || 'price_1TDRzJEFuycUwY0KZiFBQxTF',
+    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || process.env.STRIPE_PRODUCT_INDIVIDUAL || '',
+    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || process.env.STRIPE_PRICE_INDIVIDUAL || '',
   },
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    amountUsd: 499,
+    amountUsd: 250,
     listingCap: 50,
-    productId: process.env.STRIPE_PRODUCT_DEALER || 'prod_UBpeHg3FydOSdD',
-    priceId: process.env.STRIPE_PRICE_DEALER || 'price_1TDRzJEFuycUwY0KnU6HzAg2',
+    productId: process.env.STRIPE_PRODUCT_DEALER || '',
+    priceId: process.env.STRIPE_PRICE_DEALER || '',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    amountUsd: 999,
-    listingCap: 150,
-    productId: process.env.STRIPE_PRODUCT_FLEET || 'prod_UBpek9mEeZPlyC',
-    priceId: process.env.STRIPE_PRICE_FLEET || 'price_1TDRzKEFuycUwY0KPkBneTyh',
+    amountUsd: 500,
+    listingCap: UNLIMITED_LISTING_CAP,
+    productId: process.env.STRIPE_PRODUCT_FLEET || '',
+    priceId: process.env.STRIPE_PRICE_FLEET || '',
   },
 };
 
@@ -902,7 +1058,7 @@ function parseLocalBillingStubSessionId(sessionId: string): {
 }
 
 function buildLocalBillingStubSummary(decodedToken: admin.auth.DecodedIdToken): Record<string, unknown> {
-  const claimedRole = String(decodedToken.role || '').trim() || 'buyer';
+  const claimedRole = String(decodedToken.role || '').trim() || 'member';
   return {
     stripeCustomerId: 'cus_local_stub',
     planId: null,
@@ -913,7 +1069,7 @@ function buildLocalBillingStubSummary(decodedToken: admin.auth.DecodedIdToken): 
     currentPeriodEnd: null,
     subscriptionStartDate: null,
     role: claimedRole,
-    accountAccessSource: claimedRole === 'buyer' ? 'free_member' : 'admin_override',
+    accountAccessSource: claimedRole === 'member' ? 'free_member' : 'admin_override',
     accountStatus: 'active',
     entitlement: null,
     localBillingStub: true,
@@ -926,6 +1082,26 @@ function getListingCheckoutPlan(rawPlanId: unknown): ListingCheckoutPlan | null 
     return null;
   }
   return LISTING_CHECKOUT_PLANS[planId];
+}
+
+function getTrialMonthsForPlan(planId: ListingCheckoutPlanId): number {
+  switch (planId) {
+    case 'dealer':
+      return 6;
+    case 'fleet_dealer':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function buildTrialEndForPlan(planId: ListingCheckoutPlanId): number | null {
+  const trialMonths = getTrialMonthsForPlan(planId);
+  if (!trialMonths) return null;
+
+  const nextDate = new Date();
+  nextDate.setMonth(nextDate.getMonth() + trialMonths);
+  return Math.floor(nextDate.getTime() / 1000);
 }
 
 async function getManagedAccountSeatContext(ownerUid: string): Promise<{
@@ -965,6 +1141,16 @@ async function getManagedAccountSeatContext(ownerUid: string): Promise<{
   };
 }
 
+const TRUSTED_HOSTS = new Set([
+  'timberequip.com',
+  'www.timberequip.com',
+  'mobile-app-equipment-sales.web.app',
+  'mobile-app-equipment-sales.firebaseapp.com',
+  'timberequip-staging.web.app',
+  'localhost:3000',
+  'localhost:5173',
+]);
+
 function getRequestBaseUrl(req: express.Request): string {
   const forwardedProtoRaw = req.headers['x-forwarded-proto'];
   const forwardedProto = Array.isArray(forwardedProtoRaw) ? forwardedProtoRaw[0] : forwardedProtoRaw;
@@ -972,13 +1158,13 @@ function getRequestBaseUrl(req: express.Request): string {
 
   const forwardedHostRaw = req.headers['x-forwarded-host'];
   const forwardedHost = Array.isArray(forwardedHostRaw) ? forwardedHostRaw[0] : forwardedHostRaw;
-  const host = String(forwardedHost || req.get('host') || '').split(',')[0].trim();
+  const host = String(forwardedHost || req.get('host') || '').split(',')[0].trim().toLowerCase();
 
-  if (host) {
+  if (host && TRUSTED_HOSTS.has(host)) {
     return `${proto}://${host}`;
   }
 
-  return process.env.PUBLIC_APP_URL || 'https://www.forestryequipmentsales.com';
+  return process.env.PUBLIC_APP_URL || 'https://timberequip.com';
 }
 
 async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<string> {
@@ -989,9 +1175,23 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
   const cached = checkoutPriceCache[plan.id];
   if (cached) return cached;
 
+  const expectedUnitAmount = Math.round(Number(plan.amountUsd || 0) * 100);
+
   if (plan.priceId) {
-    checkoutPriceCache[plan.id] = plan.priceId;
-    return plan.priceId;
+    try {
+      const pinnedPrice = await stripe.prices.retrieve(plan.priceId);
+      if (
+        pinnedPrice?.active
+        && pinnedPrice.type === 'recurring'
+        && pinnedPrice.recurring?.interval === 'month'
+        && (!expectedUnitAmount || pinnedPrice.unit_amount === expectedUnitAmount)
+      ) {
+        checkoutPriceCache[plan.id] = plan.priceId;
+        return plan.priceId;
+      }
+    } catch {
+      // Fall through to product/default price discovery.
+    }
   }
 
   const product = await stripe.products.retrieve(plan.productId, {
@@ -999,9 +1199,14 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
   });
 
   let priceId = '';
-  if (typeof product.default_price === 'string') {
-    priceId = product.default_price;
-  } else if (product.default_price?.id) {
+  if (
+    typeof product.default_price !== 'string'
+    && product.default_price?.id
+    && product.default_price.active
+    && product.default_price.type === 'recurring'
+    && product.default_price.recurring?.interval === 'month'
+    && (!expectedUnitAmount || product.default_price.unit_amount === expectedUnitAmount)
+  ) {
     priceId = product.default_price.id;
   }
 
@@ -1012,7 +1217,9 @@ async function resolveStripePriceIdForPlan(plan: ListingCheckoutPlan): Promise<s
       limit: 20,
     });
     const preferredPrice =
-      prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month') || prices.data[0];
+      prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month' && (!expectedUnitAmount || p.unit_amount === expectedUnitAmount))
+      || prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month')
+      || prices.data[0];
 
     if (!preferredPrice?.id) {
       throw new Error(`No active Stripe price found for product ${plan.productId}.`);
@@ -1206,29 +1413,51 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
 
-  app.get('/server-test', (req, res) => res.send('Server is alive and reachable'));
-
   // 1. Security Headers (WAF-like protection at app level)
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/", "https://*.googleapis.com", "https://*.firebaseio.com"],
+        scriptSrc: [
+          "'self'",
+          ...(process.env.NODE_ENV === 'production' ? [] : ["'unsafe-inline'"]),
+          "https://challenges.cloudflare.com",
+          "https://www.google.com/recaptcha/",
+          "https://www.gstatic.com/recaptcha/",
+          "https://*.googleapis.com",
+          "https://apis.google.com",
+          "https://*.firebaseio.com",
+          "https://www.recaptcha.net",
+        ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://picsum.photos", "https://*.stripe.com", "https://*.firebasestorage.googleapis.com", "https://*.googleusercontent.com"],
-        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app"],
+        imgSrc: ["'self'", "data:", "blob:", "https://*.stripe.com", "https://firebasestorage.googleapis.com", "https://*.firebasestorage.googleapis.com", "https://*.firebasestorage.app", "https://*.googleusercontent.com", "https://tile.openstreetmap.org", "https://*.tile.openstreetmap.org", "https://timberequip.com", "https://forestryequipmentsales.com"],
+        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com", "https://*.firebasestorage.app", "https://*.stripe.com", "https://api.stripe.com", "https://*.run.app", "https://www.recaptcha.net"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://*.stripe.com", "https://*.run.app", "https://ai.studio"],
-        frameAncestors: ["'self'", "https://*.run.app", "https://ai.studio"],
+        frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://www.google.com/recaptcha/", "https://apis.google.com", "https://*.firebaseapp.com", "https://*.stripe.com", "https://*.run.app", "https://www.recaptcha.net"],
+        frameAncestors: ["'self'", "https://*.run.app"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
+        reportUri: ['/api/csp-report'],
       },
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    hsts: false, // Disable HSTS for dev environment to avoid redirect loops
-    referrerPolicy: { policy: 'no-referrer-when-downgrade' },
-    frameguard: false, // Allow iframe rendering for AI Studio preview
+    crossOriginResourcePolicy: { policy: "same-site" },
+    hsts: process.env.NODE_ENV === 'production'
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    permissionsPolicy: {
+      features: {
+        camera: [],
+        microphone: [],
+        geolocation: ['self'],
+        payment: ['self', 'https://js.stripe.com'],
+        usb: [],
+        magnetometer: [],
+        gyroscope: [],
+        accelerometer: [],
+      },
+    },
   }));
 
   // 1b. Domain Migration — 301 redirect from legacy domain to canonical domain
@@ -1243,6 +1472,9 @@ async function startServer() {
       next();
     });
   }
+
+  // Trust first proxy (Cloud Run / Firebase Hosting) so express-rate-limit sees real client IPs
+  app.set('trust proxy', 1);
 
   // 2. Rate Limiting (DDoS protection)
   const limiter = rateLimit({
@@ -1277,18 +1509,45 @@ async function startServer() {
   });
   app.use('/api/billing/create-portal-session', portalLimiter);
 
-  // 3. CORS
-  const ALLOWED_ORIGINS = [
-    'https://www.forestryequipmentsales.com',
-    'https://www.forestryequipmentsales.com',
+  // 2b. CSP Violation Reporting Endpoint
+  const cspReportLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 50,
+    message: '',
+  });
+  app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application/csp-report', 'application/json'] }), (req, res) => {
+    const report = req.body?.['csp-report'] || req.body;
+    if (report) {
+      console.warn('[CSP Violation]', JSON.stringify({
+        blockedUri: report['blocked-uri'],
+        violatedDirective: report['violated-directive'],
+        documentUri: report['document-uri'],
+        sourceFile: report['source-file'],
+        lineNumber: report['line-number'],
+      }));
+      captureServerException(new Error(`CSP Violation: ${report['violated-directive']} blocked ${report['blocked-uri']}`));
+    }
+    res.status(204).end();
+  });
+
+  // 3. CORS — production allowlist excludes staging/localhost
+  const PRODUCTION_ORIGINS: string[] = [
+    'https://timberequip.com',
+    'https://www.timberequip.com',
+    'https://mobile-app-equipment-sales.web.app',
+    'https://mobile-app-equipment-sales.firebaseapp.com',
+  ];
+  const DEV_ORIGINS: string[] = [
+    'https://timberequip-staging.web.app',
     'http://localhost:3000',
     'http://localhost:5173',
   ];
+  const ALLOWED_ORIGINS: string[] = process.env.NODE_ENV === 'production'
+    ? PRODUCTION_ORIGINS
+    : [...PRODUCTION_ORIGINS, ...DEV_ORIGINS];
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-        callback(null, true);
-      } else if (origin.endsWith('.run.app') || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
         callback(null, true);
       } else {
         callback(null, false);
@@ -1297,286 +1556,10 @@ async function startServer() {
     credentials: true,
   }));
 
-  // 4. Stripe Webhook (Raw body needed for signature verification)
-  app.post(['/api/billing/webhook', '/api/webhooks/stripe'], express.raw({ type: 'application/json' }), async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
-    }
-
-    const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    let event;
-
-    try {
-      if (!sig || !webhookSecret) throw new Error('Missing signature or secret');
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-    } catch (err: any) {
-      console.error(`Webhook Error: ${err.message}`);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-
-    // Idempotency check: Check if we've already processed this event
-    const eventRef = db.collection('webhook_events').doc(event.id);
-    const eventDoc = await eventRef.get();
-    if (eventDoc.exists) {
-      console.log(`Webhook event ${event.id} already processed.`);
-      return res.json({ received: true, duplicate: true });
-    }
-
-    // Mark event as processed
-    await eventRef.set({
-      processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      type: event.type
-    });
-
-    // Handle the event
-    try {
-      switch (event.type) {
-        case 'invoice.paid': {
-          const invoice = event.data.object as any;
-          const userUid = invoice.metadata?.userUid || invoice.subscription_details?.metadata?.userUid || invoice.subscription?.metadata?.userUid;
-          
-          if (userUid) {
-            await db.collection('invoices').doc(invoice.id).set({
-              userUid,
-              stripeInvoiceId: invoice.id,
-              amount: invoice.amount_paid / 100,
-              currency: invoice.currency,
-              status: 'paid',
-              paidAt: admin.firestore.FieldValue.serverTimestamp(),
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              items: invoice.lines.data.map(line => line.description),
-            }, { merge: true });
-
-            await db.collection('billingAuditLogs').add({
-              action: 'INVOICE_PAID',
-              userUid,
-              invoiceId: invoice.id,
-              details: `Invoice ${invoice.id} paid successfully via webhook.`,
-              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          }
-          break;
-        }
-        case 'invoice.payment_failed': {
-          const invoice = event.data.object as any;
-          const userUid = invoice.metadata?.userUid || invoice.subscription_details?.metadata?.userUid || invoice.subscription?.metadata?.userUid;
-          if (userUid) {
-            await db.collection('invoices').doc(invoice.id).set({
-              userUid,
-              stripeInvoiceId: invoice.id,
-              status: 'failed',
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            await db.collection('billingAuditLogs').add({
-              action: 'PAYMENT_FAILED',
-              userUid,
-              invoiceId: invoice.id,
-              details: `Payment failed for invoice ${invoice.id}.`,
-              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          }
-          break;
-        }
-        case 'customer.subscription.created':
-        case 'customer.subscription.updated': {
-          const subscription = event.data.object as Stripe.Subscription;
-          const userUid = subscription.metadata.userUid;
-          if (userUid) {
-            await db.collection('subscriptions').doc(subscription.id).set({
-              userUid,
-              stripeSubscriptionId: subscription.id,
-              planId: (subscription.items.data[0].plan as any).id,
-              status: subscription.status,
-              currentPeriodEnd: admin.firestore.Timestamp.fromMillis((subscription as any).current_period_end * 1000),
-              cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
-              ...((subscription as any).created ? { createdAt: admin.firestore.Timestamp.fromMillis((subscription as any).created * 1000) } : {}),
-              ...((subscription as any).start_date ? { startDate: admin.firestore.Timestamp.fromMillis((subscription as any).start_date * 1000) } : {}),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-
-            // If subscription becomes past_due or unpaid, suppress listing visibility
-            const inactiveStatuses = ['past_due', 'unpaid', 'incomplete_expired'];
-            if (inactiveStatuses.includes(subscription.status)) {
-              const listingsSnap = await db.collection('listings')
-                .where('sellerUid', '==', userUid)
-                .get();
-              const batch = db.batch();
-              listingsSnap.docs.forEach((doc) => {
-                const data = doc.data();
-                if (!['sold', 'archived'].includes(String(data.status || '').toLowerCase())) {
-                  batch.update(doc.ref, {
-                    paymentStatus: 'pending',
-                    status: 'pending',
-                    lastLifecycleAction: 'billing_visibility_suppressed',
-                    lastLifecycleActorUid: 'system',
-                    lastLifecycleActorRole: 'system',
-                    lastLifecycleReason: `Subscription ${subscription.status} — listings hidden until payment resolved.`,
-                    lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  });
-                }
-              });
-              if (listingsSnap.docs.length > 0) await batch.commit();
-
-              await db.collection('billingAuditLogs').add({
-                action: 'SUBSCRIPTION_BILLING_LAPSE',
-                userUid,
-                subscriptionId: subscription.id,
-                details: `Subscription ${subscription.id} status changed to ${subscription.status}. Listings hidden.`,
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-              });
-            }
-          }
-          break;
-        }
-        case 'customer.subscription.deleted': {
-          const subscription = event.data.object as Stripe.Subscription;
-          const userUid = subscription.metadata.userUid;
-          if (userUid) {
-            await db.collection('subscriptions').doc(subscription.id).update({
-              status: 'canceled',
-              cancelAtPeriodEnd: true,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // Hide all listings for this user and downgrade access
-            const listingsSnap = await db.collection('listings')
-              .where('sellerUid', '==', userUid)
-              .get();
-            const batch = db.batch();
-            listingsSnap.docs.forEach((doc) => {
-              const data = doc.data();
-              if (!['sold', 'archived'].includes(String(data.status || '').toLowerCase())) {
-                batch.update(doc.ref, {
-                  paymentStatus: 'pending',
-                  status: 'pending',
-                  lastLifecycleAction: 'billing_visibility_suppressed',
-                  lastLifecycleActorUid: 'system',
-                  lastLifecycleActorRole: 'system',
-                  lastLifecycleReason: 'Subscription deleted — listings hidden.',
-                  lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-              }
-            });
-            if (listingsSnap.docs.length > 0) await batch.commit();
-
-            // Downgrade user role to member
-            const userDoc = await db.collection('users').doc(userUid).get();
-            if (userDoc.exists) {
-              await db.collection('users').doc(userUid).update({
-                role: 'member',
-                accountAccessSource: 'free_member',
-                activeSubscriptionPlanId: null,
-                subscriptionStatus: 'canceled',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              });
-            }
-
-            await db.collection('billingAuditLogs').add({
-              action: 'SUBSCRIPTION_DELETED',
-              userUid,
-              subscriptionId: subscription.id,
-              details: `Subscription ${subscription.id} deleted. Listings hidden and access downgraded.`,
-              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          }
-          break;
-        }
-        case 'checkout.session.completed':
-        case 'checkout.session.async_payment_succeeded': {
-          const session = event.data.object as Stripe.Checkout.Session;
-          await finalizeListingPaymentFromCheckoutSession(session, 'webhook');
-          break;
-        }
-        case 'charge.refunded': {
-          const charge = event.data.object as any;
-          const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
-          if (invoiceId && stripe) {
-            try {
-              const invoice = await stripe.invoices.retrieve(invoiceId);
-              const invoiceSub = (invoice as any).subscription;
-              const subId = typeof invoiceSub === 'string' ? invoiceSub : invoiceSub?.id;
-              if (subId) {
-                // Cancel the subscription immediately since a refund was issued
-                const canceledSub = await stripe.subscriptions.cancel(subId);
-                const refundUserUid = canceledSub.metadata?.userUid;
-
-                // Update subscription record
-                await db.collection('subscriptions').doc(subId).set({
-                  status: 'canceled',
-                  cancelAtPeriodEnd: true,
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true });
-
-                if (refundUserUid) {
-                  // Hide all listings
-                  const listingsSnap = await db.collection('listings')
-                    .where('sellerUid', '==', refundUserUid)
-                    .get();
-                  const batch = db.batch();
-                  listingsSnap.docs.forEach((doc) => {
-                    const data = doc.data();
-                    if (!['sold', 'archived'].includes(String(data.status || '').toLowerCase())) {
-                      batch.update(doc.ref, {
-                        paymentStatus: 'pending',
-                        status: 'pending',
-                        lastLifecycleAction: 'billing_visibility_suppressed',
-                        lastLifecycleActorUid: 'system',
-                        lastLifecycleActorRole: 'system',
-                        lastLifecycleReason: 'Charge refunded — subscription canceled and listings hidden.',
-                        lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                      });
-                    }
-                  });
-                  if (listingsSnap.docs.length > 0) await batch.commit();
-
-                  // Downgrade user role
-                  const userDoc = await db.collection('users').doc(refundUserUid).get();
-                  if (userDoc.exists) {
-                    await db.collection('users').doc(refundUserUid).update({
-                      role: 'member',
-                      accountAccessSource: 'free_member',
-                      activeSubscriptionPlanId: null,
-                      subscriptionStatus: 'canceled',
-                      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    });
-                  }
-
-                  await db.collection('billingAuditLogs').add({
-                    action: 'CHARGE_REFUNDED_SUBSCRIPTION_CANCELED',
-                    userUid: refundUserUid,
-                    subscriptionId: subId,
-                    chargeId: charge.id,
-                    details: `Charge ${charge.id} refunded. Subscription ${subId} canceled. Listings hidden and access downgraded.`,
-                    timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                  });
-                }
-
-                console.log(`Charge refund processed: subscription ${subId} canceled, listings hidden.`);
-              }
-            } catch (refundErr: any) {
-              console.error(`Failed to process charge refund enforcement: ${refundErr.message}`);
-            }
-          }
-          break;
-        }
-        default:
-          console.log(`Unhandled event type ${event.type}`);
-      }
-    } catch (dbErr) {
-      console.error('Error updating database from webhook:', dbErr);
-      // Still return 200 to Stripe to avoid retries if the error is persistent but not critical
-    }
-
-    res.json({ received: true });
-  });
 
   // 5. Standard Middleware
-  app.use(express.json());
+  app.use(compression({ threshold: 1024 }));
+  app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
   if (sharedDealerApiProxy) {
@@ -1594,24 +1577,10 @@ async function startServer() {
   }
 
   if (sharedPublicPagesProxy) {
+    // Keep the sitemap on the shared public-pages handler, but let the SPA own
+    // the public route families so we do not have two conflicting page owners.
     app.get(
-      [
-        '/sitemap.xml',
-        '/logging-equipment-for-sale',
-        '/forestry-equipment-for-sale',
-        '/categories',
-        '/categories/:categorySlug',
-        '/manufacturers',
-        '/manufacturers/:manufacturerSlug',
-        '/manufacturers/:manufacturerSlug/:categorySaleSlug',
-        '/states',
-        '/states/:stateSlug/logging-equipment-for-sale',
-        '/states/:stateSlug/forestry-equipment-for-sale',
-        '/states/:stateSlug/:categorySaleSlug',
-        '/dealers/:id',
-        '/dealers/:id/inventory',
-        '/dealers/:id/:categorySlug',
-      ],
+      ['/sitemap.xml'],
       async (req, res, next) => {
         try {
           await sharedPublicPagesProxy?.(req, res, next);
@@ -1622,7 +1591,21 @@ async function startServer() {
     );
   }
 
-  // 6. CSRF Protection
+  // 6a. API Versioning — accept /api/v1/* and rewrite to /api/* for handlers
+  app.use((req, _res, next) => {
+    if (req.path.startsWith('/api/v1/')) {
+      req.url = req.url.replace('/api/v1/', '/api/');
+    }
+    next();
+  });
+
+  // 6b. API Version Header
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('X-API-Version', 'v1');
+    next();
+  });
+
+  // 6c. CSRF Protection
   // Double-submit token strategy that preserves the existing frontend contract
   // without depending on the archived `csurf` package.
   app.use('/api', (req, res, next) => {
@@ -1636,1007 +1619,100 @@ async function startServer() {
   });
 
   // 7. API Routes
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  app.get('/api/health', (_req, res) => {
+    apiSuccess(res, { status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.post('/api/billing/create-checkout-session', async (req, res) => {
-    if (!stripe && isLocalBillingStubEnabled()) {
-      const idToken = req.headers.authorization?.split('Bearer ')[1];
-      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-      try {
-        const decodedToken = await auth.verifyIdToken(idToken);
-        const plan = getListingCheckoutPlan(req.body?.planId);
-        const listingId = String(req.body?.listingId || '').trim();
-
-        if (!plan) {
-          return res.status(400).json({ error: 'Invalid listing plan.' });
-        }
-        if (!listingId) {
-          return res.status(400).json({ error: 'Listing id is required.' });
-        }
-
-        const sessionId = buildLocalBillingStubSessionId('listing', plan.id, listingId, decodedToken.uid);
-        const baseUrl = getRequestBaseUrl(req);
-        return res.json({
-          sessionId,
-          url: `${baseUrl}/sell?checkout=success&session_id=${encodeURIComponent(sessionId)}&listingId=${encodeURIComponent(listingId)}&localBillingStub=1`,
-          localBillingStub: true,
-        });
-      } catch {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
-
-    if (!stripe) {
-      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
-    }
-
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const uid = decodedToken.uid;
-      const plan = getListingCheckoutPlan(req.body?.planId);
-      const listingId = String(req.body?.listingId || '').trim();
-
-      if (!plan) {
-        return res.status(400).json({ error: 'Invalid listing plan.' });
-      }
-      if (!listingId) {
-        return res.status(400).json({ error: 'Listing id is required.' });
-      }
-
-      const listingRef = db.collection('listings').doc(listingId);
-      const listingSnap = await listingRef.get();
-      if (!listingSnap.exists) {
-        return res.status(404).json({ error: 'Listing not found.' });
-      }
-
-      const listing = listingSnap.data() || {};
-      const listingOwnerUid = String(listing.sellerUid || listing.sellerId || '');
-      if (!listingOwnerUid || listingOwnerUid !== uid) {
-        return res.status(403).json({ error: 'You can only pay for your own listing.' });
-      }
-
-      if (String(listing.paymentStatus || '') === 'paid') {
-        return res.status(409).json({ error: 'Listing is already paid.' });
-      }
-
-      const paidListingsSnap = await db
-        .collection('listings')
-        .where('sellerUid', '==', uid)
-        .where('paymentStatus', '==', 'paid')
-        .get();
-
-      const activePaidListingsCount = paidListingsSnap.docs.filter((doc) => {
-        if (doc.id === listingId) return false;
-        const data = doc.data() as Record<string, unknown>;
-        return String(data.status || 'active').toLowerCase() !== 'sold';
-      }).length;
-
-      if (activePaidListingsCount >= plan.listingCap) {
-        return res.status(409).json({
-          error: `Your ${plan.name} includes up to ${plan.listingCap} active ${plan.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
-        });
-      }
-
-      const baseUrl = getRequestBaseUrl(req);
-      const priceId = await resolveStripePriceIdForPlan(plan);
-      const customerId = await getOrCreateStripeCustomer(uid, decodedToken.email, decodedToken.name);
-
-      const session = await stripe.checkout.sessions.create({
-        mode: 'subscription',
-        customer: customerId,
-        success_url: `${baseUrl}/sell?checkout=success&session_id={CHECKOUT_SESSION_ID}&listingId=${encodeURIComponent(listingId)}`,
-        cancel_url: `${baseUrl}/sell?checkout=canceled&listingId=${encodeURIComponent(listingId)}`,
-        line_items: [{ price: priceId, quantity: 1 }],
-        client_reference_id: listingId,
-        allow_promotion_codes: true,
-        metadata: {
-          userUid: uid,
-          listingId,
-          planId: plan.id,
-          listingCap: String(plan.listingCap),
-        },
-        subscription_data: {
-          metadata: {
-            userUid: uid,
-            listingId,
-            planId: plan.id,
-            listingCap: String(plan.listingCap),
-          },
-        },
-      });
-
-      if (!session.url) {
-        return res.status(500).json({ error: 'Stripe checkout URL was not returned.' });
-      }
-
-      return res.json({
-        sessionId: session.id,
-        url: session.url,
-      });
-    } catch (error: any) {
-      console.error('Failed to create Stripe checkout session:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to create checkout session.' });
-    }
+  // 7a. Register route modules
+  registerBillingRoutes(app, {
+    db,
+    auth,
+    stripe,
+    stripeWebhookSecret: serverConfig.stripeWebhookSecret,
+    apiSuccess,
+    apiError,
+    getRequestBaseUrl,
+    resolveStripePriceIdForPlan,
+    getOrCreateStripeCustomer,
+    findExistingStripeCustomerId,
+    finalizeListingPaymentFromCheckoutSession,
+    getListingCheckoutPlan,
+    buildTrialEndForPlan,
+    getManagedAccountSeatContext,
+    isLocalBillingStubEnabled,
+    buildLocalBillingStubSessionId,
+    parseLocalBillingStubSessionId,
+    buildLocalBillingStubSummary,
+    UNLIMITED_LISTING_CAP,
   });
 
-  app.get('/api/billing/checkout-session/:sessionId', async (req, res) => {
-    const stubSession = parseLocalBillingStubSessionId(String(req.params.sessionId || ''));
-    if (!stripe && isLocalBillingStubEnabled() && stubSession) {
-      const idToken = req.headers.authorization?.split('Bearer ')[1];
-      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-      try {
-        const decodedToken = await auth.verifyIdToken(idToken);
-        if (stubSession.uid && stubSession.uid !== decodedToken.uid) {
-          return res.status(403).json({ error: 'Forbidden' });
-        }
-
-        return res.json({
-          sessionId: req.params.sessionId,
-          status: 'complete',
-          paid: true,
-          listingId: stubSession.listingId,
-          planId: stubSession.planId,
-          scope: stubSession.scope,
-          localBillingStub: true,
-        });
-      } catch {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
-
-    if (!stripe) {
-      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
-    }
-
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const uid = decodedToken.uid;
-      const sessionId = String(req.params.sessionId || '').trim();
-      if (!sessionId) {
-        return res.status(400).json({ error: 'Session id is required.' });
-      }
-
-      const session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ['subscription'],
-      });
-
-      if (String(session.metadata?.userUid || '') !== uid) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const finalized = await finalizeListingPaymentFromCheckoutSession(session, 'confirm');
-
-      return res.json({
-        sessionId: session.id,
-        status: session.status,
-        paid: finalized.paid,
-        listingId: finalized.listingId,
-        planId: finalized.planId,
-      });
-    } catch (error: any) {
-      console.error('Failed to confirm Stripe checkout session:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to confirm checkout session.' });
-    }
+  registerPublicRoutes(app, {
+    db,
+    getMarketplaceStats,
+    getPublicNewsFeedPayload,
+    getPublicNewsPostPayload,
+    serializeSellerPayloadFromStorefront,
+    serializeSellerPayloadFromUser,
+    hasActiveDealerDirectorySubscription,
+    normalizeNonEmptyString,
   });
 
-  app.post('/api/billing/create-portal-session', async (req, res) => {
-    if (!stripe && isLocalBillingStubEnabled()) {
-      const idToken = req.headers.authorization?.split('Bearer ')[1];
-      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-      try {
-        await auth.verifyIdToken(idToken);
-        const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
-        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
-        const baseUrl = getRequestBaseUrl(req);
-        const separator = returnPath.includes('?') ? '&' : '?';
-        return res.json({
-          url: `${baseUrl}${returnPath}${separator}billingPortal=local-stub`,
-          localBillingStub: true,
-        });
-      } catch {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
-
-    if (!stripe) {
-      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
-    }
-
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const uid = String(decodedToken.uid || '').trim();
-      const email = String(decodedToken.email || '').trim().toLowerCase();
-      const returnPathRaw = String(req.body?.returnPath || '/profile?tab=Account%20Settings').trim();
-      const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/profile?tab=Account%20Settings';
-      const baseUrl = getRequestBaseUrl(req);
-      const separator = returnPath.includes('?') ? '&' : '?';
-
-      const customerId = await findExistingStripeCustomerId(uid, email);
-      if (!customerId) {
-        return res.status(409).json({
-          error: 'No active billing profile was found for this account yet. Choose an ad program before opening billing management.',
-        });
-      }
-
-      const session = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: `${baseUrl}${returnPath}${separator}billingPortal=return`,
-      });
-
-      if (!session.url) {
-        return res.status(500).json({ error: 'Stripe billing portal URL was not returned.' });
-      }
-
-      return res.json({
-        url: session.url,
-        stripeCustomerId: customerId,
-      });
-    } catch (error: any) {
-      console.error('Failed to create billing portal session:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to create billing portal session.' });
-    }
+  registerUserRoutes(app, {
+    db,
+    auth,
+    upload,
+    scanFileForViruses,
+    apiSuccess,
+    apiError,
   });
 
-  app.post('/api/billing/cancel-subscription', async (req, res) => {
-    if (!stripe && isLocalBillingStubEnabled()) {
-      const idToken = req.headers.authorization?.split('Bearer ')[1];
-      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-      try {
-        await auth.verifyIdToken(idToken);
-        return res.json({
-          success: true,
-          message: 'Local billing stub: subscription cancellation simulated.',
-          localBillingStub: true,
-        });
-      } catch {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
-
-    if (!stripe) {
-      return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
-    }
-
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const uid = String(decodedToken.uid || '').trim();
-
-      const userDoc = await db.collection('users').doc(uid).get();
-      const subscriptionId = userDoc.data()?.currentSubscriptionId;
-      if (!subscriptionId) {
-        return res.status(404).json({ error: 'No active subscription found for this account.' });
-      }
-
-      await stripe.subscriptions.update(subscriptionId, {
-        cancel_at_period_end: true,
-      });
-
-      return res.json({ success: true, message: 'Subscription will be canceled at the end of the current billing period.' });
-    } catch (error: any) {
-      console.error('Failed to cancel subscription:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to cancel subscription.' });
-    }
+  registerAdminRoutes(app, {
+    db,
+    auth,
+    stripe,
+    sendServerEmail,
+    emailTemplates,
+    isPrivilegedAdminEmail,
+    canAdministrateAccountRole,
+    normalizeRole,
+    canCreateManagedRole,
+    getManagedAccountSeatContext,
+    buildAdminOverviewBootstrapPayload,
+    serializeInquiryDoc,
+    serializeCallDoc,
+    normalizeDealerFeedListing,
+    normalizeNonEmptyString,
+    DEALER_MANAGED_ACCOUNT_LIMIT,
+    APP_BASE_URL,
+    EMAIL_FROM_ADDRESS,
   });
 
-  app.post('/api/billing/create-account-checkout-session', async (req, res) => {
-    if (!stripe && isLocalBillingStubEnabled()) {
-      const idToken = req.headers.authorization?.split('Bearer ')[1];
-      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-      try {
-        const decodedToken = await auth.verifyIdToken(idToken);
-        const plan = getListingCheckoutPlan(req.body?.planId);
-        if (!plan) {
-          return res.status(400).json({ error: 'Invalid seller plan.' });
-        }
-
-        const returnPathRaw = String(req.body?.returnPath || '/sell').trim();
-        const returnPath = returnPathRaw.startsWith('/') ? returnPathRaw : '/sell';
-        const baseUrl = getRequestBaseUrl(req);
-        const separator = returnPath.includes('?') ? '&' : '?';
-        const sessionId = buildLocalBillingStubSessionId('account', plan.id, null, decodedToken.uid);
-
-        return res.json({
-          sessionId,
-          url: `${baseUrl}${returnPath}${separator}accountCheckout=success&session_id=${encodeURIComponent(sessionId)}&localBillingStub=1`,
-          localBillingStub: true,
-        });
-      } catch {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
-
-    return res.status(503).json({
-      error: 'Account checkout should be served by the shared billing proxy in local development. If Stripe is unavailable locally, enable LOCAL_BILLING_STUB=true.',
-    });
+  registerManagedRolesRoutes(app, {
+    db,
+    auth,
+    normalizeRole,
+    isPrivilegedAdminEmail,
+    sendServerEmail,
+    emailTemplates,
+    APP_BASE_URL,
   });
 
-  app.post('/api/billing/refresh-account-access', async (req, res) => {
-    if (!stripe && isLocalBillingStubEnabled()) {
-      const idToken = req.headers.authorization?.split('Bearer ')[1];
-      if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-      try {
-        const decodedToken = await auth.verifyIdToken(idToken);
-        return res.json(buildLocalBillingStubSummary(decodedToken));
-      } catch {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
-
-    return res.status(503).json({
-      error: 'Account access refresh should be served by the shared billing proxy in local development. If Stripe is unavailable locally, enable LOCAL_BILLING_STUB=true.',
-    });
+  const { closeLotByTimer } = registerAuctionRoutes(app, {
+    db,
+    auth,
+    stripe,
+    sendServerEmail,
+    emailTemplates,
+    getOrCreateStripeCustomer,
+    isPrivilegedAdminEmail,
+    canAdministrateAccountRole,
+    parseDate,
+    normalizeNonEmptyString,
+    apiSuccess,
+    apiError,
+    APP_BASE_URL,
   });
 
-  app.get('/api/marketplace-stats', async (req, res) => {
-    try {
-      const payload = await getMarketplaceStats();
-      res.set('Cache-Control', 'public, max-age=600');
-      res.json(payload);
-    } catch (error: any) {
-      console.error('Failed to compute marketplace stats:', error);
-      res.status(500).json({ error: error?.message || 'Failed to load marketplace stats' });
-    }
-  });
-
-  app.get('/api/public/sellers/:identity', async (req, res) => {
-    const requestedIdentity = normalizeNonEmptyString(req.params.identity);
-    if (!requestedIdentity) {
-      return res.status(400).json({ error: 'Seller identifier is required.' });
-    }
-
-    try {
-      let storefrontSnapshot = await db.collection('storefronts').doc(requestedIdentity).get();
-      if (!storefrontSnapshot.exists) {
-        const storefrontSlugSnapshot = await db
-          .collection('storefronts')
-          .where('storefrontSlug', '==', requestedIdentity)
-          .limit(1)
-          .get();
-        if (!storefrontSlugSnapshot.empty) {
-          storefrontSnapshot = storefrontSlugSnapshot.docs[0];
-        }
-      }
-
-      if (storefrontSnapshot.exists) {
-        res.set('Cache-Control', 'public, max-age=300');
-        return res.json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
-      }
-
-      let userSnapshot = await db.collection('users').doc(requestedIdentity).get();
-      if (!userSnapshot.exists) {
-        const userSlugSnapshot = await db
-          .collection('users')
-          .where('storefrontSlug', '==', requestedIdentity)
-          .limit(1)
-          .get();
-        if (!userSlugSnapshot.empty) {
-          userSnapshot = userSlugSnapshot.docs[0];
-        }
-      }
-
-      if (userSnapshot.exists) {
-        res.set('Cache-Control', 'public, max-age=300');
-        return res.json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
-      }
-
-      return res.json({ seller: null });
-    } catch (error: any) {
-      console.error('Failed to resolve public seller:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load seller.' });
-    }
-  });
-
-  app.get('/api/public/dealers', async (_req, res) => {
-    try {
-      const usersSnapshot = await db.collection('users').where('storefrontEnabled', '==', true).get();
-      type PublicDealerDirectoryEntry = ReturnType<typeof serializeSellerPayloadFromUser> & { verified: boolean };
-      const dealers = usersSnapshot.docs
-        .map((snapshot) => {
-          const data = snapshot.data() || {};
-          if (!hasActiveDealerDirectorySubscription(data)) {
-            return null;
-          }
-
-          return {
-            ...serializeSellerPayloadFromUser(snapshot.id, data),
-            verified: Boolean(data.storefrontEnabled),
-          };
-        })
-        .filter((dealer): dealer is PublicDealerDirectoryEntry => Boolean(dealer))
-        .sort((left, right) => {
-          const leftName = normalizeNonEmptyString(left.storefrontName || left.name).toLowerCase();
-          const rightName = normalizeNonEmptyString(right.storefrontName || right.name).toLowerCase();
-          return leftName.localeCompare(rightName) || String(left.id || '').localeCompare(String(right.id || ''));
-        });
-
-      res.set('Cache-Control', 'public, max-age=300');
-      return res.json({ dealers });
-    } catch (error: any) {
-      console.error('Failed to load public dealer directory:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load dealers.' });
-    }
-  });
-
-  app.get('/api/public/news', async (_req, res) => {
-    try {
-      const posts = await getPublicNewsFeedPayload();
-      res.set('Cache-Control', 'public, max-age=300');
-      return res.json({
-        posts,
-        fetchedAt: new Date().toISOString(),
-      });
-    } catch (error: any) {
-      console.error('Failed to load public news feed:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load equipment news.' });
-    }
-  });
-
-  app.get('/api/public/news/:id', async (req, res) => {
-    try {
-      const post = await getPublicNewsPostPayload(req.params.id);
-      res.set('Cache-Control', 'public, max-age=300');
-      return res.json({ post });
-    } catch (error: any) {
-      console.error('Failed to load public news article:', error);
-      return res.status(500).json({ error: error?.message || 'Failed to load the equipment news article.' });
-    }
-  });
-
-  app.post('/api/recaptcha-assess', express.json(), async (req, res) => {
-    const { token, action } = req.body || {};
-    if (!token || !action) return res.status(400).json({ error: 'token and action required' });
-
-    const apiKey = process.env.RECAPTCHA_API_KEY;
-    if (!apiKey) {
-      // Dev mode without key: pass everything through
-      return res.json({ pass: true, score: null });
-    }
-
-    try {
-      const response = await fetch(
-        `https://recaptchaenterprise.googleapis.com/v1/projects/mobile-app-equipment-sales/assessments?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: { token, siteKey: '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0', expectedAction: action } }),
-        }
-      );
-      if (!response.ok) return res.json({ pass: true, score: null });
-      const data: any = await response.json();
-      const valid = data?.tokenProperties?.valid ?? true;
-      const score: number | null = data?.riskAnalysis?.score ?? null;
-      const pass = valid && (score === null || score >= 0.5);
-      return res.json({ pass, score });
-    } catch {
-      return res.json({ pass: true, score: null }); // graceful degradation
-    }
-  });
-
-  // Automated Data Deletion Backend
-  app.post('/api/user/delete', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const uid = decodedToken.uid;
-
-      // 1. Delete user data across collections
-      const collections = ['listings', 'inquiries', 'financingRequests', 'invoices', 'subscriptions', 'consentLogs'];
-      
-      for (const coll of collections) {
-        const snapshot = await db.collection(coll).where('userUid', '==', uid).get();
-        const batch = db.batch();
-        snapshot.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-      }
-
-      // Special case for listings where field is 'sellerUid'
-      const listingsSnapshot = await db.collection('listings').where('sellerUid', '==', uid).get();
-      const listingsBatch = db.batch();
-      listingsSnapshot.docs.forEach(doc => listingsBatch.delete(doc.ref));
-      await listingsBatch.commit();
-
-      // 2. Delete User Profile
-      await db.collection('users').doc(uid).delete();
-
-      // 3. Delete Firebase Auth User
-      await auth.deleteUser(uid);
-
-      // 4. Log the action
-      await db.collection('auditLogs').add({
-        action: 'ACCOUNT_DELETED_BY_USER',
-        targetId: uid,
-        targetType: 'user',
-        details: `User ${uid} deleted their account and all associated data.`,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error('Error deleting user account:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Secure File Upload Endpoint
-  app.post('/api/upload', upload.single('file'), async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      await auth.verifyIdToken(idToken);
-    } catch {
-      return res.status(401).json({ error: 'Invalid or expired token.' });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded.' });
-    }
-
-    try {
-      // 1. Virus Scanning
-      const isClean = await scanFileForViruses(req.file.buffer);
-      if (!isClean) {
-        return res.status(400).json({ error: 'File check failed. Upload rejected.' });
-      }
-
-      // 2. Process the file (e.g., upload to Firebase Storage or process locally)
-      // For this demo, we'll just return success and file info
-      console.log(`File ${req.file.originalname} uploaded successfully and passed security checks.`);
-      
-      res.json({
-        success: true,
-        message: 'File uploaded and scanned successfully.',
-        file: {
-          name: req.file.originalname,
-          size: req.file.size,
-          mimetype: req.file.mimetype,
-        }
-      });
-    } catch (error: any) {
-      console.error('Upload error:', error);
-      res.status(500).json({ error: 'Internal server error during upload.' });
-    }
-  });
-
-  app.post('/api/admin/users/create-managed-account', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const actorUid = decodedToken.uid;
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      const actorDoc = await db.collection('users').doc(actorUid).get();
-      const actorRole = normalizeRole(actorDoc.data()?.role);
-      const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || ['super_admin', 'admin', 'developer'].includes(actorRole);
-      const actorIsDealer = ['dealer', 'dealer_manager', 'pro_dealer'].includes(actorRole);
-
-      if (!actorCanAdminister && !actorIsDealer) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const displayName = String(req.body?.displayName || '').trim();
-      const email = String(req.body?.email || '').trim().toLowerCase();
-      const role = normalizeRole(req.body?.role);
-      const company = String(req.body?.company || '').trim();
-      const phoneNumber = String(req.body?.phoneNumber || '').trim();
-      const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-      const parentRole = actorCanAdminister && actorRole === 'buyer' ? 'super_admin' : actorRole;
-
-      if (!displayName || !email) {
-        return res.status(400).json({ error: 'Display name and email are required.' });
-      }
-
-      if (!canCreateManagedRole(parentRole, role)) {
-        return res.status(403).json({ error: 'You do not have permission to create this account role.' });
-      }
-
-      if (actorIsDealer) {
-        const seatContext = await getManagedAccountSeatContext(ownerUid);
-        if (seatContext.seatLimit < 1) {
-          return res.status(403).json({
-            error: 'An active Dealer or Fleet Dealer subscription is required before adding managed accounts.',
-          });
-        }
-        if (seatContext.seatCount >= seatContext.seatLimit) {
-          return res.status(409).json({
-            error: `Your current subscription includes up to ${seatContext.seatLimit} managed accounts. Remove one before adding another.`,
-          });
-        }
-      }
-
-      const existingUserByEmail = await db
-        .collection('users')
-        .where('email', '==', email)
-        .limit(1)
-        .get();
-
-      if (!existingUserByEmail.empty) {
-        return res.status(409).json({ error: 'An account with that email already exists.' });
-      }
-
-      const newUserRef = db.collection('users').doc();
-      await newUserRef.set({
-        uid: newUserRef.id,
-        email,
-        displayName,
-        role,
-        phoneNumber,
-        company: company || String(actorDoc.data()?.company || '').trim(),
-        parentAccountUid: ownerUid,
-        accountStatus: 'pending',
-        favorites: [],
-        emailVerified: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdByUid: actorUid,
-        managedByRole: parentRole,
-      });
-
-      return res.status(201).json({
-        id: newUserRef.id,
-        seatLimit: actorIsDealer ? DEALER_MANAGED_ACCOUNT_LIMIT : null,
-      });
-    } catch (error: any) {
-      console.error('Managed account creation failed:', error);
-      return res.status(500).json({ error: error?.message || 'Unable to create managed account.' });
-    }
-  });
-
-  app.post('/api/admin/dealer-feeds/ingest', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const actorUid = decodedToken.uid;
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      const actorDoc = await db.collection('users').doc(actorUid).get();
-      const actorRole = normalizeRole(actorDoc.data()?.role);
-      const actorCanAdminister = isPrivilegedAdminEmail(actorEmail) || ['super_admin', 'admin', 'developer'].includes(actorRole);
-      const actorIsDealer = ['dealer', 'dealer_manager', 'pro_dealer'].includes(actorRole);
-
-      if (!actorCanAdminister && !actorIsDealer) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const sourceName = normalizeNonEmptyString(req.body?.sourceName, 'dealer_feed');
-      const explicitDealerId = normalizeNonEmptyString(req.body?.dealerId);
-      const sellerUid = explicitDealerId || String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-      const dryRun = Boolean(req.body?.dryRun);
-      const items = Array.isArray(req.body?.items) ? (req.body.items as DealerFeedItem[]) : [];
-
-      if (!sellerUid) {
-        return res.status(400).json({ error: 'dealerId could not be resolved.' });
-      }
-      if (items.length === 0) {
-        return res.status(400).json({ error: 'items[] is required.' });
-      }
-      if (items.length > 1000) {
-        return res.status(400).json({ error: 'Maximum 1000 items per ingest request.' });
-      }
-
-      if (actorIsDealer && !actorCanAdminister) {
-        const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-        if (explicitDealerId && explicitDealerId !== ownerUid && explicitDealerId !== actorUid) {
-          return res.status(403).json({ error: 'Dealers can only ingest to their own account scope.' });
-        }
-      }
-
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      const errors: Array<{ index: number; reason: string }> = [];
-
-      for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        try {
-          const normalized = normalizeDealerFeedListing(item, sellerUid, sourceName);
-          if (!normalized.externalSource.externalId) {
-            skipped += 1;
-            continue;
-          }
-
-          const existing = await db
-            .collection('listings')
-            .where('sellerUid', '==', sellerUid)
-            .where('externalSource.externalId', '==', normalized.externalSource.externalId)
-            .limit(1)
-            .get();
-
-          if (dryRun) {
-            if (existing.empty) created += 1;
-            else updated += 1;
-            continue;
-          }
-
-          if (existing.empty) {
-            await db.collection('listings').add({
-              ...normalized,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            created += 1;
-          } else {
-            await existing.docs[0].ref.set(normalized, { merge: true });
-            updated += 1;
-          }
-        } catch (err: any) {
-          errors.push({ index, reason: err?.message || 'Unknown ingest error' });
-        }
-      }
-
-      const logPayload = {
-        actorUid,
-        actorRole,
-        sellerUid,
-        sourceName,
-        dryRun,
-        totalReceived: items.length,
-        created,
-        updated,
-        skipped,
-        errorCount: errors.length,
-        errors: errors.slice(0, 100),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-
-      if (!dryRun) {
-        await db.collection('dealerFeedIngestLogs').add(logPayload);
-      }
-
-      return res.json({
-        ok: true,
-        ...logPayload,
-      });
-    } catch (error: any) {
-      console.error('Dealer feed ingest failed:', error);
-      return res.status(500).json({ error: error?.message || 'Dealer feed ingest failed.' });
-    }
-  });
-
-  // Admin Operations Bootstrap
-  app.get('/api/admin/bootstrap', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const user = await db.collection('users').doc(decodedToken.uid).get();
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const authUsers: admin.auth.UserRecord[] = [];
-      let nextPageToken: string | undefined;
-      do {
-        const listResult = await auth.listUsers(1000, nextPageToken);
-        authUsers.push(...listResult.users);
-        nextPageToken = listResult.pageToken;
-      } while (nextPageToken);
-
-      const profileRefs = authUsers.map((authUserRecord) => db.collection('users').doc(authUserRecord.uid));
-      const profileSnaps = profileRefs.length > 0 ? await db.getAll(...profileRefs) : [];
-      const profileMap = new Map(profileSnaps.map((snap) => [snap.id, snap]));
-
-      const users = authUsers.map((authUserRecord) => {
-        const snap = profileMap.get(authUserRecord.uid);
-        const data = snap?.exists ? (snap.data() || {}) : {};
-        const displayName = String(data.displayName || data.name || authUserRecord.displayName || authUserRecord.email || 'Unknown User').trim();
-        const email = String(data.email || authUserRecord.email || '').trim().toLowerCase();
-        const createdAt = String(data.createdAt || authUserRecord.metadata.creationTime || '');
-        const updatedAt = String(data.updatedAt || '');
-        const lastLogin = String(authUserRecord.metadata.lastSignInTime || data.lastLogin || updatedAt || createdAt || '');
-        const authDisabled = Boolean(authUserRecord.disabled);
-        const accountStatus = authDisabled ? 'suspended' : String(data.accountStatus || 'active');
-
-        return {
-          id: authUserRecord.uid,
-          uid: authUserRecord.uid,
-          name: displayName,
-          displayName,
-          email,
-          phone: String(data.phoneNumber || '').trim(),
-          phoneNumber: String(data.phoneNumber || '').trim(),
-          company: String(data.company || '').trim(),
-          role: String(data.role || authUserRecord.customClaims?.role || 'buyer'),
-          status: authDisabled ? 'Suspended' : (accountStatus === 'pending' ? 'Pending' : 'Active'),
-          accountStatus,
-          authDisabled,
-          emailVerified: Boolean(authUserRecord.emailVerified),
-          lastLogin,
-          lastActive: lastLogin,
-          memberSince: createdAt,
-          createdAt,
-          updatedAt,
-          totalListings: Number(data.totalListings || 0),
-          totalLeads: Number(data.totalLeads || 0),
-          parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
-        };
-      }).sort((left, right) => {
-        const leftTime = Date.parse(left.lastLogin || left.memberSince || '') || 0;
-        const rightTime = Date.parse(right.lastLogin || right.memberSince || '') || 0;
-        return rightTime - leftTime;
-      });
-
-      const [inquiriesSnapshot, callsSnapshot] = await Promise.all([
-        db.collection('inquiries').orderBy('createdAt', 'desc').get(),
-        db.collection('calls').orderBy('createdAt', 'desc').get(),
-      ]);
-      const includeOverview = ['1', 'true', 'yes'].includes(String(req.query?.includeOverview || '').trim().toLowerCase());
-      const overview = includeOverview ? await buildAdminOverviewBootstrapPayload() : null;
-
-      res.json({
-        users,
-        inquiries: inquiriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-        calls: callsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-        overview,
-        partial: false,
-        degradedSections: [],
-        errors: {},
-        firestoreQuotaLimited: false,
-        fetchedAt: new Date().toISOString(),
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Admin Billing Endpoints
-  app.get('/api/admin/billing/invoices', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const user = await db.collection('users').doc(decodedToken.uid).get();
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const snapshot = await db.collection('invoices').orderBy('createdAt', 'desc').get();
-      const invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json(invoices);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get('/api/admin/billing/subscriptions', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const user = await db.collection('users').doc(decodedToken.uid).get();
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const snapshot = await db.collection('subscriptions').get();
-      const subscriptions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json(subscriptions);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get('/api/admin/billing/audit-logs', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const user = await db.collection('users').doc(decodedToken.uid).get();
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !canAdministrateAccountRole(user.data()?.role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const snapshot = await db.collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(50).get();
-      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json(logs);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ── Content Studio (Blog Posts) ──────────────────────────────────────────────
-  const CONTENT_ROLES = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
-
-  app.get('/api/admin/content/blog-posts', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-      const role = String(userDoc.data()?.role || '').trim().toLowerCase();
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !CONTENT_ROLES.includes(role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const snapshot = await db.collection('blogPosts').orderBy('updatedAt', 'desc').get();
-      const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json(posts);
-    } catch (error: any) {
-      console.error('Failed to fetch blog posts:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get('/api/admin/content/bootstrap', async (req, res) => {
-    const idToken = req.headers.authorization?.split('Bearer ')[1];
-    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-      const role = String(userDoc.data()?.role || '').trim().toLowerCase();
-      const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
-      if (!isPrivilegedAdminEmail(actorEmail) && !CONTENT_ROLES.includes(role)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      const errors: Record<string, string> = {};
-      let posts: any[] = [];
-      let media: any[] = [];
-      let contentBlocks: any[] = [];
-
-      try {
-        const postsSnap = await db.collection('blogPosts').orderBy('updatedAt', 'desc').get();
-        posts = postsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { errors.posts = e.message; }
-
-      try {
-        const mediaSnap = await db.collection('media').orderBy('uploadedAt', 'desc').get();
-        media = mediaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { errors.media = e.message; }
-
-      try {
-        const blocksSnap = await db.collection('contentBlocks').get();
-        contentBlocks = blocksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { errors.contentBlocks = e.message; }
-
-      res.json({
-        posts,
-        media,
-        contentBlocks,
-        partial: Object.keys(errors).length > 0,
-        degradedSections: Object.keys(errors),
-        errors,
-        firestoreQuotaLimited: false,
-        fetchedAt: new Date().toISOString(),
-      });
-    } catch (error: any) {
-      console.error('Failed to fetch content bootstrap:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   // 8. Vite Middleware / Static Files
   if (process.env.NODE_ENV !== 'production') {
@@ -2647,7 +1723,16 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: '1y',
+      immutable: true,
+      etag: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.html') || filePath.endsWith('.json')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      },
+    }));
     // Known SPA routes — return 200 for these, 404 for everything else
     const SPA_ROUTES = new Set([
       '/', '/search', '/blog', '/admin', '/compare', '/categories', '/dealers',
@@ -2671,6 +1756,7 @@ async function startServer() {
     });
   }
 
+
   app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
     captureServerException(error, {
       path: req.originalUrl,
@@ -2685,8 +1771,24 @@ async function startServer() {
     return res.status(500).json({ error: 'Internal server error' });
   });
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  // ── WebSocket: create HTTP server and attach Socket.IO ──────────────────
+  const httpServer = createHttpServer(app);
+  const { io: socketIO, timerManager } = setupAuctionSockets(httpServer, db, auth);
+
+  // Store references for use in route handlers
+  (app as any).__socketIO = socketIO;
+  (app as any).__timerManager = timerManager;
+
+  // Load active auction timers on startup
+  timerManager.loadActiveAuctions(db, async (auctionId: string, lotId: string) => {
+    await closeLotByTimer(db, auctionId, lotId, socketIO);
+  }).catch((err) => {
+    console.error('[startup] Failed to load auction timers:', err);
+    captureServerException(err, { tags: { handler: 'timer-load' } });
+  });
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT} (WebSocket enabled at /ws)`);
   });
 }
 

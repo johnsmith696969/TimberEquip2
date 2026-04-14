@@ -46,14 +46,14 @@
     -webkit-border-radius: 0;
   }
 
-  /* iOS select styling */
+  /* iOS select styling — theme-aware chevron */
   select {
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23999' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 8px center;
-    padding-right: 28px;
+    background-position: right 12px center;
+    padding-right: 32px;
   }
 
   /* Textarea styling */
@@ -76,6 +76,7 @@
     box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18);
     outline: none;
   }
+
 }
 
 @layer base {

@@ -40,8 +40,7 @@ export type UserRole =
   | 'dealer'
   | 'pro_dealer'
   | 'individual_seller'
-  | 'member'
-  | 'buyer';
+  | 'member';
 
 export interface Seller {
   id: string;
@@ -50,7 +49,18 @@ export interface Seller {
   type: 'Dealer' | 'Private';
   role?: UserRole;
   storefrontSlug?: string;
+  canonicalPath?: string;
+  businessName?: string;
   location: string;
+  street1?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  county?: string;
+  postalCode?: string;
+  country?: string;
+  latitude?: number;
+  longitude?: number;
   phone: string;
   email: string;
   website?: string;
@@ -59,6 +69,11 @@ export interface Seller {
   storefrontName?: string;
   storefrontTagline?: string;
   storefrontDescription?: string;
+  serviceAreaScopes?: string[];
+  serviceAreaStates?: string[];
+  serviceAreaCounties?: string[];
+  servicesOfferedCategories?: string[];
+  servicesOfferedSubcategories?: string[];
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string[];
@@ -66,6 +81,7 @@ export interface Seller {
   totalListings: number;
   memberSince: string;
   verified: boolean;
+  manuallyVerified?: boolean;
   twilioPhoneNumber?: string;
 }
 
@@ -182,6 +198,10 @@ export interface Listing {
     format?: 'image/avif' | 'image/webp' | 'image/jpeg';
   }>;
   location: string;
+  city?: string;
+  state?: string;
+  sellerName?: string;
+  sellerPhone?: string;
   stockNumber?: string;
   serialNumber?: string;
   latitude?: number;
@@ -222,6 +242,14 @@ export interface Listing {
   // Legacy fields for compatibility if needed
   manufacturer?: string;
   sellerId?: string;
+  // Auction fields (set when listing is assigned to an auction lot)
+  auctionId?: string;
+  auctionSlug?: string;
+  auctionStatus?: AuctionLotStatus;
+  auctionEndTime?: string;
+  currentBid?: number;
+  bidCount?: number;
+  lotNumber?: string;
 }
 
 export interface ListingFilters {
@@ -286,6 +314,9 @@ export interface NewsPost {
   seoDescription?: string;
   seoKeywords?: string[];
   seoSlug?: string;
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Inquiry {
@@ -319,6 +350,8 @@ export interface Inquiry {
   updatedAt?: string;
   duration?: number; // For calls
   recordingUrl?: string; // For calls
+  archivedAt?: string;
+  archivedByUid?: string;
   createdAt: string;
 }
 
@@ -356,13 +389,15 @@ export interface CallLog {
   callerPhone: string;
   duration: number; // in seconds
   status: 'Initiated' | 'Completed' | 'Missed' | 'Voicemail';
-  source?: 'listing_detail' | 'listing_detail_twilio' | 'twilio_inbound' | 'seller_profile' | 'unknown';
+  source?: 'listing_detail' | 'listing_detail_twilio' | 'twilio_inbound' | 'seller_profile' | 'listing_card' | 'unknown';
   isAuthenticated?: boolean;
   recordingUrl?: string;
   twilioCallSid?: string;
   twilioFromNumber?: string;
   twilioToNumber?: string;
   completedAt?: string;
+  archivedAt?: string;
+  archivedByUid?: string;
   createdAt: string;
 }
 
@@ -386,6 +421,7 @@ export interface Account {
   updatedAt?: string;
   totalListings: number;
   totalLeads: number;
+  storefrontViews?: number;
   parentAccountUid?: string;
   accountAccessSource?: 'free_member' | 'pending_checkout' | 'subscription' | 'admin_override' | 'managed_account' | null;
   activeSubscriptionPlanId?: 'individual_seller' | 'dealer' | 'fleet_dealer' | null;
@@ -396,6 +432,7 @@ export interface Account {
   currentPeriodEnd?: string | null;
   subscriptionStartDate?: string | null;
   entitlement?: AccountEntitlement | null;
+  manuallyVerified?: boolean;
 }
 
 export type ListingLifecycleAction =
@@ -469,17 +506,204 @@ export interface ListingLifecycleAuditView {
   transitions: ListingLifecycleTransitionRecord[];
 }
 
+export type AuctionStatus = 'draft' | 'preview' | 'active' | 'closed' | 'settling' | 'settled' | 'cancelled';
+export type AuctionLotStatus = 'upcoming' | 'preview' | 'active' | 'extended' | 'closed' | 'sold' | 'unsold' | 'cancelled';
+export type BidType = 'manual' | 'proxy' | 'auto_increment';
+export type BidStatus = 'active' | 'outbid' | 'retracted' | 'winning';
+export type BidderTier = 'basic' | 'verified' | 'approved';
+
 export interface Auction {
   id: string;
   title: string;
-  date: string;
-  location: string;
-  type: 'Live' | 'Online' | 'Timed';
-  status: 'Upcoming' | 'Active' | 'Closed';
-  itemCount: number;
-  image: string;
-  featured?: boolean;
+  slug: string;
+  description: string;
+  coverImageUrl: string;
+  startTime: string;
+  endTime: string;
+  previewStartTime: string;
+  status: AuctionStatus;
+  lotCount: number;
+  totalBids: number;
+  totalGMV: number;
+  defaultBuyerPremiumPercent: number;
+  termsAndConditionsUrl: string;
+  featured: boolean;
+  bannerEnabled: boolean;
+  bannerImageUrl: string;
+  softCloseThresholdMin: number;
+  softCloseExtensionMin: number;
+  staggerIntervalMin: number;
+  defaultPaymentDeadlineDays: number;
+  defaultRemovalDeadlineDays: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  // Legacy compat
+  date?: string;
+  location?: string;
+  type?: 'Live' | 'Online' | 'Timed';
+  itemCount?: number;
+  image?: string;
 }
+
+export interface AuctionLot {
+  id: string;
+  auctionId: string;
+  listingId: string;
+  lotNumber: string;
+  closeOrder: number;
+  startingBid: number;
+  reservePrice: number | null;
+  reserveMet: boolean;
+  hasReserve?: boolean;
+  buyerPremiumPercent: number;
+  startTime: string;
+  endTime: string;
+  originalEndTime: string;
+  softCloseThresholdMin: number;
+  softCloseExtensionMin: number;
+  softCloseGroupId: string | null;
+  extensionCount: number;
+  currentBid: number;
+  currentBidderId: string | null;
+  currentBidderAnonymousId: string;
+  bidCount: number;
+  uniqueBidders: number;
+  lastBidTime: string | null;
+  status: AuctionLotStatus;
+  promoted: boolean;
+  promotedOrder: number;
+  winningBidderId: string | null;
+  winningBid: number | null;
+  watcherIds: string[];
+  watcherCount: number;
+  // Denormalized from listing for fast reads
+  title: string;
+  manufacturer: string;
+  model: string;
+  year: number;
+  thumbnailUrl: string;
+  pickupLocation: string;
+  paymentDeadlineDays: number;
+  removalDeadlineDays: number;
+  storageFeePerDay: number;
+  isTitledItem?: boolean;
+  titleDocumentFee?: number;
+  releasedAt?: string | null;
+  releasedBy?: string | null;
+  releaseAuthorizedAt?: string | null;
+  releaseAuthorizedBy?: string | null;
+}
+
+export interface AuctionBid {
+  id: string;
+  lotId: string;
+  auctionId: string;
+  bidderId: string;
+  bidderAnonymousId: string;
+  amount: number;
+  maxBid: number | null;
+  type: BidType;
+  status: BidStatus;
+  timestamp: string;
+  triggeredExtension: boolean;
+}
+
+export interface BidderProfile {
+  verificationTier: BidderTier;
+  fullName: string;
+  email?: string;
+  phone: string;
+  phoneVerified: boolean;
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
+  companyName: string | null;
+  stripeCustomerId: string;
+  stripeIdentityVerificationSessionId?: string | null;
+  stripeIdentityVerificationUrl?: string | null;
+  stripeIdentityLastError?: string | null;
+  stripeSetupSessionId?: string | null;
+  stripeSetupSessionStatus?: 'pending' | 'completed' | 'expired' | 'cancelled' | null;
+  stripeSetupIntentId?: string | null;
+  defaultPaymentMethodId?: string | null;
+  defaultPaymentMethodBrand?: string | null;
+  defaultPaymentMethodLast4?: string | null;
+  defaultPaymentMethodFunding?: 'credit' | 'debit' | 'prepaid' | 'unknown' | null;
+  preAuthPaymentIntentId: string | null;
+  preAuthAmount: number;
+  preAuthStatus: 'pending' | 'held' | 'captured' | 'released';
+  idVerificationStatus: 'not_started' | 'pending' | 'verified' | 'failed';
+  idVerifiedAt: string | null;
+  bidderApprovedAt?: string | null;
+  bidderApprovedBy?: string | null;
+  lastAuctionRegistrationAt?: string | null;
+  legalAcceptedAuctionSlug?: string | null;
+  legalAcceptedAuctionId?: string | null;
+  totalAuctionsParticipated: number;
+  totalItemsWon: number;
+  totalSpent: number;
+  nonPaymentCount: number;
+  taxExempt?: boolean;
+  taxExemptState?: string;
+  taxExemptCertificateUrl?: string;
+  taxExemptCertificateUploadedAt?: string;
+  termsAcceptedAt: string;
+  termsVersion: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuctionInvoice {
+  id: string;
+  auctionId: string;
+  lotId: string;
+  buyerId: string;
+  sellerId: string;
+  winningBid: number;
+  buyerPremium: number;
+  documentationFee: number;
+  cardProcessingFee?: number;
+  isTitledItem?: boolean;
+  salesTax: number;
+  salesTaxRate: number;
+  salesTaxState?: string;
+  taxExempt: boolean;
+  taxExemptCertificateId?: string;
+  totalDue: number;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled' | 'refunded';
+  paymentMethod: 'wire' | 'ach' | 'card' | 'financing' | null;
+  paymentMethodFunding?: 'credit' | 'debit' | 'prepaid' | 'unknown' | null;
+  stripeInvoiceId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+  stripePaymentIntentId?: string | null;
+  paymentTermsVersion?: string | null;
+  paidAt: string | null;
+  wireReceivedAt?: string | null;
+  wireReceivedBy?: string | null;
+  releaseAuthorizedAt?: string | null;
+  releaseAuthorizedBy?: string | null;
+  dueDate: string;
+  sellerCommission: number;
+  sellerPayout: number;
+  sellerPayoutTransferId?: string;
+  sellerPaidAt: string | null;
+  removalConfirmedAt?: string;
+  storageFeesAccrued?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// State sales tax rates for marketplace facilitator compliance (MN, WI, MI)
+export const STATE_SALES_TAX_RATES: Record<string, { rate: number; name: string; notes: string }> = {
+  MN: { rate: 0.06875, name: 'Minnesota', notes: 'Marketplace facilitator: collect on all taxable sales. Heavy equipment >$1K always taxable. Farm equipment at farm auctions may be exempt.' },
+  WI: { rate: 0.05, name: 'Wisconsin', notes: 'Marketplace facilitator: $100K threshold. County surtax 0.1-0.6% may apply. Farm machinery exempt if used in farming.' },
+  MI: { rate: 0.06, name: 'Michigan', notes: 'Marketplace facilitator: $100K or 200 transactions. Industrial processing equipment may qualify for exemption.' },
+};
 
 export interface UserProfile {
   uid: string;
@@ -497,11 +721,27 @@ export interface UserProfile {
   about?: string;
   bio?: string;
   location?: string;
+  storefrontLogoUrl?: string;
+  businessName?: string;
+  street1?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  county?: string;
+  postalCode?: string;
+  country?: string;
+  latitude?: number;
+  longitude?: number;
   storefrontEnabled?: boolean;
   storefrontSlug?: string;
   storefrontName?: string;
   storefrontTagline?: string;
   storefrontDescription?: string;
+  serviceAreaScopes?: string[];
+  serviceAreaStates?: string[];
+  serviceAreaCounties?: string[];
+  servicesOfferedCategories?: string[];
+  servicesOfferedSubcategories?: string[];
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string[];
@@ -530,15 +770,16 @@ export interface UserProfile {
 
 export interface AccountEntitlement {
   subscriptionState: 'active' | 'canceled' | 'past_due' | 'trialing' | 'pending' | 'none';
-  effectiveSellerCapability: 'none' | 'owner_operator' | 'dealer' | 'pro_dealer' | 'admin';
-  sellerAccessMode: 'none' | 'subscription' | 'admin_override' | 'admin';
+  effectiveSellerCapability: 'none' | 'owner_operator' | 'dealer' | 'pro_dealer';
+  sellerAccessMode: 'none' | 'subscription' | 'admin_override';
   sellerWorkspaceAccess: boolean;
+  adminWorkspaceAccess: boolean;
   canPostListings: boolean;
   dealerOsAccess: boolean;
   publicListingVisibility: 'publicly_eligible' | 'hidden_due_to_billing' | 'admin_override' | 'not_applicable';
-  visibilityReason: 'active_subscription' | 'inactive_subscription' | 'admin_override' | 'admin_role' | 'non_seller_role' | 'suspended_account';
+  visibilityReason: 'active_subscription' | 'inactive_subscription' | 'admin_override' | 'non_seller_role' | 'suspended_account';
   billingLabel: string;
-  overrideSource?: 'admin_override' | 'admin_role' | null;
+  overrideSource?: 'admin_override' | null;
 }
 
 export interface ManagedAccountSeatContext {
@@ -671,4 +912,31 @@ export interface BrandAsset {
   uploadedAt: string;
   uploadedBy: string;
   tags?: string[];
+}
+
+export type DealerWidgetCardStyle = 'fes-native' | 'grid' | 'list' | 'compact';
+
+export interface DealerWidgetConfig {
+  cardStyle: DealerWidgetCardStyle;
+  accentColor: string;
+  fontFamily: string;
+  darkMode: boolean;
+  showInquiry: boolean;
+  showCall: boolean;
+  showDetails: boolean;
+  pageSize: number;
+  customCss?: string;
+  updatedAt?: string;
+}
+
+export interface WebhookSubscription {
+  id: string;
+  dealerUid: string;
+  callbackUrl: string;
+  secret?: string;
+  events: ('listing.created' | 'listing.updated' | 'listing.sold' | 'listing.deleted')[];
+  active: boolean;
+  createdAt: string;
+  lastDeliveryAt?: string | null;
+  failureCount: number;
 }

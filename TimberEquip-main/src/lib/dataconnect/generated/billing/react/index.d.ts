@@ -1,0 +1,36 @@
+import { GetSubscriptionsByUserData, GetSubscriptionsByUserVariables, GetActiveSubscriptionForListingData, GetActiveSubscriptionForListingVariables, GetSubscriptionByStripeIdData, GetSubscriptionByStripeIdVariables, GetInvoicesByUserData, GetInvoicesByUserVariables, GetSellerApplicationsByUserData, GetSellerApplicationsByUserVariables, UpsertSubscriptionData, UpsertSubscriptionVariables, UpsertInvoiceData, UpsertInvoiceVariables, UpsertSellerApplicationData, UpsertSellerApplicationVariables, UpdateSubscriptionStatusData, UpdateSubscriptionStatusVariables, UpdateInvoiceStatusData, UpdateInvoiceStatusVariables } from '../';
+import { UseDataConnectQueryResult, useDataConnectQueryOptions, UseDataConnectMutationResult, useDataConnectMutationOptions} from '@tanstack-query-firebase/react/data-connect';
+import { UseQueryResult, UseMutationResult} from '@tanstack/react-query';
+import { DataConnect } from 'firebase/data-connect';
+import { FirebaseError } from 'firebase/app';
+
+
+export function useGetSubscriptionsByUser(vars: GetSubscriptionsByUserVariables, options?: useDataConnectQueryOptions<GetSubscriptionsByUserData>): UseDataConnectQueryResult<GetSubscriptionsByUserData, GetSubscriptionsByUserVariables>;
+export function useGetSubscriptionsByUser(dc: DataConnect, vars: GetSubscriptionsByUserVariables, options?: useDataConnectQueryOptions<GetSubscriptionsByUserData>): UseDataConnectQueryResult<GetSubscriptionsByUserData, GetSubscriptionsByUserVariables>;
+
+export function useGetActiveSubscriptionForListing(vars: GetActiveSubscriptionForListingVariables, options?: useDataConnectQueryOptions<GetActiveSubscriptionForListingData>): UseDataConnectQueryResult<GetActiveSubscriptionForListingData, GetActiveSubscriptionForListingVariables>;
+export function useGetActiveSubscriptionForListing(dc: DataConnect, vars: GetActiveSubscriptionForListingVariables, options?: useDataConnectQueryOptions<GetActiveSubscriptionForListingData>): UseDataConnectQueryResult<GetActiveSubscriptionForListingData, GetActiveSubscriptionForListingVariables>;
+
+export function useGetSubscriptionByStripeId(vars: GetSubscriptionByStripeIdVariables, options?: useDataConnectQueryOptions<GetSubscriptionByStripeIdData>): UseDataConnectQueryResult<GetSubscriptionByStripeIdData, GetSubscriptionByStripeIdVariables>;
+export function useGetSubscriptionByStripeId(dc: DataConnect, vars: GetSubscriptionByStripeIdVariables, options?: useDataConnectQueryOptions<GetSubscriptionByStripeIdData>): UseDataConnectQueryResult<GetSubscriptionByStripeIdData, GetSubscriptionByStripeIdVariables>;
+
+export function useGetInvoicesByUser(vars: GetInvoicesByUserVariables, options?: useDataConnectQueryOptions<GetInvoicesByUserData>): UseDataConnectQueryResult<GetInvoicesByUserData, GetInvoicesByUserVariables>;
+export function useGetInvoicesByUser(dc: DataConnect, vars: GetInvoicesByUserVariables, options?: useDataConnectQueryOptions<GetInvoicesByUserData>): UseDataConnectQueryResult<GetInvoicesByUserData, GetInvoicesByUserVariables>;
+
+export function useGetSellerApplicationsByUser(vars: GetSellerApplicationsByUserVariables, options?: useDataConnectQueryOptions<GetSellerApplicationsByUserData>): UseDataConnectQueryResult<GetSellerApplicationsByUserData, GetSellerApplicationsByUserVariables>;
+export function useGetSellerApplicationsByUser(dc: DataConnect, vars: GetSellerApplicationsByUserVariables, options?: useDataConnectQueryOptions<GetSellerApplicationsByUserData>): UseDataConnectQueryResult<GetSellerApplicationsByUserData, GetSellerApplicationsByUserVariables>;
+
+export function useUpsertSubscription(options?: useDataConnectMutationOptions<UpsertSubscriptionData, FirebaseError, UpsertSubscriptionVariables>): UseDataConnectMutationResult<UpsertSubscriptionData, UpsertSubscriptionVariables>;
+export function useUpsertSubscription(dc: DataConnect, options?: useDataConnectMutationOptions<UpsertSubscriptionData, FirebaseError, UpsertSubscriptionVariables>): UseDataConnectMutationResult<UpsertSubscriptionData, UpsertSubscriptionVariables>;
+
+export function useUpsertInvoice(options?: useDataConnectMutationOptions<UpsertInvoiceData, FirebaseError, UpsertInvoiceVariables>): UseDataConnectMutationResult<UpsertInvoiceData, UpsertInvoiceVariables>;
+export function useUpsertInvoice(dc: DataConnect, options?: useDataConnectMutationOptions<UpsertInvoiceData, FirebaseError, UpsertInvoiceVariables>): UseDataConnectMutationResult<UpsertInvoiceData, UpsertInvoiceVariables>;
+
+export function useUpsertSellerApplication(options?: useDataConnectMutationOptions<UpsertSellerApplicationData, FirebaseError, UpsertSellerApplicationVariables>): UseDataConnectMutationResult<UpsertSellerApplicationData, UpsertSellerApplicationVariables>;
+export function useUpsertSellerApplication(dc: DataConnect, options?: useDataConnectMutationOptions<UpsertSellerApplicationData, FirebaseError, UpsertSellerApplicationVariables>): UseDataConnectMutationResult<UpsertSellerApplicationData, UpsertSellerApplicationVariables>;
+
+export function useUpdateSubscriptionStatus(options?: useDataConnectMutationOptions<UpdateSubscriptionStatusData, FirebaseError, UpdateSubscriptionStatusVariables>): UseDataConnectMutationResult<UpdateSubscriptionStatusData, UpdateSubscriptionStatusVariables>;
+export function useUpdateSubscriptionStatus(dc: DataConnect, options?: useDataConnectMutationOptions<UpdateSubscriptionStatusData, FirebaseError, UpdateSubscriptionStatusVariables>): UseDataConnectMutationResult<UpdateSubscriptionStatusData, UpdateSubscriptionStatusVariables>;
+
+export function useUpdateInvoiceStatus(options?: useDataConnectMutationOptions<UpdateInvoiceStatusData, FirebaseError, UpdateInvoiceStatusVariables>): UseDataConnectMutationResult<UpdateInvoiceStatusData, UpdateInvoiceStatusVariables>;
+export function useUpdateInvoiceStatus(dc: DataConnect, options?: useDataConnectMutationOptions<UpdateInvoiceStatusData, FirebaseError, UpdateInvoiceStatusVariables>): UseDataConnectMutationResult<UpdateInvoiceStatusData, UpdateInvoiceStatusVariables>;

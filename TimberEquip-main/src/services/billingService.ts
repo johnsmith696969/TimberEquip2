@@ -1,6 +1,7 @@
 import { auth } from '../firebase';
 import { withPerformanceTrace } from './performance';
 import type { AccountEntitlement } from '../types';
+import { UNLIMITED_LISTING_CAP } from '../utils/listingCaps';
 
 export type ListingPlanId = 'individual_seller' | 'dealer' | 'fleet_dealer';
 export type AccountOnboardingChoice = 'free_member' | ListingPlanId;
@@ -31,7 +32,9 @@ export interface SellerPlanDefinition {
   period: string;
   summary: string;
   listingCap: number;
+  listingCapLabel?: string;
   managedAccountCap?: number;
+  trialMonths?: number;
 }
 
 export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
@@ -46,20 +49,24 @@ export const SELLER_PLAN_DEFINITIONS: SellerPlanDefinition[] = [
   {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    price: 499,
+    price: 250,
     period: 'month',
-    summary: 'For dealer teams with full monthly inventory management.',
+    summary: 'For dealer teams that need a branded storefront, 50 active listings, and a 6-month free launch period.',
     listingCap: 50,
+    listingCapLabel: '50 listings',
     managedAccountCap: 3,
+    trialMonths: 6,
   },
   {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    price: 999,
+    price: 500,
     period: 'month',
-    summary: 'For high-volume dealer groups with expanded inventory and visibility.',
-    listingCap: 150,
+    summary: 'For high-volume dealer groups that need unlimited active inventory and a 3-month free launch period.',
+    listingCap: UNLIMITED_LISTING_CAP,
+    listingCapLabel: 'Unlimited listings',
     managedAccountCap: 3,
+    trialMonths: 3,
   },
 ];
 
@@ -83,6 +90,24 @@ export interface Subscription {
   stripeSubscriptionId: string;
   currentPeriodEnd: any;
   cancelAtPeriodEnd: boolean;
+}
+
+/** Returns true only if the subscription status is 'active' AND currentPeriodEnd is in the future. */
+export function isSubscriptionTrulyActive(sub: Subscription): boolean {
+  if (sub.status !== 'active') return false;
+  const periodEnd = sub.currentPeriodEnd;
+  if (!periodEnd) return false;
+  let periodEndMs = 0;
+  if (typeof periodEnd === 'object' && periodEnd !== null && typeof periodEnd.toMillis === 'function') {
+    periodEndMs = periodEnd.toMillis();
+  } else if (typeof periodEnd === 'object' && periodEnd !== null && typeof periodEnd.seconds === 'number') {
+    periodEndMs = periodEnd.seconds * 1000;
+  } else if (typeof periodEnd === 'number') {
+    periodEndMs = periodEnd > 1e12 ? periodEnd : periodEnd * 1000;
+  } else if (typeof periodEnd === 'string') {
+    periodEndMs = new Date(periodEnd).getTime();
+  }
+  return periodEndMs > Date.now();
 }
 
 export interface BillingAuditLog {
@@ -205,6 +230,7 @@ export interface AdminDealerPerformanceReportResponse {
 
 const PRIVATE_BILLING_CACHE_PREFIX = 'te-billing-cache-v1';
 const ACCOUNT_ACCESS_CACHE_SCOPE = 'account-access-summary';
+const BILLING_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 type BillingCacheEnvelope<T> = {
   savedAt: string;
@@ -229,7 +255,12 @@ function readBillingCache<T>(scope: string): T | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BillingCacheEnvelope<T> | T;
     if (parsed && typeof parsed === 'object' && 'data' in (parsed as BillingCacheEnvelope<T>)) {
-      return ((parsed as BillingCacheEnvelope<T>).data ?? null) as T | null;
+      const envelope = parsed as BillingCacheEnvelope<T>;
+      if (envelope.savedAt && (Date.now() - new Date(envelope.savedAt).getTime()) > BILLING_CACHE_TTL_MS) {
+        window.localStorage.removeItem(getBillingCacheKey(scope));
+        return null;
+      }
+      return (envelope.data ?? null) as T | null;
     }
     return parsed as T;
   } catch (error) {
@@ -275,8 +306,8 @@ function getBillingApiBaseUrls(): string[] {
     bases.push(origin);
   }
 
-  if (hostname === 'www.forestryequipmentsales.com') {
-    bases.push('https://www.forestryequipmentsales.com');
+  if (hostname === 'www.timberequip.com') {
+    bases.push('https://timberequip.com');
   }
 
   return Array.from(new Set(bases));

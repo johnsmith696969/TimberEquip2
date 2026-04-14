@@ -38,7 +38,7 @@ export function initializeBrowserSentry(): void {
     normalizeDepth: 6,
     initialScope: {
       tags: {
-        app: 'timberequip-web',
+        app: 'forestry-equipment-sales-web',
       },
     },
   });

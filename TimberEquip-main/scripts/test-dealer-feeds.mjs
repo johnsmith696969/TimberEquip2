@@ -48,7 +48,7 @@ function resolveApiBaseUrl(baseUrl, override = '') {
   }
 
   if (
-    normalizedBaseUrl.includes('forestryequipmentsales.com')
+    normalizedBaseUrl.includes('timberequip.com')
     || normalizedBaseUrl.includes('mobile-app-equipment-sales.web.app')
     || normalizedBaseUrl.includes('mobile-app-equipment-sales.firebaseapp.com')
   ) {

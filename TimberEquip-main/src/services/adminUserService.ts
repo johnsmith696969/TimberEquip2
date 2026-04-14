@@ -3,6 +3,7 @@ import { Account, CallLog, Inquiry, Listing, UserRole } from '../types';
 
 const ADMIN_USER_CACHE_KEY = 'te-admin-users-cache-v1';
 const ADMIN_BOOTSTRAP_CACHE_KEY = 'te-admin-operations-cache-v1';
+const ADMIN_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 type AdminUserCacheEnvelope<T> = {
   savedAt: string;
@@ -22,7 +23,12 @@ function readAdminUserCache<T>(): T | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AdminUserCacheEnvelope<T> | T;
     if (parsed && typeof parsed === 'object' && 'data' in (parsed as AdminUserCacheEnvelope<T>)) {
-      return ((parsed as AdminUserCacheEnvelope<T>).data ?? null) as T | null;
+      const envelope = parsed as AdminUserCacheEnvelope<T>;
+      if (envelope.savedAt && (Date.now() - new Date(envelope.savedAt).getTime()) > ADMIN_CACHE_TTL_MS) {
+        window.localStorage.removeItem(ADMIN_USER_CACHE_KEY);
+        return null;
+      }
+      return (envelope.data ?? null) as T | null;
     }
     return parsed as T;
   } catch (error) {
@@ -75,6 +81,8 @@ export interface AdminOverviewBootstrapPayload {
     avgResponseTimeMinutes: number | null;
     marketSentiment: string;
     inventoryTurnoverRate: number;
+    totalViews?: number;
+    activeSubscriptions?: number;
   };
   listingSummary: {
     totalListings: number;
@@ -100,7 +108,12 @@ function readAdminBootstrapCache<T>(): T | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AdminUserCacheEnvelope<T> | T;
     if (parsed && typeof parsed === 'object' && 'data' in (parsed as AdminUserCacheEnvelope<T>)) {
-      return ((parsed as AdminUserCacheEnvelope<T>).data ?? null) as T | null;
+      const envelope = parsed as AdminUserCacheEnvelope<T>;
+      if (envelope.savedAt && (Date.now() - new Date(envelope.savedAt).getTime()) > ADMIN_CACHE_TTL_MS) {
+        window.localStorage.removeItem(ADMIN_BOOTSTRAP_CACHE_KEY);
+        return null;
+      }
+      return (envelope.data ?? null) as T | null;
     }
     return parsed as T;
   } catch (error) {
@@ -129,6 +142,25 @@ export interface AdminUserMutationResult {
   warning?: string;
 }
 
+export interface PgAnalyticsResponse {
+  timestamp: string;
+  status: 'healthy' | 'degraded';
+  connectors: Record<string, boolean>;
+  summary: {
+    listingsByState: Record<string, number>;
+    totalListingsInPg: number | null;
+    openAnomalies: number | null;
+    recentTransitions: number | null;
+    activeStorefronts: number | null;
+    activeSellers: number | null;
+    activeAuctions: number | null;
+    newInquiries: number | null;
+    newContactRequests: number | null;
+    activeDealerFeeds: number | null;
+  };
+  errors: string[];
+}
+
 function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
   if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
@@ -137,8 +169,8 @@ function getApiRequestUrls(input: RequestInfo | URL): string[] {
 
   const urls = [rawInput];
   const hostname = window.location.hostname.trim().toLowerCase();
-  if (hostname === 'www.forestryequipmentsales.com') {
-    urls.push(`https://www.forestryequipmentsales.com${rawInput}`);
+  if (hostname === 'www.timberequip.com') {
+    urls.push(`https://timberequip.com${rawInput}`);
   }
 
   return Array.from(new Set(urls));
@@ -343,6 +375,19 @@ export const adminUserService = {
   async deleteUser(uid: string): Promise<void> {
     await getAuthorizedJson(`/api/admin/users/${encodeURIComponent(uid)}`, {
       method: 'DELETE',
+    });
+  },
+
+  async getPgAnalytics(): Promise<PgAnalyticsResponse> {
+    return getAuthorizedJson<PgAnalyticsResponse>('/api/admin/pg-analytics', {
+      method: 'GET',
+    });
+  },
+
+  async sendTestPlatformReport(options: { recipients: string[]; days?: number }): Promise<{ sent: boolean; recipients: string[]; periodLabel?: string }> {
+    return getAuthorizedJson('/api/admin/reports/platform-report/send', {
+      method: 'POST',
+      body: JSON.stringify({ recipients: options.recipients, days: options.days ?? 30 }),
     });
   },
 };

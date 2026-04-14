@@ -1,32 +1,46 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Truck, Hammer, Settings, Activity,
-  Zap, ArrowRight
+  Activity, Layers3,
+  ArrowRight
 } from 'lucide-react';
 import { useLocale } from '../components/LocaleContext';
 import { equipmentService } from '../services/equipmentService';
+import { taxonomyService, type EquipmentTaxonomy } from '../services/taxonomyService';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { useTheme } from '../components/ThemeContext';
 import { buildMarketplaceCategoryFamilies } from '../utils/marketplaceCategoryFamilies';
+import { normalizeSeoSlug } from '../utils/seoRoutes';
+import { buildSiteUrl } from '../utils/siteUrl';
+import {
+  LoggingEquipmentIcon,
+  LandClearingEquipmentIcon,
+  FirewoodEquipmentIcon,
+  TreeServiceEquipmentIcon,
+  SawmillEquipmentIcon,
+  TrailersIcon,
+  TrucksIcon,
+  PartsAndAttachmentsIcon,
+} from '../components/CategoryIcons';
 
-const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
-  'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
-  'Land Clearing Equipment': { icon: Hammer, color: 'bg-orange-500/10 text-orange-500' },
-  'Firewood Equipment': { icon: Zap, color: 'bg-amber-500/10 text-amber-500' },
-  'Tree Service Equipment': { icon: Activity, color: 'bg-lime-500/10 text-lime-500' },
-  'Sawmill Equipment': { icon: Settings, color: 'bg-sky-500/10 text-sky-500' },
-  Trailers: { icon: Truck, color: 'bg-cyan-500/10 text-cyan-500' },
-  Trucks: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },
-  'Parts And Attachments': { icon: Settings, color: 'bg-purple-500/10 text-purple-500' },
+const CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
+  'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
+  'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-yellow-500/10 text-yellow-500' },
+  'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-red-500/10 text-red-500' },
+  'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-green-600/10 text-green-600' },
+  'Sawmill Equipment': { icon: SawmillEquipmentIcon, color: 'bg-amber-500/10 text-amber-500' },
+  Trailers: { icon: TrailersIcon, color: 'bg-blue-600/10 text-blue-600' },
+  Trucks: { icon: TrucksIcon, color: 'bg-slate-600/10 text-slate-600' },
+  'Parts And Attachments': { icon: PartsAndAttachmentsIcon, color: 'bg-sky-600/10 text-sky-600' },
 };
 
 export function Categories() {
   const { theme } = useTheme();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() =>
-    (cachedMarketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
+    (cachedMarketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
       acc[metric.category] = {
         activeCount: metric.activeCount,
         weeklyChangePercent: metric.weeklyChangePercent,
@@ -38,26 +52,39 @@ export function Categories() {
   );
 
   const { formatNumber } = useLocale();
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const marketplaceData = await equipmentService.getHomeMarketplaceData();
-        const metricMap = marketplaceData.topLevelCategoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
-          acc[metric.category] = {
-            activeCount: metric.activeCount,
-            weeklyChangePercent: metric.weeklyChangePercent,
-            averagePrice: metric.averagePrice,
-            previousWeekCount: metric.previousWeekCount,
-          };
-          return acc;
-        }, {});
-        setCategoryMetrics(metricMap);
-      } catch (error) {
-        console.error('Error loading category metrics:', error);
-      }
-    };
+  const [taxonomy, setTaxonomy] = useState<EquipmentTaxonomy | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-    fetchMetrics();
+  const fetchData = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const [marketplaceData, mergedTaxonomy] = await Promise.all([
+        equipmentService.getHomeMarketplaceData(),
+        taxonomyService.getTaxonomy(),
+      ]);
+      const metricMap = marketplaceData.categoryMetrics.reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, metric) => {
+        acc[metric.category] = {
+          activeCount: metric.activeCount,
+          weeklyChangePercent: metric.weeklyChangePercent,
+          averagePrice: metric.averagePrice,
+          previousWeekCount: metric.previousWeekCount,
+        };
+        return acc;
+      }, {});
+      setCategoryMetrics(metricMap);
+      setTaxonomy(mergedTaxonomy);
+    } catch (err) {
+      console.error('Error loading category data:', err);
+      setError('Unable to load category data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
 
   const categoryCards = useMemo(
@@ -69,14 +96,15 @@ export function Categories() {
           previousWeekCount: metric.previousWeekCount,
           weeklyChangePercent: metric.weeklyChangePercent,
           averagePrice: metric.averagePrice,
-        }))
+        })),
+        taxonomy || undefined
       ).map((category) => ({
         ...category,
         icon: CATEGORY_VISUALS[category.name]?.icon || Activity,
         color: CATEGORY_VISUALS[category.name]?.color || 'bg-slate-500/10 text-slate-500',
         count: category.activeCount,
       })),
-    [categoryMetrics]
+    [categoryMetrics, taxonomy]
   );
 
   const sortedByInventory = useMemo(
@@ -84,6 +112,9 @@ export function Categories() {
     [categoryCards]
   );
   const isDuskMode = theme === 'dark';
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
   const marketNewsStyles = isDuskMode
     ? {
         section: 'py-24 bg-ink px-4 md:px-8',
@@ -122,51 +153,70 @@ export function Categories() {
     '@type': 'CollectionPage',
     name: 'Equipment Categories',
     description: seoDescription,
-    url: 'https://www.forestryequipmentsales.com/categories',
+    url: buildSiteUrl('/categories'),
     hasPart: categoryCards.map(cat => ({
       '@type': 'Collection',
       name: cat.name,
       description: cat.description,
-      url: `https://www.forestryequipmentsales.com/search?category=${encodeURIComponent(cat.name)}`
+      url: buildSiteUrl(`/categories/${normalizeSeoSlug(cat.name)}`)
     }))
   };
 
   return (
     <div className="min-h-screen bg-bg">
-      <Seo title={seoTitle} description={seoDescription} canonicalPath="/categories" jsonLd={categoriesSchemaData} />
+      <Seo title={seoTitle} description={seoDescription} canonicalPath="/categories" jsonLd={categoriesSchemaData} preloadImage="/page-photos/bagged-firewood.webp" />
       <Breadcrumbs />
       {/* Header */}
-      <div className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src="/page-photos/bagged-firewood.jpg"
-            alt="Bagged firewood stacks"
-            className="w-full h-full object-cover opacity-20"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
-        </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
-          <span className="label-micro text-accent mb-4 block">Equipment Classification</span>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+      <ImageHero imageSrc="/page-photos/bagged-firewood.webp" imageAlt="Bagged firewood stacks">
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <Layers3 size={20} className="text-accent" />
+            <span className="label-micro text-accent">Equipment Classification</span>
+          </div>
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Equipment <br />
-            <span className="text-muted">Categories</span>
+            <span className={heroSecondaryClass}>Categories</span>
           </h1>
-          <p className="text-muted font-medium max-w-2xl leading-relaxed">
-            Find the right machine by category. Every listing includes specs, photos, and pricing.
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
+            Shop by equipment type first. Compare skidders, forwarders, chippers, trailers, and more with live pricing, specs, and photos in one place.
           </p>
         </div>
-      </div>
+      </ImageHero>
 
-      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
+      {error && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <p className="text-sm font-bold text-muted mb-4">{error}</p>
+          <button
+            onClick={() => { setError(null); fetchData(); }}
+            className="btn-industrial btn-accent px-6 py-3"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24" aria-live="polite" aria-busy={loading}>
+        {loading && categoryCards.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="border border-line p-10 flex flex-col space-y-6">
+                <div className="animate-pulse bg-surface rounded-sm w-20 h-20" />
+                <div className="animate-pulse bg-surface rounded-sm h-6 w-3/4" />
+                <div className="animate-pulse bg-surface rounded-sm h-4 w-full" />
+                <div className="animate-pulse bg-surface rounded-sm h-4 w-2/3" />
+                <div className="animate-pulse bg-surface rounded-sm h-12 w-full mt-auto" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {categoryCards.map((cat, i) => (
             <div
               key={i}
               className="bg-bg border border-line p-10 flex flex-col group hover:border-accent hover:-translate-y-1 transition-all duration-300"
             >
-              <div className={`w-20 h-20 ${cat.color} flex items-center justify-center rounded-sm mb-8 group-hover:scale-110 transition-transform`}>
-                <cat.icon size={40} />
+              <div className={`w-28 h-28 ${cat.color} flex items-center justify-center rounded-sm mb-8 group-hover:scale-110 transition-transform`}>
+                <cat.icon size={56} />
               </div>
               
               <div className="flex justify-between items-start mb-4">
@@ -179,8 +229,8 @@ export function Categories() {
               </p>
               
               <div className="flex flex-col space-y-4">
-                <Link 
-                  to={`/search?category=${encodeURIComponent(cat.name)}`}
+                <Link
+                  to={`/categories/${normalizeSeoSlug(cat.name)}`}
                   className="btn-industrial btn-accent py-4 w-full text-center"
                 >
                   Browse Inventory
@@ -195,6 +245,7 @@ export function Categories() {
             </div>
           ))}
         </div>
+        )}
       </div>
 
       {/* Market News CTA */}

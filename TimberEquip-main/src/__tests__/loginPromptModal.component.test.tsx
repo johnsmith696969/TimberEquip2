@@ -7,13 +7,11 @@ import { LoginPromptModal } from '../components/LoginPromptModal';
 const {
   loginMock,
   loginWithGoogleMock,
-  getRecaptchaTokenMock,
-  assessRecaptchaMock,
+  verifyRecaptchaActionMock,
 } = vi.hoisted(() => ({
   loginMock: vi.fn(),
   loginWithGoogleMock: vi.fn(),
-  getRecaptchaTokenMock: vi.fn(),
-  assessRecaptchaMock: vi.fn(),
+  verifyRecaptchaActionMock: vi.fn(),
 }));
 
 vi.mock('framer-motion', () => {
@@ -32,19 +30,15 @@ vi.mock('../components/AuthContext', () => ({
 }));
 
 vi.mock('../services/recaptchaService', () => ({
-  getRecaptchaToken: getRecaptchaTokenMock,
-  assessRecaptcha: assessRecaptchaMock,
+  verifyRecaptchaAction: verifyRecaptchaActionMock,
 }));
 
 describe('LoginPromptModal component', () => {
   beforeEach(() => {
     loginMock.mockReset();
     loginWithGoogleMock.mockReset();
-    getRecaptchaTokenMock.mockReset();
-    assessRecaptchaMock.mockReset();
-
-    getRecaptchaTokenMock.mockResolvedValue(null);
-    assessRecaptchaMock.mockResolvedValue(true);
+    verifyRecaptchaActionMock.mockReset();
+    verifyRecaptchaActionMock.mockResolvedValue(true);
   });
 
   it('submits email sign-in and closes on success', async () => {
@@ -85,10 +79,8 @@ describe('LoginPromptModal component', () => {
     expect(await screen.findByText(/google sign-in is not authorized for this domain in firebase auth yet/i)).toBeInTheDocument();
   });
 
-  it('prompts before discarding unsaved changes', async () => {
+  it('closes directly without confirm prompt', async () => {
     const onClose = vi.fn();
-    const confirmMock = vi.spyOn(window, 'confirm');
-    confirmMock.mockReturnValue(false);
 
     const { container } = render(
       <MemoryRouter>
@@ -97,17 +89,9 @@ describe('LoginPromptModal component', () => {
     );
 
     fireEvent.change(screen.getByPlaceholderText('your@email.com'), { target: { value: 'buyer@example.com' } });
-    const backdrop = container.querySelector('.fixed.inset-0');
+    const backdrop = container.querySelector('.absolute.inset-0');
     expect(backdrop).toBeTruthy();
     fireEvent.click(backdrop!);
-
-    expect(confirmMock).toHaveBeenCalledWith('Are you sure you want to discard changes?');
-    expect(onClose).not.toHaveBeenCalled();
-
-    confirmMock.mockReturnValue(true);
-    fireEvent.click(backdrop!);
     expect(onClose).toHaveBeenCalledTimes(1);
-
-    confirmMock.mockRestore();
   });
 });

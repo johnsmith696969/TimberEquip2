@@ -3,6 +3,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { filterLinksByRouteThreshold, meetsRouteThreshold } = require('./seo-route-quality.js');
 const { buildListingPublicPath, encodeListingPublicKey } = require('./listing-public-paths.js');
+const { isDealerSellerRole, isOperatorOnlyRole, supportsStorefrontRole } = require('./role-scopes.js');
 
 const DEFAULT_FIRESTORE_DB_ID = 'ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c';
 const DEFAULT_PROJECT_ID = 'mobile-app-equipment-sales';
@@ -19,6 +20,10 @@ const CANONICAL_MARKET_KEY = 'forestry';
 const MAX_ROUTE_LISTINGS = 24;
 const MAX_ROUTE_LINKS = 18;
 const MAX_DIRECTORY_ITEMS = 150;
+const SERVICE_AREA_SCOPE_OPTIONS = Object.freeze(['State', 'USA', 'Canada', 'Global']);
+const SERVICE_AREA_SCOPE_LOOKUP = new Map(
+  SERVICE_AREA_SCOPE_OPTIONS.map((value) => [String(value).toLowerCase(), value])
+);
 
 function normalizeNonEmptyString(value, fallback = '') {
   const normalized = String(value || '').trim();
@@ -58,6 +63,18 @@ function getDb() {
 function normalizeText(value, fallback = '') {
   const normalized = String(value || '').trim();
   return normalized || fallback;
+}
+
+function normalizeServiceAreaScopes(value, maxItems = 8) {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean)
+    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(entry.toLowerCase()) || null)
+    .filter(Boolean);
+
+  return [...new Set(normalized)].slice(0, maxItems);
 }
 
 function normalizeSeoSlug(value, fallback = '') {
@@ -310,6 +327,18 @@ async function syncPublicDealerSummary(sellerUid) {
   ]);
 
   const merged = { ...userData, ...storefrontData };
+  const normalizedRole = normalizeText(merged.role);
+  const hasStorefrontIdentity = Boolean(
+    merged.storefrontEnabled === true
+    || normalizeText(merged.storefrontSlug)
+    || normalizeText(merged.storefrontName)
+    || normalizeText(storefrontData.storefrontSlug)
+  );
+
+  if (isOperatorOnlyRole(normalizedRole) || (!supportsStorefrontRole(normalizedRole) && !hasStorefrontIdentity)) {
+    await db.collection(PUBLIC_SEO_COLLECTIONS.dealers).doc(normalizedSellerUid).delete().catch(() => undefined);
+    return null;
+  }
   const sellerPath = buildDealerPath({
     storefrontSlug: normalizeText(merged.storefrontSlug, normalizedSellerUid),
     id: normalizedSellerUid,
@@ -325,18 +354,38 @@ async function syncPublicDealerSummary(sellerUid) {
     id: normalizedSellerUid,
     uid: normalizedSellerUid,
     storefrontSlug: normalizeText(merged.storefrontSlug, normalizedSellerUid),
+    canonicalPath: sellerPath,
     storefrontName: normalizeText(merged.storefrontName || merged.displayName || merged.name, 'Dealer Storefront'),
     storefrontTagline: normalizeText(merged.storefrontTagline),
     storefrontDescription: normalizeText(merged.storefrontDescription || merged.about),
+    businessName: normalizeText(merged.businessName || merged.company),
+    street1: normalizeText(merged.street1),
+    street2: normalizeText(merged.street2),
+    city: normalizeText(merged.city),
+    state: normalizeText(merged.state),
+    county: normalizeText(merged.county),
+    postalCode: normalizeText(merged.postalCode),
+    country: normalizeText(merged.country),
+    latitude: Number.isFinite(Number(merged.latitude)) ? Number(merged.latitude) : undefined,
+    longitude: Number.isFinite(Number(merged.longitude)) ? Number(merged.longitude) : undefined,
     location: normalizeText(merged.location),
     phone: normalizeText(merged.phone || merged.phoneNumber),
     email: normalizeText(merged.email),
     website: normalizeText(merged.website),
-    logo: normalizeText(merged.logo || merged.photoURL),
+    logo: normalizeText(merged.logo || merged.storefrontLogoUrl || merged.photoURL || merged.profileImage),
     coverPhotoUrl: normalizeText(merged.coverPhotoUrl),
+    serviceAreaScopes: normalizeServiceAreaScopes(merged.serviceAreaScopes, 8),
+    serviceAreaStates: Array.isArray(merged.serviceAreaStates) ? merged.serviceAreaStates.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+    serviceAreaCounties: Array.isArray(merged.serviceAreaCounties) ? merged.serviceAreaCounties.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+    servicesOfferedCategories: Array.isArray(merged.servicesOfferedCategories) ? merged.servicesOfferedCategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
+    servicesOfferedSubcategories: Array.isArray(merged.servicesOfferedSubcategories) ? merged.servicesOfferedSubcategories.map((entry) => normalizeText(entry)).filter(Boolean) : [],
     role: normalizeText(merged.role),
     createdAtIso: timestampToIso(merged.createdAt),
-    verified: Boolean(merged.verified ?? true),
+    verified: Boolean(
+      merged.manuallyVerified === true
+        || isDealerSellerRole(normalizeText(merged.role))
+        || merged.verified === true
+    ),
     listingCount: listings.length,
     featuredListingCount: listings.filter((listing) => listing.featured).length,
     categoryCount: uniqueCount(listings.map((listing) => listing.subcategory)),
@@ -380,10 +429,12 @@ async function loadPublicListings() {
 
 async function loadPublicDealers() {
   const snapshot = await getDb().collection(PUBLIC_SEO_COLLECTIONS.dealers).get();
-  return snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data(),
-  }));
+  return snapshot.docs
+    .map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    }))
+    .filter((dealer) => !isOperatorOnlyRole(dealer.role));
 }
 
 function buildDealerLinkCard(seller, count) {

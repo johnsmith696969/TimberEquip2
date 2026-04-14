@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   TrendingUp,
@@ -15,9 +15,12 @@ import {
   ChevronRight,
   ChevronLeft,
   Package,
-  Calculator
+  Calculator,
+  Search as SearchIcon,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
 import { ListingCard } from '../components/ListingCard';
@@ -30,16 +33,29 @@ import {
   buildMarketplaceCategoryFamilies,
   getMarketplaceSubcategories,
 } from '../utils/marketplaceCategoryFamilies';
+import { compareRegionNames, getListingLocationLabel, normalizeSeoSlug, buildManufacturerPath, buildStateMarketPath, getListingManufacturer, getListingStateName, CANONICAL_MARKET_ROUTE_KEY } from '../utils/seoRoutes';
+import { EQUIPMENT_TAXONOMY } from '../constants/equipmentData';
+import { buildSiteUrl } from '../utils/siteUrl';
+import {
+  LoggingEquipmentIcon,
+  LandClearingEquipmentIcon,
+  FirewoodEquipmentIcon,
+  TreeServiceEquipmentIcon,
+  SawmillEquipmentIcon,
+  TrailersIcon,
+  TrucksIcon,
+  PartsAndAttachmentsIcon,
+} from '../components/CategoryIcons';
 
-const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number }>; color: string }> = {
-  'Logging Equipment': { icon: Truck, color: 'bg-emerald-500/10 text-emerald-500' },
-  'Land Clearing Equipment': { icon: Hammer, color: 'bg-orange-500/10 text-orange-500' },
-  'Firewood Equipment': { icon: Zap, color: 'bg-amber-500/10 text-amber-500' },
-  'Tree Service Equipment': { icon: Activity, color: 'bg-lime-500/10 text-lime-500' },
-  'Sawmill Equipment': { icon: Settings, color: 'bg-sky-500/10 text-sky-500' },
-  Trailers: { icon: Package, color: 'bg-cyan-500/10 text-cyan-500' },
-  Trucks: { icon: Truck, color: 'bg-blue-500/10 text-blue-500' },
-  'Parts And Attachments': { icon: LayoutDashboard, color: 'bg-purple-500/10 text-purple-500' },
+const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
+  'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
+  'Land Clearing Equipment': { icon: LandClearingEquipmentIcon, color: 'bg-yellow-500/10 text-yellow-500' },
+  'Firewood Equipment': { icon: FirewoodEquipmentIcon, color: 'bg-red-500/10 text-red-500' },
+  'Tree Service Equipment': { icon: TreeServiceEquipmentIcon, color: 'bg-green-600/10 text-green-600' },
+  'Sawmill Equipment': { icon: SawmillEquipmentIcon, color: 'bg-amber-500/10 text-amber-500' },
+  Trailers: { icon: TrailersIcon, color: 'bg-blue-600/10 text-blue-600' },
+  Trucks: { icon: TrucksIcon, color: 'bg-slate-600/10 text-slate-600' },
+  'Parts And Attachments': { icon: PartsAndAttachmentsIcon, color: 'bg-sky-600/10 text-sky-600' },
 };
 
 const SUBCATEGORY_MARKET_ORDER = [
@@ -57,7 +73,7 @@ const SUBCATEGORY_MARKET_ORDER = [
   'Skidders',
 ];
 
-const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.jpeg?v=20260330a';
+const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.webp?v=20260402a';
 
 const formatChange = (value: unknown) => {
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -87,17 +103,7 @@ const CATEGORY_SINGULAR_LABELS: Record<string, string> = {
 const toSingularCategoryLabel = (category: string) => CATEGORY_SINGULAR_LABELS[category] || category;
 
 const buildCategoryMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
-  (marketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>((acc, item) => {
-    acc[item.category] = {
-      activeCount: item.activeCount,
-      weeklyChangePercent: item.weeklyChangePercent,
-      averagePrice: item.averagePrice,
-    };
-    return acc;
-  }, {});
-
-const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
-  (marketplaceData?.topLevelCategoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
+  (marketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
     acc[item.category] = {
       activeCount: item.activeCount,
       weeklyChangePercent: item.weeklyChangePercent,
@@ -107,16 +113,54 @@ const buildTopLevelMetricMap = (marketplaceData?: ReturnType<typeof equipmentSer
     return acc;
   }, {});
 
+type HomeStateSummary = {
+  name: string;
+  count: number;
+  topManufacturer: string;
+};
+
+const buildHomeStateSummaries = (listings: Listing[]): HomeStateSummary[] => {
+  const stateMap = new Map<string, { count: number; manufacturers: Map<string, number> }>();
+
+  listings.forEach((listing) => {
+    const state = getListingStateName(listing);
+    if (!state) return;
+
+    const manufacturer = getListingManufacturer(listing);
+    const existing = stateMap.get(state) || {
+      count: 0,
+      manufacturers: new Map<string, number>(),
+    };
+
+    existing.count += 1;
+    if (manufacturer) {
+      existing.manufacturers.set(manufacturer, (existing.manufacturers.get(manufacturer) || 0) + 1);
+    }
+
+    stateMap.set(state, existing);
+  });
+
+  return [...stateMap.entries()]
+    .map(([name, value]) => ({
+      name,
+      count: value.count,
+      topManufacturer: [...value.manufacturers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Mixed Inventory',
+    }))
+    .sort((a, b) => compareRegionNames(a.name, b.name))
+    .slice(0, 8);
+};
+
 export function Home() {
   const location = useLocation();
   const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const { theme } = useTheme();
   const { t, formatNumber, formatCurrency } = useLocale();
   const { user, isAuthenticated } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
   const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
   const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
-  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
-  const [topLevelCategoryMetrics, setTopLevelCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildTopLevelMetricMap(cachedMarketplaceData));
+  const [stateSummaries, setStateSummaries] = useState<HomeStateSummary[]>([]);
+  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
   const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const currentReturnPath = `${location.pathname}${location.search}`;
@@ -124,16 +168,25 @@ export function Home() {
   const listEquipmentState = currentReturnPath.startsWith('/') ? { returnTo: currentReturnPath } : undefined;
   const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
 
+  const [allListings, setAllListings] = useState<Listing[]>([]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const marketplaceData = await equipmentService.getHomeMarketplaceData();
+        const [marketplaceData, inventory] = await Promise.all([
+          equipmentService.getHomeMarketplaceData(),
+          equipmentService.getListings().catch((error) => {
+            console.warn('State market preview on home page is temporarily unavailable:', error);
+            return [] as Listing[];
+          }),
+        ]);
 
         setFeaturedListings(marketplaceData.featuredListings);
         setRecentSoldListings(marketplaceData.recentSoldListings);
         setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
-        setTopLevelCategoryMetrics(buildTopLevelMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
+        setAllListings(inventory);
+        setStateSummaries(buildHomeStateSummaries(inventory));
       } catch (error) {
         console.error('Error fetching home data:', error);
       }
@@ -144,7 +197,7 @@ export function Home() {
   const tickerListings = recentSoldListings.length > 0 ? recentSoldListings : featuredListings;
 
   const categoryCards = buildMarketplaceCategoryFamilies(
-    Object.entries(topLevelCategoryMetrics).map(([category, metric]) => ({
+    Object.entries(categoryMetrics).map(([category, metric]) => ({
       category,
       activeCount: metric.activeCount,
       previousWeekCount: metric.previousWeekCount,
@@ -167,11 +220,6 @@ export function Home() {
     if (categoryCards.some((category) => category.name === selectedCategoryFamily)) return;
     setSelectedCategoryFamily(categoryCards[0].name);
   }, [categoryCards, selectedCategoryFamily]);
-
-  const selectedFamilySubcategories = useMemo(
-    () => getMarketplaceSubcategories(selectedCategoryFamily).slice(0, 18),
-    [selectedCategoryFamily]
-  );
 
   const totalActiveListings = heroStats.totalActive;
   const totalMarketValue = heroStats.totalMarketValue;
@@ -254,6 +302,37 @@ export function Home() {
   ];
 
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const swipeRef = useRef<{ startX: number; swiping: boolean }>({ startX: 0, swiping: false });
+  const [mfgSearch, setMfgSearch] = useState('');
+
+  const allManufacturers = useMemo(() => {
+    const counts = new Map<string, number>();
+    allListings.forEach((listing) => {
+      const mfg = getListingManufacturer(listing).trim();
+      if (mfg) counts.set(mfg, (counts.get(mfg) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name);
+  }, [allListings]);
+
+  const filteredManufacturers = useMemo(() => {
+    if (!mfgSearch.trim()) return allManufacturers;
+    const q = mfgSearch.trim().toLowerCase();
+    return allManufacturers.filter((m) => m.toLowerCase().includes(q));
+  }, [allManufacturers, mfgSearch]);
+
+  const topStates = useMemo(() => {
+    const counts = new Map<string, number>();
+    allListings.forEach((listing) => {
+      const state = getListingStateName(listing).trim();
+      if (state) counts.set(state, (counts.get(state) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => compareRegionNames(a[0], b[0]))
+      .slice(0, 16)
+      .map(([name, count]) => ({ name, count }));
+  }, [allListings]);
 
   const visibleCards = marketCards.length <= 3
     ? marketCards
@@ -265,30 +344,39 @@ export function Home() {
         {
           '@type': 'Organization',
           name: 'Forestry Equipment Sales',
-          alternateName: 'Forestry Equipment Sales',
-          url: 'https://www.forestryequipmentsales.com/',
-          logo: 'https://www.forestryequipmentsales.com/Forestry_Equipment_Sales_Logo.png?v=20260327c',
+          alternateName: 'Forestry Equipment Sales.com',
+          url: buildSiteUrl('/'),
+          logo: buildSiteUrl('/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
+          email: 'info@forestryequipmentsales.com',
+          description: 'New and used logging equipment marketplace connecting buyers, sellers, and dealers across North America.',
+          contactPoint: {
+            '@type': 'ContactPoint',
+            contactType: 'customer service',
+            email: 'support@forestryequipmentsales.com',
+            availableLanguage: 'English',
+          },
         },
         {
           '@type': 'WebSite',
           name: 'Forestry Equipment Sales',
-          url: 'https://www.forestryequipmentsales.com/',
+          url: buildSiteUrl('/'),
           inLanguage: 'en-US',
         },
         {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
-          description: 'Browse in-stock forestry equipment across categories, manufacturers, models, dealers, and state markets.',
-          url: 'https://www.forestryequipmentsales.com/',
+          description: 'Browse in-stock forestry equipment by make (manufacturer), model, category, dealer, and state. Shop equipment from Caterpillar, John Deere, Tigercat, and more.',
+          url: buildSiteUrl('/'),
         },
         {
           '@type': 'ItemList',
           name: 'Primary marketplace routes',
           itemListElement: [
-            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: 'https://www.forestryequipmentsales.com/forestry-equipment-for-sale' },
-            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: 'https://www.forestryequipmentsales.com/categories' },
-            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: 'https://www.forestryequipmentsales.com/manufacturers' },
-            { '@type': 'ListItem', position: 4, name: 'Equipment Dealers', url: 'https://www.forestryequipmentsales.com/dealers' },
+            { '@type': 'ListItem', position: 1, name: 'Forestry Equipment For Sale', url: buildSiteUrl('/forestry-equipment-for-sale') },
+            { '@type': 'ListItem', position: 2, name: 'Equipment Categories', url: buildSiteUrl('/categories') },
+            { '@type': 'ListItem', position: 3, name: 'Equipment Manufacturers', url: buildSiteUrl('/manufacturers') },
+            { '@type': 'ListItem', position: 4, name: 'Equipment Markets By State', url: buildSiteUrl('/states') },
+            { '@type': 'ListItem', position: 5, name: 'Equipment Dealers', url: buildSiteUrl('/dealers') },
           ],
         },
       ],
@@ -296,32 +384,169 @@ export function Home() {
     []
   );
 
+  const marketIntelligenceSection = (
+    <section className="bg-bg px-4 py-24 md:px-8">
+      <div className="mx-auto max-w-[1600px]">
+        <div className="mb-16 flex flex-col justify-between md:flex-row md:items-end">
+          <div className="max-w-2xl">
+            <span className="label-micro mb-4 block text-accent">{t('home.marketData', 'Market Data')}</span>
+            <h2 className="mb-6 text-4xl font-black uppercase tracking-tighter leading-none md:text-5xl">
+              {t('home.analyticsTitleLine1', 'Real-Time')} <br />
+              <span className="text-muted">{t('home.analyticsTitleLine2', 'Equipment Analytics')}</span>
+            </h2>
+            <p className="font-medium text-muted">
+              {t('home.analyticsDescription', 'See average market values, recent price changes, and listing counts across every equipment category.')}
+            </p>
+          </div>
+          <div className="mt-8 flex items-center space-x-3 md:mt-0">
+            {marketCards.length > 3 && (
+              <>
+                <button
+                  aria-label="Previous"
+                  onClick={() => setCarouselIndex((prev) => (prev - 1 + marketCards.length) % marketCards.length)}
+                  className="btn-industrial p-2"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-[10px] font-bold uppercase tracking-widest tabular-nums text-muted">
+                  {carouselIndex + 1} / {marketCards.length}
+                </span>
+                <button
+                  aria-label="Next"
+                  onClick={() => setCarouselIndex((prev) => (prev + 1) % marketCards.length)}
+                  className="btn-industrial p-2"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </>
+            )}
+            <Link to="/blog" className="btn-industrial">
+              {t('home.accessReports', 'Access Reports')}
+              <ChevronRight className="ml-2" size={14} />
+            </Link>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={carouselIndex}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25 }}
+            className="grid grid-cols-1 gap-1 md:grid-cols-3"
+            style={{ touchAction: 'pan-y' }}
+            onPointerDown={(e) => {
+              swipeRef.current = { startX: e.clientX, swiping: true };
+            }}
+            onPointerMove={(e) => {
+              void e;
+            }}
+            onPointerUp={(e) => {
+              if (!swipeRef.current.swiping) return;
+              const delta = e.clientX - swipeRef.current.startX;
+              swipeRef.current.swiping = false;
+              if (delta < -50) {
+                setCarouselIndex((prev) => (prev + 1) % marketCards.length);
+              } else if (delta > 50) {
+                setCarouselIndex((prev) => (prev - 1 + marketCards.length) % marketCards.length);
+              }
+            }}
+            onPointerCancel={() => {
+              swipeRef.current.swiping = false;
+            }}
+          >
+            {visibleCards.map((card) => (
+              <div
+                key={card.key}
+                className="flex flex-col rounded-sm border border-line bg-surface p-8 shadow-[var(--shadow-card)] transition-shadow duration-300 hover:shadow-[var(--shadow-lift)]"
+              >
+                <div className="mb-12 flex items-start justify-between">
+                  <div className={`rounded-sm p-3 ${card.iconClass}`}>
+                    <card.icon size={24} />
+                  </div>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${card.badgeClass}`}>
+                    {card.badge}
+                  </span>
+                </div>
+                <h3 className="mb-2 text-sm font-black uppercase">{card.title}</h3>
+                <p className="mb-8 flex-1 text-xs text-muted">{card.description}</p>
+                <div className="flex items-end justify-between">
+                  <div className="flex items-end space-x-1">
+                    <span className="text-3xl font-black tracking-tighter">{card.value}</span>
+                    <span className="mb-1.5 text-[10px] font-bold uppercase text-muted">{card.unit}</span>
+                  </div>
+                  {card.linkCategory && (
+                    <Link
+                      to={`/search?subcategory=${encodeURIComponent(card.linkCategory)}`}
+                      className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline"
+                    >
+                      {t('home.view', 'View')} →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        </AnimatePresence>
+
+        {marketCards.length > 3 && (
+          <div className="mt-4 flex items-center justify-center space-x-2 text-muted animate-pulse md:hidden">
+            <ChevronLeft size={12} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Swipe to explore</span>
+            <ChevronRight size={12} />
+          </div>
+        )}
+
+        {marketCards.length > 3 && (
+          <div className="mt-4 flex justify-center space-x-1.5">
+            {marketCards.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCarouselIndex(i)}
+                aria-label={`Go to card ${i + 1}`}
+                className={`h-3 w-3 touch-manipulation rounded-full transition-colors ${
+                  i === carouselIndex ? 'bg-accent' : 'bg-line hover:bg-muted'
+                }`}
+                style={{ minWidth: 44, minHeight: 44, padding: 16, margin: -14, backgroundClip: 'content-box' }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
   return (
     <div className="flex flex-col">
       <Seo
-        title="Forestry Equipment For Sale | Logging Equipment Marketplace | Forestry Equipment Sales"
-        description="Browse in-stock new and used logging equipment listings on Forestry Equipment Sales. Shop by category, make, model, year, hours, and price."
+        title="Logging Equipment For Sale | Forestry Equipment Sales"
+        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment on Forestry Equipment Sales."
         canonicalPath="/"
         jsonLd={homeJsonLd}
-        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260327c"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
+        preloadImage={HERO_IMAGE_PATH}
       />
 
       {/* Hero Section */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0 bg-ink">
           <img
             src={HERO_IMAGE_PATH}
             alt=""
             aria-hidden="true"
+            width={1920}
+            height={1080}
             className="absolute inset-0 h-full w-full object-cover object-center"
             loading="eager"
             decoding="async"
+            fetchPriority="high"
           />
-          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-white/72' : 'bg-black/58'}`}></div>
+          <div className={`absolute inset-0 ${theme === 'light' ? 'bg-black/30' : 'bg-black/58'}`}></div>
           <div
             className={`absolute inset-0 ${
               theme === 'light'
-                ? 'bg-[linear-gradient(90deg,rgba(249,247,242,0.96)_0%,rgba(249,247,242,0.86)_34%,rgba(249,247,242,0.32)_70%,rgba(249,247,242,0.08)_100%)]'
+                ? 'bg-[linear-gradient(90deg,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.90)_34%,rgba(255,255,255,0.55)_70%,rgba(255,255,255,0.35)_100%)]'
                 : 'bg-[linear-gradient(90deg,rgba(10,10,10,0.92)_0%,rgba(10,10,10,0.80)_36%,rgba(10,10,10,0.36)_72%,rgba(10,10,10,0.12)_100%)]'
             }`}
           ></div>
@@ -332,18 +557,16 @@ export function Home() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center space-x-3 mb-8"
+              transition={prefersReducedMotion ? { duration: 0 } : undefined}
+              className="flex items-center space-x-3 mb-8 mt-12 md:mt-16"
             >
-              <div className="w-12 h-12 bg-accent flex items-center justify-center rounded-sm shadow-2xl overflow-hidden">
-                <img src="/logos/icons/global-equipment-icon.svg" alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
-              </div>
               <span className="text-xs font-black tracking-[0.4em] text-accent uppercase">{t('home.network', 'Global Equipment Network')}</span>
             </motion.div>
 
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.1 }}
               className={`text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter leading-[0.88] mb-8 uppercase pr-2 sm:pr-0 ${
                 theme === 'light' ? 'text-ink' : 'text-white'
               }`}
@@ -357,18 +580,18 @@ export function Home() {
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.2 }}
               className={`text-lg font-medium max-w-xl mb-12 leading-relaxed ${
                 theme === 'light' ? 'text-ink/70' : 'text-white/70'
               }`}
             >
-              {t('home.hero.description', 'The world\'s premier platform for buying and selling heavy forestry equipment. Real-time market data, equipment financing, and global logistics.')}
+              {t('home.hero.description', 'The premier platform for buying and selling heavy forestry equipment. Real-time market data, equipment financing, and global logistics.')}
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.3 }}
               className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4"
             >
               <Link to="/search" className="btn-industrial btn-accent py-5 px-10 text-base">
@@ -393,7 +616,7 @@ export function Home() {
               {[
                 { label: t('home.activeListings', 'Active Listings'), value: totalActiveListings > 0 ? formatNumber(totalActiveListings) : '—', icon: Activity },
                 {
-                  label: t('home.marketValue', 'Market Value'),
+                  label: t('home.marketValue', 'Listed Equipment Value'),
                   value: (() => {
                     if (totalMarketValue <= 0) return 'N/A';
                     if (totalMarketValue >= 1_000_000_000) return `${formatCurrency(totalMarketValue / 1_000_000_000, 'USD', 1)}B`;
@@ -425,7 +648,7 @@ export function Home() {
                 tickerListings.map((listing) => (
                   <div key={`${loopIndex}-${listing.id}`} className="flex items-center space-x-8 px-10">
                     <span className="text-[10px] font-black text-white uppercase tracking-widest">
-                      {t('home.recentTransaction', 'RECENT TRANSACTION')}: {listing.year || 'N/A'} {safeUppercase(listing.make || listing.manufacturer, 'UNBRANDED')} {safeUppercase(listing.model, 'MODEL')} SOLD FOR {listing.currency || 'USD'} {formatNumber(Number.isFinite(listing.price) ? listing.price : 0)} ({safeUppercase(listing.location, 'LOCATION PENDING')})
+                      {t('home.recentTransaction', 'RECENT TRANSACTION')}: {listing.year || 'N/A'} {safeUppercase(listing.make || listing.manufacturer, 'UNBRANDED')} {safeUppercase(listing.model, 'MODEL')} SOLD FOR {listing.currency || 'USD'} {formatNumber(Number.isFinite(listing.price) ? listing.price : 0)} ({safeUppercase(getListingLocationLabel(listing), 'LOCATION PENDING')})
                     </span>
                     <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
                   </div>
@@ -455,21 +678,15 @@ export function Home() {
               </p>
             </div>
 
-            <div className="mb-10">
-              <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tighter">
-                {selectedCategoryFamily}
-              </h3>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {categoryCards.map((cat, i) => (
                 <Link
                   key={i}
                   to={cat.searchPath}
-                  className="group bg-bg border border-line p-8 flex flex-col text-left hover:border-ink transition-all duration-300"
+                  className="group bg-bg border border-line rounded-sm p-8 flex flex-col text-left shadow-[var(--shadow-card)] hover:border-ink hover:-translate-y-1 hover:shadow-[var(--shadow-lift)] transition-all duration-300"
                 >
-                  <div className={`w-16 h-16 ${cat.color} flex items-center justify-center rounded-sm mb-6 group-hover:scale-110 transition-transform`}>
-                    <cat.icon size={32} />
+                  <div className={`mb-6 flex h-24 w-24 items-center justify-center rounded-sm ${cat.color} transition-transform group-hover:scale-110`}>
+                    <cat.icon size={44} className="max-h-[56px] max-w-[56px]" />
                   </div>
                   <h4 className="text-sm font-black uppercase tracking-widest mb-3">{cat.name}</h4>
                   <p className="text-xs text-muted font-medium leading-relaxed mb-6 flex-1">{cat.description}</p>
@@ -487,7 +704,7 @@ export function Home() {
               ))}
             </div>
 
-            <div className="mt-10 bg-bg border border-line p-6 md:p-8">
+            <div className="mt-10 bg-bg border border-line rounded-sm p-6 md:p-8 shadow-[var(--shadow-card)]">
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
                 <div>
                   <span className="label-micro text-accent mb-2 block">Category Selector</span>
@@ -497,7 +714,8 @@ export function Home() {
                   <select
                     value={selectedCategoryFamily}
                     onChange={(event) => setSelectedCategoryFamily(event.target.value)}
-                    className="bg-bg border border-line px-4 py-3 text-sm font-black uppercase tracking-widest focus:border-accent focus:outline-none min-w-0"
+                    aria-label="Equipment category family"
+                    className="bg-surface border border-line pl-4 pr-10 py-3 text-sm font-black uppercase tracking-widest text-ink focus:border-accent focus:outline-none min-w-0"
                   >
                     {categoryCards.map((category) => (
                       <option key={category.name} value={category.name}>
@@ -505,27 +723,34 @@ export function Home() {
                       </option>
                     ))}
                   </select>
-                  <Link to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 text-center whitespace-nowrap">
+                  <Link to={`/categories/${normalizeSeoSlug(selectedCategoryFamily)}`} className="btn-industrial px-5 py-3 text-center whitespace-nowrap">
                     Browse {selectedCategoryFamily}
                   </Link>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3">
-                {selectedFamilySubcategories.map((subcategory) => (
-                  <Link
-                    key={subcategory}
-                    to={`/search?category=${encodeURIComponent(selectedCategoryFamily)}&subcategory=${encodeURIComponent(subcategory)}`}
-                    className="px-4 py-2 border border-line text-[10px] font-black uppercase tracking-widest hover:border-ink hover:text-ink transition-colors"
-                  >
-                    {subcategory}
-                  </Link>
-                ))}
-              </div>
+              {(() => {
+                const subcategories = getMarketplaceSubcategories(selectedCategoryFamily);
+                return subcategories.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {subcategories.map((sub) => (
+                      <Link
+                        key={sub}
+                        to={`/categories/${normalizeSeoSlug(sub)}`}
+                        className="px-4 py-2.5 bg-surface border border-line text-[10px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
+                      >
+                        {sub}
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-widest">No subcategories available for this category.</p>
+                );
+              })()}
             </div>
           </div>
         </section>
 
-        {/* Market Intelligence Section */}
+        {false ? (
         <section className="py-24 bg-bg px-4 md:px-8">
           <div className="max-w-[1600px] mx-auto">
             <div className="flex flex-col md:flex-row justify-between items-end mb-16">
@@ -574,13 +799,37 @@ export function Home() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.25 }}
+                transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25 }}
                 className="grid grid-cols-1 md:grid-cols-3 gap-1"
+                style={{ touchAction: 'pan-y' }}
+                onPointerDown={(e) => {
+                  swipeRef.current = { startX: e.clientX, swiping: true };
+                }}
+                onPointerMove={(e) => {
+                  // Intentionally empty — tracking is handled via startX on pointer up.
+                  // Presence of handler ensures pointer events are captured during swipe.
+                  void e;
+                }}
+                onPointerUp={(e) => {
+                  if (!swipeRef.current.swiping) return;
+                  const delta = e.clientX - swipeRef.current.startX;
+                  swipeRef.current.swiping = false;
+                  if (delta < -50) {
+                    // Swiped left → next
+                    setCarouselIndex((prev) => (prev + 1) % marketCards.length);
+                  } else if (delta > 50) {
+                    // Swiped right → prev
+                    setCarouselIndex((prev) => (prev - 1 + marketCards.length) % marketCards.length);
+                  }
+                }}
+                onPointerCancel={() => {
+                  swipeRef.current.swiping = false;
+                }}
               >
               {visibleCards.map((card) => (
                 <div
                   key={card.key}
-                  className="bg-surface p-8 border border-line flex flex-col"
+                  className="bg-surface p-8 border border-line rounded-sm flex flex-col shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-lift)] transition-shadow duration-300"
                 >
                   <div className="flex justify-between items-start mb-12">
                     <div className={`p-3 rounded-sm ${card.iconClass}`}>
@@ -590,7 +839,7 @@ export function Home() {
                       {card.badge}
                     </span>
                   </div>
-                  <h4 className="text-sm font-black uppercase mb-2">{card.title}</h4>
+                  <h3 className="text-sm font-black uppercase mb-2">{card.title}</h3>
                   <p className="text-xs text-muted mb-8 flex-1">{card.description}</p>
                   <div className="flex items-end justify-between">
                     <div className="flex items-end space-x-1">
@@ -611,23 +860,34 @@ export function Home() {
               </motion.div>
             </AnimatePresence>
 
+            {/* Swipe hint — mobile only */}
+            {marketCards.length > 3 && (
+              <div className="flex md:hidden items-center justify-center space-x-2 mt-4 text-muted animate-pulse">
+                <ChevronLeft size={12} />
+                <span className="text-[9px] font-bold uppercase tracking-widest">Swipe to explore</span>
+                <ChevronRight size={12} />
+              </div>
+            )}
+
             {/* Dot indicators */}
             {marketCards.length > 3 && (
-              <div className="flex justify-center space-x-1.5 mt-6">
+              <div className="flex justify-center space-x-1.5 mt-4">
                 {marketCards.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setCarouselIndex(i)}
                     aria-label={`Go to card ${i + 1}`}
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                    className={`w-3 h-3 rounded-full transition-colors touch-manipulation ${
                       i === carouselIndex ? 'bg-accent' : 'bg-line hover:bg-muted'
                     }`}
+                    style={{ minWidth: 44, minHeight: 44, padding: 16, margin: -14, backgroundClip: 'content-box' }}
                   />
                 ))}
               </div>
             )}
           </div>
         </section>
+        ) : null}
 
       {/* Featured Listings */}
       <section className="py-24 bg-bg px-4 md:px-8">
@@ -655,25 +915,115 @@ export function Home() {
         </div>
       </section>
 
+      {/* Browse by Manufacturer */}
+      <section className="py-24 bg-surface px-4 md:px-8 border-y border-line">
+        <div className="max-w-[1600px] mx-auto">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-12 gap-6">
+            <div>
+              <span className="label-micro text-accent mb-4 block">Browse by Manufacturer</span>
+              <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">
+                Browse by <span className="text-muted">Manufacturer</span>
+              </h2>
+              <p className="text-muted font-medium mt-4 max-w-xl">
+                Search equipment by make (manufacturer) including Caterpillar, John Deere, Tigercat, and more.
+              </p>
+            </div>
+            <div className="relative w-full md:w-80">
+              <SearchIcon size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                value={mfgSearch}
+                onChange={(e) => setMfgSearch(e.target.value)}
+                placeholder="Search by make..."
+                className="w-full bg-bg border border-line py-3 pl-12 pr-4 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            {filteredManufacturers.slice(0, 48).map((mfg) => (
+              <Link
+                key={mfg}
+                to={buildManufacturerPath(mfg)}
+                className="bg-bg border border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest text-ink text-center hover:border-accent hover:text-accent transition-colors truncate"
+              >
+                {mfg}
+              </Link>
+            ))}
+          </div>
+          {filteredManufacturers.length > 48 && (
+            <div className="flex justify-center mt-8">
+              <Link to="/manufacturers" className="btn-industrial">
+                View All {filteredManufacturers.length} Manufacturers
+                <ArrowRight className="ml-2" size={14} />
+              </Link>
+            </div>
+          )}
+          {filteredManufacturers.length === 0 && (
+            <p className="text-center text-muted text-xs font-bold uppercase tracking-widest py-12">
+              No manufacturers match &ldquo;{mfgSearch}&rdquo;
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Browse by State */}
+      {topStates.length > 0 && (
+        <section className="py-24 bg-bg px-4 md:px-8">
+          <div className="max-w-[1600px] mx-auto">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-12 gap-6">
+              <div>
+                <span className="label-micro text-accent mb-4 block">Browse by State</span>
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">
+                  Equipment <span className="text-muted">Near You</span>
+                </h2>
+                <p className="text-muted font-medium mt-4 max-w-xl">
+                  Find forestry and logging equipment for sale in your state from local dealers and private sellers.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
+              {topStates.map((state) => (
+                <Link
+                  key={state.name}
+                  to={buildStateMarketPath(state.name, CANONICAL_MARKET_ROUTE_KEY)}
+                  className="bg-surface border border-line px-4 py-4 flex items-center gap-3 hover:border-accent hover:text-accent transition-colors group"
+                >
+                  <MapPin size={14} className="text-accent shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-ink group-hover:text-accent transition-colors block truncate">
+                      {state.name}
+                    </span>
+                    <span className="text-[9px] font-bold text-muted uppercase tracking-widest">
+                      {formatNumber(state.count)} Listings
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div className="flex justify-center mt-8">
+              <Link to="/states" className="btn-industrial">
+                View All States
+                <ArrowRight className="ml-2" size={14} />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {marketIntelligenceSection}
+
       {/* Financing CTA */}
-      <section
-        className={`py-24 px-4 md:px-8 relative overflow-hidden ${
-          theme === 'dark'
-            ? 'bg-[#111827]'
-            : 'bg-gradient-to-br from-[#f7f4ec] via-white to-[#eef6f0] border-y border-line'
-        }`}
-      >
-        <div className={`absolute top-0 right-0 w-1/2 h-full skew-x-12 translate-x-1/2 ${theme === 'dark' ? 'bg-accent/10' : 'bg-accent/8'}`}></div>
-        <div className={`absolute inset-y-0 left-0 w-1/3 ${theme === 'dark' ? 'bg-transparent' : 'bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.08),transparent_65%)]'}`}></div>
+      <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">
+        <div className="absolute top-0 right-0 w-1/2 h-full skew-x-12 translate-x-1/2 bg-accent/10"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div>
               <span className="label-micro text-accent mb-4 block">Equipment Financing</span>
-              <h2 className={`text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
+              <h2 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 text-ink">
                 Flexible <br />
                 <span className="text-accent">Financing</span>
               </h2>
-              <p className={`text-lg font-medium mb-12 max-w-lg ${theme === 'dark' ? 'text-white/60' : 'text-muted'}`}>
+              <p className="text-lg font-medium mb-12 max-w-lg text-muted">
                 Apply for equipment financing and get a credit decision, typically within one business day.
               </p>
               <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
@@ -691,15 +1041,11 @@ export function Home() {
               ].map((item, i) => (
                 <div
                   key={i}
-                  className={`p-8 ${
-                    theme === 'dark'
-                      ? 'bg-white/5 border border-white/10'
-                      : 'bg-white/90 border border-line shadow-sm'
-                  }`}
+                  className="p-8 bg-bg border border-line"
                 >
                   <item.icon className="text-accent mb-4" size={24} />
-                  <span className={`label-micro block mb-1 ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>{item.label}</span>
-                  <span className={`text-2xl font-black tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>{item.value}</span>
+                  <span className="label-micro block mb-1 text-muted">{item.label}</span>
+                  <span className="text-2xl font-black tracking-tighter text-ink">{item.value}</span>
                 </div>
               ))}
             </div>
@@ -709,3 +1055,4 @@ export function Home() {
     </div>
   );
 }
+

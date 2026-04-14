@@ -3,7 +3,7 @@ const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('fir
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onRequest } = require('firebase-functions/v2/https');
 const { beforeUserCreated } = require('firebase-functions/v2/identity');
-const { defineSecret } = require('firebase-functions/params');
+const { defineSecret, defineString } = require('firebase-functions/params');
 const { logger } = require('firebase-functions');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
@@ -12,7 +12,7 @@ const sharp = require('sharp');
 const Stripe = require('stripe');
 const { XMLParser } = require('fast-xml-parser');
 const { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } = require('node:crypto');
-const { templates } = require('./email-templates/index.js');
+const { templates, withEmailPreferenceFooter } = require('./email-templates/index.js');
 const { handlePublicPagesRequest } = require('./public-pages.js');
 const {
   PUBLIC_SEO_COLLECTIONS,
@@ -27,14 +27,64 @@ const {
   getFallbackMarketplaceStats,
 } = require('./public-marketplace-fallback.js');
 const { syncListingGovernanceArtifactsForWrite } = require('./listing-governance-artifacts.js');
+const { syncListingToDataConnect } = require('./listing-governance-dataconnect-sync.js');
+const dualWriteUsersBilling = require('./dual-write-users-billing.js');
+const dualWriteAuctions = require('./dual-write-auctions.js');
+const dualWriteLeads = require('./dual-write-leads.js');
+const dualWriteDealers = require('./dual-write-dealers.js');
 const { buildAccountEntitlementSnapshot, buildCompactAccountState } = require('./account-entitlements.js');
 const { buildLifecyclePatch } = require('./listing-lifecycle.js');
 const { RecaptchaEnterpriseServiceClient } = require('@google-cloud/recaptcha-enterprise');
 const { buildListingPublicPath, decodeListingPublicKey } = require('./listing-public-paths.js');
 const { initializeFunctionsSentry, captureFunctionsException } = require('./sentry.js');
+const { renderDealerWidgetScript } = require('./dealer-widget.js');
+const {
+  UNLIMITED_LISTING_CAP,
+  isUnlimitedListingCap,
+  getActiveListingCapMessage,
+} = require('./listing-cap.js');
+const {
+  normalizeScopedUserRole,
+  isOperatorOnlyRole,
+  isDealerSellerRole,
+  supportsStorefrontRole,
+} = require('./role-scopes.js');
+const {
+  AUCTION_PAYMENT_DEADLINE_DAYS,
+  AUCTION_REMOVAL_DEADLINE_DAYS,
+  AUCTION_CARD_PROCESSING_FEE_RATE,
+  AUCTION_CARD_PAYMENT_LIMIT,
+  AUCTION_TITLED_DOCUMENT_FEE,
+  AUCTION_TERMS_VERSION,
+  calculateAuctionBuyerPremium,
+  calculateAuctionDocumentFee,
+  calculateAuctionCardProcessingFee,
+  isAuctionCardPaymentEligible,
+  buildAuctionInvoiceTotals,
+  buildAuctionLegalSummaryLines,
+} = require('./auction-fees.js');
+const { normalizeOptionalEmailPreferenceState } = require('./email-preferences.js');
+const imageProcessingModule = require('./image-processing.js');
+const scheduledMarketModule = require('./scheduled-market.js');
+const postgresSyncModule = require('./postgres-sync.js');
+const createSeoSyncTriggers = require('./seo-sync-triggers.js');
+const createEmailTriggers = require('./email-triggers.js');
+const createSubscriptionLifecycleTriggers = require('./subscription-lifecycle.js');
+const createListingLifecycleTriggers = require('./listing-lifecycle-triggers.js');
 
-const RECAPTCHA_SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
-const RECAPTCHA_PROJECT_ID = 'mobile-app-equipment-sales';
+const LEGACY_RUNTIME_CONFIG = (() => {
+  try {
+    return JSON.parse(process.env.CLOUD_RUNTIME_CONFIG || '{}');
+  } catch (error) {
+    logger.warn('Unable to parse CLOUD_RUNTIME_CONFIG; falling back to empty config.', {
+      message: error instanceof Error ? error.message : String(error || ''),
+    });
+    return {};
+  }
+})();
+
+const RECAPTCHA_SITE_KEY = defineString('RECAPTCHA_SITE_KEY', { default: '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0' });
+const RECAPTCHA_PROJECT_ID = defineString('RECAPTCHA_PROJECT_ID', { default: 'mobile-app-equipment-sales' });
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -62,6 +112,7 @@ function resolveFirestoreDatabaseId() {
 
 const FIRESTORE_DB_ID = resolveFirestoreDatabaseId();
 function getDb() { return getFirestore(resolveFirestoreDatabaseId()); }
+function getAuctionDb() { return getFirestore('(default)'); }
 const LISTING_SEQUENCE_COUNTER_COLLECTION = 'systemCounters';
 const LISTING_SEQUENCE_COUNTER_DOC = 'listingSequence';
 const FIRST_SEQUENTIAL_LISTING_ID = 12000;
@@ -112,11 +163,14 @@ const TWILIO_ACCOUNT_SID = defineSecret('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = defineSecret('TWILIO_AUTH_TOKEN');
 const TWILIO_API_KEY_SID = defineSecret('TWILIO_API_KEY_SID');
 const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
+const PRIVILEGED_ADMIN_EMAILS_SECRET = defineSecret('PRIVILEGED_ADMIN_EMAILS');
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
 let publicNewsCache = null;
 const PUBLIC_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
+const EMAIL_PREFERENCE_RECIPIENTS_COLLECTION = 'emailPreferenceRecipients';
+const EXTERNAL_EMAIL_PREFERENCE_UID = '__external__';
 const dealerFeedXmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '',
@@ -151,10 +205,23 @@ function htmlToText(html) {
     .trim();
 }
 
-async function sendEmail({ to, subject, html, replyTo }) {
+async function sendEmail({
+  to,
+  cc,
+  subject,
+  html,
+  replyTo,
+  unsubscribeUrl,
+  emailPreferenceUid,
+  emailPreferenceScope = 'optional',
+  emailPreferenceLabel,
+}) {
   ensureSendGridClientConfigured();
-  const from = String(EMAIL_FROM.value() || '"Forestry Equipment Sales" <caleb@forestryequipmentsales.com>').trim();
-  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || 'caleb@forestryequipmentsales.com').trim();
+  const from = String(EMAIL_FROM.value() || '').trim();
+  if (!from) {
+    throw new Error('EMAIL_FROM secret is not configured.');
+  }
+  const resolvedReplyTo = String(replyTo || parseEmailAddress(from) || from).trim();
   const recipients = (Array.isArray(to) ? to : [to])
     .map((recipient) => String(recipient || '').trim())
     .filter(Boolean);
@@ -163,14 +230,41 @@ async function sendEmail({ to, subject, html, replyTo }) {
     throw new Error('No email recipients were provided.');
   }
 
-  await sgMail.send({
-    to: recipients,
-    from,
-    replyTo: resolvedReplyTo,
-    subject,
-    html,
-    text: htmlToText(html),
-  });
+  await Promise.all(recipients.map(async (recipient) => {
+    let resolvedUnsubscribeUrl = String(unsubscribeUrl || '').trim();
+    if (!resolvedUnsubscribeUrl) {
+      const resolvedPreferenceRecipient = await resolveEmailPreferenceRecipient({
+        uid: recipients.length === 1 ? emailPreferenceUid : '',
+        email: parseEmailAddress(recipient) || recipient,
+      });
+      resolvedUnsubscribeUrl = buildEmailUnsubscribeUrl({
+        uid: resolvedPreferenceRecipient.uid,
+        email: resolvedPreferenceRecipient.email,
+        scope: emailPreferenceScope,
+      });
+    }
+
+    const finalHtml = withEmailPreferenceFooter(html, {
+      unsubscribeUrl: resolvedUnsubscribeUrl,
+      label: emailPreferenceLabel,
+    });
+
+    const msg = {
+      to: recipient,
+      from,
+      replyTo: resolvedReplyTo,
+      subject,
+      html: finalHtml,
+      text: htmlToText(finalHtml),
+    };
+    const ccList = (Array.isArray(cc) ? cc : (cc ? [cc] : []))
+      .map((addr) => String(addr || '').trim())
+      .filter(Boolean);
+    if (ccList.length > 0) {
+      msg.cc = ccList;
+    }
+    await sgMail.send(msg);
+  }));
 
   logger.info(`Email sent to ${recipients.join(', ')}: ${subject}`);
 }
@@ -180,6 +274,62 @@ function parseEmailAddress(input) {
   if (!value) return '';
   const match = value.match(/<([^>]+)>/);
   return (match?.[1] || value).trim().toLowerCase();
+}
+
+function normalizeEmailPreferenceUid(uid) {
+  return normalizeNonEmptyString(uid, EXTERNAL_EMAIL_PREFERENCE_UID);
+}
+
+async function resolveEmailPreferenceRecipient({ uid, email }) {
+  const normalizedEmail = parseEmailAddress(email);
+  if (!normalizedEmail) {
+    return {
+      uid: '',
+      email: '',
+    };
+  }
+
+  const normalizedUid = normalizeNonEmptyString(uid);
+  if (normalizedUid) {
+    return {
+      uid: normalizedUid,
+      email: normalizedEmail,
+    };
+  }
+
+  const matchingUsers = await getDb()
+    .collection('users')
+    .where('email', '==', normalizedEmail)
+    .limit(1)
+    .get();
+
+  if (!matchingUsers.empty) {
+    return {
+      uid: normalizeNonEmptyString(matchingUsers.docs[0]?.id),
+      email: normalizedEmail,
+    };
+  }
+
+  try {
+    const authUser = await admin.auth().getUserByEmail(normalizedEmail);
+    const authUid = normalizeNonEmptyString(authUser?.uid);
+    if (authUid) {
+      return {
+        uid: authUid,
+        email: normalizedEmail,
+      };
+    }
+  } catch (error) {
+    logger.debug('No auth user found for email preference recipient lookup.', {
+      email: normalizedEmail,
+      message: error instanceof Error ? error.message : String(error || ''),
+    });
+  }
+
+  return {
+    uid: '',
+    email: normalizedEmail,
+  };
 }
 
 function getAdminRecipients() {
@@ -192,12 +342,21 @@ function getAdminRecipients() {
     return fromSecret;
   }
 
-  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || 'caleb@forestryequipmentsales.com').trim());
-  return fallback ? [fallback] : ['caleb@forestryequipmentsales.com'];
+  const fallback = parseEmailAddress(String(EMAIL_FROM.value() || '').trim());
+  return fallback ? [fallback] : [];
 }
 
-const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://www.forestryequipmentsales.com');
+const APP_URL = normalizeNonEmptyString(process.env.EMAIL_MARKETPLACE_URL || process.env.APP_URL, 'https://timberequip.com');
 const STAGING_APP_URL = 'https://timberequip-staging.web.app';
+
+const ALLOWED_CORS_ORIGINS = [
+  'https://timberequip.com',
+  'https://www.timberequip.com',
+  'https://forestryequipmentsales.com',
+  'https://www.forestryequipmentsales.com',
+  'https://timberequip-staging.web.app',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000'] : []),
+];
 function resolveConfiguredAppUrl() {
   const projectId = String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || '').trim().toLowerCase();
   if (projectId === 'timberequip-staging') {
@@ -207,9 +366,14 @@ function resolveConfiguredAppUrl() {
 }
 
 function getEmailPreferenceSigningSecret() {
+  const apiKey = String(SENDGRID_API_KEY.value() || '').trim();
+  const emailFrom = String(EMAIL_FROM.value() || '').trim();
+  if (!apiKey && !emailFrom) {
+    throw new Error('Email signing secret requires SENDGRID_API_KEY or EMAIL_FROM to be configured');
+  }
   const seed = [
-    String(SENDGRID_API_KEY.value() || '').trim() || String(EMAIL_FROM.value() || '').trim() || 'forestry-equipment-sales-email',
-    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'forestry-equipment-sales').trim(),
+    apiKey || emailFrom,
+    String(process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || 'mobile-app-equipment-sales').trim(),
     'email-preferences',
   ].join('|');
 
@@ -219,7 +383,7 @@ function getEmailPreferenceSigningSecret() {
 function buildEmailPreferenceToken({ uid, email, scope = 'optional' }) {
   return createHmac('sha256', getEmailPreferenceSigningSecret())
     .update([
-      normalizeNonEmptyString(uid),
+      normalizeEmailPreferenceUid(uid),
       normalizeNonEmptyString(email).toLowerCase(),
       normalizeNonEmptyString(scope, 'optional').toLowerCase(),
     ].join('|'))
@@ -232,12 +396,11 @@ function verifyEmailPreferenceToken({ uid, email, scope = 'optional', token }) {
 }
 
 function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
-  const normalizedUid = normalizeNonEmptyString(uid);
   const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
-  if (!normalizedUid || !normalizedEmail) return '';
+  const normalizedUid = normalizeNonEmptyString(uid);
+  if (!normalizedEmail) return '';
 
   const params = new URLSearchParams({
-    uid: normalizedUid,
     email: normalizedEmail,
     scope: normalizeNonEmptyString(scope, 'optional').toLowerCase(),
     token: buildEmailPreferenceToken({
@@ -247,12 +410,24 @@ function buildEmailUnsubscribeUrl({ uid, email, scope = 'optional' }) {
     }),
   });
 
+  if (normalizedUid) {
+    params.set('uid', normalizedUid);
+  }
+
   return `${resolveConfiguredAppUrl()}/unsubscribe?${params.toString()}`;
 }
-const PRIVILEGED_ADMIN_EMAILS = new Set([
-  'caleb@forestryequipmentsales.com',
-  'calebhappy@gmail.com',
-]);
+
+function getEmailPreferenceRecipientRef(email) {
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  if (!normalizedEmail) return null;
+  return getDb().collection(EMAIL_PREFERENCE_RECIPIENTS_COLLECTION).doc(sha256Hex(normalizedEmail));
+}
+function getPrivilegedAdminEmails() {
+  let raw = '';
+  try { raw = String(PRIVILEGED_ADMIN_EMAILS_SECRET.value() || '').trim(); } catch (_) { /* secret not available in this function context */ }
+  if (!raw) raw = process.env.PRIVILEGED_ADMIN_EMAILS || LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '';
+  return new Set(String(raw).split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
+}
 const FEATURED_LISTING_CAPS = Object.freeze({
   dealer: 3,
   pro_dealer: 6,
@@ -261,7 +436,7 @@ const FEATURED_LISTING_CAPS = Object.freeze({
 function getRoleDefaultListingCap(role) {
   const normalizedRole = normalizeUserRole(role);
   if (normalizedRole === 'dealer') return 50;
-  if (normalizedRole === 'pro_dealer') return 150;
+  if (normalizedRole === 'pro_dealer') return UNLIMITED_LISTING_CAP;
   return 0;
 }
 
@@ -355,6 +530,7 @@ const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMITS = Object.freeze({
   sendVerificationEmail: 3,
   passwordReset: 5,
+  passwordResetSuccess: 2,
 });
 const recentAuthEndpointRequests = new Map();
 
@@ -447,10 +623,7 @@ function consumeAuthRateLimit(scope, req, identifier, limit = 5) {
 }
 
 function normalizeUserRole(role) {
-  const normalized = normalize(role);
-  if (normalized === 'dealer_staff') return 'dealer';
-  if (normalized === 'dealer_manager') return 'pro_dealer';
-  return normalized;
+  return normalizeScopedUserRole(role);
 }
 
 function normalizeAccountAccessSource(source) {
@@ -564,18 +737,17 @@ function deriveManualAccountAccessSource(actorRole, requestedRole, existingSourc
   const normalizedRequestedRole = normalizeUserRole(requestedRole);
 
   if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer') {
-    return normalizedRequestedRole === 'member' || normalizedRequestedRole === 'buyer'
+    return normalizedRequestedRole === 'member'
       ? 'managed_account'
       : 'admin_override';
   }
 
   if (normalizedRequestedRole === 'member') return 'free_member';
-  if (normalizedRequestedRole === 'buyer') return '';
   return 'admin_override';
 }
 
 function isPrivilegedAdminEmail(email) {
-  return PRIVILEGED_ADMIN_EMAILS.has(normalize(email));
+  return getPrivilegedAdminEmails().has(normalize(email));
 }
 
 function includesNormalized(haystack, needle) {
@@ -595,6 +767,45 @@ function normalizeFiniteNumber(value, fallback = 0) {
 function toFiniteNumberOrUndefined(value) {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : undefined;
+}
+
+const VALID_CONDITIONS = new Set(['New', 'Used', 'Rebuilt']);
+const CONDITION_ALIAS_MAP = {
+  new: 'New', brand_new: 'New', brandnew: 'New',
+  used: 'Used', preowned: 'Used', 'pre-owned': 'Used', secondhand: 'Used',
+  rebuilt: 'Rebuilt', refurbished: 'Rebuilt', reconditioned: 'Rebuilt', remanufactured: 'Rebuilt',
+};
+
+function normalizeFeedCondition(value, fallback = 'Used') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  if (VALID_CONDITIONS.has(raw)) return raw;
+  const lower = raw.toLowerCase().replace(/[\s_-]+/g, '');
+  return CONDITION_ALIAS_MAP[lower] || fallback;
+}
+
+/* Category names seen in vendor feeds may not match our taxonomy exactly.
+   This map covers common alternate spellings/names → canonical category. */
+const CATEGORY_ALIAS_MAP = {
+  'log skidders': 'Skidders', 'cable skidders': 'Skidders', 'grapple skidders': 'Skidders',
+  'feller buncher': 'Feller Bunchers', 'feller-buncher': 'Feller Bunchers', 'felling machines': 'Feller Bunchers',
+  'harvester': 'Harvesters', 'cut-to-length': 'Harvesters', 'ctl harvester': 'Harvesters',
+  'forwarder': 'Forwarders', 'forwarding machine': 'Forwarders',
+  'log loader': 'Log Loaders', 'log loaders': 'Log Loaders', 'knuckleboom loader': 'Log Loaders',
+  'firewood processor': 'Firewood Processors', 'wood processor': 'Firewood Processors',
+  'wood splitter': 'Splitters', 'log splitter': 'Splitters',
+  'wood chipper': 'Chippers', 'brush chipper': 'Chippers', 'drum chipper': 'Chippers',
+  'stump grinder': 'Stump Grinders',
+  'tree shear': 'Tree Shears', 'shear head': 'Tree Shears',
+  'mulcher': 'Mulchers', 'forestry mulcher': 'Mulchers',
+  'delimber': 'Delimbers', 'stroke delimber': 'Delimbers', 'pull-through delimber': 'Delimbers',
+};
+
+function normalizeFeedCategory(value, fallback = 'Uncategorized') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+  return CATEGORY_ALIAS_MAP[lower] || raw;
 }
 
 function stripUndefinedDeep(value) {
@@ -780,6 +991,126 @@ async function geocodeLocation(address) {
   return geocoded;
 }
 
+function getGoogleAddressComponent(components, wantedTypes, format = 'long_name') {
+  if (!Array.isArray(components) || !Array.isArray(wantedTypes)) {
+    return '';
+  }
+
+  const match = components.find((component) =>
+    Array.isArray(component?.types) && wantedTypes.some((type) => component.types.includes(type))
+  );
+
+  if (!match) {
+    return '';
+  }
+
+  if (format === 'short_name') {
+    return normalizeNonEmptyString(match.short_name || match.long_name);
+  }
+
+  return normalizeNonEmptyString(match.long_name || match.short_name);
+}
+
+function normalizeCountyName(value) {
+  return normalizeNonEmptyString(value).replace(
+    /\s+(County|Parish|Borough|Census Area|Municipality|Regional Municipality)$/i,
+    '',
+  );
+}
+
+function parseGooglePlaceDetails(result, placeId = '') {
+  const components = Array.isArray(result?.address_components) ? result.address_components : [];
+  const streetNumber = getGoogleAddressComponent(components, ['street_number'], 'short_name');
+  const route = getGoogleAddressComponent(components, ['route']);
+  const street1 = [streetNumber, route].filter(Boolean).join(' ')
+    || getGoogleAddressComponent(components, ['premise', 'subpremise', 'establishment'])
+    || normalizeNonEmptyString(result?.name);
+  const city = getGoogleAddressComponent(components, ['locality'])
+    || getGoogleAddressComponent(components, ['postal_town'])
+    || getGoogleAddressComponent(components, ['sublocality_level_1'])
+    || getGoogleAddressComponent(components, ['administrative_area_level_3']);
+  const state = getGoogleAddressComponent(components, ['administrative_area_level_1'], 'short_name');
+  const county = normalizeCountyName(getGoogleAddressComponent(components, ['administrative_area_level_2']));
+  const postalCode = getGoogleAddressComponent(components, ['postal_code'], 'short_name');
+  const country = getGoogleAddressComponent(components, ['country']);
+  const latitude = Number.isFinite(Number(result?.geometry?.location?.lat)) ? Number(result.geometry.location.lat) : null;
+  const longitude = Number.isFinite(Number(result?.geometry?.location?.lng)) ? Number(result.geometry.location.lng) : null;
+
+  return {
+    placeId: normalizeNonEmptyString(placeId),
+    formattedAddress: normalizeNonEmptyString(result?.formatted_address || result?.name),
+    street1,
+    city,
+    state,
+    county,
+    postalCode,
+    country,
+    latitude,
+    longitude,
+  };
+}
+
+function decodeAutocompleteFallbackAddress(placeId) {
+  const normalizedPlaceId = normalizeNonEmptyString(placeId);
+  if (!normalizedPlaceId.startsWith('geocode:')) return '';
+
+  const encoded = normalizedPlaceId.slice('geocode:'.length);
+  if (!encoded) return '';
+
+  try {
+    return normalizeNonEmptyString(Buffer.from(encoded, 'base64url').toString('utf8'));
+  } catch {
+    return '';
+  }
+}
+
+function normalizeStringArray(value, maxItems = 50, maxLength = 120) {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((entry) => normalizeNonEmptyString(entry))
+    .filter(Boolean)
+    .map((entry) => entry.slice(0, maxLength));
+
+  return [...new Set(normalized)].slice(0, maxItems);
+}
+
+const SERVICE_AREA_SCOPE_OPTIONS = ['State', 'USA', 'Canada', 'Global'];
+const SERVICE_AREA_SCOPE_LOOKUP = new Map(
+  SERVICE_AREA_SCOPE_OPTIONS.map((value) => [String(value).toLowerCase(), value])
+);
+
+function normalizeServiceAreaScopes(value, maxItems = 8) {
+  const normalized = normalizeStringArray(value, maxItems, 40);
+  const canonical = normalized
+    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(String(entry || '').trim().toLowerCase()) || null)
+    .filter(Boolean);
+
+  return [...new Set(canonical)].slice(0, maxItems);
+}
+
+function buildStorefrontLocationText(data = {}) {
+  const city = normalizeNonEmptyString(data.city);
+  const state = normalizeNonEmptyString(data.state);
+  const country = normalizeNonEmptyString(data.country);
+  const explicitLocation = normalizeNonEmptyString(data.location);
+
+  const derived = [city, state, country].filter(Boolean).join(', ');
+  return derived || explicitLocation;
+}
+
+function buildStorefrontGeocodeAddress(data = {}) {
+  return [
+    normalizeNonEmptyString(data.street1),
+    normalizeNonEmptyString(data.street2),
+    normalizeNonEmptyString(data.city),
+    normalizeNonEmptyString(data.state),
+    normalizeNonEmptyString(data.postalCode),
+    normalizeNonEmptyString(data.country),
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
 async function buildEmailVerificationLink(email) {
   try {
     return await admin.auth().generateEmailVerificationLink(email, {
@@ -816,26 +1147,71 @@ async function buildPasswordResetLink(email, continueUrl = `${APP_URL}/login`) {
   }
 }
 
+function buildBrandedPasswordResetUrl(resetLink, continueUrl = `${APP_URL}/login`) {
+  try {
+    const parsedLink = new URL(String(resetLink || '').trim());
+    const oobCode = String(parsedLink.searchParams.get('oobCode') || '').trim();
+    const mode = String(parsedLink.searchParams.get('mode') || 'resetPassword').trim();
+    if (!oobCode) {
+      return String(resetLink || '').trim() || continueUrl;
+    }
+
+    const params = new URLSearchParams();
+    params.set('oobCode', oobCode);
+    params.set('mode', mode || 'resetPassword');
+
+    const nextContinueUrl = String(parsedLink.searchParams.get('continueUrl') || continueUrl || '').trim();
+    if (nextContinueUrl) {
+      params.set('continueUrl', nextContinueUrl);
+    }
+
+    const lang = String(parsedLink.searchParams.get('lang') || '').trim();
+    if (lang) {
+      params.set('lang', lang);
+    }
+
+    return `${APP_URL}/reset-password?${params.toString()}`;
+  } catch (error) {
+    logger.warn(`Could not translate password reset link to branded route: ${error.message}`);
+    return String(resetLink || '').trim() || continueUrl;
+  }
+}
+
 async function sendPasswordResetEmailMessage({ email, displayName, requestedBy, continueUrl = `${APP_URL}/login` }) {
   const resetLink = await buildPasswordResetLink(email, continueUrl);
+  const brandedResetUrl = buildBrandedPasswordResetUrl(resetLink, continueUrl);
   const safeDisplayName = String(displayName || 'there').trim() || 'there';
   const safeRequestedBy = String(requestedBy || '').trim();
   const intro = safeRequestedBy
     ? `${safeRequestedBy} requested a password reset for your Forestry Equipment Sales account.`
     : 'We received a request to reset your Forestry Equipment Sales password.';
+  const payload = templates.passwordReset({
+    displayName: safeDisplayName,
+    intro,
+    resetUrl: brandedResetUrl,
+    loginUrl: `${APP_URL}/login`,
+  });
 
   await sendEmail({
     to: email,
-    subject: 'Reset your Forestry Equipment Sales password',
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-        <h2 style="margin-bottom: 16px;">Password reset requested</h2>
-        <p>Hello ${safeDisplayName},</p>
-        <p>${intro}</p>
-        <p><a href="${resetLink}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;">Reset Password</a></p>
-        <p>If you did not expect this email, you can ignore it.</p>
-      </div>
-    `,
+    subject: payload.subject,
+    html: payload.html,
+  });
+}
+
+async function sendPasswordResetSuccessEmailMessage({ email, displayName, changedAt, appUrl = APP_URL }) {
+  const resolvedAppUrl = normalizeNonEmptyString(appUrl, APP_URL);
+  const payload = templates.passwordResetSuccess({
+    displayName: String(displayName || 'there').trim() || 'there',
+    changedAt: String(changedAt || '').trim() || new Date().toLocaleString('en-US'),
+    loginUrl: `${resolvedAppUrl}/login`,
+    supportUrl: `${resolvedAppUrl}/contact`,
+  });
+
+  await sendEmail({
+    to: email,
+    subject: payload.subject,
+    html: payload.html,
   });
 }
 
@@ -846,35 +1222,111 @@ async function sendVoicemailNotificationEmailMessage({
   callTimestamp,
   dashboardUrl,
 }) {
-  const safeSellerName = String(sellerName || 'there').trim() || 'there';
-  const safeCallerNumber = String(callerNumber || 'Unknown caller').trim() || 'Unknown caller';
-  const safeCallTimestamp = String(callTimestamp || '').trim() || new Date().toLocaleString('en-US');
-  const safeDashboardUrl = String(dashboardUrl || `${APP_URL}/profile?tab=Calls`).trim() || `${APP_URL}/profile?tab=Calls`;
-
-  await sendEmail({
-    to: email,
-    subject: 'New voicemail on Forestry Equipment Sales',
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
-        <h2 style="margin-bottom: 16px;">New voicemail received</h2>
-        <p>Hello ${safeSellerName},</p>
-        <p>A caller left a voicemail on your Forestry Equipment Sales tracking number.</p>
-        <ul style="padding-left: 18px;">
-          <li><strong>Caller:</strong> ${safeCallerNumber}</li>
-          <li><strong>Received:</strong> ${safeCallTimestamp}</li>
-        </ul>
-        <p>
-          <a
-            href="${safeDashboardUrl}"
-            style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:4px;"
-          >
-            Review Voicemail
-          </a>
-        </p>
-        <p>You can listen to the voicemail from your Calls tab inside Forestry Equipment Sales.</p>
-      </div>
-    `,
+  const payload = templates.voicemailNotification({
+    sellerName: String(sellerName || 'there').trim() || 'there',
+    callerNumber: String(callerNumber || 'Unknown caller').trim() || 'Unknown caller',
+    callTimestamp: String(callTimestamp || '').trim() || new Date().toLocaleString('en-US'),
+    dashboardUrl: String(dashboardUrl || `${APP_URL}/profile?tab=Calls`).trim() || `${APP_URL}/profile?tab=Calls`,
   });
+
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendDealerWidgetInquiryNotificationEmailMessage({
+  email,
+  sellerName,
+  dealerName,
+  buyerName,
+  buyerEmail,
+  buyerPhone,
+  listingId,
+  message,
+  dashboardUrl,
+}) {
+  const payload = templates.dealerWidgetInquiryNotification({
+    sellerName: String(sellerName || dealerName || 'there').trim() || 'there',
+    dealerName: String(dealerName || '').trim(),
+    buyerName: String(buyerName || 'Buyer').trim() || 'Buyer',
+    buyerEmail: String(buyerEmail || '').trim(),
+    buyerPhone: String(buyerPhone || '').trim(),
+    listingId: String(listingId || '').trim(),
+    message: String(message || '').trim(),
+    dashboardUrl: String(dashboardUrl || `${APP_URL}/dealer-os`).trim() || `${APP_URL}/dealer-os`,
+  });
+
+  await sendEmail({ to: email, ...payload });
+}
+
+function formatEmailCurrencyAmount(amountMinor, currency = 'usd') {
+  const normalizedCurrency = String(currency || 'usd').trim().toUpperCase() || 'USD';
+  const numericAmount = Number(amountMinor);
+  if (!Number.isFinite(numericAmount)) {
+    return 'Balance due';
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: normalizedCurrency,
+  }).format(numericAmount / 100);
+}
+
+function formatUnixDateForEmail(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return '';
+
+  return new Date(numericValue * 1000).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+async function sendPaymentFailedPastDueEmailMessage({
+  email,
+  displayName,
+  planName,
+  amountDue,
+  currency,
+  invoiceNumber,
+  retryDate,
+  billingUrl,
+  hostedInvoiceUrl,
+}) {
+  const payload = templates.paymentFailedPastDue({
+    displayName: String(displayName || 'there').trim() || 'there',
+    planName: String(planName || 'Marketplace subscription').trim() || 'Marketplace subscription',
+    amountDue: formatEmailCurrencyAmount(amountDue, currency),
+    invoiceNumber: String(invoiceNumber || '').trim(),
+    retryDate: formatUnixDateForEmail(retryDate),
+    billingUrl: String(billingUrl || `${APP_URL}/profile?tab=Account%20Settings`).trim() || `${APP_URL}/profile?tab=Account%20Settings`,
+    hostedInvoiceUrl: String(hostedInvoiceUrl || '').trim(),
+  });
+
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAccountStatusEmailMessage({
+  email,
+  displayName,
+  actorName,
+  loginUrl,
+  supportUrl,
+  locked,
+}) {
+  const payload = locked
+    ? templates.accountLocked({
+        displayName: String(displayName || 'there').trim() || 'there',
+        actorName: String(actorName || '').trim(),
+        supportUrl: String(supportUrl || `${APP_URL}/contact`).trim() || `${APP_URL}/contact`,
+      })
+    : templates.accountUnlocked({
+        displayName: String(displayName || 'there').trim() || 'there',
+        actorName: String(actorName || '').trim(),
+        loginUrl: String(loginUrl || `${APP_URL}/login`).trim() || `${APP_URL}/login`,
+        supportUrl: String(supportUrl || `${APP_URL}/contact`).trim() || `${APP_URL}/contact`,
+      });
+
+  await sendEmail({ to: email, ...payload });
 }
 
 async function sendVerificationEmailMessage({ email, displayName }) {
@@ -887,11 +1339,1054 @@ async function sendVerificationEmailMessage({ email, displayName }) {
   await sendEmail({ to: email, ...payload });
 }
 
+function normalizeAuctionBidderTier(profile = {}) {
+  const normalized = normalizeNonEmptyString(profile.verificationTier, 'basic').toLowerCase();
+  if (normalized === 'approved' || normalized === 'verified' || normalized === 'basic') {
+    return normalized;
+  }
+  return 'basic';
+}
+
+function normalizeAuctionBidderProfile(profile = {}, fallback = {}) {
+  const normalizedEmail = normalizeNonEmptyString(profile.email || fallback.email).toLowerCase();
+  const paymentFunding = normalizeNonEmptyString(profile.defaultPaymentMethodFunding, 'unknown').toLowerCase();
+  const verificationTier = normalizeAuctionBidderTier(profile);
+  const idVerificationStatus = normalizeNonEmptyString(profile.idVerificationStatus, 'not_started').toLowerCase();
+  const stripeSetupSessionStatus = normalizeNonEmptyString(profile.stripeSetupSessionStatus).toLowerCase();
+  const paymentMethodReady = Boolean(normalizeNonEmptyString(profile.defaultPaymentMethodId));
+  const identityVerified = idVerificationStatus === 'verified';
+  const approved = identityVerified && paymentMethodReady;
+
+  return {
+    verificationTier: approved ? 'approved' : (identityVerified ? 'verified' : verificationTier),
+    fullName: normalizeNonEmptyString(profile.fullName || fallback.fullName),
+    email: normalizedEmail,
+    phone: normalizeNonEmptyString(profile.phone || fallback.phone),
+    phoneVerified: profile.phoneVerified === true,
+    companyName: normalizeNonEmptyString(profile.companyName) || null,
+    address: {
+      street: normalizeNonEmptyString(profile.address?.street || fallback.address?.street),
+      city: normalizeNonEmptyString(profile.address?.city || fallback.address?.city),
+      state: normalizeNonEmptyString(profile.address?.state || fallback.address?.state),
+      zip: normalizeNonEmptyString(profile.address?.zip || fallback.address?.zip),
+      country: normalizeNonEmptyString(profile.address?.country || fallback.address?.country || 'US'),
+    },
+    stripeCustomerId: normalizeNonEmptyString(profile.stripeCustomerId),
+    stripeIdentityVerificationSessionId: normalizeNonEmptyString(profile.stripeIdentityVerificationSessionId) || null,
+    stripeIdentityVerificationUrl: normalizeNonEmptyString(profile.stripeIdentityVerificationUrl) || null,
+    stripeIdentityLastError: normalizeNonEmptyString(profile.stripeIdentityLastError) || null,
+    stripeSetupSessionId: normalizeNonEmptyString(profile.stripeSetupSessionId) || null,
+    stripeSetupSessionStatus: stripeSetupSessionStatus || null,
+    stripeSetupIntentId: normalizeNonEmptyString(profile.stripeSetupIntentId) || null,
+    defaultPaymentMethodId: normalizeNonEmptyString(profile.defaultPaymentMethodId) || null,
+    defaultPaymentMethodBrand: normalizeNonEmptyString(profile.defaultPaymentMethodBrand) || null,
+    defaultPaymentMethodLast4: normalizeNonEmptyString(profile.defaultPaymentMethodLast4) || null,
+    defaultPaymentMethodFunding: ['credit', 'debit', 'prepaid'].includes(paymentFunding) ? paymentFunding : 'unknown',
+    preAuthPaymentIntentId: normalizeNonEmptyString(profile.preAuthPaymentIntentId) || null,
+    preAuthAmount: normalizeFiniteNumber(profile.preAuthAmount, 0),
+    preAuthStatus: ['pending', 'held', 'captured', 'released'].includes(normalizeNonEmptyString(profile.preAuthStatus).toLowerCase())
+      ? normalizeNonEmptyString(profile.preAuthStatus).toLowerCase()
+      : 'pending',
+    idVerificationStatus: ['pending', 'verified', 'failed'].includes(idVerificationStatus) ? idVerificationStatus : 'not_started',
+    idVerifiedAt: normalizeNonEmptyString(profile.idVerifiedAt) || null,
+    bidderApprovedAt: approved
+      ? (normalizeNonEmptyString(profile.bidderApprovedAt) || new Date().toISOString())
+      : null,
+    bidderApprovedBy: approved ? (normalizeNonEmptyString(profile.bidderApprovedBy) || 'system') : null,
+    lastAuctionRegistrationAt: normalizeNonEmptyString(profile.lastAuctionRegistrationAt) || null,
+    legalAcceptedAuctionSlug: normalizeNonEmptyString(profile.legalAcceptedAuctionSlug) || null,
+    legalAcceptedAuctionId: normalizeNonEmptyString(profile.legalAcceptedAuctionId) || null,
+    totalAuctionsParticipated: normalizeFiniteNumber(profile.totalAuctionsParticipated, 0),
+    totalItemsWon: normalizeFiniteNumber(profile.totalItemsWon, 0),
+    totalSpent: normalizeFiniteNumber(profile.totalSpent, 0),
+    nonPaymentCount: normalizeFiniteNumber(profile.nonPaymentCount, 0),
+    taxExempt: profile.taxExempt === true,
+    taxExemptState: normalizeNonEmptyString(profile.taxExemptState) || '',
+    taxExemptCertificateUrl: normalizeNonEmptyString(profile.taxExemptCertificateUrl) || '',
+    taxExemptCertificateUploadedAt: normalizeNonEmptyString(profile.taxExemptCertificateUploadedAt) || '',
+    termsAcceptedAt: normalizeNonEmptyString(profile.termsAcceptedAt) || '',
+    termsVersion: normalizeNonEmptyString(profile.termsVersion, AUCTION_TERMS_VERSION),
+    createdAt: normalizeNonEmptyString(profile.createdAt) || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildAuctionBidderStatusPayload(auction, profile) {
+  const bidderProfile = profile ? normalizeAuctionBidderProfile(profile) : null;
+  const identityVerified = bidderProfile?.idVerificationStatus === 'verified';
+  const paymentMethodReady = Boolean(normalizeNonEmptyString(bidderProfile?.defaultPaymentMethodId));
+  const legalAccepted = Boolean(normalizeNonEmptyString(bidderProfile?.termsAcceptedAt));
+  const bidderApproved = identityVerified && paymentMethodReady;
+
+  return {
+    auction,
+    profile: bidderProfile,
+    registrationComplete: Boolean(legalAccepted && bidderApproved),
+    canBid: Boolean(auction && ['active', 'extended'].includes(normalizeNonEmptyString(auction.status).toLowerCase()) && bidderApproved),
+    identityVerified,
+    paymentMethodReady,
+    bidderApproved,
+    legalAccepted,
+  };
+}
+
+function getAuctionBidIncrement(currentBid) {
+  const amount = normalizeFiniteNumber(currentBid, 0);
+  if (amount < 250) return 10;
+  if (amount < 500) return 25;
+  if (amount < 1000) return 50;
+  if (amount < 5000) return 100;
+  if (amount < 10000) return 250;
+  if (amount < 25000) return 500;
+  if (amount < 50000) return 1000;
+  if (amount < 100000) return 2500;
+  if (amount < 250000) return 5000;
+  return 10000;
+}
+
+function buildAuctionLotPublicUrl(auctionSlug, lotNumber) {
+  return `${APP_URL}/auctions/${encodeURIComponent(normalizeNonEmptyString(auctionSlug))}/lots/${encodeURIComponent(normalizeNonEmptyString(lotNumber))}`;
+}
+
+function buildAuctionInvoiceReturnUrl(auctionSlug, lotNumber, invoiceId) {
+  const baseUrl = buildAuctionLotPublicUrl(auctionSlug, lotNumber);
+  return `${baseUrl}?invoice=${encodeURIComponent(normalizeNonEmptyString(invoiceId))}`;
+}
+
+async function getAuctionBySlugFromDb(auctionSlug) {
+  const normalizedSlug = normalizeNonEmptyString(auctionSlug);
+  if (!normalizedSlug) return null;
+  const snapshot = await getAuctionDb().collection('auctions').where('slug', '==', normalizedSlug).limit(1).get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function getAuctionLotByNumberFromDb(auctionId, lotNumber) {
+  const normalizedAuctionId = normalizeNonEmptyString(auctionId);
+  const normalizedLotNumber = normalizeNonEmptyString(lotNumber);
+  if (!normalizedAuctionId || !normalizedLotNumber) return null;
+  const snapshot = await getAuctionDb().collection('auctions').doc(normalizedAuctionId).collection('lots').where('lotNumber', '==', normalizedLotNumber).limit(1).get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function getAuctionBidderProfile(userUid) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) return null;
+  const snap = await getAuctionDb().collection('users').doc(normalizedUid).collection('bidderProfile').doc('profile').get();
+  if (!snap.exists) return null;
+  return snap.data() || null;
+}
+
+async function saveAuctionBidderProfile(userUid, profile) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) {
+    throw new Error('Missing bidder uid.');
+  }
+
+  const normalizedProfile = normalizeAuctionBidderProfile(profile);
+  await getAuctionDb().collection('users').doc(normalizedUid).collection('bidderProfile').doc('profile').set(normalizedProfile, { merge: true });
+  return normalizedProfile;
+}
+
+function buildAuctionBidderAnonymousId(userUid, profile = {}) {
+  const fullName = normalizeNonEmptyString(profile.fullName);
+  if (fullName) {
+    const initials = fullName
+      .split(/\s+/u)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('');
+    if (initials) {
+      return `${initials}-${String(userUid || '').slice(-4).toUpperCase()}`;
+    }
+  }
+
+  return `BID-${String(userUid || '').slice(-6).toUpperCase()}`;
+}
+
+async function syncAuctionBidderSetupSession(stripe, sessionId, userUid) {
+  const normalizedSessionId = normalizeNonEmptyString(sessionId);
+  if (!normalizedSessionId) {
+    throw new Error('Missing setup session id.');
+  }
+
+  const checkoutSession = await stripe.checkout.sessions.retrieve(normalizedSessionId, {
+    expand: ['setup_intent.payment_method', 'customer'],
+  });
+
+  const currentProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const nextPatch = {
+    stripeCustomerId: normalizeNonEmptyString(checkoutSession.customer?.id || checkoutSession.customer || currentProfile.stripeCustomerId),
+    stripeSetupSessionId: checkoutSession.id,
+    stripeSetupSessionStatus: normalizeNonEmptyString(checkoutSession.status) || 'completed',
+    stripeSetupIntentId: normalizeNonEmptyString(checkoutSession.setup_intent?.id || checkoutSession.setup_intent),
+  };
+
+  const paymentMethod = checkoutSession.setup_intent?.payment_method && typeof checkoutSession.setup_intent.payment_method !== 'string'
+    ? checkoutSession.setup_intent.payment_method
+    : null;
+
+  if (paymentMethod?.id) {
+    nextPatch.defaultPaymentMethodId = paymentMethod.id;
+    nextPatch.defaultPaymentMethodBrand = normalizeNonEmptyString(paymentMethod.card?.brand);
+    nextPatch.defaultPaymentMethodLast4 = normalizeNonEmptyString(paymentMethod.card?.last4);
+    nextPatch.defaultPaymentMethodFunding = normalizeNonEmptyString(paymentMethod.card?.funding, 'unknown').toLowerCase();
+  }
+
+  const mergedProfile = normalizeAuctionBidderProfile({
+    ...currentProfile,
+    ...nextPatch,
+  });
+  await saveAuctionBidderProfile(userUid, mergedProfile);
+  return mergedProfile;
+}
+
+async function syncAuctionBidderIdentityStatus(stripe, verificationSessionId, userUid) {
+  const normalizedSessionId = normalizeNonEmptyString(verificationSessionId);
+  if (!normalizedSessionId) {
+    throw new Error('Missing identity verification session id.');
+  }
+
+  const identitySession = await stripe.identity.verificationSessions.retrieve(normalizedSessionId);
+  const currentProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const nextStatus = normalizeNonEmptyString(identitySession.status, 'pending').toLowerCase();
+  const verified = nextStatus === 'verified';
+  const mergedProfile = normalizeAuctionBidderProfile({
+    ...currentProfile,
+    stripeIdentityVerificationSessionId: identitySession.id,
+    idVerificationStatus: verified ? 'verified' : (nextStatus === 'canceled' ? 'failed' : 'pending'),
+    idVerifiedAt: verified ? new Date().toISOString() : currentProfile.idVerifiedAt,
+    stripeIdentityLastError: normalizeNonEmptyString(identitySession.last_error?.reason || identitySession.last_error?.code) || null,
+  });
+
+  await saveAuctionBidderProfile(userUid, mergedProfile);
+  return mergedProfile;
+}
+
+async function upsertAuctionInvoice(invoiceId, data) {
+  const normalizedInvoiceId = normalizeNonEmptyString(invoiceId);
+  if (!normalizedInvoiceId) {
+    throw new Error('Missing auction invoice id.');
+  }
+
+  const payload = stripUndefinedDeep({
+    ...data,
+    updatedAt: new Date().toISOString(),
+  });
+  await getAuctionDb().collection('invoices').doc(normalizedInvoiceId).set(payload, { merge: true });
+}
+
+async function getAuctionInvoiceRecord(invoiceId) {
+  const normalizedInvoiceId = normalizeNonEmptyString(invoiceId);
+  if (!normalizedInvoiceId) return null;
+  const snap = await getAuctionDb().collection('invoices').doc(normalizedInvoiceId).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+function normalizeAuctionLotStatus(status, fallback = 'upcoming') {
+  const normalized = normalizeNonEmptyString(status, fallback).toLowerCase();
+  if (['upcoming', 'preview', 'active', 'extended', 'closed', 'sold', 'unsold', 'cancelled'].includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function buildAuctionLotPayloadFromListing({
+  auction,
+  listing,
+  payload = {},
+  existingLot = null,
+}) {
+  const nowIso = new Date().toISOString();
+  const auctionStartTime = normalizeNonEmptyString(payload.startTime || existingLot?.startTime || auction?.startTime, nowIso);
+  const auctionEndTime = normalizeNonEmptyString(payload.endTime || existingLot?.endTime || auction?.endTime, nowIso);
+  const currentBid = Number.isFinite(Number(existingLot?.currentBid)) ? Number(existingLot.currentBid) : 0;
+  const bidCount = Number.isFinite(Number(existingLot?.bidCount)) ? Number(existingLot.bidCount) : 0;
+  const reservePrice = payload.reservePrice === null
+    ? null
+    : Number.isFinite(Number(payload.reservePrice))
+      ? Number(payload.reservePrice)
+      : (Number.isFinite(Number(existingLot?.reservePrice)) ? Number(existingLot.reservePrice) : null);
+
+  return stripUndefinedDeep({
+    auctionId: auction.id,
+    listingId: listing.id,
+    lotNumber: normalizeNonEmptyString(payload.lotNumber || existingLot?.lotNumber || listing.stockNumber || listing.id),
+    closeOrder: Number.isFinite(Number(payload.closeOrder)) ? Number(payload.closeOrder) : (Number.isFinite(Number(existingLot?.closeOrder)) ? Number(existingLot.closeOrder) : 1),
+    startingBid: Number.isFinite(Number(payload.startingBid)) ? Number(payload.startingBid) : (Number.isFinite(Number(existingLot?.startingBid)) ? Number(existingLot.startingBid) : Math.max(100, Math.round(Number(listing.price || 0) * 0.25))),
+    reservePrice,
+    reserveMet: currentBid > 0 && reservePrice != null ? currentBid >= reservePrice : Boolean(existingLot?.reserveMet),
+    buyerPremiumPercent: Number.isFinite(Number(payload.buyerPremiumPercent)) ? Number(payload.buyerPremiumPercent) : (Number.isFinite(Number(existingLot?.buyerPremiumPercent)) ? Number(existingLot.buyerPremiumPercent) : auction.defaultBuyerPremiumPercent || 10),
+    startTime: auctionStartTime,
+    endTime: auctionEndTime,
+    originalEndTime: normalizeNonEmptyString(existingLot?.originalEndTime || auctionEndTime),
+    softCloseThresholdMin: Number.isFinite(Number(existingLot?.softCloseThresholdMin))
+      ? Number(existingLot.softCloseThresholdMin)
+      : Number(auction.softCloseThresholdMin || 3),
+    softCloseExtensionMin: Number.isFinite(Number(existingLot?.softCloseExtensionMin))
+      ? Number(existingLot.softCloseExtensionMin)
+      : Number(auction.softCloseExtensionMin || 2),
+    softCloseGroupId: normalizeNonEmptyString(existingLot?.softCloseGroupId) || null,
+    extensionCount: Number.isFinite(Number(existingLot?.extensionCount)) ? Number(existingLot.extensionCount) : 0,
+    currentBid,
+    currentBidderId: normalizeNonEmptyString(existingLot?.currentBidderId) || null,
+    currentBidderAnonymousId: normalizeNonEmptyString(existingLot?.currentBidderAnonymousId),
+    bidCount,
+    uniqueBidders: Number.isFinite(Number(existingLot?.uniqueBidders)) ? Number(existingLot.uniqueBidders) : 0,
+    lastBidTime: normalizeNonEmptyString(existingLot?.lastBidTime) || null,
+    status: normalizeAuctionLotStatus(
+      existingLot?.status
+        || (auction.status === 'active'
+          ? 'active'
+          : auction.status === 'preview'
+            ? 'preview'
+            : 'upcoming')
+    ),
+    promoted: payload.promoted === true || existingLot?.promoted === true,
+    promotedOrder: Number.isFinite(Number(payload.promotedOrder)) ? Number(payload.promotedOrder) : (Number.isFinite(Number(existingLot?.promotedOrder)) ? Number(existingLot.promotedOrder) : 0),
+    winningBidderId: normalizeNonEmptyString(existingLot?.winningBidderId) || null,
+    winningBid: Number.isFinite(Number(existingLot?.winningBid)) ? Number(existingLot.winningBid) : null,
+    watcherIds: Array.isArray(existingLot?.watcherIds) ? existingLot.watcherIds : [],
+    watcherCount: Number.isFinite(Number(existingLot?.watcherCount)) ? Number(existingLot.watcherCount) : 0,
+    title: normalizeNonEmptyString(listing.title, `${normalizeNonEmptyString(listing.make || listing.manufacturer)} ${normalizeNonEmptyString(listing.model)}`.trim()),
+    manufacturer: normalizeNonEmptyString(listing.manufacturer || listing.make),
+    model: normalizeNonEmptyString(listing.model),
+    year: normalizeFiniteNumber(listing.year, 0),
+    thumbnailUrl: normalizeNonEmptyString(listing.imageVariants?.[0]?.detailUrl || listing.imageVariants?.[0]?.thumbnailUrl || listing.images?.[0]),
+    pickupLocation: normalizeNonEmptyString(listing.location, [normalizeNonEmptyString(listing.city), normalizeNonEmptyString(listing.state)].filter(Boolean).join(', ')),
+    paymentDeadlineDays: Number.isFinite(Number(payload.paymentDeadlineDays))
+      ? Number(payload.paymentDeadlineDays)
+      : (Number.isFinite(Number(existingLot?.paymentDeadlineDays)) ? Number(existingLot.paymentDeadlineDays) : Number(auction.defaultPaymentDeadlineDays || AUCTION_PAYMENT_DEADLINE_DAYS)),
+    removalDeadlineDays: Number.isFinite(Number(payload.removalDeadlineDays))
+      ? Number(payload.removalDeadlineDays)
+      : (Number.isFinite(Number(existingLot?.removalDeadlineDays)) ? Number(existingLot.removalDeadlineDays) : Number(auction.defaultRemovalDeadlineDays || AUCTION_REMOVAL_DEADLINE_DAYS)),
+    storageFeePerDay: Number.isFinite(Number(payload.storageFeePerDay)) ? Number(payload.storageFeePerDay) : (Number.isFinite(Number(existingLot?.storageFeePerDay)) ? Number(existingLot.storageFeePerDay) : 0),
+    isTitledItem: payload.isTitledItem === true || existingLot?.isTitledItem === true,
+    titleDocumentFee: payload.isTitledItem === true || existingLot?.isTitledItem === true ? AUCTION_TITLED_DOCUMENT_FEE : 0,
+  });
+}
+
+async function syncListingAuctionProjection(listingId, patch = {}) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  if (!normalizedListingId) return;
+  const payload = stripUndefinedDeep({
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  });
+  await getDb().collection('listings').doc(normalizedListingId).set(payload, { merge: true });
+}
+
+async function clearListingAuctionProjection(listingId) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  if (!normalizedListingId) return;
+  await getDb().collection('listings').doc(normalizedListingId).set({
+    auctionId: admin.firestore.FieldValue.delete(),
+    auctionSlug: admin.firestore.FieldValue.delete(),
+    auctionStatus: admin.firestore.FieldValue.delete(),
+    auctionEndTime: admin.firestore.FieldValue.delete(),
+    currentBid: admin.firestore.FieldValue.delete(),
+    bidCount: admin.firestore.FieldValue.delete(),
+    lotNumber: admin.firestore.FieldValue.delete(),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+}
+
+async function sendAuctionRegistrationEmailMessage({ email, displayName, auctionTitle, auctionUrl }) {
+  const payload = templates.auctionBidderRegistered({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    auctionUrl: String(auctionUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionIdentitySubmittedEmailMessage({ email, displayName, auctionTitle, auctionUrl }) {
+  const payload = templates.auctionIdentitySubmitted({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    auctionUrl: String(auctionUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionBidderApprovedEmailMessage({ email, displayName, auctionTitle, auctionUrl }) {
+  const payload = templates.auctionBidderApproved({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    auctionUrl: String(auctionUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionOutbidEmailMessage({ email, displayName, auctionTitle, lotTitle, bidAmount, lotUrl }) {
+  const payload = templates.auctionOutbid({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    bidAmount: formatEmailCurrencyAmount(Math.round(Number(bidAmount || 0) * 100), 'usd'),
+    lotUrl: String(lotUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function sendAuctionWinningBidEmailMessage({ email, displayName, auctionTitle, lotTitle, hammerPrice, invoiceUrl }) {
+  const payload = templates.auctionWinningBid({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    hammerPrice: formatEmailCurrencyAmount(Math.round(Number(hammerPrice || 0) * 100), 'usd'),
+    invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, cc: getAuctionAdminCcEmail(), ...payload });
+}
+
+async function sendAuctionPaymentReceiptEmailMessage({ email, displayName, invoiceNumber, amountPaid, invoiceUrl }) {
+  const payload = templates.auctionDownPaymentReceipt({
+    displayName: String(displayName || 'there').trim() || 'there',
+    invoiceNumber: String(invoiceNumber || 'Auction invoice').trim() || 'Auction invoice',
+    amountPaid: formatEmailCurrencyAmount(Math.round(Number(amountPaid || 0) * 100), 'usd'),
+    invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, cc: getAuctionAdminCcEmail(), ...payload });
+}
+
+function getAuctionAdminCcEmail() {
+  const recipients = getAdminRecipients();
+  return recipients.length > 0 ? recipients[0] : null;
+}
+
+async function sendAuctionInvoiceEmailMessage({ email, displayName, auctionTitle, lotTitle, invoice, invoiceUrl }) {
+  const dueDate = invoice.dueDate
+    ? new Date(invoice.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'See invoice';
+  const payload = templates.auctionInvoiceGenerated({
+    displayName: String(displayName || 'there').trim() || 'there',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    winningBid: formatEmailCurrencyAmount(Math.round(Number(invoice.winningBid || 0) * 100), 'usd'),
+    buyerPremium: formatEmailCurrencyAmount(Math.round(Number(invoice.buyerPremium || 0) * 100), 'usd'),
+    salesTax: formatEmailCurrencyAmount(Math.round(Number(invoice.salesTax || 0) * 100), 'usd'),
+    totalDue: formatEmailCurrencyAmount(Math.round(Number(invoice.totalDue || 0) * 100), 'usd'),
+    taxExempt: invoice.taxExempt === true,
+    paymentDeadline: dueDate,
+    invoiceUrl: String(invoiceUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, cc: getAuctionAdminCcEmail(), ...payload });
+}
+
+async function sendAuctionLotSoldSellerEmailMessage({ email, sellerName, auctionTitle, lotTitle, winningBid, commissionRate, estimatedPayout, paymentDeadline, lotUrl }) {
+  const payload = templates.auctionLotSoldSeller({
+    sellerName: String(sellerName || 'Seller').trim() || 'Seller',
+    auctionTitle: String(auctionTitle || 'Auction').trim() || 'Auction',
+    lotTitle: String(lotTitle || 'Auction lot').trim() || 'Auction lot',
+    winningBid: formatEmailCurrencyAmount(Math.round(Number(winningBid || 0) * 100), 'usd'),
+    commissionRate: commissionRate || '0%',
+    estimatedPayout: formatEmailCurrencyAmount(Math.round(Number(estimatedPayout || 0) * 100), 'usd'),
+    paymentDeadline: paymentDeadline || 'See invoice',
+    lotUrl: String(lotUrl || `${APP_URL}/auctions`).trim() || `${APP_URL}/auctions`,
+  });
+  await sendEmail({ to: email, ...payload });
+}
+
+async function resolveAuctionUserContact(userUid, fallbackProfile = null) {
+  const normalizedUid = normalizeNonEmptyString(userUid);
+  if (!normalizedUid) {
+    return {
+      uid: '',
+      email: normalizeNonEmptyString(fallbackProfile?.email).toLowerCase(),
+      displayName: normalizeNonEmptyString(fallbackProfile?.fullName, 'there') || 'there',
+      userData: {},
+    };
+  }
+
+  let authUser = null;
+  try {
+    authUser = await admin.auth().getUser(normalizedUid);
+  } catch (_error) {
+    authUser = null;
+  }
+
+  let userData = {};
+  try {
+    const userSnap = await getDb().collection('users').doc(normalizedUid).get();
+    userData = userSnap.exists ? (userSnap.data() || {}) : {};
+  } catch (_error) {
+    userData = {};
+  }
+
+  const email = normalizeNonEmptyString(authUser?.email || userData.email || fallbackProfile?.email).toLowerCase();
+  const displayName = normalizeNonEmptyString(
+    authUser?.displayName || userData.displayName || userData.company || fallbackProfile?.fullName,
+    'there',
+  ) || 'there';
+
+  return {
+    uid: normalizedUid,
+    email,
+    displayName,
+    userData,
+  };
+}
+
+function splitAuctionContactName(fullName = '') {
+  const parts = normalizeNonEmptyString(fullName)
+    .split(/\s+/u)
+    .filter(Boolean);
+
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+async function buildAuctionAdminBidderSummary(userUid, fallbackProfile = null) {
+  const bidderProfile = normalizeAuctionBidderProfile(
+    fallbackProfile || await getAuctionBidderProfile(userUid) || {},
+  );
+  const bidderContact = await resolveAuctionUserContact(userUid, bidderProfile || {});
+  const userData = bidderContact.userData || {};
+  const fullName = normalizeNonEmptyString(
+    bidderProfile.fullName || userData.displayName || bidderContact.displayName,
+  );
+  const { firstName, lastName } = splitAuctionContactName(fullName);
+
+  return stripUndefinedDeep({
+    uid: normalizeNonEmptyString(bidderContact.uid) || null,
+    email: normalizeNonEmptyString(bidderContact.email).toLowerCase() || null,
+    displayName: normalizeNonEmptyString(bidderContact.displayName || fullName) || null,
+    fullName: fullName || null,
+    firstName: firstName || null,
+    lastName: lastName || null,
+    businessName: normalizeNonEmptyString(
+      bidderProfile.companyName
+      || userData.businessName
+      || userData.company
+      || userData.storefrontName,
+    ) || null,
+    phone: normalizeNonEmptyString(
+      bidderProfile.phone
+      || userData.phoneNumber
+      || userData.phone,
+    ) || null,
+    verificationTier: normalizeNonEmptyString(bidderProfile.verificationTier) || null,
+    idVerificationStatus: normalizeNonEmptyString(bidderProfile.idVerificationStatus) || null,
+    bidderApprovedAt: normalizeNonEmptyString(bidderProfile.bidderApprovedAt) || null,
+    defaultPaymentMethodBrand: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodBrand) || null,
+    defaultPaymentMethodLast4: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodLast4) || null,
+    defaultPaymentMethodFunding: normalizeNonEmptyString(bidderProfile.defaultPaymentMethodFunding) || null,
+  });
+}
+
+function buildAuctionInvoiceId(auctionId, lotId) {
+  return `${normalizeNonEmptyString(auctionId)}_${normalizeNonEmptyString(lotId)}`;
+}
+
+async function createOrRefreshAuctionInvoiceForLot({
+  auction,
+  lot,
+  paymentMethod = null,
+}) {
+  const auctionId = normalizeNonEmptyString(auction?.id);
+  const lotId = normalizeNonEmptyString(lot?.id);
+  const buyerId = normalizeNonEmptyString(lot?.winningBidderId || lot?.currentBidderId);
+  if (!auctionId || !lotId || !buyerId) {
+    throw new Error('Auction lot is missing invoice requirements.');
+  }
+
+  const invoiceId = buildAuctionInvoiceId(auctionId, lotId);
+  const existingInvoice = await getAuctionInvoiceRecord(invoiceId);
+  const listingSnap = await getDb().collection('listings').doc(normalizeNonEmptyString(lot.listingId)).get();
+  const listingData = listingSnap.exists ? (listingSnap.data() || {}) : {};
+  const sellerId = normalizeNonEmptyString(listingData.sellerUid || listingData.sellerId);
+  const totals = buildAuctionInvoiceTotals({
+    winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+    isTitledItem: Boolean(lot.isTitledItem),
+    paymentMethod,
+    buyerPremiumPercent: Number.isFinite(Number(lot.buyerPremiumPercent)) ? Number(lot.buyerPremiumPercent) : null,
+  });
+  const dueDate = existingInvoice?.dueDate
+    || (() => {
+      const nextDueDate = new Date();
+      nextDueDate.setDate(nextDueDate.getDate() + AUCTION_PAYMENT_DEADLINE_DAYS);
+      return nextDueDate.toISOString();
+    })();
+
+  const invoiceRecord = stripUndefinedDeep({
+    id: invoiceId,
+    auctionId,
+    lotId,
+    buyerId,
+    sellerId,
+    winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+    buyerPremium: totals.buyerPremium,
+    documentationFee: totals.documentationFee,
+    cardProcessingFee: totals.cardProcessingFee,
+    isTitledItem: Boolean(lot.isTitledItem),
+    salesTax: normalizeFiniteNumber(existingInvoice?.salesTax, 0),
+    salesTaxRate: normalizeFiniteNumber(existingInvoice?.salesTaxRate, 0),
+    taxExempt: existingInvoice?.taxExempt === true,
+    totalDue: totals.totalDue,
+    status: normalizeNonEmptyString(existingInvoice?.status, 'pending'),
+    paymentMethod: paymentMethod || existingInvoice?.paymentMethod || null,
+    paymentMethodFunding: existingInvoice?.paymentMethodFunding || null,
+    stripeInvoiceId: existingInvoice?.stripeInvoiceId || null,
+    stripeCheckoutSessionId: existingInvoice?.stripeCheckoutSessionId || null,
+    stripePaymentIntentId: existingInvoice?.stripePaymentIntentId || null,
+    paymentTermsVersion: AUCTION_TERMS_VERSION,
+    paidAt: existingInvoice?.paidAt || null,
+    dueDate,
+    sellerCommission: normalizeFiniteNumber(existingInvoice?.sellerCommission, 0),
+    sellerPayout: normalizeFiniteNumber(existingInvoice?.sellerPayout, normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0)),
+    sellerPaidAt: existingInvoice?.sellerPaidAt || null,
+    createdAt: existingInvoice?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  await upsertAuctionInvoice(invoiceId, invoiceRecord);
+  return {
+    invoiceId,
+    invoice: invoiceRecord,
+    listing: listingData,
+    totals,
+  };
+}
+
+async function finalizeAuctionLotSettlement({
+  auction,
+  lot,
+}) {
+  const auctionId = normalizeNonEmptyString(auction?.id);
+  const lotId = normalizeNonEmptyString(lot?.id);
+  if (!auctionId || !lotId) return null;
+
+  const currentBid = normalizeFiniteNumber(lot.currentBid, 0);
+  const reservePrice = lot.reservePrice == null ? null : normalizeFiniteNumber(lot.reservePrice, 0);
+  const reserveMet = reservePrice == null || currentBid >= reservePrice;
+  const buyerId = normalizeNonEmptyString(lot.currentBidderId);
+  const hasWinner = currentBid > 0 && Boolean(buyerId) && reserveMet;
+  const finalStatus = hasWinner ? 'sold' : 'unsold';
+  const lotRef = getAuctionDb().collection('auctions').doc(auctionId).collection('lots').doc(lotId);
+  const lotPatch = stripUndefinedDeep({
+    status: finalStatus,
+    winningBidderId: hasWinner ? buyerId : null,
+    winningBid: hasWinner ? currentBid : null,
+    reserveMet,
+    updatedAt: new Date().toISOString(),
+  });
+  await lotRef.set(lotPatch, { merge: true });
+  await syncListingAuctionProjection(lot.listingId, {
+    auctionStatus: finalStatus,
+    currentBid,
+    bidCount: normalizeFiniteNumber(lot.bidCount, 0),
+    lotNumber: normalizeNonEmptyString(lot.lotNumber),
+  });
+
+  if (!hasWinner) {
+    return {
+      finalStatus,
+      invoice: null,
+    };
+  }
+
+  const { invoiceId, invoice } = await createOrRefreshAuctionInvoiceForLot({
+    auction,
+    lot: {
+      ...lot,
+      winningBidderId: buyerId,
+      winningBid: currentBid,
+    },
+  });
+  const invoiceUrl = buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId);
+  const bidderProfile = await getAuctionBidderProfile(buyerId);
+  const bidderContact = await resolveAuctionUserContact(buyerId, bidderProfile || {});
+
+  const lotDisplayTitle = lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim();
+
+  if (bidderContact.email) {
+    await sendAuctionInvoiceEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      lotTitle: lotDisplayTitle,
+      invoice,
+      invoiceUrl,
+    }).catch((err) => logger.error('Failed to send auction invoice email to buyer', { invoiceId, error: err.message }));
+  }
+
+  const listingSnap2 = await getDb().collection('listings').doc(normalizeNonEmptyString(lot.listingId)).get();
+  const listingData2 = listingSnap2.exists ? (listingSnap2.data() || {}) : {};
+  const sellerId2 = normalizeNonEmptyString(listingData2.sellerUid || listingData2.sellerId);
+  if (sellerId2) {
+    const sellerSnap = await getDb().collection('users').doc(sellerId2).get();
+    if (sellerSnap.exists) {
+      const seller = sellerSnap.data();
+      if (seller.email) {
+        const commissionRate = normalizeFiniteNumber(seller.sellerCommissionRate, 0);
+        const dueDate = invoice.dueDate
+          ? new Date(invoice.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          : 'See invoice';
+        await sendAuctionLotSoldSellerEmailMessage({
+          email: seller.email,
+          sellerName: seller.displayName || 'Seller',
+          auctionTitle: auction.title,
+          lotTitle: lotDisplayTitle,
+          winningBid: currentBid,
+          commissionRate: `${commissionRate}%`,
+          estimatedPayout: currentBid - (currentBid * commissionRate / 100),
+          paymentDeadline: dueDate,
+          lotUrl: invoiceUrl,
+        }).catch((err) => logger.error('Failed to send lot sold email to seller', { invoiceId, sellerId: sellerId2, error: err.message }));
+      }
+    }
+  }
+
+  await getAuctionDb().collection('users').doc(buyerId).collection('bidderProfile').doc('profile').set({
+    totalItemsWon: admin.firestore.FieldValue.increment(1),
+    totalSpent: admin.firestore.FieldValue.increment(invoice.totalDue || currentBid),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  await getAuctionDb().collection('auctions').doc(auctionId).set({
+    totalGMV: admin.firestore.FieldValue.increment(currentBid),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  return {
+    finalStatus,
+    invoice,
+    invoiceId,
+  };
+}
+
+async function processEndedAuctionLots({ auctionIds = null } = {}) {
+  const nowIso = new Date().toISOString();
+  const auctionDb = getAuctionDb();
+  let auctions = [];
+
+  if (Array.isArray(auctionIds) && auctionIds.length > 0) {
+    auctions = (await Promise.all(
+      auctionIds.map(async (auctionId) => {
+        const snap = await auctionDb.collection('auctions').doc(normalizeNonEmptyString(auctionId)).get();
+        return snap.exists ? { id: snap.id, ...snap.data() } : null;
+      })
+    )).filter(Boolean);
+  } else {
+    const auctionSnap = await auctionDb.collection('auctions').get();
+    auctions = auctionSnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((auction) => ['active', 'closed', 'settling', 'preview'].includes(normalizeNonEmptyString(auction.status).toLowerCase()));
+  }
+
+  const results = [];
+  for (const auction of auctions) {
+    const lotsSnap = await auctionDb
+      .collection('auctions')
+      .doc(auction.id)
+      .collection('lots')
+      .get();
+
+    for (const lotDoc of lotsSnap.docs) {
+      const lot = { id: lotDoc.id, ...lotDoc.data() };
+      const lotStatus = normalizeAuctionLotStatus(lot.status, 'upcoming');
+      const lotEndTime = normalizeNonEmptyString(lot.endTime);
+      if (!lotEndTime || lotEndTime > nowIso) continue;
+      if (!['active', 'extended', 'preview', 'upcoming'].includes(lotStatus)) continue;
+
+      const outcome = await finalizeAuctionLotSettlement({ auction, lot });
+      results.push({
+        auctionId: auction.id,
+        lotId: lot.id,
+        lotNumber: lot.lotNumber,
+        status: outcome?.finalStatus || lotStatus,
+      });
+    }
+  }
+
+  return results;
+}
+
+async function finalizeAuctionBidderSetupCheckout(stripe, session) {
+  const userUid = normalizeNonEmptyString(session?.metadata?.userUid);
+  const auctionSlug = normalizeNonEmptyString(session?.metadata?.auctionSlug);
+  if (!userUid || !auctionSlug) {
+    return { scope: 'auction_bidder_setup', completed: false };
+  }
+
+  const previousProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const syncedProfile = await syncAuctionBidderSetupSession(stripe, session.id, userUid);
+  const auction = await getAuctionBySlugFromDb(auctionSlug);
+  const bidderContact = await resolveAuctionUserContact(userUid, syncedProfile);
+  const previousApproved = Boolean(previousProfile?.bidderApprovedAt);
+  const nowApproved = Boolean(syncedProfile?.bidderApprovedAt);
+
+  if (!previousApproved && nowApproved && bidderContact.email && auction) {
+    await sendAuctionBidderApprovedEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+    });
+  }
+
+  return {
+    scope: 'auction_bidder_setup',
+    completed: true,
+    userUid,
+    auctionSlug,
+  };
+}
+
+async function finalizeAuctionInvoiceCheckout(stripe, session) {
+  const invoiceId = normalizeNonEmptyString(session?.metadata?.auctionInvoiceId);
+  if (!invoiceId) {
+    return { scope: 'auction_invoice', paid: false };
+  }
+
+  const invoice = await getAuctionInvoiceRecord(invoiceId);
+  if (!invoice) {
+    return { scope: 'auction_invoice', paid: false };
+  }
+
+  const paid = session.payment_status === 'paid';
+  if (!paid) {
+    return { scope: 'auction_invoice', paid: false, invoiceId };
+  }
+
+  const nextInvoice = stripUndefinedDeep({
+    ...invoice,
+    status: 'paid',
+    paymentMethod: 'card',
+    stripeCheckoutSessionId: normalizeNonEmptyString(session.id),
+    stripePaymentIntentId: normalizeNonEmptyString(session.payment_intent),
+    paidAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  await upsertAuctionInvoice(invoiceId, nextInvoice);
+
+  const buyerContact = await resolveAuctionUserContact(invoice.buyerId);
+  if (buyerContact.email) {
+    await sendAuctionPaymentReceiptEmailMessage({
+      email: buyerContact.email,
+      displayName: buyerContact.displayName,
+      invoiceNumber: invoiceId,
+      amountPaid: nextInvoice.totalDue,
+      invoiceUrl: `${APP_URL}/auctions`,
+    });
+  }
+
+  await markInvoiceSellerPayoutPending(nextInvoice).catch((err) =>
+    logger.error('Failed to mark seller payout pending after card checkout', { invoiceId, error: err.message })
+  );
+
+  return {
+    scope: 'auction_invoice',
+    paid: true,
+    invoiceId,
+  };
+}
+
+async function markInvoiceSellerPayoutPending(invoice) {
+  const invoiceId = normalizeNonEmptyString(invoice?.id);
+  const sellerId = normalizeNonEmptyString(invoice?.sellerId);
+  const hammerPrice = normalizeFiniteNumber(invoice?.winningBid, 0);
+  if (!invoiceId || !sellerId || hammerPrice <= 0) return;
+  if (normalizeNonEmptyString(invoice?.sellerPaidAt)) return;
+
+  const sellerSnap = await getDb().collection('users').doc(sellerId).get();
+  const seller = sellerSnap.exists ? sellerSnap.data() : {};
+  const commissionRate = normalizeFiniteNumber(seller.sellerCommissionRate, 0);
+  const commission = Math.round(hammerPrice * (commissionRate / 100) * 100) / 100;
+  const estimatedPayout = hammerPrice - commission;
+
+  await upsertAuctionInvoice(invoiceId, {
+    sellerCommission: commission,
+    sellerPayout: estimatedPayout,
+    sellerPayoutStatus: 'pending',
+    updatedAt: new Date().toISOString(),
+  });
+
+  logger.info('markInvoiceSellerPayoutPending: payout pending manual processing', {
+    invoiceId,
+    sellerId,
+    estimatedPayout,
+  });
+}
+
+async function syncAuctionIdentityVerificationEvent(stripe, verificationSession) {
+  const verificationSessionId = normalizeNonEmptyString(verificationSession?.id);
+  const userUid = normalizeNonEmptyString(verificationSession?.metadata?.userUid);
+  const auctionSlug = normalizeNonEmptyString(verificationSession?.metadata?.auctionSlug);
+  if (!verificationSessionId || !userUid) {
+    return { scope: 'auction_identity', synced: false };
+  }
+
+  const previousProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+  const syncedProfile = await syncAuctionBidderIdentityStatus(stripe, verificationSessionId, userUid);
+  const auction = auctionSlug ? await getAuctionBySlugFromDb(auctionSlug) : null;
+  const bidderContact = await resolveAuctionUserContact(userUid, syncedProfile);
+  const previousIdentityStatus = normalizeNonEmptyString(previousProfile.idVerificationStatus, 'not_started');
+  const currentIdentityStatus = normalizeNonEmptyString(syncedProfile.idVerificationStatus, 'not_started');
+  const previousApproved = Boolean(previousProfile.bidderApprovedAt);
+  const nowApproved = Boolean(syncedProfile.bidderApprovedAt);
+
+  if (
+    bidderContact.email
+    && auction
+    && previousIdentityStatus === 'not_started'
+    && ['pending', 'verified'].includes(currentIdentityStatus)
+  ) {
+    await sendAuctionIdentitySubmittedEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+    });
+  }
+
+  if (!previousApproved && nowApproved && bidderContact.email && auction) {
+    await sendAuctionBidderApprovedEmailMessage({
+      email: bidderContact.email,
+      displayName: bidderContact.displayName,
+      auctionTitle: auction.title,
+      auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+    });
+  }
+
+  return {
+    scope: 'auction_identity',
+    synced: true,
+    userUid,
+    auctionSlug,
+  };
+}
+
 function normalizeImageUrls(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => String(entry || '').trim())
     .filter((entry) => /^https?:\/\//i.test(entry));
+}
+
+const DEALER_FEED_SOURCE_IMAGE_LIMIT = 6;
+const DEALER_FEED_SOURCE_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+
+function buildDealerFeedSourceImagePath(listingId, imageUrl, index) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  const imageHash = createHash('sha1')
+    .update(`${index}:${String(imageUrl || '').trim()}`)
+    .digest('hex')
+    .slice(0, 16);
+  const ordinal = String(index + 1).padStart(2, '0');
+  return `listings/${normalizedListingId}/images/source/${ordinal}_${imageHash}.orig`;
+}
+
+function isManagedListingImageUrl(listingId, imageUrl) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  const normalizedUrl = normalizeNonEmptyString(imageUrl);
+  if (!normalizedListingId || !normalizedUrl) {
+    return false;
+  }
+
+  const encodedPathFragment = encodeURIComponent(`listings/${normalizedListingId}/images/`);
+  return normalizedUrl.includes(encodedPathFragment) || normalizedUrl.includes(`/listings/${normalizedListingId}/images/`);
+}
+
+async function queueDealerFeedSourceImagesForListing({
+  listingId,
+  imageUrls,
+  sourceSystem = 'dealer-feed-sync',
+}) {
+  const normalizedListingId = normalizeNonEmptyString(listingId);
+  const normalizedImageUrls = normalizeImageUrls(imageUrls)
+    .filter((imageUrl) => !isManagedListingImageUrl(normalizedListingId, imageUrl))
+    .slice(0, DEALER_FEED_SOURCE_IMAGE_LIMIT);
+  if (!normalizedListingId || normalizedImageUrls.length === 0) {
+    return { queued: 0, skipped: 0, errors: [] };
+  }
+
+  const bucket = admin.storage().bucket(resolveStorageBucketName());
+  let queued = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (let index = 0; index < normalizedImageUrls.length; index += 1) {
+    const imageUrl = normalizedImageUrls[index];
+    const sourcePath = buildDealerFeedSourceImagePath(normalizedListingId, imageUrl, index);
+    const sourceFile = bucket.file(sourcePath);
+
+    try {
+      const [exists] = await sourceFile.exists();
+      if (exists) {
+        skipped += 1;
+        continue;
+      }
+
+      const response = await fetch(imageUrl, {
+        headers: {
+          Accept: 'image/avif,image/webp,image/*;q=0.9,*/*;q=0.5',
+          'User-Agent': 'Forestry Equipment SalesDealerImageMirror/1.0',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`remote image request failed with ${response.status}`);
+      }
+
+      const contentType = String(response.headers.get('content-type') || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+
+      if (!contentType.startsWith('image/')) {
+        throw new Error(`remote asset is not an image (${contentType || 'unknown content type'})`);
+      }
+
+      const declaredBytes = Number(response.headers.get('content-length') || 0);
+      if (Number.isFinite(declaredBytes) && declaredBytes > DEALER_FEED_SOURCE_IMAGE_MAX_BYTES) {
+        throw new Error(`remote image exceeds ${Math.round(DEALER_FEED_SOURCE_IMAGE_MAX_BYTES / (1024 * 1024))}MB limit`);
+      }
+
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      if (!imageBuffer.byteLength) {
+        throw new Error('remote image payload was empty');
+      }
+      if (imageBuffer.byteLength > DEALER_FEED_SOURCE_IMAGE_MAX_BYTES) {
+        throw new Error(`remote image exceeds ${Math.round(DEALER_FEED_SOURCE_IMAGE_MAX_BYTES / (1024 * 1024))}MB limit`);
+      }
+
+      await sourceFile.save(imageBuffer, {
+        metadata: {
+          contentType,
+          metadata: {
+            uploadedBy: sourceSystem,
+            uploadedAt: new Date().toISOString(),
+            listingId: normalizedListingId,
+            remoteImageUrl: imageUrl,
+            sourceSystem,
+            imageIndex: String(index),
+          },
+        },
+      });
+
+      queued += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || 'unknown error');
+      errors.push({ imageUrl, message });
+      logger.warn('Unable to queue dealer feed source image for AVIF generation.', {
+        listingId: normalizedListingId,
+        imageUrl,
+        sourcePath,
+        message,
+      });
+    }
+  }
+
+  return { queued, skipped, errors };
 }
 
 function normalizeDelimitedStringList(value, maxItems = 40) {
@@ -979,12 +2474,14 @@ function flattenFeedImageUrls(value, depth = 0) {
     return [];
   }
 
+  const IMAGE_KEYS = new Set(['image', 'imageurl', 'imageurls', 'images', 'photo', 'photos', 'gallery', 'media', 'thumbnail', 'thumb', 'url', 'href', 'src', 'full', 'large', 'original', 'medium']);
   return Object.entries(value).flatMap(([key, nestedValue]) => {
     const normalizedKey = normalizeFeedKey(key);
-    if (['image', 'imageurl', 'imageurls', 'images', 'photo', 'photos', 'gallery', 'media', 'thumbnail', 'thumb', 'url', 'href', 'src', 'full', 'large'].includes(normalizedKey)) {
+    if (IMAGE_KEYS.has(normalizedKey)) {
       return flattenFeedImageUrls(nestedValue, depth + 1);
     }
-    return flattenFeedImageUrls(nestedValue, depth + 1);
+    // Skip non-image keys to avoid pulling in dealerSourceUrl, videoUrl, etc.
+    return [];
   });
 }
 
@@ -1742,7 +3239,7 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
     getMappedValue('title') || findFeedValue(item, new Set(['title', 'name', 'headline'])),
     `${manufacturer} ${model}`.trim()
   );
-  const category = normalizeNonEmptyString(
+  const category = normalizeFeedCategory(
     getMappedValue('category') || findFeedValue(item, new Set(['category', 'department', 'type'])),
     'Uncategorized'
   );
@@ -1786,8 +3283,8 @@ function normalizeResolvedDealerFeedItem(item, fieldMapping = []) {
     model,
     category,
     subcategory,
-    condition: normalizeNonEmptyString(
-      getMappedValue('condition') || findFeedValue(item, new Set(['condition', 'status'])),
+    condition: normalizeFeedCondition(
+      getMappedValue('condition') || findFeedValue(item, new Set(['condition'])),
       'Used'
     ),
     location: normalizeNonEmptyString(
@@ -1875,6 +3372,19 @@ function isPrivateIpv4Host(hostname) {
   if (octets[0] === 10 || octets[0] === 127) return true;
   if (octets[0] === 192 && octets[1] === 168) return true;
   if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+  if (octets[0] === 169 && octets[1] === 254) return true; // link-local / cloud metadata
+  if (octets[0] === 0) return true;
+  return false;
+}
+
+function isPrivateOrMetadataHost(hostname) {
+  const lower = hostname.toLowerCase();
+  if (isPrivateIpv4Host(lower)) return true;
+  // IPv6 loopback / private
+  if (lower === '::1' || lower === '::' || lower.startsWith('[::') || lower.startsWith('[fc') || lower.startsWith('[fd') || lower.startsWith('[fe80')) return true;
+  // Cloud metadata endpoints
+  if (lower === 'metadata.google.internal' || lower === 'metadata.google.com') return true;
+  if (lower === '169.254.169.254') return true;
   return false;
 }
 
@@ -1891,7 +3401,7 @@ function validateDealerFeedUrl(feedUrl) {
   }
 
   const hostname = parsedUrl.hostname.toLowerCase();
-  if (!hostname || ['localhost', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local') || isPrivateIpv4Host(hostname)) {
+  if (!hostname || ['localhost', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local') || isPrivateOrMetadataHost(hostname)) {
     throw new Error('Local and private-network feed URLs are not allowed.');
   }
 
@@ -1909,8 +3419,11 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
   const title = normalizeNonEmptyString(item?.title || existingListing?.title, `${make} ${model}`.trim());
   const category = normalizeNonEmptyString(item?.category || existingListing?.category, 'Uncategorized');
   const subcategory = normalizeNonEmptyString(item?.subcategory || existingListing?.subcategory, category);
-  const year = normalizeFiniteNumber(item?.year, normalizeFiniteNumber(existingListing?.year, new Date().getFullYear()));
-  const price = Math.max(0, normalizeFiniteNumber(item?.price, normalizeFiniteNumber(existingListing?.price, 0)));
+  const year = normalizeFiniteNumber(item?.year, normalizeFiniteNumber(existingListing?.year, 0));
+  const rawPrice = toFiniteNumberOrUndefined(item?.price);
+  const existingPrice = toFiniteNumberOrUndefined(existingListing?.price);
+  const price = Math.max(0, rawPrice ?? existingPrice ?? 0);
+  const callForPrice = rawPrice === undefined && existingPrice === undefined;
   const hours = Math.max(0, normalizeFiniteNumber(item?.hours, normalizeFiniteNumber(existingListing?.hours, 0)));
   const images = normalizeImageUrls(item?.images || item?.imageUrls || existingListing?.images);
   const imageTitles = sanitizeListingCreateImageTitles(item?.imageTitles || existingListing?.imageTitles, images.length);
@@ -1961,6 +3474,7 @@ function normalizeDealerFeedListing(item, sellerUid, sourceName, options = {}) {
     model,
     year,
     price,
+    callForPrice: callForPrice && !existingListing?.callForPrice ? true : Boolean(existingListing?.callForPrice),
     currency: normalizeNonEmptyString(item?.currency || existingListing?.currency, 'USD'),
     hours,
     condition: normalizeNonEmptyString(item?.condition || existingListing?.condition, 'Used'),
@@ -2198,6 +3712,24 @@ async function processDealerListing({
   };
 
   await listingRef.set(writePayload, { merge: true });
+
+  const sourceImages = normalizeImageUrls(normalizedListing.images);
+  if (sourceImages.length > 0) {
+    try {
+      await queueDealerFeedSourceImagesForListing({
+        listingId: listingRef.id,
+        imageUrls: sourceImages,
+        sourceSystem: normalizedFeedId ? `dealer-feed:${normalizedFeedId}` : 'dealer-feed:manual',
+      });
+    } catch (error) {
+      logger.warn('Dealer listing image variant queue failed after listing write.', {
+        listingId: listingRef.id,
+        dealerFeedId: normalizedFeedId,
+        externalId: normalizedItem.externalId,
+        message: error instanceof Error ? error.message : String(error || 'unknown error'),
+      });
+    }
+  }
 
   if (dealerListingRef) {
     await dealerListingRef.set(
@@ -2626,6 +4158,293 @@ async function resolvePublicDealer(identity) {
   };
 }
 
+function hasUsableDealerCoordinates(latitude, longitude) {
+  const normalizedLatitude = toFiniteNumberOrUndefined(latitude);
+  const normalizedLongitude = toFiniteNumberOrUndefined(longitude);
+  if (normalizedLatitude === undefined || normalizedLongitude === undefined) {
+    return false;
+  }
+  if (Math.abs(normalizedLatitude) > 90 || Math.abs(normalizedLongitude) > 180) {
+    return false;
+  }
+  if (Math.abs(normalizedLatitude) < 0.000001 && Math.abs(normalizedLongitude) < 0.000001) {
+    return false;
+  }
+  return true;
+}
+
+function buildDealerDirectoryGeocodeQuery(dealer = {}) {
+  const preciseAddress = [
+    normalizeNonEmptyString(dealer.street1),
+    normalizeNonEmptyString(dealer.city),
+    normalizeNonEmptyString(dealer.state),
+    normalizeNonEmptyString(dealer.postalCode),
+    normalizeNonEmptyString(dealer.country),
+  ].filter(Boolean).join(', ');
+
+  if (preciseAddress) {
+    return preciseAddress;
+  }
+
+  return normalizeNonEmptyString(
+    dealer.location,
+    [
+      normalizeNonEmptyString(dealer.city),
+      normalizeNonEmptyString(dealer.state),
+      normalizeNonEmptyString(dealer.country),
+    ].filter(Boolean).join(', ')
+  );
+}
+
+function serializeDealerDirectoryEntry(snapshotId, data = {}) {
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
+  if (!isDealerSellerRole(rawRole) || isPrivilegedStorefrontRecord({ role: rawRole })) {
+    return null;
+  }
+
+  const listingCount = toFiniteNumberOrUndefined(data.listingCount ?? data.totalListings) || 0;
+  const latitude = hasUsableDealerCoordinates(data.latitude, data.longitude)
+    ? toFiniteNumberOrUndefined(data.latitude)
+    : undefined;
+  const longitude = latitude !== undefined
+    ? toFiniteNumberOrUndefined(data.longitude)
+    : undefined;
+
+  return {
+    id: snapshotId,
+    uid: snapshotId,
+    name: normalizeNonEmptyString(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+    type: 'Dealer',
+    role: normalizeNonEmptyString(data.role, 'dealer'),
+    storefrontSlug: normalizeNonEmptyString(data.storefrontSlug, snapshotId),
+    canonicalPath: `/dealers/${normalizeNonEmptyString(data.storefrontSlug, snapshotId)}`,
+    businessName: normalizeNonEmptyString(data.businessName || data.company),
+    location: normalizeNonEmptyString(data.location, 'Location available on storefront'),
+    street1: normalizeNonEmptyString(data.street1),
+    street2: normalizeNonEmptyString(data.street2),
+    city: normalizeNonEmptyString(data.city),
+    state: normalizeNonEmptyString(data.state),
+    county: normalizeNonEmptyString(data.county),
+    postalCode: normalizeNonEmptyString(data.postalCode),
+    country: normalizeNonEmptyString(data.country),
+    latitude,
+    longitude,
+    phone: normalizeNonEmptyString(data.phone || data.phoneNumber),
+    email: normalizeNonEmptyString(data.email),
+    website: normalizeNonEmptyString(data.website),
+    logo: normalizeNonEmptyString(data.logo || data.storefrontLogoUrl || data.photoURL || data.profileImage),
+    coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
+    storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName || data.name, 'Dealer Storefront'),
+    storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
+    storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
+    serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(data.servicesOfferedSubcategories, 120, 120),
+    seoTitle: normalizeNonEmptyString(data.seoTitle),
+    seoDescription: normalizeNonEmptyString(data.seoDescription),
+    seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
+    twilioPhoneNumber: normalizeNonEmptyString(data.twilioPhoneNumber),
+    rating: 5,
+    totalListings: listingCount,
+    memberSince: timestampValueToIso(data.createdAtIso || data.createdAt) || new Date().toISOString(),
+    verified: Boolean(data.verified === true || isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified))),
+    manuallyVerified: Boolean(data.manuallyVerified),
+  };
+}
+
+function buildDealerDirectorySeed(snapshotId, primaryData = {}, storefrontData = {}, userData = {}) {
+  const storefrontSlug = normalizeNonEmptyString(
+    primaryData.storefrontSlug || storefrontData.storefrontSlug || userData.storefrontSlug,
+    snapshotId
+  );
+
+  return {
+    ...userData,
+    ...storefrontData,
+    ...primaryData,
+    role: normalizeNonEmptyString(primaryData.role || storefrontData.role || userData.role, 'member'),
+    storefrontSlug,
+    canonicalPath: `/dealers/${storefrontSlug}`,
+    storefrontName: normalizeNonEmptyString(
+      primaryData.storefrontName
+      || storefrontData.storefrontName
+      || userData.storefrontName
+      || primaryData.displayName
+      || storefrontData.displayName
+      || userData.displayName
+      || primaryData.name
+      || userData.name,
+      'Dealer Storefront'
+    ),
+    businessName: normalizeNonEmptyString(
+      primaryData.businessName
+      || storefrontData.businessName
+      || userData.businessName
+      || primaryData.company
+      || storefrontData.company
+      || userData.company
+    ),
+    location: normalizeNonEmptyString(
+      primaryData.location || storefrontData.location || userData.location,
+      'Location available on storefront'
+    ),
+    phone: normalizeNonEmptyString(
+      primaryData.phone
+      || primaryData.phoneNumber
+      || storefrontData.phone
+      || storefrontData.phoneNumber
+      || userData.phone
+      || userData.phoneNumber
+    ),
+    email: normalizeNonEmptyString(primaryData.email || storefrontData.email || userData.email),
+    website: normalizeNonEmptyString(primaryData.website || storefrontData.website || userData.website),
+    logo: normalizeNonEmptyString(
+      primaryData.logo
+      || primaryData.storefrontLogoUrl
+      || primaryData.photoURL
+      || primaryData.profileImage
+      || storefrontData.logo
+      || storefrontData.storefrontLogoUrl
+      || storefrontData.photoURL
+      || storefrontData.profileImage
+      || userData.logo
+      || userData.storefrontLogoUrl
+      || userData.photoURL
+      || userData.profileImage
+    ),
+    coverPhotoUrl: normalizeNonEmptyString(
+      primaryData.coverPhotoUrl || storefrontData.coverPhotoUrl || userData.coverPhotoUrl
+    ),
+  };
+}
+
+function sortDealerDirectoryEntries(dealers) {
+  const rolePriority = (role) => normalizeNonEmptyString(role).toLowerCase() === 'pro_dealer' ? 0 : 1;
+
+  return [...dealers].sort((left, right) => {
+    const verifiedDelta = Number(Boolean(right.verified)) - Number(Boolean(left.verified));
+    if (verifiedDelta !== 0) return verifiedDelta;
+
+    const roleDelta = rolePriority(left.role) - rolePriority(right.role);
+    if (roleDelta !== 0) return roleDelta;
+
+    const listingDelta = Number(right.totalListings || 0) - Number(left.totalListings || 0);
+    if (listingDelta !== 0) return listingDelta;
+
+    return normalizeNonEmptyString(left.storefrontName || left.name).localeCompare(
+      normalizeNonEmptyString(right.storefrontName || right.name)
+    );
+  });
+}
+
+async function getPublicDealerDirectoryEntries() {
+  const db = getDb();
+  const dealersByUid = new Map();
+
+  const [publicDealerSnapshot, storefrontSnapshot, userSnapshot] = await Promise.all([
+    db.collection('publicDealers').get(),
+    db.collection('storefronts').where('role', 'in', ['dealer', 'pro_dealer']).get(),
+    db.collection('users').where('role', 'in', ['dealer', 'pro_dealer']).get(),
+  ]);
+
+  const storefrontByUid = new Map(storefrontSnapshot.docs.map((docSnap) => [docSnap.id, docSnap.data() || {}]));
+  const userByUid = new Map(userSnapshot.docs.map((docSnap) => [docSnap.id, docSnap.data() || {}]));
+
+  const upsertDealer = (uid, primaryData = {}) => {
+    const normalizedUid = normalizeNonEmptyString(uid);
+    if (!normalizedUid) return;
+
+    const dealer = serializeDealerDirectoryEntry(
+      normalizedUid,
+      buildDealerDirectorySeed(
+        normalizedUid,
+        primaryData,
+        storefrontByUid.get(normalizedUid) || {},
+        userByUid.get(normalizedUid) || {}
+      )
+    );
+
+    if (dealer) {
+      dealersByUid.set(normalizedUid, dealer);
+      return;
+    }
+
+    dealersByUid.delete(normalizedUid);
+  };
+
+  publicDealerSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+  storefrontSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+  userSnapshot.docs.forEach((docSnap) => upsertDealer(docSnap.id, docSnap.data() || {}));
+
+  const dealersMissingLogos = [...dealersByUid.values()].filter((dealer) => !normalizeNonEmptyString(dealer.logo));
+  if (dealersMissingLogos.length > 0) {
+    const authLookups = await Promise.allSettled(
+      dealersMissingLogos.map((dealer) => admin.auth().getUser(normalizeNonEmptyString(dealer.uid || dealer.id)))
+    );
+
+    authLookups.forEach((lookupResult, index) => {
+      if (lookupResult.status !== 'fulfilled') return;
+      const authRecord = lookupResult.value;
+      const authPhotoUrl = normalizeNonEmptyString(authRecord?.photoURL);
+      const authEmail = normalizeNonEmptyString(authRecord?.email);
+      const targetDealer = dealersMissingLogos[index];
+      const normalizedUid = normalizeNonEmptyString(targetDealer?.uid || targetDealer?.id);
+      const existingDealer = normalizedUid ? dealersByUid.get(normalizedUid) : null;
+      if (!existingDealer) return;
+
+      if (authPhotoUrl) {
+        existingDealer.logo = authPhotoUrl;
+      }
+      if (authEmail && !normalizeNonEmptyString(existingDealer.email)) {
+        existingDealer.email = authEmail;
+      }
+    });
+  }
+
+  const dealersMissingCoordinates = [...dealersByUid.values()].filter((dealer) =>
+    !hasUsableDealerCoordinates(dealer.latitude, dealer.longitude)
+  );
+
+  if (dealersMissingCoordinates.length > 0) {
+    const coordinateLookups = await Promise.allSettled(
+      dealersMissingCoordinates.map(async (dealer) => {
+        const geocodeQuery = buildDealerDirectoryGeocodeQuery(dealer);
+        if (!geocodeQuery) return null;
+
+        const geocoded = await geocodeLocation(geocodeQuery);
+        if (!geocoded || !hasUsableDealerCoordinates(geocoded.lat, geocoded.lng)) {
+          return null;
+        }
+
+        return {
+          uid: normalizeNonEmptyString(dealer.uid || dealer.id),
+          latitude: geocoded.lat,
+          longitude: geocoded.lng,
+          formattedAddress: normalizeNonEmptyString(geocoded.formattedAddress),
+        };
+      })
+    );
+
+    coordinateLookups.forEach((lookupResult) => {
+      if (lookupResult.status !== 'fulfilled' || !lookupResult.value?.uid) return;
+      const existingDealer = dealersByUid.get(lookupResult.value.uid);
+      if (!existingDealer) return;
+
+      existingDealer.latitude = lookupResult.value.latitude;
+      existingDealer.longitude = lookupResult.value.longitude;
+
+      const existingLocation = normalizeNonEmptyString(existingDealer.location);
+      if ((!existingLocation || existingLocation === 'Location available on storefront') && lookupResult.value.formattedAddress) {
+        existingDealer.location = lookupResult.value.formattedAddress;
+      }
+    });
+  }
+
+  return sortDealerDirectoryEntries([...dealersByUid.values()]);
+}
+
 async function getPublicDealerListings(sellerUid, options = {}) {
   const normalizedSellerUid = normalizeNonEmptyString(sellerUid);
   const limitCount = Math.max(1, Math.min(Number(options.limitCount || 24), 100));
@@ -2852,11 +4671,202 @@ async function getOptionalEmailUserContext(userUid, cache = new Map()) {
   return context;
 }
 
+async function getOptionalEmailRecipientContext(email, cache = new Map()) {
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  if (!normalizedEmail) {
+    return {
+      displayName: '',
+      email: '',
+      emailNotificationsEnabled: true,
+    };
+  }
+
+  if (cache.has(normalizedEmail)) {
+    return cache.get(normalizedEmail);
+  }
+
+  const recipientRef = getEmailPreferenceRecipientRef(normalizedEmail);
+  const recipientSnap = recipientRef ? await recipientRef.get() : null;
+  const recipientData = recipientSnap?.exists ? (recipientSnap.data() || {}) : {};
+  const context = {
+    displayName: normalizeNonEmptyString(recipientData.displayName),
+    email: normalizeNonEmptyString(recipientData.email || normalizedEmail).toLowerCase(),
+    emailNotificationsEnabled: recipientData.emailNotificationsEnabled !== false,
+  };
+
+  cache.set(normalizedEmail, context);
+  return context;
+}
+
+async function getOptionalEmailDeliveryContext({ userUid, email }, caches = {}) {
+  const userCache = caches.userCache || new Map();
+  const recipientCache = caches.recipientCache || new Map();
+  const userContext = await getOptionalEmailUserContext(userUid, userCache);
+  const recipientContext = await getOptionalEmailRecipientContext(email || userContext.email, recipientCache);
+  const preferenceState = normalizeOptionalEmailPreferenceState({
+    userData: { emailNotificationsEnabled: userContext.emailNotificationsEnabled },
+    recipientData: { emailNotificationsEnabled: recipientContext.emailNotificationsEnabled },
+  });
+
+  return {
+    displayName: userContext.displayName || recipientContext.displayName || 'there',
+    email: normalizeNonEmptyString(email || userContext.email || recipientContext.email).toLowerCase(),
+    emailNotificationsEnabled: preferenceState.emailNotificationsEnabled,
+  };
+}
+
+async function getAuctionForBidderProfile(profile) {
+  const auctionSlug = normalizeNonEmptyString(profile?.legalAcceptedAuctionSlug);
+  if (!auctionSlug) return null;
+  return getAuctionBySlugFromDb(auctionSlug);
+}
+
+async function syncEmailPreferenceRecipientRecord(email, overrides = {}) {
+  const normalizedEmail = normalizeNonEmptyString(email).toLowerCase();
+  const recipientRef = getEmailPreferenceRecipientRef(normalizedEmail);
+  if (!normalizedEmail || !recipientRef) return;
+
+  await recipientRef.set(
+    {
+      email: normalizedEmail,
+      emailHash: sha256Hex(normalizedEmail),
+      scope: normalizeNonEmptyString(overrides.scope, 'optional'),
+      displayName: normalizeNonEmptyString(overrides.displayName),
+      emailNotificationsEnabled: overrides.emailNotificationsEnabled !== false,
+      emailOptOutSource: normalizeNonEmptyString(overrides.emailOptOutSource) || null,
+      ...(overrides.emailNotificationsEnabled === false
+        ? { emailOptOutAt: admin.firestore.FieldValue.serverTimestamp() }
+        : { emailOptOutAt: null }),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * Deliver webhook notifications to all active subscriptions for a dealer.
+ * Fire-and-forget: failures are logged but never throw.
+ */
+async function deliverDealerWebhooks(sellerUid, eventType, listingId, listingData) {
+  if (!sellerUid) return;
+  try {
+    const snap = await getDb()
+      .collection('dealerWebhookSubscriptions')
+      .where('dealerUid', '==', sellerUid)
+      .where('active', '==', true)
+      .get();
+    if (snap.empty) return;
+
+    // Look up seller info once per delivery batch
+    let seller = {};
+    try {
+      const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
+      if (sellerSnap.exists) seller = sellerSnap.data() || {};
+    } catch (_e) { /* non-fatal */ }
+
+    const payload = JSON.stringify({
+      event: eventType,
+      listingId,
+      listing: {
+        title: listingData.title || '',
+        price: listingData.price || 0,
+        callForPrice: Boolean(listingData.callForPrice),
+        currency: listingData.currency || 'USD',
+        status: listingData.status || 'active',
+        make: listingData.make || listingData.manufacturer || '',
+        model: listingData.model || '',
+        year: listingData.year || null,
+        hours: listingData.hours || null,
+        condition: listingData.condition || '',
+        category: listingData.category || '',
+        subcategory: listingData.subcategory || '',
+        location: listingData.location || '',
+        description: listingData.description || '',
+        stockNumber: listingData.stockNumber || '',
+        serialNumber: listingData.serialNumber || '',
+        images: Array.isArray(listingData.imageUrls) ? listingData.imageUrls : [],
+        specs: listingData.specs || {},
+      },
+      seller: {
+        uid: sellerUid,
+        name: seller.displayName || '',
+        businessName: seller.businessName || seller.storefrontName || '',
+        storefrontSlug: seller.storefrontSlug || '',
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    const logDelivery = (webhookId, dealerUid, statusCode, success, errorMessage) => {
+      getDb().collection('dealerWebhookDeliveryLogs').add({
+        webhookId,
+        dealerUid,
+        event: eventType,
+        listingId,
+        statusCode: statusCode || null,
+        success,
+        deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(errorMessage ? { errorMessage } : {}),
+      }).catch((e) => logger.warn('Failed to write webhook delivery log', { error: e.message }));
+    };
+
+    const deliveries = [];
+    snap.forEach((doc) => {
+      const sub = doc.data() || {};
+      if (!sub.callbackUrl) return;
+      if (Array.isArray(sub.events) && sub.events.length > 0 && !sub.events.includes(eventType)) return;
+      const signature = createHmac('sha256', sub.secret || '').update(payload).digest('hex');
+      deliveries.push(
+        fetch(sub.callbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-FES-Signature': `sha256=${signature}`,
+            'X-FES-Event': eventType,
+          },
+          body: payload,
+          signal: AbortSignal.timeout(10000),
+        })
+          .then(async (resp) => {
+            if (resp.ok) {
+              await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update({
+                lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
+                failureCount: 0,
+              });
+              logDelivery(doc.id, sellerUid, resp.status, true);
+            } else {
+              const newFailCount = (sub.failureCount || 0) + 1;
+              const updateData = {
+                lastDeliveryAt: admin.firestore.FieldValue.serverTimestamp(),
+                failureCount: newFailCount,
+              };
+              if (newFailCount >= 10) updateData.active = false;
+              await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update(updateData);
+              logDelivery(doc.id, sellerUid, resp.status, false, `HTTP ${resp.status}`);
+              logger.warn('Webhook delivery failed', { subId: doc.id, status: resp.status, failureCount: newFailCount });
+            }
+          })
+          .catch(async (err) => {
+            const newFailCount = (sub.failureCount || 0) + 1;
+            const updateData = { failureCount: newFailCount };
+            if (newFailCount >= 10) updateData.active = false;
+            await getDb().collection('dealerWebhookSubscriptions').doc(doc.id).update(updateData);
+            logDelivery(doc.id, sellerUid, null, false, err.message || 'Connection error');
+            logger.warn('Webhook delivery error', { subId: doc.id, error: err.message, failureCount: newFailCount });
+          })
+      );
+    });
+    await Promise.allSettled(deliveries);
+  } catch (error) {
+    logger.warn('deliverDealerWebhooks failed', { sellerUid, eventType, error: error.message });
+  }
+}
+
 async function notifyMatchingSavedSearches(listingId, listing) {
   const listingUrl = buildCanonicalListingUrl(listingId, listing);
   const listingPrice = formatListingMoney(listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
+  const recipientContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -2865,11 +4875,14 @@ async function notifyMatchingSavedSearches(listingId, listing) {
       const savedSearch = searchDoc.data();
       const recipient = savedSearch.alertEmail;
       if (!recipient) return;
-      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
-      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const emailContext = await getOptionalEmailDeliveryContext(
+        { userUid: savedSearch.userUid, email: recipient },
+        { userCache: userContextCache, recipientCache: recipientContextCache }
+      );
+      if (emailContext.emailNotificationsEnabled === false) return;
       const unsubscribeUrl = buildEmailUnsubscribeUrl({
         uid: savedSearch.userUid,
-        email: userContext.email || recipient,
+        email: emailContext.email || recipient,
         scope: 'optional',
       });
 
@@ -2878,7 +4891,7 @@ async function notifyMatchingSavedSearches(listingId, listing) {
 
       if (savedSearch.alertPreferences?.newListingAlerts && exactMatch) {
         const emailPayload = templates.newMatchingListing({
-          displayName: userContext.displayName,
+          displayName: emailContext.displayName,
           searchName: savedSearch.name || 'Saved Search',
           listingTitle: listing.title || 'New Equipment Listing',
           listingUrl,
@@ -2893,7 +4906,7 @@ async function notifyMatchingSavedSearches(listingId, listing) {
 
       if (savedSearch.alertPreferences?.restockSimilarAlerts && similarMatch) {
         const emailPayload = templates.similarListingRestocked({
-          displayName: userContext.displayName,
+          displayName: emailContext.displayName,
           searchName: savedSearch.name || 'Saved Search',
           listingTitle: listing.title || 'Equipment Listing',
           listingUrl,
@@ -2914,6 +4927,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
   const currentPrice = formatListingMoney(after, after.price);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
+  const recipientContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -2923,11 +4937,14 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
       if (!savedSearch.alertPreferences?.priceDropAlerts) return;
       if (!savedSearch.alertEmail) return;
       if (!listingMatchesSavedSearch(after, savedSearch)) return;
-      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
-      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const emailContext = await getOptionalEmailDeliveryContext(
+        { userUid: savedSearch.userUid, email: savedSearch.alertEmail },
+        { userCache: userContextCache, recipientCache: recipientContextCache }
+      );
+      if (emailContext.emailNotificationsEnabled === false) return;
 
       const emailPayload = templates.matchingListingPriceDrop({
-        displayName: userContext.displayName,
+        displayName: emailContext.displayName,
         searchName: savedSearch.name || 'Saved Search',
         listingTitle: after.title || 'Equipment Listing',
         listingUrl,
@@ -2936,7 +4953,7 @@ async function notifySavedSearchPriceDrop(listingId, before, after) {
         location: after.location || 'Unknown',
         unsubscribeUrl: buildEmailUnsubscribeUrl({
           uid: savedSearch.userUid,
-          email: userContext.email || savedSearch.alertEmail,
+          email: emailContext.email || savedSearch.alertEmail,
           scope: 'optional',
         }),
       });
@@ -2950,6 +4967,7 @@ async function notifySavedSearchSoldStatus(listingId, listing) {
   const listingUrl = buildCanonicalListingUrl(listingId, listing);
   const searchSnap = await getDb().collection('savedSearches').where('status', '==', 'active').get();
   const userContextCache = new Map();
+  const recipientContextCache = new Map();
 
   if (searchSnap.empty) return;
 
@@ -2959,18 +4977,21 @@ async function notifySavedSearchSoldStatus(listingId, listing) {
       if (!savedSearch.alertPreferences?.soldStatusAlerts) return;
       if (!savedSearch.alertEmail) return;
       if (!listingMatchesSavedSearch(listing, savedSearch)) return;
-      const userContext = await getOptionalEmailUserContext(savedSearch.userUid, userContextCache);
-      if (savedSearch.userUid && userContext.emailNotificationsEnabled === false) return;
+      const emailContext = await getOptionalEmailDeliveryContext(
+        { userUid: savedSearch.userUid, email: savedSearch.alertEmail },
+        { userCache: userContextCache, recipientCache: recipientContextCache }
+      );
+      if (emailContext.emailNotificationsEnabled === false) return;
 
       const emailPayload = templates.matchingListingSold({
-        displayName: userContext.displayName,
+        displayName: emailContext.displayName,
         searchName: savedSearch.name || 'Saved Search',
         listingTitle: listing.title || 'Equipment Listing',
         listingUrl,
         location: listing.location || 'Unknown',
         unsubscribeUrl: buildEmailUnsubscribeUrl({
           uid: savedSearch.userUid,
-          email: userContext.email || savedSearch.alertEmail,
+          email: emailContext.email || savedSearch.alertEmail,
           scope: 'optional',
         }),
       });
@@ -3018,7 +5039,8 @@ function resolveStorageBucketName() {
 }
 
 // ── Watermark compositing ───────────────────────────────────────────────────
-const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.png');
+const WATERMARK_PATH = require('node:path').join(__dirname, 'watermark.avif');
+const WATERMARK_ALPHA_SCALE = 0.19;
 let _watermarkBuffer = null;
 
 async function getWatermarkBuffer() {
@@ -3034,8 +5056,8 @@ async function getWatermarkBuffer() {
 
 /**
  * Composite the brand watermark onto an image buffer.
- * Places an upright watermark at ~9 % of image width, ~28 % opacity,
- * in the bottom-right corner with a small margin.
+ * Uses the watermark asset's native transparency, then scales it to a subtle
+ * but still readable final opacity before placing it upright in the bottom-right corner.
  */
 async function applyWatermark(imageBuffer) {
   const wmSource = await getWatermarkBuffer();
@@ -3061,19 +5083,23 @@ async function applyWatermark(imageBuffer) {
       .png()
       .toBuffer();
 
-    // Apply 28 % opacity by reducing alpha channel
     const wmMeta = await sharp(resizedWatermark).metadata();
     const wmH = wmMeta.height || wmWidth;
-    const opacityWatermark = await sharp(resizedWatermark)
+    const softenedWatermark = await sharp(resizedWatermark)
       .ensureAlpha()
       .raw()
       .toBuffer()
       .then((rawBuf) => {
-        // Multiply alpha channel (every 4th byte) by 0.28
         for (let i = 3; i < rawBuf.length; i += 4) {
-          rawBuf[i] = Math.round(rawBuf[i] * 0.28);
+          rawBuf[i] = Math.round(rawBuf[i] * WATERMARK_ALPHA_SCALE);
         }
-        return sharp(rawBuf, { raw: { width: wmMeta.width || wmWidth, height: wmH, channels: 4 } })
+        return sharp(rawBuf, {
+          raw: {
+            width: wmMeta.width || wmWidth,
+            height: wmH,
+            channels: 4,
+          },
+        })
           .png()
           .toBuffer();
       });
@@ -3082,7 +5108,7 @@ async function applyWatermark(imageBuffer) {
     const top = Math.max(imgHeight - wmH - margin, 0);
 
     return sharp(imageBuffer)
-      .composite([{ input: opacityWatermark, left, top }])
+      .composite([{ input: softenedWatermark, left, top }])
       .toBuffer();
   } catch (err) {
     logger.warn('Watermark compositing failed – returning unwatermarked image.', err.message);
@@ -3123,759 +5149,58 @@ async function compressToAvifTarget(inputBuffer, width, targetBytes) {
   throw new Error(`Unable to compress source image under ${Math.round(targetBytes / 1024)}KB AVIF target.`);
 }
 
-exports.generateListingImageVariants = onObjectFinalized(
-  {
-    region: 'us-central1',
-    memory: '1GiB',
-    timeoutSeconds: 120,
-    bucket: resolveStorageBucketName(),
-  },
-  async (event) => {
-    const object = event.data;
-    const bucketName = object.bucket;
-    const filePath = object.name || '';
-    const contentType = object.contentType || '';
-
-    if (!bucketName || !filePath) {
-      logger.warn('Missing storage event data.');
-      return;
-    }
-
-    // Process only source images to avoid loops.
-    // Expected path: listings/{listingId}/images/source/{filename}
-    const sourceMatch = filePath.match(/^listings\/([^/]+)\/images\/source\/(.+)$/);
-    if (!sourceMatch) return;
-
-    if (!contentType.startsWith('image/')) {
-      logger.info(`Skipping non-image file: ${filePath}`);
-      return;
-    }
-
-    const listingId = sourceMatch[1];
-    const originalName = sourceMatch[2];
-    const outputBaseName = originalName.replace(/\.[^/.]+$/, '');
-
-    const detailPath = `listings/${listingId}/images/detail/${outputBaseName}.avif`;
-    const thumbPath = `listings/${listingId}/images/thumb/${outputBaseName}.avif`;
-
-    const bucket = admin.storage().bucket(bucketName);
-    const sourceFile = bucket.file(filePath);
-
-    logger.info(`Generating variants for ${filePath}`);
-
-    const [sourceBuffer] = await sourceFile.download();
-
-    const [detailBuffer, thumbBuffer] = await Promise.all([
-      compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES),
-      compressToAvifTarget(sourceBuffer, THUMB_MAX_WIDTH, THUMB_MAX_BYTES),
-    ]);
-
-    const detailToken = randomUUID();
-    const thumbToken = randomUUID();
-
-    await Promise.all([
-      bucket.file(detailPath).save(detailBuffer, {
-        metadata: {
-          contentType: 'image/avif',
-          metadata: {
-            firebaseStorageDownloadTokens: detailToken,
-            variant: 'detail',
-            listingId,
-            sourcePath: filePath,
-          },
-        },
-      }),
-      bucket.file(thumbPath).save(thumbBuffer, {
-        metadata: {
-          contentType: 'image/avif',
-          metadata: {
-            firebaseStorageDownloadTokens: thumbToken,
-            variant: 'thumbnail',
-            listingId,
-            sourcePath: filePath,
-          },
-        },
-      }),
-    ]);
-
-    const detailUrl = buildFirebaseDownloadUrl(bucketName, detailPath, detailToken);
-    const thumbnailUrl = buildFirebaseDownloadUrl(bucketName, thumbPath, thumbToken);
-
-    const listingRef = getDb().collection('listings').doc(listingId);
-    await listingRef.set(
-      {
-        images: admin.firestore.FieldValue.arrayUnion(detailUrl),
-        imageVariants: admin.firestore.FieldValue.arrayUnion({
-          detailUrl,
-          thumbnailUrl,
-          format: 'image/avif',
-        }),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    logger.info(`Finished variants for listing ${listingId}`);
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMAIL TRIGGER: New inquiry → notify seller + confirm to buyer
-// Firestore path: inquiries/{inquiryId}
-// ─────────────────────────────────────────────────────────────────────────────
-exports.onInquiryCreated = onDocumentCreated(
-  {
-    document: 'inquiries/{inquiryId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const inquiry = event.data?.data();
-    if (!inquiry) return;
-
-    const { sellerUid, sellerId, listingId, message, buyerName, buyerEmail, buyerPhone } = inquiry;
-    const sellerDocId = sellerUid || sellerId || '';
-
-    // Look up listing and seller in parallel
-    const [listingSnap, sellerSnap] = await Promise.all([
-      getDb().collection('listings').doc(listingId).get(),
-      sellerDocId ? getDb().collection('users').doc(sellerDocId).get() : Promise.resolve(null),
-    ]);
-
-    if (!listingSnap.exists || !sellerSnap?.exists) {
-      logger.warn(`onInquiryCreated: listing or seller not found for inquiry ${event.params.inquiryId}; proceeding with fallback email payload.`);
-    }
-
-    const listing = listingSnap.exists ? listingSnap.data() : {};
-    const seller = sellerSnap?.exists ? sellerSnap.data() : {};
-    const listingTitle = listing.title || 'Equipment Listing';
-    const sellerName = seller.displayName || 'Seller';
-    const sellerEmail = seller.email;
-    const listingUrl = buildCanonicalListingUrl(listingId, listing);
-
-    const errors = [];
-
-    // Notify seller
-    if (sellerEmail) {
-      try {
-        const { subject, html } = templates.leadNotification({
-          sellerName,
-          buyerName: buyerName || 'A buyer',
-          buyerEmail: buyerEmail || '',
-          buyerPhone: buyerPhone || '',
-          listingTitle,
-          listingUrl,
-          message: message || '',
-        });
-        await sendEmail({ to: sellerEmail, subject, html });
-      } catch (err) {
-        errors.push(`seller email failed: ${err.message}`);
-        logger.error('Failed to send lead notification to seller', err);
-      }
-    }
-
-    // Confirm to buyer
-    if (buyerEmail) {
-      try {
-        const { subject, html } = templates.inquiryConfirmation({
-          buyerName: buyerName || 'Buyer',
-          listingTitle,
-          listingUrl,
-          sellerName,
-          inquiryType: inquiry.type || 'Inquiry',
-        });
-        await sendEmail({ to: buyerEmail, subject, html });
-      } catch (err) {
-        errors.push(`buyer confirmation failed: ${err.message}`);
-        logger.error('Failed to send inquiry confirmation to buyer', err);
-      }
-    }
-
-    // Copy admin inbox on all inquiry leads (inquiry, financing, shipping, etc.)
-    try {
-      const adminPayload = templates.adminInquiryAlert({
-        inquiryType: inquiry.type || 'Inquiry',
-        buyerName: buyerName || '',
-        buyerEmail: buyerEmail || '',
-        buyerPhone: buyerPhone || '',
-        listingTitle,
-        listingUrl,
-        message: message || '',
-        sellerUid: sellerDocId || '',
-      });
-      await sendEmail({ to: getAdminRecipients(), ...adminPayload });
-    } catch (err) {
-      errors.push(`admin inquiry copy failed: ${err.message}`);
-      logger.error('Failed to send inquiry admin copy', err);
-    }
-
-    if (errors.length) {
-      logger.warn(`onInquiryCreated partial failure: ${errors.join(', ')}`);
-    }
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMAIL TRIGGER: New user → send welcome + email verification
-// Auth trigger via Firestore user profile creation
-// Firestore path: users/{uid}
-// ─────────────────────────────────────────────────────────────────────────────
-exports.onUserProfileCreated = onDocumentCreated(
-  {
-    document: 'users/{uid}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const profile = event.data?.data();
-    if (!profile?.email) return;
-    if (String(profile.onboardingSource || '').trim() === 'managed_invite') return;
-
-    try {
-      await sendVerificationEmailMessage({
-        email: profile.email,
-        displayName: profile.displayName || 'there',
-      });
-    } catch (err) {
-      logger.error('Failed to send welcome email', err);
-    }
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMAIL TRIGGER: Listing status change → notify seller on approval or rejection
-// Firestore path: listings/{listingId}
-// ─────────────────────────────────────────────────────────────────────────────
-exports.onListingStatusChanged = onDocumentUpdated(
-  {
-    document: 'listings/{listingId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const before = event.data?.before?.data();
-    const after = event.data?.after?.data();
-    if (!before || !after) return;
-
-    const prevApproval = before.approvalStatus;
-    const newApproval = after.approvalStatus;
-    const previousStatus = normalize(before.status || 'active');
-    const newStatus = normalize(after.status || 'active');
-    const beforePrice = Number(before.price || 0);
-    const afterPrice = Number(after.price || 0);
-
-    if (newApproval === 'approved' && prevApproval !== 'approved') {
-      await notifyMatchingSavedSearches(event.params.listingId, after);
-    }
-
-    if (previousStatus !== 'sold' && newStatus === 'sold') {
-      await notifySavedSearchSoldStatus(event.params.listingId, after);
-    }
-
-    if (
-      newApproval === 'approved' &&
-      prevApproval === 'approved' &&
-      previousStatus !== 'sold' &&
-      newStatus !== 'sold' &&
-      beforePrice > 0 &&
-      afterPrice > 0 &&
-      afterPrice < beforePrice
-    ) {
-      await notifySavedSearchPriceDrop(event.params.listingId, before, after);
-    }
-
-    if (prevApproval === newApproval) return;
-    if (newApproval !== 'approved' && newApproval !== 'rejected') return;
-
-    const sellerUid = after.sellerUid || after.sellerId;
-    if (!sellerUid) return;
-
-    const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
-    if (!sellerSnap.exists) return;
-
-    const seller = sellerSnap.data();
-    const sellerEmail = seller.email;
-    if (!sellerEmail) return;
-
-    const listingTitle = after.title || 'Your Listing';
-    const listingUrl = buildCanonicalListingUrl(event.params.listingId, after);
-
-    try {
-      let emailPayload;
-      if (newApproval === 'approved') {
-        emailPayload = templates.listingApproved({ sellerName: seller.displayName || 'Seller', listingTitle, listingUrl });
-      } else {
-        const editUrl = `${APP_URL}/sell?edit=${event.params.listingId}`;
-        emailPayload = templates.listingRejected({
-          sellerName: seller.displayName || 'Seller',
-          listingTitle,
-          reason: after.rejectionReason || '',
-          editUrl,
-        });
-      }
-      await sendEmail({ to: sellerEmail, ...emailPayload });
-    } catch (err) {
-      logger.error('Failed to send listing status email', err);
-    }
-  }
-);
-
-exports.onListingCreated = onDocumentCreated(
-  {
-    document: 'listings/{listingId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const listing = event.data?.data();
-    if (!listing) return;
-
-    const sellerUid = String(listing.sellerUid || listing.sellerId || '').trim();
-    let seller = null;
-    if (sellerUid) {
-      const sellerSnap = await getDb().collection('users').doc(sellerUid).get();
-      if (sellerSnap.exists) {
-        seller = sellerSnap.data();
-      }
-    }
-
-    const sellerEmail = String(seller?.email || '').trim();
-    const sellerName = String(seller?.displayName || 'Seller').trim();
-    const listingTitle = String(listing.title || 'Your Listing').trim();
-    const listingUrl = buildCanonicalListingUrl(event.params.listingId, listing);
-    const dashboardUrl = `${APP_URL}/profile?tab=${encodeURIComponent('My Listings')}`;
-
-    if (listing.approvalStatus === 'approved') {
-      await notifyMatchingSavedSearches(event.params.listingId, listing);
-
-      if (sellerEmail) {
-        try {
-          const payload = templates.listingApproved({
-            sellerName,
-            listingTitle,
-            listingUrl,
-          });
-          await sendEmail({ to: sellerEmail, ...payload });
-        } catch (error) {
-          logger.error('Failed to send listing approved email on create', error);
-        }
-      }
-      return;
-    }
-
-    if (sellerEmail) {
-      try {
-        const payload = templates.listingSubmitted({
-          sellerName,
-          listingTitle,
-          dashboardUrl,
-          reviewEta: 'Typically within 1 business day',
-        });
-        await sendEmail({ to: sellerEmail, ...payload });
-      } catch (error) {
-        logger.error('Failed to send listing submitted email', error);
-      }
-    }
-  }
-);
-
-exports.syncPublicSeoReadModelOnListingWrite = onDocumentWritten(
-  {
-    document: 'listings/{listingId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-  },
-  async (event) => {
-    const listingId = event.params.listingId;
-    const before = event.data?.before?.data() || null;
-    const after = event.data?.after?.data() || null;
-    invalidateMarketplaceCaches();
-
-    const [seoResult, governanceResult] = await Promise.allSettled([
-      syncPublicSeoForListingChange({
-        listingId,
-        before,
-        after,
-      }),
-      syncListingGovernanceArtifactsForWrite({
-        db: getDb(),
-        listingId,
-        before,
-        after,
-      }),
-    ]);
-
-    if (seoResult.status === 'rejected') {
-      logger.error('Failed to sync public SEO read model for listing write', {
-        listingId,
-        error: seoResult.reason instanceof Error ? seoResult.reason.message : seoResult.reason,
-      });
-    }
-
-    if (governanceResult.status === 'rejected') {
-      logger.error('Failed to sync listing governance artifacts for listing write', {
-        listingId,
-        error: governanceResult.reason instanceof Error ? governanceResult.reason.message : governanceResult.reason,
-      });
-    }
-  }
-);
-
-exports.syncPublicSeoReadModelOnUserWrite = onDocumentWritten(
-  {
-    document: 'users/{uid}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-  },
-  async (event) => {
-    try {
-      await syncPublicSeoForSellerChange(event.params.uid);
-    } catch (error) {
-      logger.error('Failed to sync public SEO read model for user write', {
-        uid: event.params.uid,
-        error: error instanceof Error ? error.message : error,
-      });
-    }
-  }
-);
-
-exports.syncPublicSeoReadModelOnStorefrontWrite = onDocumentWritten(
-  {
-    document: 'storefronts/{uid}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-  },
-  async (event) => {
-    try {
-      await syncPublicSeoForSellerChange(event.params.uid);
-    } catch (error) {
-      logger.error('Failed to sync public SEO read model for storefront write', {
-        uid: event.params.uid,
-        error: error instanceof Error ? error.message : error,
-      });
-    }
-  }
-);
-
-exports.rebuildPublicSeoReadModelScheduled = onSchedule(
-  {
-    schedule: 'every 6 hours',
-    region: 'us-central1',
-    timeoutSeconds: 300,
-    memory: '1GiB',
-  },
-  async () => {
-    try {
-      await rebuildPublicSeoReadModel();
-    } catch (error) {
-      logger.error('Failed to rebuild public SEO read model on schedule', error);
-    }
-  }
-);
-
-exports.onMediaKitRequestCreated = onDocumentCreated(
-  {
-    document: 'mediaKitRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const adminPayload = templates.mediaKitRequest({
-      requesterName: request.firstName || '',
-      companyName: request.companyName || '',
-      email: request.email || '',
-      phone: request.phone || '',
-      notes: request.notes || '',
-    });
-
-    await sendEmail({ to: getAdminRecipients(), ...adminPayload });
-
-    if (request.email) {
-      try {
-        const confirmationPayload = templates.mediaKitRequestConfirmation({
-          requesterName: request.firstName || 'there',
-          requestType: request.requestType || 'media-kit',
-          companyName: request.companyName || '',
-          supportUrl: `${APP_URL}/ad-programs`,
-        });
-
-        await sendEmail({ to: request.email, ...confirmationPayload });
-      } catch (error) {
-        logger.error('Failed to send media kit confirmation email', error);
-      }
-    }
-  }
-);
-
-exports.onFinancingRequestCreated = onDocumentCreated(
-  {
-    document: 'financingRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const payload = templates.financingRequestAdmin({
-      applicantName: request.applicantName || '',
-      applicantEmail: request.applicantEmail || '',
-      applicantPhone: request.applicantPhone || '',
-      company: request.company || '',
-      requestedAmount: request.requestedAmount || null,
-      listingId: request.listingId || '',
-      message: request.message || '',
-    });
-
-    await sendEmail({ to: getAdminRecipients(), ...payload });
-
-    if (request.applicantEmail) {
-      try {
-        const confirmationPayload = templates.financingRequestConfirmation({
-          applicantName: request.applicantName || 'there',
-          requestedAmount: typeof request.requestedAmount === 'number' ? request.requestedAmount : null,
-          company: request.company || '',
-          dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Financing')}`,
-        });
-        await sendEmail({ to: request.applicantEmail, ...confirmationPayload });
-      } catch (error) {
-        logger.error('Failed to send financing confirmation email', error);
-      }
-    }
-  }
-);
-
-exports.onContactRequestCreated = onDocumentCreated(
-  {
-    document: 'contactRequests/{requestId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
-  },
-  async (event) => {
-    const request = event.data?.data();
-    if (!request) return;
-
-    const payload = templates.contactRequestAdmin({
-      name: request.name || '',
-      email: request.email || '',
-      category: request.category || '',
-      message: request.message || '',
-      source: request.source || 'contact-page',
-    });
-
-    await sendEmail({ to: getAdminRecipients(), ...payload });
-
-    if (request.email) {
-      try {
-        const confirmationPayload = templates.contactRequestConfirmation({
-          name: request.name || 'there',
-          category: request.category || 'General Support',
-          supportUrl: `${APP_URL}/contact`,
-        });
-        await sendEmail({ to: request.email, ...confirmationPayload });
-      } catch (error) {
-        logger.error('Failed to send contact confirmation email', error);
-      }
-    }
-  }
-);
-
-exports.onSubscriptionCreated = onDocumentCreated(
-  {
-    document: 'subscriptions/{subscriptionId}',
-    database: FIRESTORE_DB_ID,
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (event) => {
-    const subscription = event.data?.data();
-    if (!subscription?.userUid) return;
-
-    const userSnap = await getDb().collection('users').doc(subscription.userUid).get();
-    if (!userSnap.exists) return;
-
-    const user = userSnap.data();
-    if (!user.email) return;
-
-    const payload = templates.subscriptionCreated({
-      displayName: user.displayName || 'there',
-      planName: getPlanDisplayName(subscription.planId),
-    });
-
-    await sendEmail({ to: user.email, ...payload });
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCHEDULED: Daily check for subscriptions expiring in exactly 7 days
-// ─────────────────────────────────────────────────────────────────────────────
-exports.subscriptionExpiryReminder = onSchedule(
-  {
-    schedule: 'every 24 hours',
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (_context) => {
-    const now = admin.firestore.Timestamp.now();
-    const in7Days = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    );
-    const in8Days = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + 8 * 24 * 60 * 60 * 1000)
-    );
-
-    // Find subscriptions expiring in the next 7–8 day window (catches daily runs)
-    const snap = await admin
-      .firestore()
-      .collection('subscriptions')
-      .where('status', '==', 'active')
-      .where('currentPeriodEnd', '>=', in7Days)
-      .where('currentPeriodEnd', '<', in8Days)
-      .get();
-
-    if (snap.empty) {
-      logger.info('subscriptionExpiryReminder: no subscriptions expiring in 7 days');
-      return;
-    }
-
-    const renewUrl = `${APP_URL}/profile#subscription`;
-    const errors = [];
-
-    await Promise.all(
-      snap.docs.map(async (subDoc) => {
-        const sub = subDoc.data();
-        const userSnap = await getDb().collection('users').doc(sub.userUid).get();
-        if (!userSnap.exists) return;
-
-        const user = userSnap.data();
-        if (!user.email) return;
-
-        const expiryDate = sub.currentPeriodEnd
-          .toDate()
-          .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-        try {
-          const { subject, html } = templates.subscriptionExpiring({
-            displayName: user.displayName || 'Seller',
-            planName: getPlanDisplayName(sub.planId),
-            expiryDate,
-            renewUrl,
-          });
-          await sendEmail({ to: user.email, subject, html });
-        } catch (err) {
-          errors.push(err.message);
-          logger.error(`Failed to send expiry reminder to ${user.email}`, err);
-        }
-      })
-    );
-
-    logger.info(`subscriptionExpiryReminder: processed ${snap.size} subs. Errors: ${errors.length}`);
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCHEDULED: Daily check for subscriptions that expired today
-// ─────────────────────────────────────────────────────────────────────────────
-exports.subscriptionExpiredNotice = onSchedule(
-  {
-    schedule: 'every 24 hours',
-    region: 'us-central1',
-    secrets: [SENDGRID_API_KEY, EMAIL_FROM],
-  },
-  async (_context) => {
-    const now = admin.firestore.Timestamp.now();
-    const yesterday = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() - 24 * 60 * 60 * 1000)
-    );
-
-    const snap = await admin
-      .firestore()
-      .collection('subscriptions')
-      .where('status', '==', 'active')
-      .where('currentPeriodEnd', '>=', yesterday)
-      .where('currentPeriodEnd', '<', now)
-      .get();
-
-    if (snap.empty) return;
-
-    const renewUrl = `${APP_URL}/profile#subscription`;
-
-    await Promise.all(
-      snap.docs.map(async (subDoc) => {
-        const sub = subDoc.data();
-
-        // Mark subscription as expired
-        await subDoc.ref.update({ status: 'past_due' });
-
-        const userSnap = await getDb().collection('users').doc(sub.userUid).get();
-        if (!userSnap.exists) return;
-
-        const user = userSnap.data();
-        if (!user.email) return;
-
-        try {
-          const { subject, html } = templates.subscriptionExpired({
-            displayName: user.displayName || 'Seller',
-            planName: getPlanDisplayName(sub.planId),
-            renewUrl,
-          });
-          await sendEmail({ to: user.email, subject, html });
-        } catch (err) {
-          logger.error(`Failed to send expired notice to ${user.email}`, err);
-        }
-      })
-    );
-
-    logger.info(`subscriptionExpiredNotice: processed ${snap.size} expired subs`);
-  }
-);
-
-exports.expireListingsByDate = onSchedule(
-  {
-    schedule: 'every 24 hours',
-    region: 'us-central1',
-  },
-  async () => {
-    const now = admin.firestore.Timestamp.now();
-
-    const snap = await getDb()
-      .collection('listings')
-      .where('approvalStatus', '==', 'approved')
-      .where('paymentStatus', '==', 'paid')
-      .where('status', '==', 'active')
-      .where('expiresAt', '<=', now)
-      .get();
-
-    if (snap.empty) {
-      logger.info('expireListingsByDate: no listings to expire');
-      return;
-    }
-
-    for (const docSnap of snap.docs) {
-      await applyListingLifecycleAction({
-        listingRef: docSnap.ref,
-        listingId: docSnap.id,
-        listing: docSnap.data() || {},
-        action: 'expire',
-        actorUid: 'system',
-        actorRole: 'system',
-        reason: 'Automatic expiration window reached',
-      });
-    }
-    logger.info(`expireListingsByDate: expired ${snap.size} listings`);
-  }
-);
-
+// Image processing — extracted to image-processing.js
+exports.generateListingImageVariants = imageProcessingModule.generateListingImageVariants;
+
+// ─── Extracted trigger modules (factory pattern) ────────────────────────────
+const _triggerDeps = {
+  FIRESTORE_DB_ID,
+  SENDGRID_API_KEY,
+  EMAIL_FROM,
+  ADMIN_EMAILS,
+  sendEmail,
+  templates,
+  getAdminRecipients,
+  getDb,
+  buildCanonicalListingUrl,
+  sendVerificationEmailMessage,
+  normalize,
+  notifyMatchingSavedSearches,
+  deliverDealerWebhooks,
+  notifySavedSearchSoldStatus,
+  notifySavedSearchPriceDrop,
+  processEndedAuctionLots,
+  getPlanDisplayName,
+  applyListingLifecycleAction,
+  invalidateMarketplaceCaches,
+  APP_URL,
+};
+
+const _emailTriggers = createEmailTriggers(_triggerDeps);
+exports.onInquiryCreated = _emailTriggers.onInquiryCreated;
+exports.onUserProfileCreated = _emailTriggers.onUserProfileCreated;
+exports.onMediaKitRequestCreated = _emailTriggers.onMediaKitRequestCreated;
+exports.onFinancingRequestCreated = _emailTriggers.onFinancingRequestCreated;
+exports.onContactRequestCreated = _emailTriggers.onContactRequestCreated;
+
+const _listingLifecycle = createListingLifecycleTriggers(_triggerDeps);
+exports.onListingStatusChanged = _listingLifecycle.onListingStatusChanged;
+exports.onListingCreated = _listingLifecycle.onListingCreated;
+exports.processAuctionClosures = _listingLifecycle.processAuctionClosures;
+
+const _seoSync = createSeoSyncTriggers(_triggerDeps);
+exports.syncPublicSeoReadModelOnListingWrite = _seoSync.syncPublicSeoReadModelOnListingWrite;
+exports.syncPublicSeoReadModelOnUserWrite = _seoSync.syncPublicSeoReadModelOnUserWrite;
+exports.syncPublicSeoReadModelOnStorefrontWrite = _seoSync.syncPublicSeoReadModelOnStorefrontWrite;
+exports.rebuildPublicSeoReadModelScheduled = _seoSync.rebuildPublicSeoReadModelScheduled;
+
+const _subscriptionLifecycle = createSubscriptionLifecycleTriggers(_triggerDeps);
+exports.onSubscriptionCreated = _subscriptionLifecycle.onSubscriptionCreated;
+exports.subscriptionExpiryReminder = _subscriptionLifecycle.subscriptionExpiryReminder;
+exports.subscriptionExpiredNotice = _subscriptionLifecycle.subscriptionExpiredNotice;
+exports.expireListingsByDate = _subscriptionLifecycle.expireListingsByDate;
+
+// ─── Dealer feed scheduled jobs (remain inline) ─────────────────────────────
 exports.dealerFeedNightlySync = onSchedule(
   {
     schedule: '0 2 * * *',
@@ -4227,6 +5552,209 @@ async function buildDealerPerformanceReport({
 }
 
 // ---------------------------------------------------------------------------
+// Admin Platform Report — comprehensive metrics for admins/super_admins
+// ---------------------------------------------------------------------------
+async function buildAdminPlatformReport({ startDate, endDate, periodLabel } = {}) {
+  const resolvedEndDate = endDate instanceof Date ? endDate : new Date();
+  const resolvedStartDate = startDate instanceof Date
+    ? startDate
+    : new Date(resolvedEndDate.getTime() - (30 * 24 * 60 * 60 * 1000));
+  const normalizedPeriodLabel = normalizeNonEmptyString(
+    periodLabel,
+    `Last 30 Days ending ${resolvedEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+  );
+
+  const db = getDb();
+  const startTimestamp = admin.firestore.Timestamp.fromDate(resolvedStartDate);
+  const endTimestamp = admin.firestore.Timestamp.fromDate(resolvedEndDate);
+
+  // Fetch all data in parallel
+  const [
+    allListingsSnap,
+    activeListingsSnap,
+    soldListingsSnap,
+    inquiriesSnap,
+    callsSnap,
+    listingViewsSnap,
+    allSubsSnap,
+    activeUsersCount,
+    newUsersSnap,
+    dealerReport,
+  ] = await Promise.all([
+    db.collection('listings').get(),
+    db.collection('listings')
+      .where('status', '==', 'active')
+      .where('approvalStatus', '==', 'approved')
+      .get(),
+    db.collection('listings').where('status', '==', 'sold').get(),
+    db.collection('inquiries')
+      .where('createdAt', '>=', startTimestamp)
+      .where('createdAt', '<', endTimestamp)
+      .get(),
+    db.collection('calls')
+      .where('createdAt', '>=', startTimestamp)
+      .where('createdAt', '<', endTimestamp)
+      .get(),
+    db.collection('listingViewEvents')
+      .where('viewedAt', '>=', startTimestamp)
+      .where('viewedAt', '<', endTimestamp)
+      .get(),
+    db.collection('subscriptions').get(),
+    db.collection('users').where('accountStatus', '==', 'active').get().then((s) => s.size).catch(() => 0),
+    db.collection('users')
+      .where('createdAt', '>=', startTimestamp)
+      .where('createdAt', '<', endTimestamp)
+      .get()
+      .catch(() => ({ size: 0 })),
+    buildDealerPerformanceReport({ startDate: resolvedStartDate, endDate: resolvedEndDate, periodLabel: normalizedPeriodLabel }),
+  ]);
+
+  // Listing counts
+  const totalListings = allListingsSnap.size;
+  const liveListings = activeListingsSnap.size;
+  const soldListings = soldListingsSnap.size;
+
+  // Engagement: inquiries
+  const totalInquiries = inquiriesSnap.size;
+
+  // Engagement: calls
+  let totalCalls = 0;
+  let connectedCalls = 0;
+  let qualifiedCalls = 0;
+  let missedCalls = 0;
+  callsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const duration = Number(data.duration) || 0;
+    const status = String(data.status || '').toLowerCase();
+    totalCalls += 1;
+    if (duration > 0 && status === 'completed') connectedCalls += 1;
+    if (duration >= 60) qualifiedCalls += 1;
+    if (['missed', 'voicemail', 'no_answer', 'no-answer'].includes(status)) missedCalls += 1;
+  });
+
+  // Engagement: views
+  const totalViews = listingViewsSnap.size;
+
+  // Subscriptions
+  const nowMs = Date.now();
+  const startMs = resolvedStartDate.getTime();
+  let activeSubscriptions = 0;
+  let newSubscriptions = 0;
+  let cancelledSubscriptions = 0;
+  let estimatedMrr = 0;
+
+  const PLAN_PRICES = {
+    single_listing: 29.99,
+    dealer_basic: 99,
+    dealer_ad_package: 299,
+    dealer_premium: 499,
+    pro_dealer: 799,
+  };
+
+  allSubsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const status = String(data.status || '').toLowerCase();
+
+    // Determine period end in ms
+    const periodEnd = data.currentPeriodEnd;
+    let periodEndMs = 0;
+    if (periodEnd && typeof periodEnd.toMillis === 'function') {
+      periodEndMs = periodEnd.toMillis();
+    } else if (typeof periodEnd === 'number') {
+      periodEndMs = periodEnd > 1e12 ? periodEnd : periodEnd * 1000;
+    }
+
+    // Determine creation time for new subs
+    const createdAt = data.createdAt || data.updatedAt;
+    let createdMs = 0;
+    if (createdAt && typeof createdAt.toMillis === 'function') {
+      createdMs = createdAt.toMillis();
+    } else if (typeof createdAt === 'number') {
+      createdMs = createdAt > 1e12 ? createdAt : createdAt * 1000;
+    }
+
+    if (status === 'active' && periodEndMs > nowMs) {
+      activeSubscriptions += 1;
+      const planId = String(data.planId || '').toLowerCase().replace(/[-\s]/g, '_');
+      estimatedMrr += PLAN_PRICES[planId] || 0;
+    }
+
+    if (status === 'active' && createdMs >= startMs && createdMs < nowMs) {
+      newSubscriptions += 1;
+    }
+
+    if ((status === 'canceled' || status === 'cancelled') && createdMs >= startMs && createdMs < nowMs) {
+      cancelledSubscriptions += 1;
+    }
+    if (status === 'active' && data.cancelAtPeriodEnd === true && periodEndMs > startMs && periodEndMs < nowMs) {
+      cancelledSubscriptions += 1;
+    }
+  });
+
+  // Top sellers from dealer report
+  const topSellersSummary = dealerReport.sellerSummaries.slice(0, 15).map((s) => ({
+    name: s.name,
+    listings: s.listings,
+    views: s.totalViews,
+    leads: s.leadForms,
+    calls: s.calls,
+  }));
+
+  // Top listings by views — aggregate from listingViewEvents
+  const viewsByListing = {};
+  const inquiriesByListing = {};
+  listingViewsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const lid = normalizeNonEmptyString(data.listingId);
+    if (!lid) return;
+    viewsByListing[lid] = (viewsByListing[lid] || 0) + 1;
+  });
+  inquiriesSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    const lid = normalizeNonEmptyString(data.listingId);
+    if (!lid) return;
+    inquiriesByListing[lid] = (inquiriesByListing[lid] || 0) + 1;
+  });
+
+  // Map listing titles
+  const listingTitles = {};
+  activeListingsSnap.docs.forEach((doc) => {
+    const data = doc.data() || {};
+    listingTitles[doc.id] = normalizeNonEmptyString(data.title, doc.id);
+  });
+
+  const topListingsByViews = Object.entries(viewsByListing)
+    .map(([id, views]) => ({
+      title: listingTitles[id] || id,
+      views,
+      inquiries: inquiriesByListing[id] || 0,
+    }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 10);
+
+  return {
+    periodLabel: normalizedPeriodLabel,
+    totalListings,
+    liveListings,
+    soldListings,
+    totalViews,
+    totalInquiries,
+    totalCalls,
+    connectedCalls,
+    qualifiedCalls,
+    missedCalls,
+    activeSubscriptions,
+    newSubscriptions,
+    cancelledSubscriptions,
+    estimatedMrr,
+    activeUsers: activeUsersCount,
+    newUsers: typeof newUsersSnap === 'object' ? newUsersSnap.size : 0,
+    topSellersSummary,
+    topListingsByViews,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Monthly Dealer Report — 1st of each month at 9 AM Eastern
 // ---------------------------------------------------------------------------
 exports.monthlyDealerReport = onSchedule(
@@ -4248,9 +5776,11 @@ exports.monthlyDealerReport = onSchedule(
     for (const summary of report.sellerSummaries) {
       if (!summary.email) continue;
 
-      const userSnapshot = await getDb().collection('users').doc(summary.sellerUid).get().catch(() => null);
-      const userData = userSnapshot?.data?.() || {};
-      if (userData.emailNotificationsEnabled === false) {
+      const emailContext = await getOptionalEmailDeliveryContext({
+        userUid: summary.sellerUid,
+        email: summary.email,
+      });
+      if (emailContext.emailNotificationsEnabled === false) {
         logger.info(`monthlyDealerReport: skipped seller report for ${summary.sellerUid} because optional emails are disabled`);
         continue;
       }
@@ -4267,10 +5797,10 @@ exports.monthlyDealerReport = onSchedule(
           missedCalls: summary.missedCalls,
           totalViews: summary.totalViews,
           topMachines: summary.topMachines,
-          dashboardUrl: 'https://www.forestryequipmentsales.com/profile',
+          dashboardUrl: 'https://timberequip.com/profile',
           unsubscribeUrl: buildEmailUnsubscribeUrl({
             uid: summary.sellerUid,
-            email: summary.email,
+            email: emailContext.email || summary.email,
             scope: 'optional',
           }),
         });
@@ -4295,7 +5825,7 @@ exports.monthlyDealerReport = onSchedule(
         const { subject, html } = templates.dealerMonthlyReportAdminSummary({
           monthLabel: report.periodLabel,
           sellerSummaries: adminSummaries,
-          dashboardUrl: 'https://www.forestryequipmentsales.com/admin',
+          dashboardUrl: 'https://timberequip.com/admin',
         });
         await sendEmail({ to: getAdminRecipients(), subject, html });
       } catch (adminEmailError) {
@@ -4304,6 +5834,49 @@ exports.monthlyDealerReport = onSchedule(
     }
 
     logger.info(`monthlyDealerReport: sent ${adminSummaries.length} seller reports for ${report.periodLabel}`);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Monthly Admin Platform Report — 1st of each month at 10 AM Eastern
+// Comprehensive report sent to all admins/super_admins
+// ---------------------------------------------------------------------------
+exports.monthlyAdminPlatformReport = onSchedule(
+  {
+    schedule: '0 10 1 * *',
+    timeZone: 'America/New_York',
+    region: 'us-central1',
+    secrets: [SENDGRID_API_KEY, EMAIL_FROM, ADMIN_EMAILS],
+  },
+  async () => {
+    try {
+      const report = await buildAdminPlatformReport();
+      const { subject, html } = templates.adminPlatformMonthlyReport({
+        monthLabel: report.periodLabel,
+        totalListings: report.totalListings,
+        liveListings: report.liveListings,
+        soldListings: report.soldListings,
+        totalViews: report.totalViews,
+        totalInquiries: report.totalInquiries,
+        totalCalls: report.totalCalls,
+        connectedCalls: report.connectedCalls,
+        qualifiedCalls: report.qualifiedCalls,
+        missedCalls: report.missedCalls,
+        activeSubscriptions: report.activeSubscriptions,
+        newSubscriptions: report.newSubscriptions,
+        cancelledSubscriptions: report.cancelledSubscriptions,
+        estimatedMrr: report.estimatedMrr,
+        activeUsers: report.activeUsers,
+        newUsers: report.newUsers,
+        topSellersSummary: report.topSellersSummary,
+        topListingsByViews: report.topListingsByViews,
+        dashboardUrl: `${APP_URL}/admin`,
+      });
+      await sendEmail({ to: getAdminRecipients(), subject, html });
+      logger.info(`monthlyAdminPlatformReport: sent to ${getAdminRecipients().length} admins for ${report.periodLabel}`);
+    } catch (reportError) {
+      logger.error('monthlyAdminPlatformReport: failed to send', reportError);
+    }
   }
 );
 
@@ -4548,16 +6121,29 @@ function getStateFromMarketplaceLocation(location) {
 }
 
 function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
-  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
+  if (isPrivilegedStorefrontRecord({ role: rawRole })) {
+    return null;
+  }
+  const isDealerRole = isDealerSellerRole(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.storefrontName || data.displayName, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    businessName: normalizeNonEmptyString(data.businessName),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
+    street1: normalizeNonEmptyString(data.street1),
+    street2: normalizeNonEmptyString(data.street2),
+    city: normalizeNonEmptyString(data.city),
+    state: normalizeNonEmptyString(data.state),
+    county: normalizeNonEmptyString(data.county),
+    postalCode: normalizeNonEmptyString(data.postalCode),
+    country: normalizeNonEmptyString(data.country),
+    latitude: toFiniteNumberOrUndefined(data.latitude),
+    longitude: toFiniteNumberOrUndefined(data.longitude),
     phone: normalizeNonEmptyString(data.phone),
     email: normalizeNonEmptyString(data.email),
     website: normalizeNonEmptyString(data.website),
@@ -4566,6 +6152,11 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     storefrontName: normalizeNonEmptyString(data.storefrontName),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
     storefrontDescription: normalizeNonEmptyString(data.storefrontDescription),
+    serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
+    serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(data.servicesOfferedSubcategories, 120, 120),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
     seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
@@ -4573,29 +6164,48 @@ function serializeSellerPayloadFromStorefront(snapshotId, data = {}) {
     rating: 5,
     totalListings: 0,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    verified: Boolean(data.storefrontEnabled),
+    verified: isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified)),
+    manuallyVerified: Boolean(data.manuallyVerified),
   };
 }
 
 function serializeSellerPayloadFromUser(snapshotId, data = {}) {
-  const rawRole = normalizeNonEmptyString(data.role, 'buyer').toLowerCase();
-  const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
+  if (isPrivilegedStorefrontRecord({ role: rawRole })) {
+    return null;
+  }
+  const isDealerRole = isDealerSellerRole(rawRole);
   return {
     id: snapshotId,
     uid: snapshotId,
     name: normalizeNonEmptyString(data.displayName || data.name, 'Forestry Equipment Sales Seller'),
     type: isDealerRole ? 'Dealer' : 'Private',
-    role: normalizeNonEmptyString(data.role, 'buyer'),
+    role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
+    businessName: normalizeNonEmptyString(data.businessName),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
+    street1: normalizeNonEmptyString(data.street1),
+    street2: normalizeNonEmptyString(data.street2),
+    city: normalizeNonEmptyString(data.city),
+    state: normalizeNonEmptyString(data.state),
+    county: normalizeNonEmptyString(data.county),
+    postalCode: normalizeNonEmptyString(data.postalCode),
+    country: normalizeNonEmptyString(data.country),
+    latitude: toFiniteNumberOrUndefined(data.latitude),
+    longitude: toFiniteNumberOrUndefined(data.longitude),
     phone: normalizeNonEmptyString(data.phoneNumber),
     email: normalizeNonEmptyString(data.email),
     website: normalizeNonEmptyString(data.website),
-    logo: normalizeNonEmptyString(data.photoURL || data.profileImage),
+    logo: normalizeNonEmptyString(data.storefrontLogoUrl || data.photoURL || data.profileImage),
     coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),
     storefrontName: normalizeNonEmptyString(data.storefrontName || data.displayName),
     storefrontTagline: normalizeNonEmptyString(data.storefrontTagline),
     storefrontDescription: normalizeNonEmptyString(data.storefrontDescription || data.about),
+    serviceAreaScopes: normalizeServiceAreaScopes(data.serviceAreaScopes, 8),
+    serviceAreaStates: normalizeStringArray(data.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(data.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(data.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(data.servicesOfferedSubcategories, 120, 120),
     seoTitle: normalizeNonEmptyString(data.seoTitle),
     seoDescription: normalizeNonEmptyString(data.seoDescription),
     seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords.filter((keyword) => typeof keyword === 'string') : [],
@@ -4603,7 +6213,8 @@ function serializeSellerPayloadFromUser(snapshotId, data = {}) {
     rating: 5,
     totalListings: 0,
     memberSince: timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    verified: true,
+    verified: isVerifiedSellerRole(rawRole, Boolean(data.manuallyVerified)),
+    manuallyVerified: Boolean(data.manuallyVerified),
   };
 }
 
@@ -4759,7 +6370,7 @@ function serializePublicNewsPostFromBlog(docSnapshot) {
     content: record.content,
     author: normalizeNonEmptyString(record.authorName, 'Forestry Equipment Sales Editorial'),
     date: normalizeNonEmptyString(record.updatedAt || record.createdAt, new Date().toISOString()),
-    image: normalizeNonEmptyString(record.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+    image: normalizeNonEmptyString(record.image, '/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
     category: normalizeNonEmptyString(record.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(record.seoTitle) || undefined,
     seoDescription: normalizeNonEmptyString(record.seoDescription) || undefined,
@@ -4777,7 +6388,7 @@ function serializePublicNewsPostFromLegacy(docSnapshot) {
     content: normalizeNonEmptyString(data.content),
     author: normalizeNonEmptyString(data.author, 'Forestry Equipment Sales Editorial'),
     date: timestampValueToIso(data.date) || timestampValueToIso(data.updatedAt) || timestampValueToIso(data.createdAt) || new Date().toISOString(),
-    image: normalizeNonEmptyString(data.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+    image: normalizeNonEmptyString(data.image, '/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
     category: normalizeNonEmptyString(data.category, 'Industry News'),
     seoTitle: normalizeNonEmptyString(data.seoTitle) || undefined,
     seoDescription: normalizeNonEmptyString(data.seoDescription) || undefined,
@@ -4815,7 +6426,7 @@ async function getPublicNewsFeedPayload() {
           content: post.content,
           author: normalizeNonEmptyString(post.authorName, 'Forestry Equipment Sales Editorial'),
           date: normalizeNonEmptyString(post.updatedAt || post.createdAt, new Date().toISOString()),
-          image: normalizeNonEmptyString(post.image, '/Forestry_Equipment_Sales_Logo.png?v=20260327c'),
+          image: normalizeNonEmptyString(post.image, '/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
           category: normalizeNonEmptyString(post.category, 'Industry News'),
           seoTitle: normalizeNonEmptyString(post.seoTitle) || undefined,
           seoDescription: normalizeNonEmptyString(post.seoDescription) || undefined,
@@ -4898,16 +6509,24 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     : listing.image
       ? [listing.image]
       : [];
-  const images = normalizeImageUrls(rawImages);
+  const imageVariants = sanitizeListingCreateImageVariants(listing.imageVariants);
+  const variantImages = imageVariants
+    .map((entry) => normalizeNonEmptyString(entry.detailUrl || entry.thumbnailUrl))
+    .filter(Boolean);
+  const images = variantImages.length > 0
+    ? variantImages
+    : normalizeImageUrls(rawImages);
   const make = normalizeNonEmptyString(listing.make || listing.manufacturer || listing.brand);
 
   return {
     id: String(listingId),
     sellerUid: normalizeNonEmptyString(listing.sellerUid || listing.sellerId),
     sellerId: normalizeNonEmptyString(listing.sellerId || listing.sellerUid),
+    sellerName: normalizeNonEmptyString(listing.sellerName || listing.sellerDisplayName),
     title: normalizeNonEmptyString(listing.title, 'Equipment Listing'),
     category: normalizeNonEmptyString(listing.category, 'Equipment'),
     subcategory: normalizeNonEmptyString(listing.subcategory || listing.category, 'Equipment'),
+    sellerVerified: Boolean(listing.sellerVerified),
     make,
     manufacturer: normalizeNonEmptyString(listing.manufacturer || make),
     brand: normalizeNonEmptyString(listing.brand || make),
@@ -4920,7 +6539,7 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     description: normalizeNonEmptyString(listing.description),
     images,
     imageTitles: sanitizeListingCreateImageTitles(listing.imageTitles, images.length),
-    imageVariants: sanitizeListingCreateImageVariants(listing.imageVariants),
+    imageVariants,
     location: normalizeNonEmptyString(listing.location),
     stockNumber: normalizeNonEmptyString(listing.stockNumber),
     serialNumber: normalizeNonEmptyString(listing.serialNumber),
@@ -4949,6 +6568,7 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
     featured: Boolean(listing.featured),
     views: toFiniteNumberOrUndefined(listing.views) || 0,
     leads: toFiniteNumberOrUndefined(listing.leads) || 0,
+    sellerVerified: Boolean(listing.sellerVerified),
     createdAt:
       timestampValueToIso(listing.createdAt) ||
       normalizeNonEmptyString(listing.createdAtIso) ||
@@ -4961,6 +6581,16 @@ function buildMarketplaceListingPayload(listingId, rawListing) {
       null,
     specs: typeof listing.specs === 'object' && listing.specs ? listing.specs : {},
   };
+}
+
+function isDemoListing(listing) {
+  if (!listing || typeof listing !== 'object') {
+    return false;
+  }
+
+  const id = normalizeNonEmptyString(listing.id).toLowerCase();
+  const seller = normalizeNonEmptyString(listing.sellerUid || listing.sellerId).toLowerCase();
+  return id.startsWith('demo-') || id.startsWith('catalog-') || seller.includes('demo');
 }
 
 function toMarketplaceNumber(value) {
@@ -4976,8 +6606,9 @@ function normalizeMarketplaceText(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function isVerifiedSellerRole(role) {
-  return ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff'].includes(normalizeUserRole(role));
+function isVerifiedSellerRole(role, manuallyVerified) {
+  if (manuallyVerified === true) return true;
+  return isDealerSellerRole(role);
 }
 
 function getFeaturedListingCapForRole(role) {
@@ -5251,10 +6882,10 @@ function sortMarketplaceListings(listings, sortBy = 'newest', keyword = '') {
   };
 
   if (sortBy === 'price_asc') {
-    return [...listings].sort((left, right) => left.price - right.price);
+    return withFeaturedPriority((left, right) => left.price - right.price);
   }
   if (sortBy === 'price_desc') {
-    return [...listings].sort((left, right) => right.price - left.price);
+    return withFeaturedPriority((left, right) => right.price - left.price);
   }
   if (sortBy === 'popular') {
     return withFeaturedPriority((left, right) => (right.views + right.leads * 3) - (left.views + left.leads * 3));
@@ -5430,6 +7061,70 @@ function filterMarketplaceListings(listings, filters = {}, options = {}) {
   return sortMarketplaceListings(filtered, normalizeNonEmptyString(filters.sortBy, 'newest'), normalizeNonEmptyString(filters.q));
 }
 
+async function enrichListingsWithSellerContact(listings) {
+  const uniqueUids = [...new Set(
+    listings
+      .map((listing) => normalizeNonEmptyString(listing.sellerUid || listing.sellerId))
+      .filter(Boolean)
+  )];
+  if (uniqueUids.length === 0) return listings;
+
+  const sellerMap = new Map();
+  // Batch fetch in chunks of 100 (Firestore getAll limit)
+  for (let i = 0; i < uniqueUids.length; i += 100) {
+    const chunk = uniqueUids.slice(i, i + 100);
+    const userRefs = chunk.map((uid) => getDb().collection('users').doc(uid));
+    const storefrontRefs = chunk.map((uid) => getDb().collection('storefronts').doc(uid));
+    try {
+      const [userSnapshots, storefrontSnapshots] = await Promise.all([
+        getDb().getAll(...userRefs),
+        getDb().getAll(...storefrontRefs),
+      ]);
+
+      chunk.forEach((uid, index) => {
+        const userData = userSnapshots[index]?.exists ? (userSnapshots[index].data() || {}) : {};
+        const storefrontData = storefrontSnapshots[index]?.exists ? (storefrontSnapshots[index].data() || {}) : {};
+        const normalizedRole = normalizeUserRole(storefrontData.role || userData.role);
+        const sellerName = normalizeNonEmptyString(
+          storefrontData.storefrontName
+          || storefrontData.displayName
+          || storefrontData.name
+          || storefrontData.businessName
+          || storefrontData.company
+          || userData.storefrontName
+          || userData.displayName
+          || userData.name
+          || userData.businessName
+          || userData.company
+        );
+        const twilioPhoneNumber = normalizeNonEmptyString(
+          storefrontData.twilioPhoneNumber || userData.twilioPhoneNumber
+        );
+
+        if (!sellerName && !twilioPhoneNumber) return;
+
+        sellerMap.set(uid, {
+          name: sellerName,
+          phone: ['dealer', 'pro_dealer'].includes(normalizedRole) ? twilioPhoneNumber : '',
+        });
+      });
+    } catch (err) {
+      logger.warn('Failed to enrich seller contact data for listings batch', { error: String(err) });
+    }
+  }
+
+  return listings.map((listing) => {
+    const sellerUid = normalizeNonEmptyString(listing.sellerUid || listing.sellerId);
+    const seller = sellerMap.get(sellerUid);
+    if (!seller) return listing;
+    return {
+      ...listing,
+      sellerName: listing.sellerName || seller.name || undefined,
+      sellerPhone: seller.phone || undefined,
+    };
+  });
+}
+
 async function loadActivePublicListings() {
   const now = Date.now();
   if (publicActiveListingsCache && now - publicActiveListingsCache.fetchedAt < PUBLIC_LISTINGS_TTL_MS) {
@@ -5438,7 +7133,7 @@ async function loadActivePublicListings() {
 
   try {
     const snapshot = await getDb().collection('listings').where('approvalStatus', '==', 'approved').get();
-    const listings = snapshot.docs
+    let listings = snapshot.docs
       .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
       .filter((listing) => {
         const paymentStatus = normalizeMarketplaceText(listing.paymentStatus || 'pending');
@@ -5448,6 +7143,7 @@ async function loadActivePublicListings() {
         const expiresAtMs = toMarketplaceMillis(listing.expiresAt);
         return expiresAtMs === undefined || expiresAtMs > now;
       });
+    listings = await enrichListingsWithSellerContact(listings);
     publicActiveListingsCache = { value: listings, fetchedAt: now };
     return listings;
   } catch (error) {
@@ -5472,9 +7168,10 @@ async function loadSoldMarketplaceListings() {
 
   try {
     const snapshot = await getDb().collection('listings').where('status', '==', 'sold').get();
-    const listings = snapshot.docs
+    let listings = snapshot.docs
       .map((docSnapshot) => buildMarketplaceListingPayload(docSnapshot.id, docSnapshot.data() || {}))
       .filter((listing) => normalizeMarketplaceText(listing.approvalStatus) === 'approved' && normalizeMarketplaceText(listing.paymentStatus) === 'paid');
+    listings = await enrichListingsWithSellerContact(listings);
 
     publicSoldListingsCache = { value: listings, fetchedAt: now };
     return listings;
@@ -5579,9 +7276,9 @@ async function getPublicHomeDataPayload() {
       ''
     ).slice(0, 12);
 
-    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
     const recentSoldListings = sortMarketplaceListings(
-      soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= threeDaysAgo),
+      soldListings.filter((listing) => (toMarketplaceMillis(listing.updatedAt || listing.createdAt) || 0) >= sevenDaysAgo),
       'newest',
       ''
     ).slice(0, 12);
@@ -5732,10 +7429,10 @@ async function getMarketplaceStatsPayload() {
 
 async function assessRecaptchaToken(token, action) {
   const client = new RecaptchaEnterpriseServiceClient();
-  const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID);
+  const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID.value());
   const request = {
     assessment: {
-      event: { token, siteKey: RECAPTCHA_SITE_KEY },
+      event: { token, siteKey: RECAPTCHA_SITE_KEY.value() },
     },
     parent: projectPath,
   };
@@ -5757,24 +7454,24 @@ const LISTING_CHECKOUT_PLANS = {
     name: 'Owner-Operator Ad Program',
     amountUsd: 39,
     listingCap: 1,
-    productId: 'prod_UBpeOgS2Xbot2e',
-    priceId: 'price_1TDRzJEFuycUwY0KZiFBQxTF',
+    productId: process.env.STRIPE_PRODUCT_OWNER_OPERATOR || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_owner_operator || '',
+    priceId: process.env.STRIPE_PRICE_OWNER_OPERATOR || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_owner_operator || '',
   },
   dealer: {
     id: 'dealer',
     name: 'Dealer Ad Package',
-    amountUsd: 499,
+    amountUsd: 250,
     listingCap: 50,
-    productId: 'prod_UBpeHg3FydOSdD',
-    priceId: 'price_1TDRzJEFuycUwY0KnU6HzAg2',
+    productId: process.env.STRIPE_PRODUCT_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_dealer || '',
+    priceId: process.env.STRIPE_PRICE_DEALER || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_dealer || '',
   },
   fleet_dealer: {
     id: 'fleet_dealer',
     name: 'Pro Dealer Ad Package',
-    amountUsd: 999,
-    listingCap: 150,
-    productId: 'prod_UBpek9mEeZPlyC',
-    priceId: 'price_1TDRzKEFuycUwY0KPkBneTyh',
+    amountUsd: 500,
+    listingCap: UNLIMITED_LISTING_CAP,
+    productId: process.env.STRIPE_PRODUCT_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).product_fleet || '',
+    priceId: process.env.STRIPE_PRICE_FLEET || (LEGACY_RUNTIME_CONFIG.stripe || {}).price_fleet || '',
   },
 };
 
@@ -5795,6 +7492,21 @@ function getPlanInvoiceDisplayName(planId) {
   if (planId === 'dealer') return 'FES-DealerOS Dealer Subscription';
   if (planId === 'fleet_dealer') return 'FES-DealerOS Pro Dealer Subscription';
   return 'Owner-Operator Ad Program';
+}
+
+function getTrialMonthsForPlan(planId) {
+  if (planId === 'dealer') return 6;
+  if (planId === 'fleet_dealer') return 3;
+  return 0;
+}
+
+function buildTrialEndForPlan(planId) {
+  const trialMonths = getTrialMonthsForPlan(planId);
+  if (!trialMonths) return null;
+
+  const nextDate = new Date();
+  nextDate.setMonth(nextDate.getMonth() + trialMonths);
+  return Math.floor(nextDate.getTime() / 1000);
 }
 
 function getCheckoutStatementDescriptorSuffix(planId) {
@@ -6360,7 +8072,7 @@ function buildAccountStateFromSources(userData = {}, authRecord = null, override
     overrides.role
     ?? userData.role
     ?? authClaims.role
-    ?? 'buyer'
+    ?? 'member'
   );
   const accountStatus = normalizeAccountStatus(
     overrides.accountStatus
@@ -6452,8 +8164,322 @@ function buildStorefrontSlugValue(value, fallback = 'timber-equip-storefront') {
   return slug || fallback;
 }
 
+const STOREFRONT_PROFILE_FIELD_KEYS = Object.freeze([
+  'storefrontEnabled',
+  'storefrontSlug',
+  'storefrontName',
+  'storefrontTagline',
+  'storefrontDescription',
+  'storefrontLogoUrl',
+  'businessName',
+  'street1',
+  'street2',
+  'city',
+  'state',
+  'county',
+  'postalCode',
+  'country',
+  'latitude',
+  'longitude',
+  'serviceAreaScopes',
+  'serviceAreaStates',
+  'serviceAreaCounties',
+  'servicesOfferedCategories',
+  'servicesOfferedSubcategories',
+  'seoTitle',
+  'seoDescription',
+  'seoKeywords',
+]);
+
+function stripStorefrontFieldsForOperator(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+
+  const nextPayload = { ...payload };
+  STOREFRONT_PROFILE_FIELD_KEYS.forEach((field) => {
+    if (field in nextPayload) {
+      delete nextPayload[field];
+    }
+  });
+  return nextPayload;
+}
+
+function buildOperatorStorefrontFieldDeletes() {
+  return STOREFRONT_PROFILE_FIELD_KEYS.reduce((accumulator, field) => {
+    accumulator[field] = field === 'storefrontEnabled'
+      ? false
+      : admin.firestore.FieldValue.delete();
+    return accumulator;
+  }, {});
+}
+
+async function deleteSellerStorefrontArtifacts(uid) {
+  const normalizedUid = normalizeNonEmptyString(uid);
+  if (!normalizedUid) return;
+
+  const db = getDb();
+  const batch = db.batch();
+  batch.delete(db.collection('storefronts').doc(normalizedUid));
+  batch.delete(db.collection('publicDealers').doc(normalizedUid));
+  batch.delete(db.collection('dealerWidgetConfigs').doc(normalizedUid));
+  await batch.commit();
+
+  const webhookSnapshot = await db
+    .collection('dealerWebhookSubscriptions')
+    .where('dealerUid', '==', normalizedUid)
+    .get()
+    .catch(() => null);
+
+  if (webhookSnapshot && !webhookSnapshot.empty) {
+    for (let index = 0; index < webhookSnapshot.docs.length; index += 400) {
+      const webhookBatchDocs = webhookSnapshot.docs.slice(index, index + 400);
+      const webhookBatch = db.batch();
+      webhookBatchDocs.forEach((docSnap) => webhookBatch.delete(docSnap.ref));
+      await webhookBatch.commit();
+    }
+  }
+}
+
+function isPrivilegedStorefrontRecord(data = {}) {
+  return isOperatorOnlyRole(data.role);
+}
+
 function supportsEnterpriseStorefrontRole(role) {
-  return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalizeUserRole(role));
+  return supportsStorefrontRole(normalizeUserRole(role));
+}
+
+function pickStorefrontArchiveFields(data = {}) {
+  return STOREFRONT_PROFILE_FIELD_KEYS.reduce((accumulator, field) => {
+    if (field in data) {
+      accumulator[field] = data[field];
+    }
+    return accumulator;
+  }, {});
+}
+
+async function archivePrivilegedOperatorStorefronts({ actorUid, dryRun = false } = {}) {
+  const db = getDb();
+  const privilegedRoles = ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+  const [userSnapshots, storefrontSnapshots] = await Promise.all([
+    db.collection('users').where('role', 'in', privilegedRoles).get(),
+    db.collection('storefronts').where('role', 'in', privilegedRoles).get(),
+  ]);
+
+  const userDocsByUid = new Map(userSnapshots.docs.map((docSnap) => [docSnap.id, docSnap]));
+  const storefrontDocsByUid = new Map(storefrontSnapshots.docs.map((docSnap) => [docSnap.id, docSnap]));
+  const candidateUids = new Set([
+    ...userDocsByUid.keys(),
+    ...storefrontDocsByUid.keys(),
+  ]);
+
+  const archiveTargets = [];
+  candidateUids.forEach((uid) => {
+    const userData = userDocsByUid.get(uid)?.data() || {};
+    const storefrontData = storefrontDocsByUid.get(uid)?.data() || {};
+    const role = normalizeUserRole(userData.role || storefrontData.role);
+    if (!isOperatorOnlyRole(role)) {
+      return;
+    }
+
+    const hasLiveStorefrontData =
+      storefrontDocsByUid.has(uid) ||
+      Object.keys(pickStorefrontArchiveFields(userData)).length > 0;
+
+    if (!hasLiveStorefrontData) {
+      return;
+    }
+
+    archiveTargets.push({
+      uid,
+      role,
+      userData,
+      storefrontData,
+      hasStorefrontDoc: storefrontDocsByUid.has(uid),
+    });
+  });
+
+  if (dryRun || archiveTargets.length === 0) {
+    return {
+      dryRun: Boolean(dryRun),
+      archivedCount: archiveTargets.length,
+      archivedUids: archiveTargets.map((target) => target.uid),
+    };
+  }
+
+  const archiveBatchSize = 120;
+  for (const chunkStart of Array.from({ length: Math.ceil(archiveTargets.length / archiveBatchSize) }, (_, index) => index * archiveBatchSize)) {
+    const batch = db.batch();
+    archiveTargets.slice(chunkStart, chunkStart + archiveBatchSize).forEach((target) => {
+      const archiveRef = db.collection('adminStorefrontArchives').doc(target.uid);
+      const userRef = db.collection('users').doc(target.uid);
+      const storefrontRef = db.collection('storefronts').doc(target.uid);
+      const originalStorefrontSlug = normalizeNonEmptyString(
+        target.storefrontData.storefrontSlug || target.userData.storefrontSlug,
+      );
+
+      batch.set(archiveRef, {
+        uid: target.uid,
+        archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        archivedBy: normalizeNonEmptyString(actorUid),
+        originalRole: target.role,
+        originalStorefrontSlug: originalStorefrontSlug || null,
+        userStorefrontFields: pickStorefrontArchiveFields(target.userData),
+        storefrontDoc: target.hasStorefrontDoc ? target.storefrontData : null,
+      }, { merge: true });
+
+      batch.set(userRef, {
+        uid: target.uid,
+        ...buildOperatorStorefrontFieldDeletes(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      if (target.hasStorefrontDoc) {
+        batch.delete(storefrontRef);
+      }
+    });
+    await batch.commit();
+  }
+
+  return {
+    dryRun: false,
+    archivedCount: archiveTargets.length,
+    archivedUids: archiveTargets.map((target) => target.uid),
+  };
+}
+
+function buildEnterpriseStorefrontState({ uid, role, userData = {}, authRecord = null }) {
+  const normalizedUid = normalizeNonEmptyString(uid);
+  const normalizedRole = normalizeUserRole(role || userData.role || authRecord?.customClaims?.role || '');
+  if (!normalizedUid || !supportsEnterpriseStorefrontRole(normalizedRole)) {
+    return null;
+  }
+
+  const storefrontName = normalizeNonEmptyString(
+    userData.storefrontName || userData.displayName || userData.company || authRecord?.displayName,
+    'Forestry Equipment Sales Storefront'
+  );
+  const storefrontSlug = buildStorefrontSlugValue(
+    userData.storefrontSlug || storefrontName,
+    normalizedUid
+  );
+  const displayName = normalizeNonEmptyString(
+    userData.displayName || userData.company || authRecord?.displayName,
+    storefrontName
+  );
+  const location = buildStorefrontLocationText(userData);
+  const storefrontDescription = normalizeNonEmptyString(
+    userData.storefrontDescription || userData.about
+  );
+
+  return {
+    uid: normalizedUid,
+    role: normalizedRole,
+    storefrontEnabled: true,
+    storefrontSlug,
+    canonicalPath: `/dealers/${storefrontSlug}`,
+    displayName,
+    storefrontName,
+    storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline),
+    storefrontDescription,
+    businessName: normalizeNonEmptyString(userData.businessName || userData.company || storefrontName),
+    street1: normalizeNonEmptyString(userData.street1),
+    street2: normalizeNonEmptyString(userData.street2),
+    city: normalizeNonEmptyString(userData.city),
+    state: normalizeNonEmptyString(userData.state),
+    county: normalizeNonEmptyString(userData.county),
+    postalCode: normalizeNonEmptyString(userData.postalCode),
+    country: normalizeNonEmptyString(userData.country),
+    latitude: toFiniteNumberOrUndefined(userData.latitude) ?? null,
+    longitude: toFiniteNumberOrUndefined(userData.longitude) ?? null,
+    location,
+    phone: normalizeNonEmptyString(userData.phoneNumber),
+    email: normalizeNonEmptyString(userData.email || authRecord?.email),
+    website: normalizeNonEmptyString(userData.website),
+    logo: normalizeNonEmptyString(userData.storefrontLogoUrl || userData.photoURL || authRecord?.photoURL),
+    coverPhotoUrl: normalizeNonEmptyString(userData.coverPhotoUrl),
+    serviceAreaScopes: normalizeServiceAreaScopes(userData.serviceAreaScopes, 8),
+    serviceAreaStates: normalizeStringArray(userData.serviceAreaStates, 80, 120),
+    serviceAreaCounties: normalizeStringArray(userData.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: normalizeStringArray(userData.servicesOfferedSubcategories, 120, 120),
+    seoTitle: normalizeNonEmptyString(userData.seoTitle) ||
+      `${storefrontName} | ${normalizedRole === 'pro_dealer' ? 'Pro Dealer' : normalizedRole === 'dealer' ? 'Dealer' : 'Equipment Seller'} on Forestry Equipment Sales`,
+    seoDescription: normalizeNonEmptyString(userData.seoDescription) ||
+      `Browse forestry and logging equipment from ${storefrontName}${location ? ` in ${location}` : ''}. Verified ${normalizedRole === 'pro_dealer' ? 'Pro Dealer' : normalizedRole === 'dealer' ? 'Dealer' : 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery.`,
+    seoKeywords: Array.isArray(userData.seoKeywords) && userData.seoKeywords.length > 0
+      ? userData.seoKeywords.filter((keyword) => typeof keyword === 'string').slice(0, 30)
+      : [storefrontName, 'forestry equipment', 'logging equipment', 'used forestry equipment', 'skidders', 'harvesters', 'feller bunchers', 'forwarders'].filter(Boolean),
+  };
+}
+
+async function syncEnterpriseStorefrontState({ uid, role, userData = {}, authRecord = null, force = false }) {
+  const storefrontState = buildEnterpriseStorefrontState({ uid, role, userData, authRecord });
+  if (!storefrontState) {
+    return { synced: false, storefront: null, created: false };
+  }
+
+  const normalizedUid = storefrontState.uid;
+  const storefrontRef = getDb().collection('storefronts').doc(normalizedUid);
+  const storefrontSnap = await storefrontRef.get();
+  const storefrontData = storefrontSnap.exists ? storefrontSnap.data() || {} : {};
+  const storefrontExists = storefrontSnap.exists;
+
+  const shouldSyncUserProfile =
+    force
+    || userData.storefrontEnabled !== true
+    || normalizeNonEmptyString(userData.storefrontSlug) !== storefrontState.storefrontSlug
+    || normalizeNonEmptyString(userData.storefrontName) !== storefrontState.storefrontName;
+
+  const shouldSyncStorefront =
+    force
+    || !storefrontExists
+    || storefrontData.storefrontEnabled !== true
+    || normalizeNonEmptyString(storefrontData.storefrontSlug) !== storefrontState.storefrontSlug
+    || normalizeNonEmptyString(storefrontData.storefrontName) !== storefrontState.storefrontName
+    || normalizeUserRole(storefrontData.role) !== storefrontState.role
+    || normalizeNonEmptyString(storefrontData.displayName) !== storefrontState.displayName
+    || normalizeNonEmptyString(storefrontData.email) !== storefrontState.email;
+
+  if (!shouldSyncUserProfile && !shouldSyncStorefront) {
+    return { synced: false, storefront: storefrontState, created: false };
+  }
+
+  const writes = [];
+  if (shouldSyncUserProfile) {
+    writes.push(
+      getDb().collection('users').doc(normalizedUid).set(
+        {
+          storefrontEnabled: true,
+          storefrontSlug: storefrontState.storefrontSlug,
+          storefrontName: storefrontState.storefrontName,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (shouldSyncStorefront) {
+    writes.push(
+      storefrontRef.set(
+        {
+          ...storefrontState,
+          ...(storefrontExists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  await Promise.all(writes);
+
+  return {
+    synced: true,
+    storefront: storefrontState,
+    created: !storefrontExists,
+  };
 }
 
 function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
@@ -6475,6 +8501,15 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
   assignString('about', 5000);
   assignString('bio', 1200);
   assignString('location', 240);
+  assignString('storefrontLogoUrl', 2000);
+  assignString('businessName', 200);
+  assignString('street1', 180);
+  assignString('street2', 180);
+  assignString('city', 120);
+  assignString('state', 120);
+  assignString('county', 120);
+  assignString('postalCode', 40);
+  assignString('country', 80);
   assignString('photoURL', 2000);
   assignString('coverPhotoUrl', 2000);
   assignString('preferredLanguage', 16);
@@ -6514,6 +8549,34 @@ function sanitizeAccountProfilePatchPayload(rawPayload = {}) {
       : [];
   }
 
+  if ('serviceAreaScopes' in payload) {
+    sanitized.serviceAreaScopes = normalizeServiceAreaScopes(payload.serviceAreaScopes, 8);
+  }
+
+  if ('serviceAreaStates' in payload) {
+    sanitized.serviceAreaStates = normalizeStringArray(payload.serviceAreaStates, 80, 120);
+  }
+
+  if ('serviceAreaCounties' in payload) {
+    sanitized.serviceAreaCounties = normalizeStringArray(payload.serviceAreaCounties, 120, 120);
+  }
+
+  if ('servicesOfferedCategories' in payload) {
+    sanitized.servicesOfferedCategories = normalizeStringArray(payload.servicesOfferedCategories, 40, 120);
+  }
+
+  if ('servicesOfferedSubcategories' in payload) {
+    sanitized.servicesOfferedSubcategories = normalizeStringArray(payload.servicesOfferedSubcategories, 120, 120);
+  }
+
+  if ('latitude' in payload) {
+    sanitized.latitude = toFiniteNumberOrUndefined(payload.latitude) ?? null;
+  }
+
+  if ('longitude' in payload) {
+    sanitized.longitude = toFiniteNumberOrUndefined(payload.longitude) ?? null;
+  }
+
   return sanitized;
 }
 
@@ -6536,6 +8599,7 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     ...overrides,
   });
   const entitlement = buildAccountEntitlementSnapshot(accountState);
+  const operatorOnlyAccount = isOperatorOnlyRole(accountState.role);
   const enrolledFactors = Array.isArray(authRecord?.multiFactor?.enrolledFactors)
     ? authRecord.multiFactor.enrolledFactors
     : [];
@@ -6551,7 +8615,7 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
       || authRecord?.displayName,
       'Forestry Equipment Sales User'
     ),
-    role: accountState.role || 'buyer',
+    role: accountState.role || 'member',
     emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
     preferredLanguage: normalizeNonEmptyString(userData.preferredLanguage) || undefined,
     preferredCurrency: normalizeNonEmptyString(userData.preferredCurrency) || undefined,
@@ -6564,13 +8628,29 @@ function serializeAccountProfileData(uid, userData = {}, authRecord = null, over
     about: normalizeNonEmptyString(userData.about) || '',
     bio: normalizeNonEmptyString(userData.bio) || '',
     location: normalizeNonEmptyString(userData.location) || '',
-    storefrontEnabled: Boolean(userData.storefrontEnabled),
-    storefrontSlug: normalizeNonEmptyString(userData.storefrontSlug) || '',
-    storefrontName: normalizeNonEmptyString(userData.storefrontName) || '',
-    storefrontTagline: normalizeNonEmptyString(userData.storefrontTagline) || '',
-    storefrontDescription: normalizeNonEmptyString(userData.storefrontDescription) || '',
-    seoTitle: normalizeNonEmptyString(userData.seoTitle) || '',
-    seoDescription: normalizeNonEmptyString(userData.seoDescription) || '',
+    storefrontLogoUrl: normalizeNonEmptyString(userData.storefrontLogoUrl) || '',
+    businessName: normalizeNonEmptyString(userData.businessName) || '',
+    street1: normalizeNonEmptyString(userData.street1) || '',
+    street2: normalizeNonEmptyString(userData.street2) || '',
+    city: normalizeNonEmptyString(userData.city) || '',
+    state: normalizeNonEmptyString(userData.state) || '',
+    county: normalizeNonEmptyString(userData.county) || '',
+    postalCode: normalizeNonEmptyString(userData.postalCode) || '',
+    country: normalizeNonEmptyString(userData.country) || '',
+    latitude: toFiniteNumberOrUndefined(userData.latitude) ?? null,
+    longitude: toFiniteNumberOrUndefined(userData.longitude) ?? null,
+    storefrontEnabled: operatorOnlyAccount ? false : Boolean(userData.storefrontEnabled),
+    storefrontSlug: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontSlug) || ''),
+    storefrontName: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontName) || ''),
+    storefrontTagline: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontTagline) || ''),
+    storefrontDescription: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.storefrontDescription) || ''),
+    serviceAreaScopes: operatorOnlyAccount ? [] : normalizeServiceAreaScopes(userData.serviceAreaScopes, 8),
+    serviceAreaStates: operatorOnlyAccount ? [] : normalizeStringArray(userData.serviceAreaStates, 80, 120),
+    serviceAreaCounties: operatorOnlyAccount ? [] : normalizeStringArray(userData.serviceAreaCounties, 120, 120),
+    servicesOfferedCategories: operatorOnlyAccount ? [] : normalizeStringArray(userData.servicesOfferedCategories, 40, 120),
+    servicesOfferedSubcategories: operatorOnlyAccount ? [] : normalizeStringArray(userData.servicesOfferedSubcategories, 120, 120),
+    seoTitle: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.seoTitle) || ''),
+    seoDescription: operatorOnlyAccount ? '' : (normalizeNonEmptyString(userData.seoDescription) || ''),
     seoKeywords: Array.isArray(userData.seoKeywords)
       ? userData.seoKeywords.filter((keyword) => typeof keyword === 'string')
       : [],
@@ -6695,6 +8775,40 @@ async function buildAccountBootstrapPayload(decodedToken, options = {}) {
     }
   }
 
+  const storefrontRoleForSync = normalizeNonEmptyString(subscriptionOverrides.role || baseAccountState.role);
+  if (!firestoreQuotaLimited && supportsEnterpriseStorefrontRole(storefrontRoleForSync)) {
+    try {
+      const storefrontSync = await syncEnterpriseStorefrontState({
+        uid: actorUid,
+        role: storefrontRoleForSync,
+        userData: {
+          ...userData,
+          ...subscriptionOverrides,
+          email: userData.email || actorEmail,
+          displayName: userData.displayName || authRecord?.displayName || actorDisplayName,
+        },
+        authRecord,
+      });
+
+      if (storefrontSync.storefront) {
+        userData = {
+          ...userData,
+          storefrontEnabled: true,
+          storefrontSlug: storefrontSync.storefront.storefrontSlug,
+          storefrontName: storefrontSync.storefront.storefrontName,
+        };
+      }
+    } catch (error) {
+      if (!isFirestoreQuotaExceeded(error)) {
+        throw error;
+      }
+      firestoreQuotaLimited = true;
+      logger.warn('Account bootstrap storefront sync skipped because the Firestore daily read quota is exhausted.', {
+        actorUid,
+      });
+    }
+  }
+
   const profile = serializeAccountProfileData(actorUid, userData, authRecord, {
     uid: actorUid,
     email: actorEmail,
@@ -6707,7 +8821,7 @@ async function buildAccountBootstrapPayload(decodedToken, options = {}) {
   const normalizedRole = normalizeNonEmptyString(profile.role).toLowerCase();
   const shouldLoadSeatContext =
     Number(profile.managedAccountCap) > 0 ||
-    ['dealer', 'pro_dealer', 'admin', 'super_admin', 'developer'].includes(normalizedRole);
+    isDealerSellerRole(normalizedRole);
 
   let seatContext = null;
   let seatContextSource = 'not_applicable';
@@ -6807,7 +8921,7 @@ async function listAdminDirectoryUsersPayload() {
       createdAt;
     const fallbackRole = isPrivilegedAdminEmail(email)
       ? 'super_admin'
-      : normalizeUserRole(String(authRecord.customClaims?.role || 'buyer'));
+      : normalizeUserRole(String(authRecord.customClaims?.role || 'member'));
     const role = firestoreProfilesAvailable && isSupportedUserRole(String(data.role || ''))
       ? String(data.role)
       : fallbackRole;
@@ -6835,6 +8949,7 @@ async function listAdminDirectoryUsersPayload() {
       totalListings: Number(data.totalListings || 0),
       totalLeads: Number(data.totalLeads || 0),
       parentAccountUid: String(data.parentAccountUid || '').trim() || undefined,
+      manuallyVerified: Boolean(data.manuallyVerified),
     };
   });
 
@@ -6867,6 +8982,29 @@ async function getFirestoreQueryCount(query) {
   return snapshot.size;
 }
 
+async function getFirestoreQuerySum(query, field) {
+  if (query && typeof query.aggregate === 'function') {
+    try {
+      const aggregateSnapshot = await query.aggregate({ total: admin.firestore.AggregateField.sum(field) }).get();
+      const aggregateData = typeof aggregateSnapshot?.data === 'function' ? aggregateSnapshot.data() : {};
+      return Number(aggregateData?.total || 0);
+    } catch {
+      // Fallback: aggregate API not available or field not indexed
+    }
+  }
+
+  // Manual fallback: scan all documents
+  const snapshot = await query.select(field).get();
+  let total = 0;
+  for (const doc of snapshot.docs) {
+    const value = doc.data()?.[field];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      total += value;
+    }
+  }
+  return total;
+}
+
 function computeAdminOverviewMarketSentiment({ conversionRate, inventoryTurnoverRate, liveListings }) {
   if (liveListings <= 0) {
     return 'Idle';
@@ -6896,6 +9034,8 @@ async function buildAdminOverviewBootstrapPayload() {
     recentCallsResult,
     callCountResult,
     activeUsersResult,
+    totalViewsResult,
+    activeSubscriptionsResult,
   ] = await Promise.allSettled([
     getFirestoreQueryCount(db.collection('listings')),
     getFirestoreQueryCount(
@@ -6912,6 +9052,8 @@ async function buildAdminOverviewBootstrapPayload() {
     db.collection('calls').orderBy('createdAt', 'desc').limit(5).get(),
     getFirestoreQueryCount(db.collection('calls')),
     getFirestoreQueryCount(db.collection('users').where('accountStatus', '==', 'active')),
+    getFirestoreQuerySum(db.collection('listings'), 'views'),
+    db.collection('subscriptions').where('status', '==', 'active').get(),
   ]);
 
   const errors = {};
@@ -6940,6 +9082,32 @@ async function buildAdminOverviewBootstrapPayload() {
   const soldListings = resolveCount('listings_sold', soldListingsResult);
   const callVolume = resolveCount('calls_total', callCountResult);
   const activeUsers = resolveCount('users_active', activeUsersResult);
+  const totalViews = resolveCount('total_views', totalViewsResult);
+
+  // Active subscriptions: only count subs whose currentPeriodEnd is still in the future
+  let activeSubscriptions = 0;
+  if (activeSubscriptionsResult.status === 'fulfilled') {
+    const nowMs = Date.now();
+    for (const doc of activeSubscriptionsResult.value.docs) {
+      const data = doc.data() || {};
+      const periodEnd = data.currentPeriodEnd;
+      let periodEndMs = 0;
+      if (periodEnd && typeof periodEnd.toMillis === 'function') {
+        periodEndMs = periodEnd.toMillis();
+      } else if (typeof periodEnd === 'number') {
+        periodEndMs = periodEnd > 1e12 ? periodEnd : periodEnd * 1000;
+      }
+      if (periodEndMs > nowMs) {
+        activeSubscriptions += 1;
+      }
+    }
+  } else if (isFirestoreQuotaExceeded(activeSubscriptionsResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('active_subscriptions');
+    errors.active_subscriptions = 'Active subscription count is temporarily unavailable because the Firestore daily read quota is exhausted.';
+  } else {
+    throw activeSubscriptionsResult.reason;
+  }
 
   let recentListings = [];
   if (recentListingsResult.status === 'fulfilled') {
@@ -6992,6 +9160,8 @@ async function buildAdminOverviewBootstrapPayload() {
       totalLeads: totalInquiries,
       callVolume,
       activeUsers,
+      totalViews,
+      activeSubscriptions,
       conversionRate,
       marketSentiment: computeAdminOverviewMarketSentiment({
         conversionRate,
@@ -7023,11 +9193,12 @@ async function buildAdminOperationsBootstrapPayload(options = {}) {
     ? buildAdminOverviewBootstrapPayload()
     : Promise.resolve(null);
 
-  const [usersResult, inquiriesResult, callsResult, overviewResult] = await Promise.allSettled([
+  const [usersResult, inquiriesResult, callsResult, overviewResult, listingViewsResult] = await Promise.allSettled([
     listAdminDirectoryUsersPayload(),
     getDb().collection('inquiries').orderBy('createdAt', 'desc').get(),
     getDb().collection('calls').orderBy('createdAt', 'desc').get(),
     overviewPromise,
+    getDb().collection('listings').select('sellerUid', 'views').get(),
   ]);
 
   const errors = {};
@@ -7076,6 +9247,25 @@ async function buildAdminOperationsBootstrapPayload(options = {}) {
     } else {
       throw callsResult.reason;
     }
+  }
+
+  // Aggregate storefront views per seller from listings
+  const sellerViewsMap = {};
+  if (listingViewsResult.status === 'fulfilled') {
+    listingViewsResult.value.docs.forEach((doc) => {
+      const d = doc.data();
+      const uid = String(d.sellerUid || '').trim();
+      if (uid) {
+        sellerViewsMap[uid] = (sellerViewsMap[uid] || 0) + Number(d.views || 0);
+      }
+    });
+    users.forEach((u) => {
+      u.storefrontViews = sellerViewsMap[u.uid] || 0;
+    });
+  } else if (isFirestoreQuotaExceeded(listingViewsResult.reason)) {
+    firestoreQuotaLimited = true;
+    degradedSections.push('listingViews');
+    errors.listingViews = 'Storefront views are temporarily unavailable because the Firestore daily read quota is exhausted.';
   }
 
   let overview = null;
@@ -7305,7 +9495,7 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
 
   const userRef = getDb().collection('users').doc(normalizedUserUid);
   let existingUser = {};
-  let existingRole = 'buyer';
+  let existingRole = 'member';
   let existingAccessSource = '';
   let resolvedStripeCustomerId = String(stripeCustomerId || '').trim();
   let firestoreQuotaLimited = false;
@@ -7385,13 +9575,30 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
         source,
       }
     );
+
+    // Auto-verify dealers and pro dealers when their subscription becomes active
+    const autoVerifyRoles = ['dealer', 'pro_dealer'];
+    const activeStatuses = ['active', 'trialing'];
+    if (autoVerifyRoles.includes(nextRole) && activeStatuses.includes(effectiveSubscriptionStatus)) {
+      try {
+        await userRef.set({ manuallyVerified: true, storefrontEnabled: true }, { merge: true });
+        const listingsSnap = await getDb().collection('listings').where('sellerUid', '==', normalizedUserUid).get();
+        if (!listingsSnap.empty) {
+          const batch = getDb().batch();
+          listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified: true }));
+          await batch.commit();
+        }
+      } catch (verifyErr) {
+        console.warn('Auto-verify on subscription failed (non-blocking):', verifyErr);
+      }
+    }
   }
 
   if (authUserRecord) {
     const existingClaims = authUserRecord.customClaims || {};
     const nextClaims = buildAccessClaims(existingClaims, {
       role: isSubscriptionExemptRole(existingRole)
-        ? normalizeUserRole(String(existingClaims.role || existingRole || 'buyer'))
+        ? normalizeUserRole(String(existingClaims.role || existingRole || 'member'))
         : nextRole,
       subscriptionPlanId: summary.planId,
       listingCap: summary.listingCap,
@@ -7437,6 +9644,19 @@ async function applyAccountSubscriptionToUserProfile({ stripe = null, stripeCust
         },
       });
     }
+  }
+
+  if (!skipFirestore && !firestoreQuotaLimited) {
+    await syncEnterpriseStorefrontState({
+      uid: normalizedUserUid,
+      role: nextRole,
+      userData: {
+        ...existingUser,
+        ...updatePayload,
+      },
+      authRecord: authUserRecord,
+      force: true,
+    });
   }
 
   if (!skipFirestore) {
@@ -7932,7 +10152,14 @@ async function handleTwilioInboundCall(req, res) {
 }
 
 async function handleTwilioCallStatus(req, res) {
-  // Status callbacks don't always have valid signatures when sent as action callbacks
+  if (!validateTwilioRequest(req)) {
+    logger.warn('Invalid Twilio signature on call status callback.', {
+      path: req.originalUrl || req.url,
+      callSid: String(req.body?.CallSid || '').trim(),
+    });
+    res.set('Content-Type', 'text/xml');
+    return res.status(403).send('<Response><Say>Unauthorized.</Say></Response>');
+  }
   const callSid = String(req.body?.CallSid || '').trim();
   const callStatus = String(req.body?.DialCallStatus || req.body?.CallStatus || '').trim();
   const callDuration = parseInt(req.body?.CallDuration || req.body?.Duration || '0', 10) || 0;
@@ -8069,7 +10296,12 @@ function getRequestBaseUrl(req) {
 async function getDecodedUserFromBearer(req) {
   const idToken = req.headers.authorization?.split('Bearer ')[1];
   if (!idToken) return null;
-  return admin.auth().verifyIdToken(idToken);
+  try {
+    return await admin.auth().verifyIdToken(idToken, true);
+  } catch (err) {
+    logger.warn('Token verification failed', { error: String(err?.message || err) });
+    return null;
+  }
 }
 
 async function getListingLifecycleActorContext(req, listing = null) {
@@ -8117,35 +10349,77 @@ async function getListingLifecycleActorContext(req, listing = null) {
 }
 
 async function resolveStripePriceIdForPlan(stripe, plan) {
-  if (plan.priceId) {
-    return plan.priceId;
-  }
+  const expectedUnitAmount = Math.round(Number(plan.amountUsd || 0) * 100);
+  let preferredPriceId = '';
+  let defaultPrice = null;
 
-  const product = await stripe.products.retrieve(plan.productId, {
+  const product = plan.productId ? await stripe.products.retrieve(plan.productId, {
     expand: ['default_price'],
-  });
+  }) : null;
 
-  let priceId = '';
-  if (typeof product.default_price === 'string') {
-    priceId = product.default_price;
-  } else if (product.default_price?.id) {
-    priceId = product.default_price.id;
+  if (product?.default_price && typeof product.default_price !== 'string') {
+    defaultPrice = product.default_price;
   }
 
-  if (!priceId) {
+  const candidatePriceId = String(plan.priceId || '').trim();
+  if (candidatePriceId) {
+    try {
+      const candidatePrice = await stripe.prices.retrieve(candidatePriceId);
+      if (
+        candidatePrice?.active
+        && candidatePrice.type === 'recurring'
+        && candidatePrice.recurring?.interval === 'month'
+        && (!expectedUnitAmount || candidatePrice.unit_amount === expectedUnitAmount)
+      ) {
+        return candidatePrice.id;
+      }
+    } catch (error) {
+      logger.warn('Configured Stripe price id could not be used for plan; falling back to product price discovery.', {
+        planId: plan.id,
+        candidatePriceId,
+        message: error instanceof Error ? error.message : String(error || ''),
+      });
+    }
+  }
+
+  if (
+    defaultPrice?.id
+    && defaultPrice.active
+    && defaultPrice.type === 'recurring'
+    && defaultPrice.recurring?.interval === 'month'
+    && (!expectedUnitAmount || defaultPrice.unit_amount === expectedUnitAmount)
+  ) {
+    preferredPriceId = defaultPrice.id;
+  }
+
+  if (!preferredPriceId && plan.productId) {
     const prices = await stripe.prices.list({
       product: plan.productId,
       active: true,
       limit: 20,
     });
-    const preferred = prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month') || prices.data[0];
+
+    const exactAmountPrice = prices.data.find((p) =>
+      p.type === 'recurring'
+      && p.recurring?.interval === 'month'
+      && (!expectedUnitAmount || p.unit_amount === expectedUnitAmount)
+    );
+    const preferred = exactAmountPrice
+      || prices.data.find((p) => p.type === 'recurring' && p.recurring?.interval === 'month')
+      || prices.data[0];
+
     if (!preferred?.id) {
       throw new Error(`No active Stripe price found for product ${plan.productId}.`);
     }
-    priceId = preferred.id;
+
+    preferredPriceId = preferred.id;
   }
 
-  return priceId;
+  if (!preferredPriceId) {
+    throw new Error(`No Stripe price could be resolved for plan ${plan.id}.`);
+  }
+
+  return preferredPriceId;
 }
 
 async function findExistingStripeCustomerId(stripe, userUid, email) {
@@ -8769,7 +11043,7 @@ function buildSerializableAuthRecord(authRecord, overrides = {}) {
 }
 
 function isSupportedUserRole(role) {
-  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'].includes(normalizeUserRole(role));
+  return ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'].includes(normalizeUserRole(role));
 }
 
 function isAuthUserNotFound(error) {
@@ -9332,7 +11606,7 @@ function serializeAdminUserData(uid, data = {}, authRecord = null) {
     phone,
     phoneNumber: phone,
     company: String(data.company || '').trim(),
-    role: isSupportedUserRole(String(data.role || '')) ? normalizeUserRole(String(data.role || '')) : 'buyer',
+    role: isSupportedUserRole(String(data.role || '')) ? normalizeUserRole(String(data.role || '')) : 'member',
     status: toAccountStatusLabel(accountStatus, authDisabled),
     accountStatus,
     authDisabled,
@@ -9365,8 +11639,8 @@ async function serializeAdminUser(userDoc) {
 function canCreateManagedRole(parentRole, childRole) {
   const normalizedParentRole = normalizeUserRole(parentRole);
   const normalizedChildRole = normalizeUserRole(childRole);
-  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
-  const dealerManagedRoles = ['member', 'buyer'];
+  const adminManagedRoles = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'];
+  const dealerManagedRoles = ['member'];
 
   if (normalizedParentRole === 'super_admin') return true;
   if (normalizedParentRole === 'admin' || normalizedParentRole === 'developer') return adminManagedRoles.includes(normalizedChildRole);
@@ -9394,6 +11668,20 @@ function buildTemplateTestPayload(templateKey) {
   const renewUrl = `${APP_URL}/profile#subscription`;
 
   switch (normalizedTemplateKey) {
+    case 'passwordReset':
+      return templates.passwordReset({
+        displayName: 'Caleb',
+        intro: 'We received a request to reset your Forestry Equipment Sales password.',
+        resetUrl: `${APP_URL}/reset-password?oobCode=demo-code&mode=resetPassword&continueUrl=%2Flogin`,
+        loginUrl: `${APP_URL}/login`,
+      });
+    case 'passwordResetSuccess':
+      return templates.passwordResetSuccess({
+        displayName: 'Caleb',
+        changedAt: 'April 2, 2026 at 2:10 AM',
+        loginUrl: `${APP_URL}/login`,
+        supportUrl: `${APP_URL}/contact`,
+      });
     case 'subscriptionCreated':
       return templates.subscriptionCreated({
         displayName: 'Caleb',
@@ -9411,6 +11699,24 @@ function buildTemplateTestPayload(templateKey) {
         planName: 'Dealer Ad Package',
         expiryDate: 'April 1, 2026',
         renewUrl,
+      });
+    case 'voicemailNotification':
+      return templates.voicemailNotification({
+        sellerName: 'Caleb',
+        callerNumber: '(218) 555-0133',
+        callTimestamp: 'April 2, 2026 at 5:40 AM',
+        dashboardUrl: `${APP_URL}/profile?tab=Calls`,
+      });
+    case 'dealerWidgetInquiryNotification':
+      return templates.dealerWidgetInquiryNotification({
+        sellerName: 'Red Pine Equipment',
+        dealerName: 'Red Pine Equipment',
+        buyerName: 'Forestry Buyer',
+        buyerEmail: 'buyer@example.com',
+        buyerPhone: '(218) 555-0177',
+        listingId: 'listing-1001',
+        message: 'Interested in this machine and would like delivery options.',
+        dashboardUrl: `${APP_URL}/dealer-os`,
       });
     case 'mediaKitRequestConfirmation':
       return templates.mediaKitRequestConfirmation({
@@ -9432,6 +11738,16 @@ function buildTemplateTestPayload(templateKey) {
         requestedAmount: 185000,
         company: 'North Woods Logging',
         dashboardUrl: `${APP_URL}/profile?tab=${encodeURIComponent('Financing')}`,
+      });
+    case 'paymentFailedPastDue':
+      return templates.paymentFailedPastDue({
+        displayName: 'Caleb',
+        planName: 'Dealer Ad Package',
+        amountDue: '$299.00',
+        invoiceNumber: 'INV-10024',
+        retryDate: 'April 5, 2026',
+        billingUrl: `${APP_URL}/profile?tab=Account%20Settings`,
+        hostedInvoiceUrl: `${APP_URL}/profile?tab=Account%20Settings`,
       });
     case 'logisticsInquiryConfirmation':
       return templates.inquiryConfirmation({
@@ -9455,6 +11771,53 @@ function buildTemplateTestPayload(templateKey) {
         category: 'Partner With Us',
         supportUrl: `${APP_URL}/contact`,
       });
+    case 'accountLocked':
+      return templates.accountLocked({
+        displayName: 'Caleb',
+        actorName: 'Forestry Equipment Sales Admin',
+        supportUrl: `${APP_URL}/contact`,
+      });
+    case 'accountUnlocked':
+      return templates.accountUnlocked({
+        displayName: 'Caleb',
+        actorName: 'Forestry Equipment Sales Admin',
+        loginUrl: `${APP_URL}/login`,
+        supportUrl: `${APP_URL}/contact`,
+      });
+    case 'adminPlatformMonthlyReport':
+      return templates.adminPlatformMonthlyReport({
+        monthLabel: 'Last 30 Days ending Apr 7, 2026',
+        totalListings: 247,
+        liveListings: 189,
+        soldListings: 34,
+        totalViews: 12847,
+        totalInquiries: 342,
+        totalCalls: 218,
+        connectedCalls: 156,
+        qualifiedCalls: 98,
+        missedCalls: 47,
+        activeSubscriptions: 42,
+        newSubscriptions: 8,
+        cancelledSubscriptions: 3,
+        estimatedMrr: 8942,
+        activeUsers: 1204,
+        newUsers: 87,
+        topSellersSummary: [
+          { name: 'Red Pine Equipment', listings: 24, views: 2840, leads: 67, calls: 41 },
+          { name: 'Northern Timber Co', listings: 18, views: 2156, leads: 52, calls: 33 },
+          { name: 'Great Lakes Forestry', listings: 15, views: 1890, leads: 41, calls: 28 },
+          { name: 'Pacific Coast Equipment', listings: 12, views: 1420, leads: 34, calls: 22 },
+          { name: 'Midwest Logger Supply', listings: 10, views: 980, leads: 23, calls: 15 },
+        ],
+        topListingsByViews: [
+          { title: '2024 Tigercat 1165 Harvester', views: 847, inquiries: 23 },
+          { title: '2023 John Deere 959M Feller Buncher', views: 692, inquiries: 18 },
+          { title: '2022 CAT 568 Log Loader', views: 541, inquiries: 15 },
+          { title: '2024 Ponsse Scorpion King', views: 487, inquiries: 12 },
+          { title: '2023 Komatsu PC390LL-11 Log Loader', views: 423, inquiries: 11 },
+        ],
+        dashboardUrl: `${APP_URL}/admin`,
+      });
     default:
       return null;
   }
@@ -9465,7 +11828,7 @@ exports.publicPagesProxy = handlePublicPagesRequest;
 exports.publicPages = onRequest(
   {
     region: 'us-central1',
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (req, res) => handlePublicPagesRequest(req, res)
 );
@@ -9473,7 +11836,7 @@ exports.publicPages = onRequest(
 exports.apiProxy = onRequest(
   {
     region: 'us-central1',
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
     secrets: [
       SENDGRID_API_KEY,
       EMAIL_FROM,
@@ -9487,6 +11850,7 @@ exports.apiProxy = onRequest(
       TWILIO_AUTH_TOKEN,
       TWILIO_API_KEY_SID,
       TWILIO_API_KEY_SECRET,
+      PRIVILEGED_ADMIN_EMAILS_SECRET,
     ],
   },
   async (req, res) => {
@@ -9508,16 +11872,80 @@ exports.apiProxy = onRequest(
       applyApiResponseCachePolicy(res, req, path);
       const stripe = createStripeClient();
 
+      if (req.method === 'GET' && path === '/public/dealers') {
+        try {
+          const dealers = await getPublicDealerDirectoryEntries();
+          res.set('Access-Control-Allow-Origin', '*');
+          res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+          return res.status(200).json({
+            dealers,
+            count: dealers.length,
+          });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            logger.warn('Public dealer directory API is returning a quota-limited fallback feed.');
+            return res.status(200).json(buildQuotaLimitedPayload('dealers', [], 'Dealer directory data is temporarily unavailable because the Firestore daily read quota is exhausted.', {
+              source: 'quota_fallback',
+            }));
+          }
+          throw error;
+        }
+      }
+
       const publicDealerFeedMatch = path.match(/^\/public\/dealers\/([^/]+)\/feed\.json$/i);
       if (req.method === 'GET' && publicDealerFeedMatch) {
-        const dealer = await resolvePublicDealer(decodeURIComponent(publicDealerFeedMatch[1] || ''));
+        const dealerIdentity = decodeURIComponent(publicDealerFeedMatch[1] || '');
+
+        // Private feed: check X-Dealer-Feed-Key if privateFeedEnabled
+        const dealer = await resolvePublicDealer(dealerIdentity);
+        if (dealer.privateFeedEnabled) {
+          const feedKey = req.headers['x-dealer-feed-key'] || '';
+          if (!feedKey || feedKey !== dealer.privateFeedApiKey) {
+            res.set('Access-Control-Allow-Origin', '*');
+            return res.status(401).json({ error: 'This feed requires authentication. Include X-Dealer-Feed-Key header.' });
+          }
+        }
+
         const limitCount = Math.max(1, Math.min(Number(req.query.limit || 24), 100));
         const featuredOnly = ['1', 'true', 'yes'].includes(String(req.query.featuredOnly || '').trim().toLowerCase());
         const listings = await getPublicDealerListings(dealer.sellerUid, { limitCount, featuredOnly });
         const payload = listings.map(({ id, data }) => buildPublicDealerListingPayload(id, data, dealer));
 
+        // Compute updatedAt from the most recent listing
+        const latestUpdate = listings.reduce((latest, { data }) => {
+          const ts = data.updatedAt || data.createdAt;
+          const d = ts && typeof ts.toDate === 'function' ? ts.toDate() : ts ? new Date(ts) : null;
+          return d && (!latest || d > latest) ? d : latest;
+        }, null);
+        const updatedAt = latestUpdate ? latestUpdate.toISOString() : new Date().toISOString();
+
+        // ETag / conditional request support
+        const crypto = require('crypto');
+        const etagSource = `${dealer.sellerUid}:${payload.length}:${updatedAt}:${limitCount}:${featuredOnly}`;
+        const etag = `"${crypto.createHash('md5').update(etagSource).digest('hex')}"`;
+
+        if (req.headers['if-none-match'] === etag) {
+          res.set('Access-Control-Allow-Origin', '*');
+          res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+          res.set('ETag', etag);
+          return res.status(304).end();
+        }
+
+        const ifModifiedSince = req.headers['if-modified-since'];
+        if (ifModifiedSince && latestUpdate) {
+          const clientDate = new Date(ifModifiedSince);
+          if (!isNaN(clientDate.getTime()) && latestUpdate <= clientDate) {
+            res.set('Access-Control-Allow-Origin', '*');
+            res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+            res.set('ETag', etag);
+            return res.status(304).end();
+          }
+        }
+
         res.set('Access-Control-Allow-Origin', '*');
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+        res.set('ETag', etag);
+        res.set('Last-Modified', updatedAt);
         return res.status(200).json({
           dealer: {
             id: dealer.sellerUid,
@@ -9529,9 +11957,11 @@ exports.apiProxy = onRequest(
             phone: dealer.phone,
             email: dealer.email,
             location: dealer.location,
+            logo: dealer.logo || '',
           },
           count: payload.length,
           featuredOnly,
+          updatedAt,
           feedUrl: `${APP_URL}/api/public/dealers/${encodeURIComponent(dealer.publicId)}/feed.json`,
           listings: payload,
         });
@@ -9546,16 +11976,253 @@ exports.apiProxy = onRequest(
         const payload = listings.map(({ id, data }) => buildPublicDealerListingPayload(id, data, dealer));
         const feedUrl = `${APP_URL}/api/public/dealers/${encodeURIComponent(dealer.publicId)}/feed.json${featuredOnly ? '?featuredOnly=true' : ''}`;
 
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
         res.set('Content-Type', 'text/html; charset=utf-8');
         return res.status(200).send(renderDealerEmbedHtml({ dealer, listings: payload, feedUrl, featuredOnly }));
       }
 
       if (req.method === 'GET' && path === '/public/dealer-embed.js') {
         res.set('Access-Control-Allow-Origin', '*');
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
         res.set('Content-Type', 'application/javascript; charset=utf-8');
         return res.status(200).send(`(function(){var script=document.currentScript;var dealer=script&&script.dataset?script.dataset.dealer:'';var targetId=script&&script.dataset?script.dataset.target:'';var limit=script&&script.dataset&&script.dataset.limit?script.dataset.limit:'12';var featuredOnly=script&&script.dataset&&script.dataset.featuredOnly?script.dataset.featuredOnly:'false';if(!dealer){console.error('Forestry Equipment Sales dealer embed requires data-dealer.');return;}var target=targetId?document.getElementById(targetId):null;if(!target){target=document.createElement('div');if(script&&script.parentNode){script.parentNode.insertBefore(target,script.nextSibling);}else{document.body.appendChild(target);}}var iframe=document.createElement('iframe');var params=new URLSearchParams();if(limit)params.set('limit',limit);if(featuredOnly)params.set('featuredOnly',featuredOnly);iframe.src='${APP_URL}/api/public/dealers/'+encodeURIComponent(dealer)+'/embed?'+params.toString();iframe.loading='lazy';iframe.style.width='100%';iframe.style.minHeight=(script&&script.dataset&&script.dataset.height?script.dataset.height:'980')+'px';iframe.style.border='0';iframe.style.display='block';iframe.setAttribute('referrerpolicy','strict-origin-when-cross-origin');target.innerHTML='';target.appendChild(iframe);})();`);
+      }
+
+      /* ── Backend Spam Scoring ──────────────────────────────────── */
+      function calculateInquirySpamSignal({ buyerName = '', buyerEmail = '', buyerPhone = '', message = '' }) {
+        let score = 0;
+        const flags = [];
+        const combined = `${buyerName} ${buyerEmail} ${message}`.toLowerCase();
+
+        const SPAM_PHRASES = [
+          'whatsapp', 'telegram', 'crypto', 'bitcoin', 'western union', 'wire transfer',
+          'money order', 'cashier check', 'send money', 'bank transfer', 'paypal gift',
+          'zelle me', 'venmo me', 'urgent transfer', 'wire now',
+          'signal me', 'text me at', 'email me at', 'contact me outside',
+          'act now', 'limited time', "don't miss", 'last chance',
+          'click here', 'free shipping', 'no obligation', 'congratulations',
+          "you've been selected", 'dear sir', 'dear friend', 'dear madam',
+        ];
+        const DISPOSABLE_DOMAINS = [
+          'example.com', 'test.com', 'mailinator.com', 'guerrillamail.com',
+          'tempmail.com', 'throwaway.email', 'yopmail.com', 'sharklasers.com',
+          'grr.la', 'dispostable.com', 'maildrop.cc', 'trashmail.com',
+        ];
+
+        // Spam phrase matches
+        for (const phrase of SPAM_PHRASES) {
+          if (combined.includes(phrase)) {
+            score += 15;
+            flags.push(`spam_phrase:${phrase}`);
+          }
+        }
+
+        // Email checks
+        const emailLower = buyerEmail.toLowerCase();
+        if (!emailLower.includes('@')) {
+          score += 25;
+          flags.push('missing_email_at');
+        } else {
+          const domain = emailLower.split('@')[1] || '';
+          if (DISPOSABLE_DOMAINS.includes(domain)) {
+            score += 20;
+            flags.push(`disposable_email:${domain}`);
+          }
+        }
+
+        // Excessive URLs (3+)
+        const urlCount = (message.match(/https?:\/\//gi) || []).length;
+        if (urlCount >= 3) {
+          score += 15;
+          flags.push(`excessive_urls:${urlCount}`);
+        }
+
+        // Excessive CAPS
+        if (message.length > 20) {
+          const upperCount = (message.match(/[A-Z]/g) || []).length;
+          if (upperCount / message.length > 0.5) {
+            score += 10;
+            flags.push('excessive_caps');
+          }
+        }
+
+        // Repeated characters
+        if (/(.)\1{4,}/.test(message)) {
+          score += 10;
+          flags.push('repeated_chars');
+        }
+
+        // Excessive special characters
+        if (message.length > 10) {
+          const nonAlphaNum = (message.match(/[^a-zA-Z0-9\s]/g) || []).length;
+          if (nonAlphaNum / message.length > 0.3) {
+            score += 15;
+            flags.push('excessive_special_chars');
+          }
+        }
+
+        return { score: Math.min(score, 100), flags };
+      }
+
+      /* ── Dealer Widget JS (Web Component) ──────────────────────── */
+      if (req.method === 'GET' && path === '/public/dealer-widget.js') {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+        res.set('Content-Type', 'application/javascript; charset=utf-8');
+        return res.status(200).send(renderDealerWidgetScript(APP_URL));
+      }
+
+      /* ── Dealer Widget Config (public, read-only) ─────────────── */
+      const widgetConfigMatch = path.match(/^\/public\/dealers\/([^/]+)\/widget-config$/i);
+      if (req.method === 'GET' && widgetConfigMatch) {
+        try {
+          const dealer = await resolvePublicDealer(decodeURIComponent(widgetConfigMatch[1] || ''));
+          const configDoc = await getDb().collection('dealerWidgetConfigs').doc(dealer.sellerUid).get();
+          const config = configDoc.exists ? (configDoc.data() || {}) : {};
+          res.set('Cache-Control', 'public, max-age=600, s-maxage=600');
+          res.set('Access-Control-Allow-Origin', '*');
+          return res.status(200).json({
+            config: {
+              cardStyle: config.cardStyle || 'fes-native',
+              accentColor: config.accentColor || '#16A34A',
+              fontFamily: config.fontFamily || '',
+              darkMode: Boolean(config.darkMode),
+              showInquiry: config.showInquiry !== false,
+              showCall: config.showCall !== false,
+              showDetails: config.showDetails !== false,
+              pageSize: Number(config.pageSize) || 12,
+              dealerPhone: String(dealer.phone || ''),
+              dealerName: String(dealer.storefrontName || dealer.name || ''),
+            },
+          });
+        } catch (error) {
+          if (error && error.message && error.message.includes('not found')) {
+            return res.status(404).json({ error: 'Dealer not found.' });
+          }
+          throw error;
+        }
+      }
+
+      /* ── Public Dealer Inquiry (unauthenticated) ──────────────── */
+      const publicInquiryMatch = path.match(/^\/public\/dealers\/([^/]+)\/inquiry$/i);
+      if (req.method === 'POST' && publicInquiryMatch) {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        if (req.method === 'OPTIONS') {
+          return res.status(204).send('');
+        }
+
+        const dealerId = decodeURIComponent(publicInquiryMatch[1] || '');
+        const dealer = await resolvePublicDealer(dealerId);
+        const body = req.body || {};
+        const buyerName = String(body.name || '').trim();
+        const buyerEmail = String(body.email || '').trim().toLowerCase();
+        const buyerPhone = String(body.phone || '').trim();
+        const message = String(body.message || '').trim().slice(0, 5000);
+        const listingId = String(body.listingId || '').trim();
+
+        if (!buyerName || !buyerEmail) {
+          return res.status(400).json({ error: 'Name and email are required.' });
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+          return res.status(400).json({ error: 'Invalid email address.' });
+        }
+
+        /* reCAPTCHA verification (mandatory — fail-closed) */
+        const rcToken = String(body.recaptchaToken || '').trim();
+        if (!rcToken) {
+          return res.status(403).json({ error: 'Security verification is required.' });
+        }
+        try {
+          const rcResult = await assessRecaptchaToken(rcToken, 'dealer_widget_inquiry');
+          if (!rcResult.valid || rcResult.score < 0.5) {
+            return res.status(403).json({ error: 'reCAPTCHA verification failed.' });
+          }
+        } catch (rcErr) {
+          logger.warn('reCAPTCHA assessment failed for dealer widget inquiry', { error: String(rcErr?.message || rcErr) });
+          return res.status(403).json({ error: 'Security verification failed. Please try again.' });
+        }
+
+        /* Firestore-based rate limiting (per-IP + per-dealer, 5 per 15 min) — atomic transaction */
+        const inquiryIpAddr = getRequestIp(req);
+        const rateLimitKey = `inquiry:${dealerId}:${inquiryIpAddr}`.slice(0, 500);
+        const rateLimitRef = getDb().collection('rateLimits').doc(rateLimitKey);
+        try {
+          const rateLimited = await getDb().runTransaction(async (txn) => {
+            const rateLimitDoc = await txn.get(rateLimitRef);
+            const now = Date.now();
+            if (rateLimitDoc.exists) {
+              const rlData = rateLimitDoc.data();
+              if (rlData && rlData.count >= 5 && rlData.windowEnd > now) {
+                return true; // rate limited
+              }
+              if (rlData && rlData.windowEnd <= now) {
+                txn.set(rateLimitRef, { count: 1, windowEnd: now + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              } else {
+                txn.update(rateLimitRef, { count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              }
+            } else {
+              txn.set(rateLimitRef, { count: 1, windowEnd: now + 15 * 60 * 1000, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            }
+            return false; // not rate limited
+          });
+          if (rateLimited) {
+            return res.status(429).json({ error: 'Too many inquiries. Please try again later.' });
+          }
+        } catch (rlErr) {
+          logger.warn('Rate limit check failed for dealer inquiry, proceeding', { error: String(rlErr?.message || rlErr) });
+        }
+
+        /* Backend spam scoring */
+        const spamResult = calculateInquirySpamSignal({ buyerName, buyerEmail, buyerPhone, message });
+
+        const inquiryDoc = {
+          sellerUid: dealer.sellerUid,
+          listingId: listingId || null,
+          buyerName,
+          buyerEmail,
+          buyerPhone: buyerPhone || null,
+          message: message || 'Submitted via dealer widget embed.',
+          status: 'New',
+          source: 'dealer_widget',
+          spamScore: spamResult.score,
+          spamFlags: spamResult.flags,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await getDb().collection('inquiries').add(inquiryDoc);
+
+        /* Send email notification to dealer */
+        try {
+          const dealerEmail = String(dealer.email || '').trim().toLowerCase();
+          if (dealerEmail) {
+            await sendDealerWidgetInquiryNotificationEmailMessage({
+              email: dealerEmail,
+              sellerName: String(dealer.storefrontName || dealer.name || '').trim(),
+              dealerName: String(dealer.storefrontName || dealer.name || '').trim(),
+              buyerName,
+              buyerEmail,
+              buyerPhone,
+              listingId,
+              message,
+              dashboardUrl: `${APP_URL}/dealer-os`,
+            });
+          }
+        } catch (emailError) {
+          logger.warn('Failed to send widget inquiry notification email', { error: emailError.message });
+        }
+
+        return res.status(200).json({ success: true });
+      }
+
+      /* ── CORS preflight for public dealer endpoints ─────────── */
+      if (req.method === 'OPTIONS' && path.match(/^\/public\/dealers\/[^/]+\/(inquiry|widget-config)$/i)) {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        res.set('Access-Control-Max-Age', '86400');
+        return res.status(204).send('');
       }
 
       if (req.method === 'POST' && (path === '/billing/webhook' || path === '/webhooks/stripe')) {
@@ -9589,7 +12256,22 @@ exports.apiProxy = onRequest(
 
         try {
           if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-            await finalizeCheckoutSession(stripe, event.data.object, `webhook:${event.type}`);
+            const checkoutScope = normalizeNonEmptyString(event.data.object?.metadata?.checkoutScope);
+            if (checkoutScope === 'auction_bidder_setup') {
+              await finalizeAuctionBidderSetupCheckout(stripe, event.data.object);
+            } else if (checkoutScope === 'auction_invoice') {
+              await finalizeAuctionInvoiceCheckout(stripe, event.data.object);
+            } else {
+              await finalizeCheckoutSession(stripe, event.data.object, `webhook:${event.type}`);
+            }
+          }
+
+          if (
+            event.type === 'identity.verification_session.verified'
+            || event.type === 'identity.verification_session.processing'
+            || event.type === 'identity.verification_session.requires_input'
+          ) {
+            await syncAuctionIdentityVerificationEvent(stripe, event.data.object);
           }
 
           if (
@@ -9605,11 +12287,10 @@ exports.apiProxy = onRequest(
             const metadata = invoiceObject.metadata || invoiceObject.parent?.subscription_details?.metadata || invoiceObject.subscription_details?.metadata || {};
             const userUid = String(metadata.userUid || '').trim() || await resolveUserUidFromStripeCustomerId(invoiceObject.customer, stripe);
             const planName = getPlanDisplayName(metadata.planId);
+            const invoiceEmail =
+              String(invoiceObject.customer_email || '').trim().toLowerCase() ||
+              String(invoiceObject.customer_details?.email || '').trim().toLowerCase();
             if (event.type === 'invoice.payment_succeeded') {
-              const invoiceEmail =
-                String(invoiceObject.customer_email || '').trim().toLowerCase() ||
-                String(invoiceObject.customer_details?.email || '').trim().toLowerCase();
-
               if (invoiceEmail) {
                 const payload = templates.invoicePaidReceipt({
                   displayName: String(invoiceObject.customer_name || '').trim() || 'there',
@@ -9622,6 +12303,19 @@ exports.apiProxy = onRequest(
                 });
                 await sendEmail({ to: invoiceEmail, ...payload });
               }
+            }
+            if (event.type === 'invoice.payment_failed' && invoiceEmail) {
+              await sendPaymentFailedPastDueEmailMessage({
+                email: invoiceEmail,
+                displayName: String(invoiceObject.customer_name || '').trim() || 'there',
+                planName,
+                amountDue: typeof invoiceObject.amount_due === 'number' ? invoiceObject.amount_due : invoiceObject.amount_remaining,
+                currency: invoiceObject.currency || 'usd',
+                invoiceNumber: invoiceObject.number || invoiceObject.id,
+                retryDate: invoiceObject.next_payment_attempt,
+                billingUrl: `${APP_URL}/profile?tab=Account%20Settings`,
+                hostedInvoiceUrl: invoiceObject.hosted_invoice_url || '',
+              });
             }
 
             const rawSubscriptionId = typeof invoiceObject.subscription === 'string'
@@ -9670,6 +12364,1114 @@ exports.apiProxy = onRequest(
           recentStripeWebhookEvents.delete(String(event.id || '').trim());
           return res.status(500).json({ error: 'Webhook processing failed. Retry expected.' });
         }
+      }
+
+      if (req.method === 'GET' && /^\/auctions\/bidder-status$/i.test(path)) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const stripeClient = stripe || createStripeClient();
+        let rawProfile = await getAuctionBidderProfile(userUid);
+
+        if (rawProfile && stripeClient) {
+          const previousProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+            email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+            fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+          });
+
+          if (normalizeNonEmptyString(previousProfile.stripeIdentityVerificationSessionId) && previousProfile.idVerificationStatus !== 'verified') {
+            rawProfile = await syncAuctionBidderIdentityStatus(stripeClient, previousProfile.stripeIdentityVerificationSessionId, userUid);
+          }
+
+          const syncedProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+            email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+            fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+          });
+          if (normalizeNonEmptyString(syncedProfile.stripeSetupSessionId) && !normalizeNonEmptyString(syncedProfile.defaultPaymentMethodId)) {
+            rawProfile = await syncAuctionBidderSetupSession(stripeClient, syncedProfile.stripeSetupSessionId, userUid);
+          }
+        }
+
+        const bidderProfile = rawProfile
+          ? normalizeAuctionBidderProfile(rawProfile, {
+              email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+              fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+            })
+          : null;
+        const associatedAuction = await getAuctionForBidderProfile(bidderProfile);
+        return res.status(200).json(buildAuctionBidderStatusPayload(associatedAuction, bidderProfile));
+      }
+
+      if (req.method === 'POST' && /^\/auctions\/bidder-profile$/i.test(path)) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const profilePatch = req.body || {};
+        const nowIso = new Date().toISOString();
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          fullName: normalizeNonEmptyString(profilePatch.fullName, existingProfile?.fullName || decodedToken.name || authUser?.displayName),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || profilePatch.email || existingProfile?.email).toLowerCase(),
+          phone: normalizeNonEmptyString(profilePatch.phone, existingProfile?.phone),
+          companyName: normalizeNonEmptyString(profilePatch.companyName, existingProfile?.companyName || '') || null,
+          address: {
+            street: normalizeNonEmptyString(profilePatch.address?.street, existingProfile?.address?.street),
+            city: normalizeNonEmptyString(profilePatch.address?.city, existingProfile?.address?.city),
+            state: normalizeNonEmptyString(profilePatch.address?.state, existingProfile?.address?.state),
+            zip: normalizeNonEmptyString(profilePatch.address?.zip, existingProfile?.address?.zip),
+            country: normalizeNonEmptyString(profilePatch.address?.country, existingProfile?.address?.country || 'US'),
+          },
+          taxExempt: profilePatch.taxExempt !== undefined ? profilePatch.taxExempt === true : (existingProfile?.taxExempt === true),
+          taxExemptState: normalizeNonEmptyString(profilePatch.taxExemptState !== undefined ? profilePatch.taxExemptState : existingProfile?.taxExemptState),
+          taxExemptCertificateUrl: normalizeNonEmptyString(profilePatch.taxExemptCertificateUrl !== undefined ? profilePatch.taxExemptCertificateUrl : existingProfile?.taxExemptCertificateUrl),
+          taxExemptCertificateUploadedAt: normalizeNonEmptyString(profilePatch.taxExemptCertificateUploadedAt || existingProfile?.taxExemptCertificateUploadedAt),
+          termsAcceptedAt: normalizeNonEmptyString(profilePatch.termsAcceptedAt, existingProfile?.termsAcceptedAt || nowIso),
+          termsVersion: normalizeNonEmptyString(profilePatch.termsVersion, existingProfile?.termsVersion || AUCTION_TERMS_VERSION),
+          lastAuctionRegistrationAt: nowIso,
+        });
+
+        await saveAuctionBidderProfile(userUid, nextProfile);
+        const associatedAuction = await getAuctionForBidderProfile(nextProfile);
+        return res.status(200).json(buildAuctionBidderStatusPayload(associatedAuction, nextProfile));
+      }
+
+      if (req.method === 'POST' && /^\/auctions\/bidder-identity-session$/i.test(path)) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const associatedAuction = await getAuctionForBidderProfile(existingProfile);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const verificationSession = await stripe.identity.verificationSessions.create({
+          type: 'document',
+          return_url: `${getRequestBaseUrl(req)}/bidder-registration?identity_return=1`,
+          metadata: stripUndefinedDeep({
+            userUid,
+            auctionId: associatedAuction?.id,
+            auctionSlug: associatedAuction?.slug,
+          }),
+          options: {
+            document: {
+              require_matching_selfie: true,
+            },
+          },
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeIdentityVerificationSessionId: verificationSession.id,
+          stripeIdentityVerificationUrl: verificationSession.url || null,
+          idVerificationStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: verificationSession.url,
+          sessionId: verificationSession.id,
+        });
+      }
+
+      if (req.method === 'POST' && /^\/auctions\/bidder-payment-setup-session$/i.test(path)) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const associatedAuction = await getAuctionForBidderProfile(existingProfile);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const setupSession = await stripe.checkout.sessions.create({
+          mode: 'setup',
+          customer: customerId,
+          payment_method_types: ['card'],
+          success_url: `${getRequestBaseUrl(req)}/bidder-registration?setup_session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${getRequestBaseUrl(req)}/bidder-registration?setup_cancelled=1`,
+          metadata: stripUndefinedDeep({
+            checkoutScope: 'auction_bidder_setup',
+            userUid,
+            auctionId: associatedAuction?.id,
+            auctionSlug: associatedAuction?.slug,
+          }),
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeSetupSessionId: setupSession.id,
+          stripeSetupSessionStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: setupSession.url,
+          sessionId: setupSession.id,
+        });
+      }
+
+      const auctionBidderStatusMatch = path.match(/^\/auctions\/([^/]+)\/bidder-status$/i);
+      if (req.method === 'GET' && auctionBidderStatusMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionBidderStatusMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const stripeClient = stripe || createStripeClient();
+        let rawProfile = await getAuctionBidderProfile(userUid);
+        const previousProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+        });
+        const previousIdentityStatus = normalizeNonEmptyString(previousProfile.idVerificationStatus, 'not_started');
+        const previousApproved = Boolean(previousProfile.bidderApprovedAt);
+
+        if (rawProfile && stripeClient) {
+          if (normalizeNonEmptyString(previousProfile.stripeIdentityVerificationSessionId) && previousProfile.idVerificationStatus !== 'verified') {
+            rawProfile = await syncAuctionBidderIdentityStatus(stripeClient, previousProfile.stripeIdentityVerificationSessionId, userUid);
+          }
+
+          const syncedProfile = normalizeAuctionBidderProfile(rawProfile || {}, {
+            email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+            fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+          });
+          if (normalizeNonEmptyString(syncedProfile.stripeSetupSessionId) && !normalizeNonEmptyString(syncedProfile.defaultPaymentMethodId)) {
+            rawProfile = await syncAuctionBidderSetupSession(stripeClient, syncedProfile.stripeSetupSessionId, userUid);
+          }
+        }
+
+        const bidderProfile = rawProfile
+          ? normalizeAuctionBidderProfile(rawProfile, {
+              email: normalizeNonEmptyString(decodedToken.email || authUser?.email).toLowerCase(),
+              fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName),
+            })
+          : null;
+        const statusPayload = buildAuctionBidderStatusPayload(auction, bidderProfile);
+        const bidderContact = await resolveAuctionUserContact(userUid, bidderProfile || {});
+
+        if (
+          bidderContact.email
+          && previousIdentityStatus === 'not_started'
+          && ['pending', 'verified'].includes(normalizeNonEmptyString(statusPayload.profile?.idVerificationStatus, 'not_started'))
+        ) {
+          await sendAuctionIdentitySubmittedEmailMessage({
+            email: bidderContact.email,
+            displayName: bidderContact.displayName,
+            auctionTitle: auction.title,
+            auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+          });
+        }
+
+        if (bidderContact.email && !previousApproved && statusPayload.bidderApproved) {
+          await sendAuctionBidderApprovedEmailMessage({
+            email: bidderContact.email,
+            displayName: bidderContact.displayName,
+            auctionTitle: auction.title,
+            auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+          });
+        }
+
+        return res.status(200).json(statusPayload);
+      }
+
+      const auctionBidderProfileMatch = path.match(/^\/auctions\/([^/]+)\/bidder-profile$/i);
+      if (req.method === 'POST' && auctionBidderProfileMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionBidderProfileMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const profilePatch = req.body || {};
+        const nowIso = new Date().toISOString();
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          fullName: normalizeNonEmptyString(profilePatch.fullName, existingProfile?.fullName || decodedToken.name || authUser?.displayName),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || profilePatch.email || existingProfile?.email).toLowerCase(),
+          phone: normalizeNonEmptyString(profilePatch.phone, existingProfile?.phone),
+          companyName: normalizeNonEmptyString(profilePatch.companyName, existingProfile?.companyName || '') || null,
+          address: {
+            street: normalizeNonEmptyString(profilePatch.address?.street, existingProfile?.address?.street),
+            city: normalizeNonEmptyString(profilePatch.address?.city, existingProfile?.address?.city),
+            state: normalizeNonEmptyString(profilePatch.address?.state, existingProfile?.address?.state),
+            zip: normalizeNonEmptyString(profilePatch.address?.zip, existingProfile?.address?.zip),
+            country: normalizeNonEmptyString(profilePatch.address?.country, existingProfile?.address?.country || 'US'),
+          },
+          taxExempt: profilePatch.taxExempt !== undefined ? profilePatch.taxExempt === true : (existingProfile?.taxExempt === true),
+          taxExemptState: normalizeNonEmptyString(profilePatch.taxExemptState !== undefined ? profilePatch.taxExemptState : existingProfile?.taxExemptState),
+          taxExemptCertificateUrl: normalizeNonEmptyString(profilePatch.taxExemptCertificateUrl !== undefined ? profilePatch.taxExemptCertificateUrl : existingProfile?.taxExemptCertificateUrl),
+          taxExemptCertificateUploadedAt: normalizeNonEmptyString(profilePatch.taxExemptCertificateUploadedAt || existingProfile?.taxExemptCertificateUploadedAt),
+          termsAcceptedAt: normalizeNonEmptyString(profilePatch.termsAcceptedAt, existingProfile?.termsAcceptedAt || nowIso),
+          termsVersion: normalizeNonEmptyString(profilePatch.termsVersion, existingProfile?.termsVersion || AUCTION_TERMS_VERSION),
+          legalAcceptedAuctionSlug: auction.slug,
+          legalAcceptedAuctionId: auction.id,
+          lastAuctionRegistrationAt: nowIso,
+        });
+
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        if (!normalizeNonEmptyString(existingProfile?.termsAcceptedAt)) {
+          const bidderContact = await resolveAuctionUserContact(userUid, nextProfile);
+          if (bidderContact.email) {
+            await sendAuctionRegistrationEmailMessage({
+              email: bidderContact.email,
+              displayName: bidderContact.displayName,
+              auctionTitle: auction.title,
+              auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+            });
+          }
+        }
+
+        return res.status(200).json(buildAuctionBidderStatusPayload(auction, nextProfile));
+      }
+
+      const auctionIdentitySessionMatch = path.match(/^\/auctions\/([^/]+)\/identity-session$/i);
+      if (req.method === 'POST' && auctionIdentitySessionMatch) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionIdentitySessionMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const verificationSession = await stripe.identity.verificationSessions.create({
+          type: 'document',
+          return_url: `${getRequestBaseUrl(req)}/auctions/${encodeURIComponent(auction.slug)}/register?identity_return=1`,
+          metadata: {
+            userUid,
+            auctionId: auction.id,
+            auctionSlug: auction.slug,
+          },
+          options: {
+            document: {
+              require_matching_selfie: true,
+            },
+          },
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeIdentityVerificationSessionId: verificationSession.id,
+          stripeIdentityVerificationUrl: verificationSession.url || null,
+          idVerificationStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: verificationSession.url,
+          sessionId: verificationSession.id,
+        });
+      }
+
+      const auctionPaymentSetupSessionMatch = path.match(/^\/auctions\/([^/]+)\/payment-setup-session$/i);
+      if (req.method === 'POST' && auctionPaymentSetupSessionMatch) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const auctionSlug = decodeURIComponent(auctionPaymentSetupSessionMatch[1] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const authUser = await admin.auth().getUser(userUid).catch(() => null);
+        const existingProfile = await getAuctionBidderProfile(userUid);
+        const customerId = await getOrCreateStripeCustomer(stripe, userUid, decodedToken.email, decodedToken.name || authUser?.displayName);
+        const setupSession = await stripe.checkout.sessions.create({
+          mode: 'setup',
+          customer: customerId,
+          payment_method_types: ['card'],
+          success_url: `${getRequestBaseUrl(req)}/auctions/${encodeURIComponent(auction.slug)}/register?setup_session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${getRequestBaseUrl(req)}/auctions/${encodeURIComponent(auction.slug)}/register?setup_cancelled=1`,
+          metadata: {
+            checkoutScope: 'auction_bidder_setup',
+            userUid,
+            auctionId: auction.id,
+            auctionSlug: auction.slug,
+          },
+        });
+
+        const nextProfile = normalizeAuctionBidderProfile({
+          ...(existingProfile || {}),
+          email: normalizeNonEmptyString(decodedToken.email || authUser?.email || existingProfile?.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name || authUser?.displayName || existingProfile?.fullName),
+          stripeCustomerId: customerId,
+          stripeSetupSessionId: setupSession.id,
+          stripeSetupSessionStatus: 'pending',
+        });
+        await saveAuctionBidderProfile(userUid, nextProfile);
+
+        return res.status(200).json({
+          url: setupSession.url,
+          sessionId: setupSession.id,
+        });
+      }
+
+      const auctionBidderSetupSyncMatch = path.match(/^\/auctions\/bidder-setup-session\/([^/]+)$/i);
+      if (req.method === 'GET' && auctionBidderSetupSyncMatch) {
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const sessionId = decodeURIComponent(auctionBidderSetupSyncMatch[1] || '').trim();
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const currentProfile = normalizeAuctionBidderProfile(await getAuctionBidderProfile(userUid) || {});
+        const previousApproved = Boolean(currentProfile.bidderApprovedAt);
+        const syncedProfile = await syncAuctionBidderSetupSession(stripe, sessionId, userUid);
+        const auctionSlug = normalizeNonEmptyString(req.query?.auctionSlug || syncedProfile.legalAcceptedAuctionSlug);
+        const auction = auctionSlug ? await getAuctionBySlugFromDb(auctionSlug) : null;
+        const statusPayload = buildAuctionBidderStatusPayload(auction, syncedProfile);
+        const bidderContact = await resolveAuctionUserContact(userUid, syncedProfile);
+
+        if (bidderContact.email && !previousApproved && statusPayload.bidderApproved && auction) {
+          await sendAuctionBidderApprovedEmailMessage({
+            email: bidderContact.email,
+            displayName: bidderContact.displayName,
+            auctionTitle: auction.title,
+            auctionUrl: `${APP_URL}/auctions/${auction.slug}`,
+          });
+        }
+
+        return res.status(200).json(statusPayload);
+      }
+
+      const adminAssignableListingsMatch = path.match(/^\/admin\/auctions\/([^/]+)\/assignable-listings$/i);
+      if (req.method === 'GET' && adminAssignableListingsMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const auctionId = decodeURIComponent(adminAssignableListingsMatch[1] || '').trim();
+        const auctionSnap = await getAuctionDb().collection('auctions').doc(auctionId).get();
+        if (!auctionSnap.exists) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const lotSnap = await getAuctionDb().collection('auctions').doc(auctionId).collection('lots').get();
+        const assignedListingIds = new Set(
+          lotSnap.docs.map((doc) => normalizeNonEmptyString(doc.data()?.listingId)).filter(Boolean)
+        );
+        const searchQuery = normalizeNonEmptyString(req.query?.q).toLowerCase();
+        const listingsSnap = await getDb()
+          .collection('listings')
+          .where('approvalStatus', '==', 'approved')
+          .where('paymentStatus', '==', 'paid')
+          .limit(150)
+          .get();
+
+        const listings = listingsSnap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((listing) => !['sold', 'archived'].includes(normalizeNonEmptyString(listing.status).toLowerCase()))
+          .filter((listing) => !assignedListingIds.has(normalizeNonEmptyString(listing.id)))
+          .filter((listing) => {
+            const assignedAuctionId = normalizeNonEmptyString(listing.auctionId);
+            return !assignedAuctionId || assignedAuctionId === auctionId;
+          })
+          .filter((listing) => {
+            if (!searchQuery) return true;
+            const haystack = [
+              listing.title,
+              listing.manufacturer,
+              listing.make,
+              listing.model,
+              listing.stockNumber,
+              listing.id,
+              listing.location,
+            ]
+              .map((value) => normalizeNonEmptyString(value).toLowerCase())
+              .join(' ');
+            return haystack.includes(searchQuery);
+          })
+          .sort((a, b) => normalizeNonEmptyString(a.title).localeCompare(normalizeNonEmptyString(b.title)))
+          .slice(0, 75);
+
+        return res.status(200).json({
+          listings,
+          count: listings.length,
+        });
+      }
+
+      const adminAuctionLotsMatch = path.match(/^\/admin\/auctions\/([^/]+)\/lots$/i);
+      if (req.method === 'POST' && adminAuctionLotsMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const auctionId = decodeURIComponent(adminAuctionLotsMatch[1] || '').trim();
+        const auctionSnap = await getAuctionDb().collection('auctions').doc(auctionId).get();
+        if (!auctionSnap.exists) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const listingId = normalizeNonEmptyString(req.body?.listingId);
+        if (!listingId) {
+          return res.status(400).json({ error: 'Listing id is required.' });
+        }
+
+        const listingSnap = await getDb().collection('listings').doc(listingId).get();
+        if (!listingSnap.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+
+        const listing = { id: listingSnap.id, ...listingSnap.data() };
+        const existingLotByListing = await getAuctionDb()
+          .collection('auctions')
+          .doc(auctionId)
+          .collection('lots')
+          .where('listingId', '==', listingId)
+          .limit(1)
+          .get();
+        if (!existingLotByListing.empty) {
+          return res.status(409).json({ error: 'That listing is already assigned to this auction.' });
+        }
+
+        const existingAuctionId = normalizeNonEmptyString(listing.auctionId);
+        if (existingAuctionId && existingAuctionId !== auctionId) {
+          return res.status(409).json({ error: 'That listing is already assigned to another auction.' });
+        }
+
+        const lotsSnap = await getAuctionDb().collection('auctions').doc(auctionId).collection('lots').get();
+        const requestedLotNumber = normalizeNonEmptyString(req.body?.lotNumber);
+        const usedLotNumbers = new Set(lotsSnap.docs.map((doc) => normalizeNonEmptyString(doc.data()?.lotNumber)).filter(Boolean));
+        if (requestedLotNumber && usedLotNumbers.has(requestedLotNumber)) {
+          return res.status(409).json({ error: 'That lot number is already in use for this auction.' });
+        }
+
+        const nextCloseOrder = lotsSnap.docs.reduce((maxValue, doc) => {
+          return Math.max(maxValue, normalizeFiniteNumber(doc.data()?.closeOrder, 0));
+        }, 0) + 1;
+        const lotPayload = buildAuctionLotPayloadFromListing({
+          auction,
+          listing,
+          payload: {
+            ...req.body,
+            closeOrder: Number.isFinite(Number(req.body?.closeOrder)) ? Number(req.body.closeOrder) : nextCloseOrder,
+          },
+        });
+        const lotRef = getAuctionDb().collection('auctions').doc(auctionId).collection('lots').doc();
+        const storedLot = {
+          ...lotPayload,
+          id: lotRef.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await lotRef.set(storedLot);
+        await getAuctionDb().collection('auctions').doc(auctionId).set({
+          lotCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+        await syncListingAuctionProjection(listingId, {
+          auctionId: auction.id,
+          auctionSlug: auction.slug,
+          auctionStatus: storedLot.status,
+          auctionEndTime: storedLot.endTime,
+          currentBid: storedLot.currentBid,
+          bidCount: storedLot.bidCount,
+          lotNumber: storedLot.lotNumber,
+        });
+
+        return res.status(200).json({ lot: storedLot });
+      }
+
+      const adminAuctionLotMatch = path.match(/^\/admin\/auctions\/([^/]+)\/lots\/([^/]+)$/i);
+      if ((req.method === 'PATCH' || req.method === 'DELETE') && adminAuctionLotMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const auctionId = decodeURIComponent(adminAuctionLotMatch[1] || '').trim();
+        const lotId = decodeURIComponent(adminAuctionLotMatch[2] || '').trim();
+        const auctionRef = getAuctionDb().collection('auctions').doc(auctionId);
+        const lotRef = auctionRef.collection('lots').doc(lotId);
+        const [auctionSnap, lotSnap] = await Promise.all([auctionRef.get(), lotRef.get()]);
+        if (!auctionSnap.exists) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+        if (!lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction lot not found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const existingLot = { id: lotSnap.id, ...lotSnap.data() };
+
+        if (req.method === 'DELETE') {
+          await lotRef.delete();
+          await auctionRef.set({
+            lotCount: admin.firestore.FieldValue.increment(-1),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          await clearListingAuctionProjection(existingLot.listingId);
+          return res.status(200).json({ success: true });
+        }
+
+        const listingId = normalizeNonEmptyString(req.body?.listingId || existingLot.listingId);
+        const listingSnap = await getDb().collection('listings').doc(listingId).get();
+        if (!listingSnap.exists) {
+          return res.status(404).json({ error: 'Listing not found.' });
+        }
+        const listing = { id: listingSnap.id, ...listingSnap.data() };
+
+        const requestedLotNumber = normalizeNonEmptyString(req.body?.lotNumber);
+        if (requestedLotNumber) {
+          const conflictingLotSnap = await auctionRef.collection('lots').where('lotNumber', '==', requestedLotNumber).limit(2).get();
+          const conflictingLot = conflictingLotSnap.docs.find((doc) => doc.id !== lotId);
+          if (conflictingLot) {
+            return res.status(409).json({ error: 'That lot number is already in use for this auction.' });
+          }
+        }
+
+        const updatedLot = {
+          ...buildAuctionLotPayloadFromListing({
+            auction,
+            listing,
+            payload: req.body || {},
+            existingLot,
+          }),
+          id: lotId,
+          updatedAt: new Date().toISOString(),
+        };
+        await lotRef.set(updatedLot, { merge: true });
+        await syncListingAuctionProjection(listingId, {
+          auctionId: auction.id,
+          auctionSlug: auction.slug,
+          auctionStatus: updatedLot.status,
+          auctionEndTime: updatedLot.endTime,
+          currentBid: updatedLot.currentBid,
+          bidCount: updatedLot.bidCount,
+          lotNumber: updatedLot.lotNumber,
+        });
+
+        return res.status(200).json({ lot: updatedLot });
+      }
+
+      const adminAuctionInvoiceSettlementMatch = path.match(/^\/admin\/auctions\/invoices\/([^/]+)\/settlement$/i);
+      if (req.method === 'POST' && adminAuctionInvoiceSettlementMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const invoiceId = decodeURIComponent(adminAuctionInvoiceSettlementMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const auctionId = normalizeNonEmptyString(invoice.auctionId);
+        const lotId = normalizeNonEmptyString(invoice.lotId);
+        if (!auctionId || !lotId) {
+          return res.status(400).json({ error: 'Auction invoice is missing auction or lot references.' });
+        }
+
+        const auctionRef = getAuctionDb().collection('auctions').doc(auctionId);
+        const lotRef = auctionRef.collection('lots').doc(lotId);
+        const [auctionSnap, lotSnap] = await Promise.all([auctionRef.get(), lotRef.get()]);
+        if (!auctionSnap.exists || !lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction invoice context could not be found.' });
+        }
+
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const lot = { id: lotSnap.id, ...lotSnap.data() };
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const nowIso = new Date().toISOString();
+        const wireTotals = buildAuctionInvoiceTotals({
+          winningBid: normalizeFiniteNumber(lot.winningBid || lot.currentBid, 0),
+          isTitledItem: Boolean(lot.isTitledItem),
+          paymentMethod: null,
+          buyerPremiumPercent: Number.isFinite(Number(lot.buyerPremiumPercent)) ? Number(lot.buyerPremiumPercent) : null,
+        });
+        const wasAlreadyPaid = normalizeNonEmptyString(invoice.status).toLowerCase() === 'paid';
+        const paidAt = normalizeNonEmptyString(invoice.paidAt) || nowIso;
+        const releaseAuthorizedAt = normalizeNonEmptyString(invoice.releaseAuthorizedAt || lot.releaseAuthorizedAt || lot.releasedAt) || nowIso;
+
+        const settledInvoice = stripUndefinedDeep({
+          ...invoice,
+          buyerPremium: wireTotals.buyerPremium,
+          documentationFee: wireTotals.documentationFee,
+          cardProcessingFee: 0,
+          totalDue: wireTotals.subtotalBeforeCardFee,
+          status: 'paid',
+          paymentMethod: 'wire',
+          paymentMethodFunding: null,
+          paidAt,
+          wireReceivedAt: normalizeNonEmptyString(invoice.wireReceivedAt) || nowIso,
+          wireReceivedBy: normalizeNonEmptyString(invoice.wireReceivedBy) || actorUid,
+          releaseAuthorizedAt,
+          releaseAuthorizedBy: normalizeNonEmptyString(invoice.releaseAuthorizedBy) || actorUid,
+          updatedAt: nowIso,
+        });
+        await upsertAuctionInvoice(invoiceId, settledInvoice);
+
+        const lotPatch = stripUndefinedDeep({
+          status: 'sold',
+          releasedAt: normalizeNonEmptyString(lot.releasedAt) || nowIso,
+          releasedBy: normalizeNonEmptyString(lot.releasedBy) || actorUid,
+          releaseAuthorizedAt,
+          releaseAuthorizedBy: normalizeNonEmptyString(lot.releaseAuthorizedBy) || actorUid,
+          updatedAt: nowIso,
+        });
+        await lotRef.set(lotPatch, { merge: true });
+
+        const refreshedLotSnap = await lotRef.get();
+        const refreshedLot = refreshedLotSnap.exists
+          ? { id: refreshedLotSnap.id, ...refreshedLotSnap.data() }
+          : { ...lot, ...lotPatch };
+
+        if (!wasAlreadyPaid) {
+          const bidderProfile = await getAuctionBidderProfile(invoice.buyerId);
+          const bidderContact = await resolveAuctionUserContact(invoice.buyerId, bidderProfile || {});
+          if (bidderContact.email) {
+            await sendAuctionPaymentReceiptEmailMessage({
+              email: bidderContact.email,
+              displayName: bidderContact.displayName,
+              invoiceNumber: invoiceId,
+              amountPaid: settledInvoice.totalDue,
+              invoiceUrl: buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId),
+            });
+          }
+
+          await markInvoiceSellerPayoutPending(settledInvoice).catch((err) =>
+            logger.error('Failed to mark seller payout pending after wire settlement', { invoiceId, error: err.message })
+          );
+        }
+
+        return res.status(200).json({
+          invoice: settledInvoice,
+          lot: refreshedLot,
+        });
+      }
+
+      const auctionLotInvoiceMatch = path.match(/^\/auctions\/([^/]+)\/lots\/([^/]+)\/invoice$/i);
+      if (req.method === 'GET' && auctionLotInvoiceMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        const auctionSlug = decodeURIComponent(auctionLotInvoiceMatch[1] || '').trim();
+        const lotNumber = decodeURIComponent(auctionLotInvoiceMatch[2] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+        const lot = await getAuctionLotByNumberFromDb(auction.id, lotNumber);
+        if (!lot) {
+          return res.status(404).json({ error: 'Auction lot not found.' });
+        }
+
+        const invoiceId = buildAuctionInvoiceId(auction.id, lot.id);
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+        if (!canAdministrateAccount(actorRole) && normalizeNonEmptyString(invoice.buyerId) !== userUid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(invoice.totalDue, 0));
+        const buyer = canAdministrateAccount(actorRole)
+          ? await buildAuctionAdminBidderSummary(invoice.buyerId)
+          : null;
+        return res.status(200).json({
+          invoice,
+          cardEligible,
+          paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+          buyer,
+        });
+      }
+
+      const auctionBidMatch = path.match(/^\/auctions\/([^/]+)\/lots\/([^/]+)\/bids$/i);
+      if (req.method === 'POST' && auctionBidMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const auctionSlug = decodeURIComponent(auctionBidMatch[1] || '').trim();
+        const lotNumber = decodeURIComponent(auctionBidMatch[2] || '').trim();
+        const auction = await getAuctionBySlugFromDb(auctionSlug);
+        if (!auction) {
+          return res.status(404).json({ error: 'Auction not found.' });
+        }
+        const lot = await getAuctionLotByNumberFromDb(auction.id, lotNumber);
+        if (!lot) {
+          return res.status(404).json({ error: 'Auction lot not found.' });
+        }
+
+        const stripeClient = stripe || createStripeClient();
+        let bidderProfile = await getAuctionBidderProfile(userUid);
+        if (bidderProfile && stripeClient) {
+          const normalizedProfile = normalizeAuctionBidderProfile(bidderProfile);
+          if (normalizeNonEmptyString(normalizedProfile.stripeIdentityVerificationSessionId) && normalizedProfile.idVerificationStatus !== 'verified') {
+            bidderProfile = await syncAuctionBidderIdentityStatus(stripeClient, normalizedProfile.stripeIdentityVerificationSessionId, userUid);
+          }
+          const normalizedSyncedProfile = normalizeAuctionBidderProfile(bidderProfile);
+          if (normalizeNonEmptyString(normalizedSyncedProfile.stripeSetupSessionId) && !normalizeNonEmptyString(normalizedSyncedProfile.defaultPaymentMethodId)) {
+            bidderProfile = await syncAuctionBidderSetupSession(stripeClient, normalizedSyncedProfile.stripeSetupSessionId, userUid);
+          }
+        }
+
+        const normalizedBidderProfile = normalizeAuctionBidderProfile(bidderProfile || {}, {
+          email: normalizeNonEmptyString(decodedToken.email).toLowerCase(),
+          fullName: normalizeNonEmptyString(decodedToken.name),
+        });
+        const bidderStatus = buildAuctionBidderStatusPayload(auction, normalizedBidderProfile);
+        if (!bidderStatus.bidderApproved) {
+          return res.status(403).json({ error: 'Complete bidder verification before placing a bid.' });
+        }
+
+        const submittedAmount = normalizeFiniteNumber(req.body?.amount, 0);
+        const lotRef = getAuctionDb().collection('auctions').doc(auction.id).collection('lots').doc(lot.id);
+        const hasPriorBidSnap = await lotRef.collection('bids').where('bidderId', '==', userUid).limit(1).get();
+        const bidderAnonymousId = buildAuctionBidderAnonymousId(userUid, normalizedBidderProfile);
+        const transactionResult = await getAuctionDb().runTransaction(async (transaction) => {
+          const freshLotSnap = await transaction.get(lotRef);
+          if (!freshLotSnap.exists) {
+            throw new Error('Auction lot no longer exists.');
+          }
+
+          const freshLot = { id: freshLotSnap.id, ...freshLotSnap.data() };
+          const freshStatus = normalizeAuctionLotStatus(freshLot.status, 'upcoming');
+          if (!['active', 'extended'].includes(freshStatus)) {
+            throw new Error('Bidding is not open for this lot.');
+          }
+
+          const nowMillis = Date.now();
+          const endMillis = new Date(normalizeNonEmptyString(freshLot.endTime)).getTime();
+          if (!Number.isFinite(endMillis) || endMillis <= nowMillis) {
+            throw new Error('This lot has already closed.');
+          }
+
+          const currentBid = normalizeFiniteNumber(freshLot.currentBid, 0);
+          const minimumBid = currentBid > 0
+            ? currentBid + getAuctionBidIncrement(currentBid)
+            : normalizeFiniteNumber(freshLot.startingBid, 0);
+          if (!Number.isFinite(submittedAmount) || submittedAmount < minimumBid) {
+            throw new Error(`Minimum next bid is $${minimumBid.toLocaleString()}.`);
+          }
+
+          const thresholdMinutes = normalizeFiniteNumber(freshLot.softCloseThresholdMin, normalizeFiniteNumber(auction.softCloseThresholdMin, 3));
+          const extensionMinutes = normalizeFiniteNumber(freshLot.softCloseExtensionMin, normalizeFiniteNumber(auction.softCloseExtensionMin, 2));
+          const thresholdMs = thresholdMinutes * 60 * 1000;
+          const shouldExtend = endMillis - nowMillis <= thresholdMs;
+          const nextEndTime = shouldExtend
+            ? new Date(endMillis + extensionMinutes * 60 * 1000).toISOString()
+            : normalizeNonEmptyString(freshLot.endTime);
+
+          const bidRef = lotRef.collection('bids').doc();
+          const bidPayload = {
+            id: bidRef.id,
+            lotId: freshLot.id,
+            auctionId: auction.id,
+            bidderId: userUid,
+            bidderAnonymousId,
+            amount: submittedAmount,
+            maxBid: null,
+            type: 'manual',
+            status: 'winning',
+            timestamp: new Date().toISOString(),
+            triggeredExtension: shouldExtend,
+          };
+
+          transaction.set(bidRef, bidPayload);
+          transaction.set(lotRef, {
+            currentBid: submittedAmount,
+            currentBidderId: userUid,
+            currentBidderAnonymousId: bidderAnonymousId,
+            bidCount: admin.firestore.FieldValue.increment(1),
+            uniqueBidders: hasPriorBidSnap.empty && normalizeNonEmptyString(freshLot.currentBidderId) !== userUid
+              ? admin.firestore.FieldValue.increment(1)
+              : normalizeFiniteNumber(freshLot.uniqueBidders, 0),
+            lastBidTime: bidPayload.timestamp,
+            reserveMet: freshLot.reservePrice == null ? true : submittedAmount >= normalizeFiniteNumber(freshLot.reservePrice, 0),
+            status: shouldExtend ? 'extended' : freshStatus,
+            endTime: nextEndTime,
+            extensionCount: shouldExtend ? admin.firestore.FieldValue.increment(1) : normalizeFiniteNumber(freshLot.extensionCount, 0),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          transaction.set(getAuctionDb().collection('auctions').doc(auction.id), {
+            totalBids: admin.firestore.FieldValue.increment(1),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+
+          return {
+            bid: bidPayload,
+            previousBidderId: normalizeNonEmptyString(freshLot.currentBidderId),
+          };
+        });
+
+        const updatedLot = await getAuctionLotByNumberFromDb(auction.id, lotNumber);
+        await syncListingAuctionProjection(lot.listingId, {
+          auctionId: auction.id,
+          auctionSlug: auction.slug,
+          auctionStatus: updatedLot?.status || lot.status,
+          auctionEndTime: updatedLot?.endTime || lot.endTime,
+          currentBid: updatedLot?.currentBid || submittedAmount,
+          bidCount: updatedLot?.bidCount || normalizeFiniteNumber(lot.bidCount, 0) + 1,
+          lotNumber: lot.lotNumber,
+        });
+
+        const outbidBidderId = normalizeNonEmptyString(transactionResult.previousBidderId);
+        if (outbidBidderId && outbidBidderId !== userUid) {
+          const outbidProfile = await getAuctionBidderProfile(outbidBidderId);
+          const outbidContact = await resolveAuctionUserContact(outbidBidderId, outbidProfile || {});
+          if (outbidContact.email) {
+            await sendAuctionOutbidEmailMessage({
+              email: outbidContact.email,
+              displayName: outbidContact.displayName,
+              auctionTitle: auction.title,
+              lotTitle: lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim(),
+              bidAmount: submittedAmount,
+              lotUrl: buildAuctionLotPublicUrl(auction.slug, lot.lotNumber),
+            });
+          }
+        }
+
+        return res.status(200).json({
+          lot: updatedLot,
+          bid: transactionResult.bid,
+        });
+      }
+
+      const auctionInvoicePaymentSessionMatch = path.match(/^\/auctions\/invoices\/([^/]+)\/payment-session$/i);
+      if (req.method === 'POST' && auctionInvoicePaymentSessionMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const invoiceId = decodeURIComponent(auctionInvoicePaymentSessionMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const userUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole) && normalizeNonEmptyString(invoice.buyerId) !== userUid) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const paymentMethod = normalizeNonEmptyString(req.body?.paymentMethod).toLowerCase();
+        if (paymentMethod !== 'wire' && paymentMethod !== 'card') {
+          return res.status(400).json({ error: 'Unsupported payment method.' });
+        }
+
+        const auctionSnap = await getAuctionDb().collection('auctions').doc(normalizeNonEmptyString(invoice.auctionId)).get();
+        const lotSnap = await getAuctionDb().collection('auctions').doc(normalizeNonEmptyString(invoice.auctionId)).collection('lots').doc(normalizeNonEmptyString(invoice.lotId)).get();
+        if (!auctionSnap.exists || !lotSnap.exists) {
+          return res.status(404).json({ error: 'Auction invoice context could not be found.' });
+        }
+        const auction = { id: auctionSnap.id, ...auctionSnap.data() };
+        const lot = { id: lotSnap.id, ...lotSnap.data() };
+
+        const refreshed = await createOrRefreshAuctionInvoiceForLot({
+          auction,
+          lot,
+          paymentMethod: paymentMethod === 'card' ? 'card' : null,
+        });
+        const baseInvoice = paymentMethod === 'wire'
+          ? await (async () => {
+              const wireInvoice = {
+                ...refreshed.invoice,
+                paymentMethod: 'wire',
+                cardProcessingFee: 0,
+                totalDue: refreshed.totals.subtotalBeforeCardFee,
+                updatedAt: new Date().toISOString(),
+              };
+              await upsertAuctionInvoice(invoiceId, wireInvoice);
+              return wireInvoice;
+            })()
+          : refreshed.invoice;
+
+        const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(baseInvoice.totalDue, 0));
+        if (paymentMethod === 'wire') {
+          return res.status(200).json({
+            invoice: baseInvoice,
+            cardEligible,
+            paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+          });
+        }
+
+        if (!stripe) {
+          return res.status(503).json({ error: 'Stripe is not configured on this environment.' });
+        }
+        if (!cardEligible) {
+          return res.status(400).json({ error: 'Card and debit payments are only available up to $50,000 total due.' });
+        }
+
+        const buyerProfile = await getAuctionBidderProfile(invoice.buyerId);
+        const buyerContact = await resolveAuctionUserContact(invoice.buyerId, buyerProfile || {});
+        const customerId = await getOrCreateStripeCustomer(stripe, invoice.buyerId, buyerContact.email, buyerContact.displayName);
+        const returnUrl = buildAuctionInvoiceReturnUrl(auction.slug, lot.lotNumber, invoiceId);
+        const separator = returnUrl.includes('?') ? '&' : '?';
+        const checkoutSession = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          customer: customerId,
+          payment_method_types: ['card'],
+          success_url: `${getRequestBaseUrl(req)}${returnUrl}${separator}payment=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${getRequestBaseUrl(req)}${returnUrl}${separator}payment=cancelled`,
+          metadata: {
+            checkoutScope: 'auction_invoice',
+            auctionInvoiceId: invoiceId,
+            buyerId: invoice.buyerId,
+            auctionId: auction.id,
+            lotId: lot.id,
+            auctionSlug: auction.slug,
+            lotNumber: lot.lotNumber,
+          },
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                unit_amount: Math.round(normalizeFiniteNumber(baseInvoice.totalDue, 0) * 100),
+                product_data: {
+                  name: `Auction invoice for Lot ${normalizeNonEmptyString(lot.lotNumber)}`,
+                  description: `${auction.title} · ${lot.title || `${lot.year} ${lot.manufacturer} ${lot.model}`.trim()}`,
+                },
+              },
+              quantity: 1,
+            },
+          ],
+        });
+
+        const pendingInvoice = {
+          ...baseInvoice,
+          paymentMethod: 'card',
+          stripeCheckoutSessionId: normalizeNonEmptyString(checkoutSession.id),
+          updatedAt: new Date().toISOString(),
+        };
+        await upsertAuctionInvoice(invoiceId, pendingInvoice);
+
+        return res.status(200).json({
+          invoice: pendingInvoice,
+          cardEligible,
+          paymentMethodOptions: ['wire', 'card'],
+          url: checkoutSession.url,
+          sessionId: checkoutSession.id,
+        });
+      }
+
+      const auctionInvoiceMatch = path.match(/^\/auctions\/invoices\/([^/]+)$/i);
+      if (req.method === 'GET' && auctionInvoiceMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const invoiceId = decodeURIComponent(auctionInvoiceMatch[1] || '').trim();
+        const invoice = await getAuctionInvoiceRecord(invoiceId);
+        if (!invoice) {
+          return res.status(404).json({ error: 'Invoice not found.' });
+        }
+
+        const actorRole = getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(actorRole) && normalizeNonEmptyString(invoice.buyerId) !== normalizeNonEmptyString(decodedToken.uid)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const cardEligible = isAuctionCardPaymentEligible(normalizeFiniteNumber(invoice.totalDue, 0));
+        return res.status(200).json({
+          invoice,
+          cardEligible,
+          paymentMethodOptions: cardEligible ? ['wire', 'card'] : ['wire'],
+        });
       }
 
       if (req.method === 'POST' && path === '/billing/create-checkout-session') {
@@ -9721,15 +13523,16 @@ exports.apiProxy = onRequest(
           return String(listingData.status || 'active').toLowerCase() !== 'sold';
         }).length;
 
-        if (activePaidListingsCount >= plan.listingCap) {
+        if (!isUnlimitedListingCap(plan.listingCap) && activePaidListingsCount >= plan.listingCap) {
           return res.status(409).json({
-            error: `Your ${plan.name} includes up to ${plan.listingCap} active ${plan.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+            error: getActiveListingCapMessage(plan.name, plan.listingCap),
           });
         }
 
         const customerId = await getOrCreateStripeCustomer(stripe, uid, decodedToken.email, decodedToken.name);
         const priceId = await resolveStripePriceIdForPlan(stripe, plan);
         const baseUrl = getRequestBaseUrl(req);
+        const trialEnd = buildTrialEndForPlan(plan.id);
 
         const session = await stripe.checkout.sessions.create({
           mode: 'subscription',
@@ -9749,6 +13552,7 @@ exports.apiProxy = onRequest(
             listingCap: String(plan.listingCap),
           },
           subscription_data: {
+            ...(trialEnd ? { trial_end: trialEnd } : {}),
             metadata: {
               userUid: uid,
               listingId,
@@ -9775,7 +13579,7 @@ exports.apiProxy = onRequest(
         const scope = normalizeNonEmptyString(payload?.scope, 'optional').toLowerCase();
         const token = normalizeNonEmptyString(payload?.token);
 
-        if (!uid || !email || !token) {
+        if (!email || !token) {
           return res.status(400).json({ error: 'Missing unsubscribe parameters.' });
         }
 
@@ -9783,30 +13587,84 @@ exports.apiProxy = onRequest(
           return res.status(401).json({ error: 'This unsubscribe link is invalid or has expired.' });
         }
 
-        const userRef = getDb().collection('users').doc(uid);
-        const userSnap = await userRef.get();
-        if (!userSnap.exists) {
+        if (uid) {
+          const userRef = getDb().collection('users').doc(uid);
+          const userSnap = await userRef.get();
+          if (!userSnap.exists) {
+            return res.status(404).json({ error: 'Subscriber not found.' });
+          }
+
+          const userData = userSnap.data() || {};
+          const storedEmail = normalizeNonEmptyString(userData.email).toLowerCase();
+          if (!storedEmail || storedEmail !== email) {
+            return res.status(404).json({ error: 'Subscriber not found.' });
+          }
+
+          const recipientRef = getEmailPreferenceRecipientRef(email);
+          const recipientSnap = recipientRef ? await recipientRef.get() : null;
+          const recipientData = recipientSnap?.exists ? (recipientSnap.data() || {}) : {};
+          const preferenceState = normalizeOptionalEmailPreferenceState({
+            userData,
+            recipientData,
+          });
+
+          if (req.method === 'GET') {
+            return res.status(200).json({
+              email,
+              displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+              scope,
+              emailNotificationsEnabled: preferenceState.emailNotificationsEnabled,
+            });
+          }
+
+          await userRef.set(
+            {
+              emailNotificationsEnabled: false,
+              emailOptOutAt: admin.firestore.FieldValue.serverTimestamp(),
+              emailOptOutSource: 'unsubscribe_link',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await syncEmailPreferenceRecipientRecord(email, {
+            displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+            scope,
+            emailNotificationsEnabled: false,
+            emailOptOutSource: 'unsubscribe_link',
+          });
+
+          return res.status(200).json({
+            success: true,
+            email,
+            scope,
+            emailNotificationsEnabled: false,
+          });
+        }
+
+        const recipientRef = getEmailPreferenceRecipientRef(email);
+        if (!recipientRef) {
           return res.status(404).json({ error: 'Subscriber not found.' });
         }
 
-        const userData = userSnap.data() || {};
-        const storedEmail = normalizeNonEmptyString(userData.email).toLowerCase();
-        if (!storedEmail || storedEmail !== email) {
-          return res.status(404).json({ error: 'Subscriber not found.' });
-        }
+        const recipientSnap = await recipientRef.get();
+        const recipientData = recipientSnap.exists ? (recipientSnap.data() || {}) : {};
 
         if (req.method === 'GET') {
           return res.status(200).json({
             email,
-            displayName: normalizeNonEmptyString(userData.displayName, 'there'),
+            displayName: normalizeNonEmptyString(recipientData.displayName, email),
             scope,
-            emailNotificationsEnabled: userData.emailNotificationsEnabled !== false,
+            emailNotificationsEnabled: recipientData.emailNotificationsEnabled !== false,
           });
         }
 
-        await userRef.set(
+        await recipientRef.set(
           {
+            email,
+            emailHash: sha256Hex(email),
             emailNotificationsEnabled: false,
+            scope,
+            displayName: normalizeNonEmptyString(recipientData.displayName),
             emailOptOutAt: admin.firestore.FieldValue.serverTimestamp(),
             emailOptOutSource: 'unsubscribe_link',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -9922,6 +13780,63 @@ exports.apiProxy = onRequest(
           logger.error('Failed to send self-service password reset email', error);
           return res.status(500).json({
             error: 'Unable to send password reset email right now.',
+            code: 'auth/internal-error',
+          });
+        }
+      }
+
+      if (req.method === 'POST' && path === '/auth/password-reset-success') {
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        if (!/.+@.+\..+/.test(email)) {
+          return res.status(400).json({
+            error: 'Please enter a valid email address.',
+            code: 'auth/invalid-email',
+          });
+        }
+
+        const passwordResetSuccessRateLimit = consumeAuthRateLimit(
+          'password-reset-success',
+          req,
+          email,
+          AUTH_RATE_LIMITS.passwordResetSuccess,
+        );
+
+        if (!passwordResetSuccessRateLimit.allowed) {
+          res.set('Retry-After', String(passwordResetSuccessRateLimit.retryAfterSeconds));
+          logger.warn('Password reset success endpoint rate limit exceeded.', {
+            email,
+            ipAddress: getRequestIp(req),
+          });
+          return res.status(429).json({
+            error: 'Too many password reset confirmation email requests. Please wait before trying again.',
+            code: 'auth/too-many-requests',
+            retryAfterSeconds: passwordResetSuccessRateLimit.retryAfterSeconds,
+          });
+        }
+
+        try {
+          let displayName = 'there';
+          try {
+            const userRecord = await admin.auth().getUserByEmail(email);
+            displayName = String(userRecord.displayName || 'there').trim() || 'there';
+          } catch (error) {
+            if (isAuthUserNotFound(error)) {
+              return res.status(200).json({ sent: true });
+            }
+            throw error;
+          }
+
+          await sendPasswordResetSuccessEmailMessage({
+            email,
+            displayName,
+            appUrl: resolveAppUrlFromRequest(req),
+          });
+
+          return res.status(200).json({ sent: true });
+        } catch (error) {
+          logger.error('Failed to send password reset success email', error);
+          return res.status(500).json({
+            error: 'Unable to send password reset confirmation email right now.',
             code: 'auth/internal-error',
           });
         }
@@ -10129,6 +14044,8 @@ exports.apiProxy = onRequest(
         }
 
         const priceId = await resolveStripePriceIdForPlan(stripe, plan);
+        const shouldApplyTrial = !accountIsActive && !summary.planId;
+        const trialEnd = shouldApplyTrial ? buildTrialEndForPlan(plan.id) : null;
 
         logger.info('create-account-checkout-session: creating Stripe checkout session', {
           uid,
@@ -10169,6 +14086,7 @@ exports.apiProxy = onRequest(
           },
           subscription_data: {
             description: getPlanInvoiceDisplayName(plan.id),
+            ...(trialEnd ? { trial_end: trialEnd } : {}),
             metadata: {
               userUid: uid,
               planId: plan.id,
@@ -10730,6 +14648,97 @@ exports.apiProxy = onRequest(
         return res.status(200).json(payload);
       }
 
+      if (req.method === 'GET' && path === '/public/places-autocomplete') {
+        const input = normalizeNonEmptyString(req.query.input || '');
+        const mode = normalizeNonEmptyString(req.query.mode || 'city', 'city').toLowerCase();
+        if (!input) return res.status(400).json({ predictions: [] });
+        const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
+        if (!apiKey) return res.status(200).json({ predictions: [] });
+        try {
+          const typeFilter = mode === 'address' ? 'address' : '(cities)';
+          const placesRes = await fetch(
+            `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
+          );
+          const placesData = await placesRes.json();
+          let predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
+            description: p.description,
+            placeId: p.place_id,
+            mainText: normalizeNonEmptyString(p?.structured_formatting?.main_text),
+            secondaryText: normalizeNonEmptyString(p?.structured_formatting?.secondary_text),
+          }));
+
+          if (!predictions.length && mode === 'address') {
+            const geocodeResponse = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(input)}&key=${encodeURIComponent(apiKey)}`
+            );
+            if (geocodeResponse.ok) {
+              const geocodePayload = await geocodeResponse.json();
+              const topResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+              if (geocodePayload?.status === 'OK' && topResult) {
+                const geocodedPlace = parseGooglePlaceDetails(topResult, normalizeNonEmptyString(topResult.place_id));
+                const placeId =
+                  geocodedPlace.placeId ||
+                  `geocode:${Buffer.from(geocodedPlace.formattedAddress || input, 'utf8').toString('base64url')}`;
+                predictions = [
+                  {
+                    description: geocodedPlace.formattedAddress || input,
+                    placeId,
+                    mainText: geocodedPlace.street1 || geocodedPlace.formattedAddress || input,
+                    secondaryText: [geocodedPlace.city, geocodedPlace.state, geocodedPlace.country].filter(Boolean).join(', '),
+                  },
+                ];
+              }
+            }
+          }
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ predictions });
+        } catch {
+          return res.status(200).json({ predictions: [] });
+        }
+      }
+
+      if (req.method === 'GET' && path === '/public/place-details') {
+        const placeId = normalizeNonEmptyString(req.query.placeId || '');
+        if (!placeId) return res.status(400).json({ place: null });
+        const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
+        if (!apiKey) return res.status(200).json({ place: null });
+        try {
+          const fallbackAddress = decodeAutocompleteFallbackAddress(placeId);
+          if (fallbackAddress) {
+            const geocodeResponse = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fallbackAddress)}&key=${encodeURIComponent(apiKey)}`
+            );
+            if (geocodeResponse.ok) {
+              const geocodePayload = await geocodeResponse.json();
+              const geocodeResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+              if (geocodePayload?.status === 'OK' && geocodeResult) {
+                const geocodedPlace = parseGooglePlaceDetails(geocodeResult, placeId);
+                res.set('Cache-Control', 'public, max-age=300');
+                return res.status(200).json({ place: geocodedPlace });
+              }
+            }
+          }
+
+          const placeDetailsRes = await fetch(
+            `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
+          );
+          if (!placeDetailsRes.ok) {
+            return res.status(200).json({ place: null });
+          }
+
+          const placeDetailsData = await placeDetailsRes.json();
+          if (placeDetailsData.status !== 'OK' || !placeDetailsData.result) {
+            return res.status(200).json({ place: null });
+          }
+
+          const place = parseGooglePlaceDetails(placeDetailsData.result, placeId);
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ place });
+        } catch {
+          return res.status(200).json({ place: null });
+        }
+      }
+
       if (req.method === 'POST' && path === '/account/listings') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -10744,6 +14753,9 @@ exports.apiProxy = onRequest(
           ? req.body.listing
           : (req.body && typeof req.body === 'object' ? req.body : {});
         const requestedSellerUid = normalizeNonEmptyString(rawListing.sellerUid || rawListing.sellerId, actorUid);
+        if (isAdminActor && requestedSellerUid === actorUid && isOperatorOnlyRole(tokenRole)) {
+          return res.status(400).json({ error: 'Operator accounts cannot own listings. Assign this listing to a seller or dealer account UID.' });
+        }
 
         if (requestedSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'You can only create listings for your own account.' });
@@ -10774,7 +14786,7 @@ exports.apiProxy = onRequest(
         }
 
         const sellerEntitlement = buildAccountEntitlementSnapshot(sellerAccountState);
-        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'buyer');
+        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'member');
 
         if (!isAdminActor && !sellerEntitlement.canPostListings) {
           return res.status(403).json({ error: 'An active seller subscription is required before creating listings.' });
@@ -10790,18 +14802,20 @@ exports.apiProxy = onRequest(
         const resolvedListingId = requestedId || await reserveNextSequentialListingId();
         const listingRef = getDb().collection('listings').doc(resolvedListingId);
 
+        let finalListingRef = listingRef;
         if (requestedId) {
           const existingListingSnap = await listingRef.get();
           if (existingListingSnap.exists) {
-            return res.status(409).json({ error: 'A listing with that id already exists.' });
+            const fallbackId = await reserveNextSequentialListingId();
+            finalListingRef = getDb().collection('listings').doc(fallbackId);
           }
         }
 
-        if (sellerEntitlement.listingCap > 0) {
+        if (!isAdminActor && sellerEntitlement.listingCap > 0) {
           const activeListingCount = await countSellerListingsForCapacity(requestedSellerUid);
-          if (activeListingCount >= sellerEntitlement.listingCap) {
+          if (!isUnlimitedListingCap(sellerEntitlement.listingCap) && activeListingCount >= sellerEntitlement.listingCap) {
             return res.status(409).json({
-              error: `This account includes up to ${sellerEntitlement.listingCap} active ${sellerEntitlement.listingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`,
+              error: getActiveListingCapMessage('This account', sellerEntitlement.listingCap),
             });
           }
         }
@@ -10825,10 +14839,10 @@ exports.apiProxy = onRequest(
 
         const draftListing = {
           ...listingInput,
-          id: listingRef.id,
+          id: finalListingRef.id,
           sellerUid: requestedSellerUid,
           sellerId: requestedSellerUid,
-          sellerVerified: isVerifiedSellerRole(sellerRole),
+          sellerVerified: isVerifiedSellerRole(sellerRole, sellerAccountState.manuallyVerified),
           qualityValidated: true,
           status: 'draft',
           approvalStatus: 'pending',
@@ -10854,13 +14868,13 @@ exports.apiProxy = onRequest(
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        await listingRef.set(draftListing, { merge: false });
+        await finalListingRef.set(draftListing, { merge: false });
         await applyListingLifecycleAction({
-          listingRef,
-          listingId: listingRef.id,
+          listingRef: finalListingRef,
+          listingId: finalListingRef.id,
           listing: {
             ...draftListing,
-            id: listingRef.id,
+            id: finalListingRef.id,
           },
           action: 'submit',
           actorUid,
@@ -10870,7 +14884,7 @@ exports.apiProxy = onRequest(
             : 'Submitted by administrator during listing creation.',
         });
 
-        const createdListingSnap = await listingRef.get();
+        const createdListingSnap = await finalListingRef.get();
         return res.status(201).json({
           message: 'Listing created and submitted for review.',
           lifecycleAction: 'submit',
@@ -10902,6 +14916,9 @@ exports.apiProxy = onRequest(
 
         const existingData = listingSnapshot.data() || {};
         const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
+        if (isAdminActor && listingSellerUid === actorUid && isOperatorOnlyRole(tokenRole)) {
+          return res.status(400).json({ error: 'Operator-owned listings are not supported. Reassign this listing to a seller or dealer account.' });
+        }
         if (listingSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'Forbidden' });
         }
@@ -10950,7 +14967,7 @@ exports.apiProxy = onRequest(
           }
         }
 
-        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'buyer');
+        const sellerRole = normalizeUserRole(sellerAccountState.role || tokenRole || 'member');
 
         if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'featured') && sanitizedUpdates.featured) {
           const featuredCap = getFeaturedListingCapForRole(sellerRole);
@@ -10976,7 +14993,7 @@ exports.apiProxy = onRequest(
         const nextStatus = normalizeMarketplaceText(existingData.status || 'draft');
 
         sanitizedUpdates.qualityValidated = true;
-        sanitizedUpdates.sellerVerified = isVerifiedSellerRole(sellerRole);
+        sanitizedUpdates.sellerVerified = isVerifiedSellerRole(sellerRole, sellerAccountState.manuallyVerified);
         sanitizedUpdates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
         if (shouldValidateQuality && nextApprovalStatus === 'approved' && nextStatus !== 'sold' && nextStatus !== 'archived') {
@@ -11020,6 +15037,9 @@ exports.apiProxy = onRequest(
 
         const existingData = listingSnapshot.data() || {};
         const listingSellerUid = normalizeNonEmptyString(existingData.sellerUid || existingData.sellerId);
+        if (isAdminActor && listingSellerUid === actorUid && isOperatorOnlyRole(tokenRole)) {
+          return res.status(400).json({ error: 'Operator-owned listings are not supported. Reassign this listing to a seller or dealer account.' });
+        }
         if (listingSellerUid !== actorUid && !isAdminActor) {
           return res.status(403).json({ error: 'Forbidden' });
         }
@@ -11039,8 +15059,13 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, ownerScopeUid);
+        if (isOperatorOnlyRole(actorRole) && requestedSellerUid === actorUid) {
+          return res.status(400).json({ error: 'Operator accounts do not have seller listing workspaces.' });
+        }
+        if (requestedSellerUid !== actorUid && requestedSellerUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
         const filters = parseMarketplaceListingFilters({
@@ -11112,12 +15137,7 @@ exports.apiProxy = onRequest(
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
         const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
-        const sanitizedUpdates = sanitizeAccountProfilePatchPayload(req.body || {});
-        const updatedFields = Object.keys(sanitizedUpdates);
-
-        if (updatedFields.length === 0) {
-          return res.status(400).json({ error: 'No supported profile updates were provided.' });
-        }
+        let sanitizedUpdates = sanitizeAccountProfilePatchPayload(req.body || {});
 
         let authRecord = null;
         try {
@@ -11151,13 +15171,53 @@ exports.apiProxy = onRequest(
           });
         }
 
+        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'member');
+        if (isOperatorOnlyRole(nextRole)) {
+          sanitizedUpdates = stripStorefrontFieldsForOperator(sanitizedUpdates);
+        }
+        const updatedFields = Object.keys(sanitizedUpdates);
+
+        if (updatedFields.length === 0) {
+          return res.status(400).json({ error: 'No supported profile updates were provided.' });
+        }
+
         const nextUserData = {
           ...currentData,
           ...sanitizedUpdates,
           uid: actorUid,
         };
+        const derivedProfilePatch = {};
+        const derivedLocation = buildStorefrontLocationText(nextUserData);
+        if (derivedLocation && !('location' in sanitizedUpdates)) {
+          derivedProfilePatch.location = derivedLocation;
+          nextUserData.location = derivedLocation;
+        }
 
-        const nextRole = normalizeUserRole(currentData.role || authRecord?.customClaims?.role || tokenRole || 'buyer');
+        const shouldResolveStorefrontGeo =
+          supportsEnterpriseStorefrontRole(nextRole) &&
+          ['street1', 'street2', 'city', 'state', 'postalCode', 'country', 'location'].some((field) => field in sanitizedUpdates);
+
+        if (shouldResolveStorefrontGeo) {
+          const geocodeQuery = buildStorefrontGeocodeAddress(nextUserData) || normalizeNonEmptyString(nextUserData.location);
+          if (geocodeQuery) {
+            try {
+              const geocoded = await geocodeLocation(geocodeQuery);
+              if (geocoded) {
+                derivedProfilePatch.latitude = geocoded.lat;
+                derivedProfilePatch.longitude = geocoded.lng;
+                nextUserData.latitude = geocoded.lat;
+                nextUserData.longitude = geocoded.lng;
+              }
+            } catch (error) {
+              logger.warn('Unable to geocode storefront address during account profile patch.', {
+                actorUid,
+                geocodeQuery,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
+
         const quotaSafeProfileFields = new Set([
           'emailNotificationsEnabled',
           'preferredLanguage',
@@ -11190,10 +15250,61 @@ exports.apiProxy = onRequest(
           {
             uid: actorUid,
             ...sanitizedUpdates,
+            ...derivedProfilePatch,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
+
+        if ('emailNotificationsEnabled' in sanitizedUpdates) {
+          await syncEmailPreferenceRecipientRecord(
+            normalizeNonEmptyString(nextUserData.email || authRecord?.email).toLowerCase(),
+            {
+              displayName: normalizeNonEmptyString(nextUserData.displayName || authRecord?.displayName, 'there'),
+              scope: 'optional',
+              emailNotificationsEnabled: sanitizedUpdates.emailNotificationsEnabled !== false,
+              emailOptOutSource: sanitizedUpdates.emailNotificationsEnabled === false ? 'account_profile' : '',
+            }
+          );
+        }
+
+        if (isOperatorOnlyRole(nextRole)) {
+          await getDb().collection('users').doc(actorUid).set(
+            {
+              uid: actorUid,
+              ...buildOperatorStorefrontFieldDeletes(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await deleteSellerStorefrontArtifacts(actorUid).catch(() => undefined);
+          Object.assign(nextUserData, {
+            storefrontEnabled: false,
+            storefrontSlug: '',
+            storefrontName: '',
+            storefrontTagline: '',
+            storefrontDescription: '',
+            businessName: '',
+            street1: '',
+            street2: '',
+            city: '',
+            state: '',
+            county: '',
+            postalCode: '',
+            country: '',
+            latitude: null,
+            longitude: null,
+            storefrontLogoUrl: '',
+            serviceAreaScopes: [],
+            serviceAreaStates: [],
+            serviceAreaCounties: [],
+            servicesOfferedCategories: [],
+            servicesOfferedSubcategories: [],
+            seoTitle: '',
+            seoDescription: '',
+            seoKeywords: [],
+          });
+        }
 
         if (authRecord && ('displayName' in sanitizedUpdates || 'photoURL' in sanitizedUpdates)) {
           const authPatch = {};
@@ -11237,22 +15348,39 @@ exports.apiProxy = onRequest(
               role: nextRole,
               storefrontEnabled: true,
               storefrontSlug,
-              canonicalPath: `/seller/${storefrontSlug}`,
+              canonicalPath: `/dealers/${storefrontSlug}`,
               displayName: normalizeNonEmptyString(nextUserData.displayName || nextUserData.company, storefrontName),
               storefrontName,
               storefrontTagline: normalizeNonEmptyString(nextUserData.storefrontTagline),
               storefrontDescription: normalizeNonEmptyString(nextUserData.storefrontDescription || nextUserData.about),
-              location: normalizeNonEmptyString(nextUserData.location),
+              businessName: normalizeNonEmptyString(nextUserData.businessName || nextUserData.company || storefrontName),
+              street1: normalizeNonEmptyString(nextUserData.street1),
+              street2: normalizeNonEmptyString(nextUserData.street2),
+              city: normalizeNonEmptyString(nextUserData.city),
+              state: normalizeNonEmptyString(nextUserData.state),
+              county: normalizeNonEmptyString(nextUserData.county),
+              postalCode: normalizeNonEmptyString(nextUserData.postalCode),
+              country: normalizeNonEmptyString(nextUserData.country),
+              latitude: toFiniteNumberOrUndefined(nextUserData.latitude) ?? null,
+              longitude: toFiniteNumberOrUndefined(nextUserData.longitude) ?? null,
+              location: buildStorefrontLocationText(nextUserData),
               phone: normalizeNonEmptyString(nextUserData.phoneNumber),
               email: normalizeNonEmptyString(nextUserData.email || authRecord?.email),
               website: normalizeNonEmptyString(nextUserData.website),
-              logo: normalizeNonEmptyString(nextUserData.photoURL),
+              logo: normalizeNonEmptyString(nextUserData.storefrontLogoUrl || nextUserData.photoURL),
               coverPhotoUrl: normalizeNonEmptyString(nextUserData.coverPhotoUrl),
-              seoTitle: normalizeNonEmptyString(nextUserData.seoTitle),
-              seoDescription: normalizeNonEmptyString(nextUserData.seoDescription),
-              seoKeywords: Array.isArray(nextUserData.seoKeywords)
+              serviceAreaScopes: normalizeServiceAreaScopes(nextUserData.serviceAreaScopes, 8),
+              serviceAreaStates: normalizeStringArray(nextUserData.serviceAreaStates, 80, 120),
+              serviceAreaCounties: normalizeStringArray(nextUserData.serviceAreaCounties, 120, 120),
+              servicesOfferedCategories: normalizeStringArray(nextUserData.servicesOfferedCategories, 40, 120),
+              servicesOfferedSubcategories: normalizeStringArray(nextUserData.servicesOfferedSubcategories, 120, 120),
+              seoTitle: normalizeNonEmptyString(nextUserData.seoTitle) ||
+                `${storefrontName} | ${nextRole === 'pro_dealer' ? 'Pro Dealer' : nextRole === 'dealer' ? 'Dealer' : 'Equipment Seller'} on Forestry Equipment Sales`,
+              seoDescription: normalizeNonEmptyString(nextUserData.seoDescription) ||
+                `Browse forestry and logging equipment from ${storefrontName}${nextUserData.location ? ' in ' + nextUserData.location : ''}. Verified ${nextRole === 'pro_dealer' ? 'Pro Dealer' : nextRole === 'dealer' ? 'Dealer' : 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery.`,
+              seoKeywords: Array.isArray(nextUserData.seoKeywords) && nextUserData.seoKeywords.length > 0
                 ? nextUserData.seoKeywords.filter((keyword) => typeof keyword === 'string').slice(0, 30)
-                : [],
+                : [storefrontName, 'forestry equipment', 'logging equipment', 'used forestry equipment', 'skidders', 'harvesters', 'feller bunchers', 'forwarders'].filter(Boolean),
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -11384,8 +15512,10 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, ownerScopeUid);
+        if (requestedSellerUid !== actorUid && requestedSellerUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -11425,8 +15555,10 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, actorUid);
-        if (requestedSellerUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedSellerUid = normalizeNonEmptyString(req.query?.sellerUid, ownerScopeUid);
+        if (requestedSellerUid !== actorUid && requestedSellerUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -11506,8 +15638,12 @@ exports.apiProxy = onRequest(
           }
 
           if (storefrontSnapshot.exists) {
+            const seller = serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {});
+            if (!seller) {
+              return res.status(200).json({ seller: null });
+            }
             res.set('Cache-Control', 'public, max-age=300');
-            return res.status(200).json({ seller: serializeSellerPayloadFromStorefront(storefrontSnapshot.id, storefrontSnapshot.data() || {}) });
+            return res.status(200).json({ seller });
           }
 
           let userSnapshot = await getDb().collection('users').doc(requestedIdentity).get();
@@ -11523,8 +15659,12 @@ exports.apiProxy = onRequest(
           }
 
           if (userSnapshot.exists) {
+            const seller = serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {});
+            if (!seller) {
+              return res.status(200).json({ seller: null });
+            }
             res.set('Cache-Control', 'public, max-age=300');
-            return res.status(200).json({ seller: serializeSellerPayloadFromUser(userSnapshot.id, userSnapshot.data() || {}) });
+            return res.status(200).json({ seller });
           }
 
           return res.status(200).json({ seller: null });
@@ -11592,8 +15732,10 @@ exports.apiProxy = onRequest(
 
         const actorUid = normalizeNonEmptyString(decodedToken.uid);
         const actorRole = getActorRoleFromDecodedToken(decodedToken);
-        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, actorUid);
-        if (requestedUserUid !== actorUid && !canAdministrateAccount(actorRole)) {
+        const tokenParentAccountUid = normalizeNonEmptyString(decodedToken.parentAccountUid || decodedToken.claims?.parentAccountUid);
+        const ownerScopeUid = tokenParentAccountUid || actorUid;
+        const requestedUserUid = normalizeNonEmptyString(req.query?.userUid, ownerScopeUid);
+        if (requestedUserUid !== actorUid && requestedUserUid !== tokenParentAccountUid && !canAdministrateAccount(actorRole)) {
           return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -11629,6 +15771,38 @@ exports.apiProxy = onRequest(
         }
       }
 
+      if (req.method === 'POST' && path === '/admin/maintenance/archive-privileged-storefronts') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = String(decodedToken.email || '').trim().toLowerCase();
+        const tokenRole = isPrivilegedAdminEmail(actorEmail) ? 'super_admin' : getActorRoleFromDecodedToken(decodedToken);
+        if (!canAdministrateAccount(tokenRole)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const dryRun = Boolean(req.body?.dryRun);
+        const result = await archivePrivilegedOperatorStorefronts({ actorUid, dryRun });
+
+        await writeAccountAuditLog({
+          eventType: 'ADMIN_STOREFRONT_ARCHIVE_RUN',
+          actorUid,
+          targetUid: null,
+          source: 'admin_maintenance',
+          reason: dryRun ? 'Dry run for privileged storefront archival.' : 'Archived privileged storefront data.',
+          metadata: {
+            dryRun,
+            archivedCount: result.archivedCount,
+            archivedUids: result.archivedUids,
+          },
+        });
+
+        return res.status(200).json(result);
+      }
+
       if (req.method === 'POST' && path === '/admin/users/create-managed-account') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
@@ -11642,7 +15816,7 @@ exports.apiProxy = onRequest(
         let actorDoc = buildSyntheticUserDoc(actorUid, {
           uid: actorUid,
           email: actorEmail,
-          role: actorRole || 'buyer',
+          role: actorRole || 'member',
           displayName: String(decodedToken.name || '').trim() || 'Forestry Equipment Sales Admin',
           parentAccountUid: actorUid,
           company: '',
@@ -11676,13 +15850,13 @@ exports.apiProxy = onRequest(
         const company = String(req.body?.company || '').trim();
         const phoneNumber = String(req.body?.phoneNumber || '').trim();
         const ownerUid = String(actorDoc.data()?.parentAccountUid || actorUid).trim();
-        const parentRole = actorCanAdminister && actorRole === 'buyer' ? 'super_admin' : actorRole;
+        const parentRole = actorCanAdminister && actorRole === 'member' ? 'super_admin' : actorRole;
 
         if (!displayName || !email) {
           return res.status(400).json({ error: 'Display name and email are required.' });
         }
 
-        const normalizedRole = role || 'buyer';
+        const normalizedRole = role || 'member';
 
         if (!canCreateManagedRole(parentRole, normalizedRole)) {
           return res.status(403).json({ error: 'You do not have permission to create this account role.' });
@@ -11692,7 +15866,7 @@ exports.apiProxy = onRequest(
           const seatContext = await getManagedAccountSeatContext(ownerUid);
           if (seatContext.seatLimit < 1) {
             return res.status(403).json({
-              error: 'An active Dealer or Fleet Dealer subscription is required before adding managed accounts.',
+              error: 'An active Dealer or Pro Dealer subscription is required before adding managed accounts.',
             });
           }
           if (seatContext.seatCount >= seatContext.seatLimit) {
@@ -11787,6 +15961,40 @@ exports.apiProxy = onRequest(
             managedByRole: parentRole,
           });
 
+          if (['individual_seller', 'dealer', 'pro_dealer'].includes(normalizedRole)) {
+            await syncEnterpriseStorefrontState({
+              uid: authUserRecord.uid,
+              role: normalizedRole,
+              userData: {
+                uid: authUserRecord.uid,
+                email,
+                displayName,
+                role: normalizedRole,
+                accountAccessSource: manualAccessSource || null,
+                phoneNumber,
+                company: company || String(actorDoc.data()?.company || '').trim(),
+                accountStatus: 'pending',
+                storefrontEnabled: true,
+              },
+              authRecord: buildSerializableAuthRecord(authUserRecord, {
+                uid: authUserRecord.uid,
+                email,
+                displayName,
+                customClaims: buildAccessClaims(authUserRecord.customClaims || {}, {
+                  role: normalizedRole,
+                  accountStatus: 'pending',
+                  accountAccessSource: manualAccessSource,
+                  parentAccountUid: ownerUid,
+                  subscriptionPlanId: null,
+                  subscriptionStatus: null,
+                  listingCap: null,
+                  managedAccountCap: null,
+                }),
+              }),
+              force: true,
+            });
+          }
+
           const emailPayload = templates.managedAccountInvite({
             displayName,
             inviterName: String(actorDoc.data()?.displayName || actorDoc.data()?.company || 'Forestry Equipment Sales Admin').trim(),
@@ -11810,6 +16018,12 @@ exports.apiProxy = onRequest(
 
           if (authUserRecord?.uid) {
             try {
+              await deleteSellerStorefrontArtifacts(authUserRecord.uid);
+            } catch (cleanupError) {
+              logger.error('Failed to clean up managed user storefront artifacts after invite error', cleanupError);
+            }
+
+            try {
               await getDb().collection('users').doc(authUserRecord.uid).delete();
             } catch (cleanupError) {
               logger.error('Failed to clean up managed user profile after invite error', cleanupError);
@@ -11823,6 +16037,135 @@ exports.apiProxy = onRequest(
           }
 
           return res.status(500).json({ error: 'Unable to create managed account invitation.' });
+        }
+      }
+
+      if (req.method === 'POST' && path === '/admin/invite-user') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const inviteRl = consumeAuthRateLimit('admin_invite_user', req, actor.uid, 10);
+        if (!inviteRl.allowed) {
+          return res.status(429).json({ error: `Too many invitations. Try again in ${inviteRl.retryAfterSeconds} seconds.` });
+        }
+
+        const displayName = String(req.body?.displayName || '').trim();
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const role = normalizeUserRole(String(req.body?.role || 'member'));
+
+        if (!displayName || !email) {
+          return res.status(400).json({ error: 'Display name and email are required.' });
+        }
+
+        try {
+          const existingUserByEmail = await getDb()
+            .collection('users')
+            .where('email', '==', email)
+            .limit(1)
+            .get();
+
+          if (!existingUserByEmail.empty) {
+            return res.status(409).json({ error: 'An account with that email already exists.' });
+          }
+        } catch (error) {
+          if (!isFirestoreQuotaExceeded(error)) throw error;
+        }
+
+        try {
+          await admin.auth().getUserByEmail(email);
+          return res.status(409).json({ error: 'An authentication account with that email already exists.' });
+        } catch (error) {
+          if (error?.code !== 'auth/user-not-found') {
+            return res.status(500).json({ error: 'Unable to validate the requested email address.' });
+          }
+        }
+
+        const temporaryPassword = generateTemporaryPassword();
+        const loginUrl = `${APP_URL}/login?email=${encodeURIComponent(email)}&invited=1`;
+
+        let authUserRecord;
+        try {
+          authUserRecord = await admin.auth().createUser({
+            email,
+            password: temporaryPassword,
+            displayName,
+            emailVerified: false,
+            disabled: false,
+          });
+
+          await admin.auth().setCustomUserClaims(authUserRecord.uid, buildAccessClaims(authUserRecord.customClaims || {}, {
+            role,
+            accountStatus: 'active',
+            accountAccessSource: null,
+            parentAccountUid: null,
+            subscriptionPlanId: null,
+            subscriptionStatus: null,
+            listingCap: null,
+            managedAccountCap: null,
+          }));
+
+          let resetLink = `${APP_URL}/login`;
+          try {
+            resetLink = await admin.auth().generatePasswordResetLink(email, {
+              url: `${APP_URL}/login`,
+            });
+          } catch (resetError) {
+            logger.warn(`Could not generate password reset link for ${email}: ${resetError.message}`);
+          }
+
+          const newUserRef = getDb().collection('users').doc(authUserRecord.uid);
+          await newUserRef.set({
+            uid: authUserRecord.uid,
+            email,
+            displayName,
+            role,
+            accountStatus: 'active',
+            favorites: [],
+            emailVerified: false,
+            onboardingSource: 'admin_invite',
+            invitationSentAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdByUid: actor.actorUid,
+          });
+
+          const emailPayload = templates.managedAccountInvite({
+            displayName,
+            inviterName: String(actor.actorDoc.data()?.displayName || 'Forestry Equipment Sales Admin').trim(),
+            email,
+            role,
+            company: '',
+            temporaryPassword,
+            loginUrl,
+            resetLink,
+          });
+          await sendEmail({ to: email, ...emailPayload });
+
+          await writeAccountAuditLog({
+            eventType: 'admin_invite_user',
+            actorUid: actor.actorUid,
+            targetUid: authUserRecord.uid,
+            source: 'admin_dashboard',
+            reason: `Invited ${email} as ${role}`,
+            nextState: { role, email, displayName },
+          });
+
+          return res.status(201).json({
+            ok: true,
+            uid: authUserRecord.uid,
+            email,
+            message: 'User invited and invitation email sent.',
+          });
+        } catch (error) {
+          logger.error('Failed to create invited user', error);
+
+          if (authUserRecord?.uid) {
+            try { await getDb().collection('users').doc(authUserRecord.uid).delete(); } catch (_) { /* cleanup */ }
+            try { await admin.auth().deleteUser(authUserRecord.uid); } catch (_) { /* cleanup */ }
+          }
+
+          return res.status(500).json({ error: 'Unable to invite user.' });
         }
       }
 
@@ -12009,7 +16352,10 @@ exports.apiProxy = onRequest(
         }
 
         const snapshot = await getDb().collection('inquiries').orderBy('createdAt', 'desc').get();
-        const inquiries = snapshot.docs.map((docSnapshot) => serializeInquiryDoc(docSnapshot));
+        const includeArchived = req.query.includeArchived === '1';
+        const inquiries = snapshot.docs
+          .map((docSnapshot) => serializeInquiryDoc(docSnapshot))
+          .filter((inq) => includeArchived || !inq.archivedAt);
         return res.status(200).json({ inquiries });
       }
 
@@ -12020,8 +16366,89 @@ exports.apiProxy = onRequest(
         }
 
         const snapshot = await getDb().collection('calls').orderBy('createdAt', 'desc').get();
-        const calls = snapshot.docs.map((docSnapshot) => serializeCallDoc(docSnapshot));
+        const includeArchived = req.query.includeArchived === '1';
+        const calls = snapshot.docs
+          .map((docSnapshot) => serializeCallDoc(docSnapshot))
+          .filter((c) => includeArchived || !c.archivedAt);
         return res.status(200).json({ calls });
+      }
+
+      // Archive / Unarchive inquiries
+      const archiveInquiryMatch = path.match(/^\/admin\/inquiries\/([^/]+)\/archive$/i);
+      if (req.method === 'PATCH' && archiveInquiryMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const inquiryId = decodeURIComponent(archiveInquiryMatch[1] || '').trim();
+        if (!inquiryId) {
+          return res.status(400).json({ error: 'An inquiry ID is required.' });
+        }
+        const docRef = getDb().collection('inquiries').doc(inquiryId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Inquiry not found.' });
+        }
+        await docRef.update({ archivedAt: new Date().toISOString(), archivedByUid: actor.uid });
+        return res.status(200).json({ success: true });
+      }
+
+      const unarchiveInquiryMatch = path.match(/^\/admin\/inquiries\/([^/]+)\/unarchive$/i);
+      if (req.method === 'PATCH' && unarchiveInquiryMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const inquiryId = decodeURIComponent(unarchiveInquiryMatch[1] || '').trim();
+        if (!inquiryId) {
+          return res.status(400).json({ error: 'An inquiry ID is required.' });
+        }
+        const docRef = getDb().collection('inquiries').doc(inquiryId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Inquiry not found.' });
+        }
+        await docRef.update({ archivedAt: admin.firestore.FieldValue.delete(), archivedByUid: admin.firestore.FieldValue.delete() });
+        return res.status(200).json({ success: true });
+      }
+
+      // Archive / Unarchive calls
+      const archiveCallMatch = path.match(/^\/admin\/calls\/([^/]+)\/archive$/i);
+      if (req.method === 'PATCH' && archiveCallMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const callId = decodeURIComponent(archiveCallMatch[1] || '').trim();
+        if (!callId) {
+          return res.status(400).json({ error: 'A call ID is required.' });
+        }
+        const docRef = getDb().collection('calls').doc(callId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Call not found.' });
+        }
+        await docRef.update({ archivedAt: new Date().toISOString(), archivedByUid: actor.uid });
+        return res.status(200).json({ success: true });
+      }
+
+      const unarchiveCallMatch = path.match(/^\/admin\/calls\/([^/]+)\/unarchive$/i);
+      if (req.method === 'PATCH' && unarchiveCallMatch) {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const callId = decodeURIComponent(unarchiveCallMatch[1] || '').trim();
+        if (!callId) {
+          return res.status(400).json({ error: 'A call ID is required.' });
+        }
+        const docRef = getDb().collection('calls').doc(callId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+          return res.status(404).json({ error: 'Call not found.' });
+        }
+        await docRef.update({ archivedAt: admin.firestore.FieldValue.delete(), archivedByUid: admin.firestore.FieldValue.delete() });
+        return res.status(200).json({ success: true });
       }
 
       const adminCallRecordingMatch = path.match(/^\/admin\/calls\/([^/]+)\/recording$/i);
@@ -12168,6 +16595,65 @@ exports.apiProxy = onRequest(
         return res.status(200).json(report);
       }
 
+      if (req.method === 'POST' && path === '/admin/reports/platform-report/send') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const body = typeof req.body === 'object' && req.body ? req.body : {};
+        const recipientOverride = Array.isArray(body.recipients)
+          ? body.recipients.map((r) => String(r || '').trim()).filter(Boolean)
+          : [];
+
+        const requestedDays = Math.max(1, Math.min(Number(body.days || 30) || 30, 365));
+        const endDate = new Date();
+        const startDate = new Date(endDate.getTime() - (requestedDays * 24 * 60 * 60 * 1000));
+        const report = await buildAdminPlatformReport({
+          startDate,
+          endDate,
+          periodLabel: `Last ${requestedDays} Days ending ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+        });
+
+        const { subject, html } = templates.adminPlatformMonthlyReport({
+          monthLabel: report.periodLabel,
+          totalListings: report.totalListings,
+          liveListings: report.liveListings,
+          soldListings: report.soldListings,
+          totalViews: report.totalViews,
+          totalInquiries: report.totalInquiries,
+          totalCalls: report.totalCalls,
+          connectedCalls: report.connectedCalls,
+          qualifiedCalls: report.qualifiedCalls,
+          missedCalls: report.missedCalls,
+          activeSubscriptions: report.activeSubscriptions,
+          newSubscriptions: report.newSubscriptions,
+          cancelledSubscriptions: report.cancelledSubscriptions,
+          estimatedMrr: report.estimatedMrr,
+          activeUsers: report.activeUsers,
+          newUsers: report.newUsers,
+          topSellersSummary: report.topSellersSummary,
+          topListingsByViews: report.topListingsByViews,
+          dashboardUrl: `${APP_URL}/admin`,
+        });
+
+        const recipients = recipientOverride.length > 0 ? recipientOverride : getAdminRecipients();
+        await sendEmail({ to: recipients, subject, html });
+
+        return res.status(200).json({
+          sent: true,
+          recipients,
+          periodLabel: report.periodLabel,
+          metrics: {
+            liveListings: report.liveListings,
+            totalViews: report.totalViews,
+            totalInquiries: report.totalInquiries,
+            activeSubscriptions: report.activeSubscriptions,
+            estimatedMrr: report.estimatedMrr,
+          },
+        });
+      }
+
       if (req.method === 'POST' && path === '/admin/email/test-send') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
@@ -12198,10 +16684,11 @@ exports.apiProxy = onRequest(
           }
 
           try {
+            const adminReplyTo = getAdminRecipients()[0] || actor.actorEmail;
             await sendEmail({
               to: recipients,
               ...payload,
-              replyTo: 'caleb@forestryequipmentsales.com',
+              replyTo: adminReplyTo,
             });
             results.push({ template: String(templateKey || ''), status: 'sent', subject: payload.subject });
           } catch (error) {
@@ -12210,15 +16697,16 @@ exports.apiProxy = onRequest(
           }
         }
 
+        const adminReplyToSummary = getAdminRecipients()[0] || actor.actorEmail;
         return res.status(200).json({
           recipients,
-          replyTo: 'caleb@forestryequipmentsales.com',
+          replyTo: adminReplyToSummary,
           sentBy: actor.actorEmail,
           results,
         });
       }
 
-      const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock)$/);
+      const adminUserActionMatch = path.match(/^\/admin\/users\/([^/]+)\/(reset-password|lock|unlock|verify|unverify)$/);
       if (adminUserActionMatch && req.method === 'POST') {
         const actor = await getAdminActorContext(req);
         if (actor.error) {
@@ -12259,6 +16747,46 @@ exports.apiProxy = onRequest(
 
         if ((action === 'lock' || action === 'unlock') && targetUid === actor.actorUid) {
           return res.status(400).json({ error: `You cannot ${action} your own account.` });
+        }
+
+        if (action === 'verify' || action === 'unverify') {
+          const newVal = action === 'verify';
+          try {
+            await targetRef.set(
+              {
+                manuallyVerified: newVal,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+
+            // Propagate sellerVerified to all of this seller's listings
+            const targetRole = normalizeUserRole(String(targetData.role || ''));
+            const sellerVerified = isVerifiedSellerRole(targetRole, newVal);
+            const listingsSnap = await db.collection('listings').where('sellerUid', '==', targetUid).get();
+            if (!listingsSnap.empty) {
+              const batch = db.batch();
+              listingsSnap.docs.forEach((doc) => batch.update(doc.ref, { sellerVerified }));
+              await batch.commit();
+            }
+
+            // Sync verified status to storefronts collection
+            const storefrontRef = db.collection('storefronts').doc(targetUid);
+            const storefrontSnap = await storefrontRef.get();
+            if (storefrontSnap.exists) {
+              await storefrontRef.update({ verified: sellerVerified, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            }
+
+            return res.status(200).json({
+              message: newVal ? 'Seller verified.' : 'Seller verification removed.',
+              manuallyVerified: newVal,
+              listingsUpdated: listingsSnap.size,
+              storefrontUpdated: storefrontSnap.exists,
+            });
+          } catch (error) {
+            logger.error(`Failed to ${action} seller ${targetUid}`, error);
+            return res.status(500).json({ error: `Unable to ${action} this seller.` });
+          }
         }
 
         if (action === 'reset-password') {
@@ -12319,6 +16847,31 @@ exports.apiProxy = onRequest(
           );
         } else {
           warning = 'Authentication status updated. Firestore profile status will sync after the Firestore quota window resets.';
+        }
+
+        const targetEmail = String(targetData.email || refreshedAuthUserRecord?.email || authUserRecord?.email || '').trim().toLowerCase();
+        if (targetEmail && !/@example\.com$/i.test(targetEmail)) {
+          try {
+            const actorName = String(actor.actorDoc.data()?.displayName || actor.actorEmail || 'Forestry Equipment Sales Admin').trim();
+            await sendAccountStatusEmailMessage({
+              email: targetEmail,
+              displayName: String(targetData.displayName || targetData.name || refreshedAuthUserRecord?.displayName || targetEmail).trim(),
+              actorName,
+              loginUrl: `${resolveAppUrlFromRequest(req)}/login`,
+              supportUrl: `${resolveAppUrlFromRequest(req)}/contact`,
+              locked: nextDisabledState,
+            });
+          } catch (emailError) {
+            logger.warn('Failed to send account status email notification.', {
+              action,
+              targetUid,
+              email: targetEmail,
+              error: emailError instanceof Error ? emailError.message : String(emailError),
+            });
+            warning = warning
+              ? `${warning} Account email notification could not be sent.`
+              : 'Account email notification could not be sent.';
+          }
         }
 
         return res.status(200).json({
@@ -12391,6 +16944,13 @@ exports.apiProxy = onRequest(
             }
           }
 
+          await deleteSellerStorefrontArtifacts(targetUid).catch((error) => {
+            logger.warn('Unable to delete storefront artifacts for deleted user.', {
+              targetUid,
+              error: error instanceof Error ? error.message : String(error || ''),
+            });
+          });
+
           if (targetExistsInFirestore) {
             await targetRef.delete();
           }
@@ -12407,7 +16967,7 @@ exports.apiProxy = onRequest(
         const email = String(req.body?.email ?? currentData.email ?? authUserRecord?.email ?? '').trim().toLowerCase();
         const phoneNumber = String(req.body?.phoneNumber ?? currentData.phoneNumber ?? '').trim();
         const company = String(req.body?.company ?? currentData.company ?? '').trim();
-        const requestedRole = normalizeUserRole(String(req.body?.role ?? currentData.role ?? 'buyer'));
+        const requestedRole = normalizeUserRole(String(req.body?.role ?? currentData.role ?? 'member'));
 
         if (!displayName || !email) {
           return res.status(400).json({ error: 'Display name and email are required.' });
@@ -12417,7 +16977,7 @@ exports.apiProxy = onRequest(
           return res.status(400).json({ error: 'A valid role is required.' });
         }
 
-        if (!canCreateManagedRole(actor.actorRole === 'buyer' && isPrivilegedAdminEmail(actor.actorEmail) ? 'super_admin' : actor.actorRole, requestedRole)) {
+        if (!canCreateManagedRole(actor.actorRole === 'member' && isPrivilegedAdminEmail(actor.actorEmail) ? 'super_admin' : actor.actorRole, requestedRole)) {
           return res.status(403).json({ error: 'You do not have permission to assign that role.' });
         }
 
@@ -12450,7 +17010,7 @@ exports.apiProxy = onRequest(
         const currentAuthDisplayName = String(authUserRecord?.displayName || '').trim();
         const authEmailChanged = !authUserRecord || currentAuthEmail !== email;
         const authDisplayNameChanged = !authUserRecord || currentAuthDisplayName !== displayName;
-        const currentRole = normalizeUserRole(String(currentData.role || authUserRecord?.customClaims?.role || 'buyer'));
+        const currentRole = normalizeUserRole(String(currentData.role || authUserRecord?.customClaims?.role || 'member'));
         const currentAccessSource = normalizeAccountAccessSource(
           currentData.accountAccessSource || authUserRecord?.customClaims?.accountAccessSource
         );
@@ -12599,6 +17159,69 @@ exports.apiProxy = onRequest(
               : null,
           }),
         });
+        if (!firestoreQuotaLimited && supportsEnterpriseStorefrontRole(requestedRole)) {
+          const storefrontSync = await syncEnterpriseStorefrontState({
+            uid: targetUid,
+            role: requestedRole,
+            userData: {
+              ...currentData,
+              uid: targetUid,
+              displayName,
+              email,
+              phoneNumber,
+              company,
+              role: requestedRole,
+              accountAccessSource: nextAccessSource || null,
+            },
+            authRecord: responseAuthRecord,
+            force: true,
+          });
+          if (storefrontSync.storefront) {
+            currentData = {
+              ...currentData,
+              storefrontEnabled: true,
+              storefrontSlug: storefrontSync.storefront.storefrontSlug,
+              storefrontName: storefrontSync.storefront.storefrontName,
+            };
+          }
+        } else if (!firestoreQuotaLimited) {
+          await getDb().collection('users').doc(targetUid).set(
+            {
+              uid: targetUid,
+              ...buildOperatorStorefrontFieldDeletes(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await deleteSellerStorefrontArtifacts(targetUid);
+          currentData = {
+            ...currentData,
+            storefrontEnabled: false,
+            storefrontSlug: '',
+            storefrontName: '',
+            storefrontTagline: '',
+            storefrontDescription: '',
+            businessName: '',
+            street1: '',
+            street2: '',
+            city: '',
+            state: '',
+            county: '',
+            postalCode: '',
+            country: '',
+            latitude: null,
+            longitude: null,
+            storefrontLogoUrl: '',
+            serviceAreaScopes: [],
+            serviceAreaStates: [],
+            serviceAreaCounties: [],
+            servicesOfferedCategories: [],
+            servicesOfferedSubcategories: [],
+            seoTitle: '',
+            seoDescription: '',
+            seoKeywords: [],
+          };
+        }
         return res.status(200).json({
           message: 'User updated.',
           warning,
@@ -12618,6 +17241,178 @@ exports.apiProxy = onRequest(
             responseAuthRecord
           ),
         });
+      }
+
+      /* ── Widget Config CRUD (admin) ────────────────────────── */
+      const widgetConfigAdminMatch = path.match(/^\/admin\/dealer-feeds\/([^/]+)\/widget-config$/i);
+      if (widgetConfigAdminMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+        const targetDealerId = decodeURIComponent(widgetConfigAdminMatch[1] || '');
+        if (!canAccessDealerFeedSellerUid(actor, targetDealerId)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (req.method === 'GET') {
+          const doc = await getDb().collection('dealerWidgetConfigs').doc(targetDealerId).get();
+          return res.status(200).json({ config: doc.exists ? doc.data() : {} });
+        }
+
+        if (req.method === 'PATCH' || req.method === 'PUT') {
+          const body = req.body || {};
+          const update = {};
+          if (body.cardStyle !== undefined) update.cardStyle = String(body.cardStyle || 'fes-native');
+          if (body.accentColor !== undefined) update.accentColor = String(body.accentColor || '#16A34A');
+          if (body.fontFamily !== undefined) update.fontFamily = String(body.fontFamily || '');
+          if (body.darkMode !== undefined) update.darkMode = Boolean(body.darkMode);
+          if (body.showInquiry !== undefined) update.showInquiry = Boolean(body.showInquiry);
+          if (body.showCall !== undefined) update.showCall = Boolean(body.showCall);
+          if (body.showDetails !== undefined) update.showDetails = Boolean(body.showDetails);
+          if (body.pageSize !== undefined) update.pageSize = Math.max(3, Math.min(60, Number(body.pageSize) || 12));
+          if (body.customCss !== undefined) update.customCss = String(body.customCss || '').slice(0, 5000);
+          update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+          await getDb().collection('dealerWidgetConfigs').doc(targetDealerId).set(update, { merge: true });
+          const fresh = await getDb().collection('dealerWidgetConfigs').doc(targetDealerId).get();
+          return res.status(200).json({ config: fresh.data() || update });
+        }
+      }
+
+      /* ── Webhook Subscription CRUD (admin) ───────────────────── */
+      if (req.method === 'GET' && path === '/admin/dealer-feeds/webhooks') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const targetUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
+        const snap = await getDb().collection('dealerWebhookSubscriptions').where('dealerUid', '==', targetUid).get();
+        const subs = [];
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          subs.push({ id: doc.id, ...d, secret: undefined, secretMasked: d.secret ? d.secret.slice(0, 6) + '...' : '' });
+        });
+        return res.status(200).json({ webhooks: subs });
+      }
+
+      if (req.method === 'POST' && path === '/admin/dealer-feeds/webhooks') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const body = req.body || {};
+        const targetUid = normalizeNonEmptyString(body.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
+        let callbackUrl;
+        try {
+          callbackUrl = validateDealerFeedUrl(String(body.callbackUrl || '').trim());
+        } catch (urlErr) {
+          return res.status(400).json({ error: urlErr.message || 'Invalid callback URL.' });
+        }
+        if (!callbackUrl.startsWith('https://')) return res.status(400).json({ error: 'Webhook callback URLs must use HTTPS.' });
+        const events = Array.isArray(body.events) ? body.events.filter((e) => ['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'].includes(e)) : ['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'];
+        const secret = randomBytes(32).toString('hex');
+        const docRef = await getDb().collection('dealerWebhookSubscriptions').add({
+          dealerUid: targetUid,
+          callbackUrl,
+          secret,
+          events,
+          active: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastDeliveryAt: null,
+          failureCount: 0,
+        });
+        return res.status(201).json({ id: docRef.id, secret, callbackUrl, events, active: true });
+      }
+
+      const webhookIdMatch = path.match(/^\/admin\/dealer-feeds\/webhooks\/([^/]+)$/i);
+      if (req.method === 'DELETE' && webhookIdMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const docId = decodeURIComponent(webhookIdMatch[1] || '');
+        const doc = await getDb().collection('dealerWebhookSubscriptions').doc(docId).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Webhook subscription not found.' });
+        const data = doc.data() || {};
+        if (!canAccessDealerFeedSellerUid(actor, data.dealerUid)) return res.status(403).json({ error: 'Forbidden' });
+        await getDb().collection('dealerWebhookSubscriptions').doc(docId).delete();
+        return res.status(200).json({ ok: true });
+      }
+
+      const webhookTestMatch = path.match(/^\/admin\/dealer-feeds\/webhooks\/([^/]+)\/test$/i);
+      if (req.method === 'POST' && webhookTestMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const docId = decodeURIComponent(webhookTestMatch[1] || '');
+        const doc = await getDb().collection('dealerWebhookSubscriptions').doc(docId).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Webhook subscription not found.' });
+        const data = doc.data() || {};
+        if (!canAccessDealerFeedSellerUid(actor, data.dealerUid)) return res.status(403).json({ error: 'Forbidden' });
+        const testPayload = JSON.stringify({ event: 'test', listingId: 'test-123', listing: { title: 'Test Listing', price: 50000 }, timestamp: new Date().toISOString() });
+        const signature = createHmac('sha256', data.secret || '').update(testPayload).digest('hex');
+        try {
+          const webhookResp = await fetch(data.callbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-FES-Signature': `sha256=${signature}`, 'X-FES-Event': 'test' },
+            body: testPayload,
+            signal: AbortSignal.timeout(10000),
+          });
+          return res.status(200).json({ ok: true, statusCode: webhookResp.status });
+        } catch (testError) {
+          return res.status(200).json({ ok: false, error: testError.message || 'Delivery failed' });
+        }
+      }
+
+      /* ── Webhook Secret Reveal ───────────────────────────────── */
+      const webhookSecretMatch = path.match(/^\/admin\/dealer-feeds\/webhooks\/([^/]+)\/secret$/i);
+      if (req.method === 'GET' && webhookSecretMatch) {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const docId = decodeURIComponent(webhookSecretMatch[1] || '');
+        const doc = await getDb().collection('dealerWebhookSubscriptions').doc(docId).get();
+        if (!doc.exists) return res.status(404).json({ error: 'Webhook subscription not found.' });
+        const data = doc.data() || {};
+        if (!canAccessDealerFeedSellerUid(actor, data.dealerUid)) return res.status(403).json({ error: 'Forbidden' });
+        return res.status(200).json({ secret: data.secret || '' });
+      }
+
+      /* ── Webhook Delivery Logs (admin) ───────────────────────── */
+      if (req.method === 'GET' && path === '/admin/dealer-feeds/webhook-logs') {
+        const actor = await getDealerFeedActorContext(req);
+        if (actor.error) return res.status(actor.status).json({ error: actor.error });
+        const targetUid = normalizeNonEmptyString(req.query?.sellerUid, actor.ownerUid);
+        if (!canAccessDealerFeedSellerUid(actor, targetUid)) return res.status(403).json({ error: 'Forbidden' });
+        const limit = Math.min(Math.max(1, Number(req.query?.limit) || 20), 100);
+        const logsSnap = await getDb()
+          .collection('dealerWebhookDeliveryLogs')
+          .where('dealerUid', '==', targetUid)
+          .orderBy('deliveredAt', 'desc')
+          .limit(limit)
+          .get();
+        const logs = [];
+        logsSnap.forEach((doc) => logs.push({ id: doc.id, ...doc.data() }));
+        return res.status(200).json({ logs });
+      }
+
+      /* ── Inbound Stock Number (dealer API key auth) ──────────── */
+      const stockNumberMatch = path.match(/^\/dealer\/listings\/([^/]+)\/stock-number$/i);
+      if (req.method === 'PATCH' && stockNumberMatch) {
+        const feedContext = await getDealerFeedContextFromApiKey(req);
+        if (feedContext.error) return res.status(feedContext.status).json({ error: feedContext.error });
+        const listingId = decodeURIComponent(stockNumberMatch[1] || '').trim();
+        if (!listingId) return res.status(400).json({ error: 'Listing ID is required.' });
+        const stockNumber = String(req.body?.stockNumber || '').trim();
+        if (!stockNumber) return res.status(400).json({ error: 'stockNumber is required in request body.' });
+        if (stockNumber.length > 100) return res.status(400).json({ error: 'stockNumber must be 100 characters or fewer.' });
+        const sellerUid = normalizeNonEmptyString(feedContext.feed.sellerUid);
+        if (!sellerUid) return res.status(403).json({ error: 'Feed is not associated with a seller.' });
+        const listingSnap = await getDb().collection('listings').doc(listingId).get();
+        if (!listingSnap.exists) return res.status(404).json({ error: 'Listing not found.' });
+        const listingSellerUid = normalizeNonEmptyString(listingSnap.data()?.sellerUid || listingSnap.data()?.sellerId);
+        if (listingSellerUid !== sellerUid) return res.status(403).json({ error: 'This listing does not belong to the authenticated dealer.' });
+        await getDb().collection('listings').doc(listingId).update({
+          stockNumber,
+          'externalSource.stockNumber': stockNumber,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.status(200).json({ ok: true, listingId, stockNumber });
       }
 
       if (req.method === 'GET' && path === '/admin/dealer-feeds/bootstrap') {
@@ -13202,7 +17997,99 @@ exports.apiProxy = onRequest(
           return res.status(200).json({ pass, score: result.score });
         } catch (err) {
           logger.error('reCAPTCHA assessment error', err);
-          return res.status(200).json({ pass: true, score: null });
+          return res.status(200).json({ pass: false, score: null });
+        }
+      }
+
+      // ── PostgreSQL Analytics (Data Connect read layer) ──────────────────
+      if (req.method === 'GET' && path === '/admin/pg-analytics') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        try {
+          const lgSdk = require('./generated/dataconnect/listing-governance');
+          const marketplaceSdk = require('./generated/dataconnect/marketplace');
+          const billingSdk = require('./generated/dataconnect/billing');
+          const auctionsSdk = require('./generated/dataconnect/auctions');
+          const leadsSdk = require('./generated/dataconnect/leads');
+          const dealersSdk = require('./generated/dataconnect/dealers');
+
+          const results = await Promise.allSettled([
+            lgSdk.listLifecycleQueue({ limit: 500 }),
+            lgSdk.listListingTransitions({ listingId: '', limit: 20 }),
+            lgSdk.listOpenListingAnomalies({ limit: 50 }),
+            marketplaceSdk.listActiveStorefronts(),
+            marketplaceSdk.listUsersByRole({ role: 'seller' }),
+            billingSdk.getSellerApplicationsByUser({ userId: 'SUMMARY_PROBE' }),
+            auctionsSdk.listActiveAuctions(),
+            leadsSdk.listInquiriesByStatus({ status: 'New' }),
+            leadsSdk.listContactRequestsByStatus({ status: 'New' }),
+            dealersSdk.listDealerFeedProfilesByStatus({ status: 'active' }),
+          ]);
+
+          const extract = (idx) => {
+            const r = results[idx];
+            if (r.status === 'fulfilled') return { ok: true, data: r.value?.data || r.value || null };
+            return { ok: false, error: r.reason?.message || String(r.reason) };
+          };
+
+          const lifecycleQueue = extract(0);
+          const recentTransitions = extract(1);
+          const openAnomalies = extract(2);
+          const storefronts = extract(3);
+          const sellers = extract(4);
+          const sellerApps = extract(5);
+          const activeAuctions = extract(6);
+          const newInquiries = extract(7);
+          const newContactRequests = extract(8);
+          const activeDealerFeeds = extract(9);
+
+          // Aggregate lifecycle state counts from the queue
+          const stateCounts = {};
+          if (lifecycleQueue.ok && Array.isArray(lifecycleQueue.data?.listings)) {
+            for (const listing of lifecycleQueue.data.listings) {
+              const state = listing.currentState || 'unknown';
+              stateCounts[state] = (stateCounts[state] || 0) + 1;
+            }
+          }
+
+          const connectorHealth = {
+            'listing-governance': lifecycleQueue.ok && recentTransitions.ok && openAnomalies.ok,
+            'marketplace': storefronts.ok && sellers.ok,
+            'billing': sellerApps.ok,
+            'auctions': activeAuctions.ok,
+            'leads': newInquiries.ok && newContactRequests.ok,
+            'dealers': activeDealerFeeds.ok,
+          };
+
+          const allHealthy = Object.values(connectorHealth).every(Boolean);
+
+          return res.status(200).json({
+            timestamp: new Date().toISOString(),
+            status: allHealthy ? 'healthy' : 'degraded',
+            connectors: connectorHealth,
+            summary: {
+              listingsByState: stateCounts,
+              totalListingsInPg: lifecycleQueue.ok ? (lifecycleQueue.data?.listings?.length || 0) : null,
+              openAnomalies: openAnomalies.ok ? (openAnomalies.data?.anomalies?.length || 0) : null,
+              recentTransitions: recentTransitions.ok ? (recentTransitions.data?.transitions?.length || 0) : null,
+              activeStorefronts: storefronts.ok ? (storefronts.data?.storefronts?.length || 0) : null,
+              activeSellers: sellers.ok ? (sellers.data?.users?.length || 0) : null,
+              activeAuctions: activeAuctions.ok ? (activeAuctions.data?.auctions?.length || 0) : null,
+              newInquiries: newInquiries.ok ? (newInquiries.data?.inquiries?.length || 0) : null,
+              newContactRequests: newContactRequests.ok ? (newContactRequests.data?.contactRequests?.length || 0) : null,
+              activeDealerFeeds: activeDealerFeeds.ok ? (activeDealerFeeds.data?.feedProfiles?.length || 0) : null,
+            },
+            errors: Object.entries(connectorHealth)
+              .filter(([, healthy]) => !healthy)
+              .map(([connector]) => connector),
+          });
+        } catch (err) {
+          logger.error('[pg-analytics] Failed to query Data Connect', err);
+          captureFunctionsException(err, { handler: 'pg-analytics' });
+          return res.status(500).json({ error: 'Failed to query PostgreSQL analytics' });
         }
       }
 
@@ -13230,3 +18117,9 @@ exports.apiProxy = onRequest(
   }
 );
 
+// ── Scheduled market analytics — extracted to scheduled-market.js ────────────
+exports.nightlyDataRefresh = scheduledMarketModule.nightlyDataRefresh;
+exports.weeklyMarketPulse = scheduledMarketModule.weeklyMarketPulse;
+
+// ── PostgreSQL dual-write — extracted to postgres-sync.js ───────────────────
+Object.assign(exports, postgresSyncModule);

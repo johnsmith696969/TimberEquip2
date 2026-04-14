@@ -1,234 +1,934 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Globe, Mail, MapPin, Search, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Building2, Globe, Mail, MapPin, Navigation, Search, X } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
+import { getPlaceDetails, getPlacePredictions, type GooglePlacesMode } from '../services/placesService';
+import { buildSiteUrl } from '../utils/siteUrl';
+import { useAuth } from '../components/AuthContext';
 import { equipmentService } from '../services/equipmentService';
 import { Seller } from '../types';
-import { buildDealerPath } from '../utils/seoRoutes';
+import { buildDealerPath, compareRegionNames, expandRegionName, getStateFromLocation, normalizeRegionName } from '../utils/seoRoutes';
+import { DealerMap } from '../components/DealerMap';
+
+/* ── helpers ───────────────────────────────────────────────── */
 
 function getDealerRoleLabel(role?: string): string {
-  return String(role || '').trim().toLowerCase() === 'pro_dealer' ? 'Pro Dealer' : 'Dealer';
+  const r = String(role || '').trim().toLowerCase();
+  if (r === 'pro_dealer') return 'Pro Dealer';
+  if (r === 'individual_seller') return 'Owner-Operator';
+  return 'Dealer';
 }
 
 function getDealerDisplayName(dealer: Seller): string {
   return String(dealer.storefrontName || dealer.name || 'Dealer Storefront').trim();
 }
 
-function normalizeQueryValue(value?: string): string {
+function getDealerInitials(name: string): string {
+  const initials = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((segment) => segment.charAt(0).toUpperCase())
+    .join('');
+
+  return initials || 'DS';
+}
+
+function norm(value?: string): string {
   return String(value || '').trim().toLowerCase();
 }
 
-function getWebsiteLabel(website?: string): string {
-  return String(website || '')
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/+$/g, '');
+function toFiniteCoordinate(value: unknown): number | null {
+  const next = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(next) ? next : null;
 }
 
+function getCoordinatePair(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
+  const normalizedLat = toFiniteCoordinate(lat);
+  const normalizedLng = toFiniteCoordinate(lng);
+  if (normalizedLat === null || normalizedLng === null) {
+    return null;
+  }
+  if (Math.abs(normalizedLat) < 0.000001 && Math.abs(normalizedLng) < 0.000001) {
+    return null;
+  }
+  return { lat: normalizedLat, lng: normalizedLng };
+}
+
+function getDealerStateName(dealer: Seller): string {
+  const explicitState = expandRegionName(dealer.state);
+  if (explicitState) {
+    return explicitState;
+  }
+
+  return expandRegionName(getStateFromLocation(dealer.location));
+}
+
+function getDealerLocationLabel(dealer: Seller): string {
+  const rawLocation = String(dealer.location || '').trim();
+  if (!rawLocation) {
+    return '';
+  }
+
+  const parts = rawLocation
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const city = parts.length >= 2 ? parts[0] : '';
+  const state = getDealerStateName(dealer);
+  const country = parts.length >= 3 ? parts[parts.length - 1] : '';
+
+  return [city, state, country].filter(Boolean).join(', ') || state || rawLocation;
+}
+
+function getWebsiteLabel(website?: string): string {
+  return String(website || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
+}
+
+function buildDealerCoordinateLookup(dealer: Seller): { query: string; mode: GooglePlacesMode } | null {
+  const preciseAddress = [
+    String(dealer.street1 || '').trim(),
+    String(dealer.city || '').trim(),
+    String(dealer.state || '').trim(),
+    String(dealer.postalCode || '').trim(),
+    String(dealer.country || '').trim(),
+  ].filter(Boolean).join(', ');
+
+  if (preciseAddress) {
+    return { query: preciseAddress, mode: 'address' };
+  }
+
+  const location = String(dealer.location || '').trim();
+  if (location && !/^location available on storefront$/i.test(location)) {
+    return { query: location, mode: 'address' };
+  }
+
+  const fallbackLocation = [
+    String(dealer.city || '').trim(),
+    String(dealer.state || '').trim(),
+    String(dealer.country || '').trim(),
+  ].filter(Boolean).join(', ');
+
+  if (fallbackLocation) {
+    return { query: fallbackLocation, mode: 'address' };
+  }
+
+  return null;
+}
+
+const dealerCoordinateLookupCache = new Map<string, Promise<{ lat: number; lng: number; formattedAddress?: string } | null>>();
+
+async function lookupDealerCoordinates(
+  dealer: Seller
+): Promise<{ lat: number; lng: number; formattedAddress?: string } | null> {
+  const lookup = buildDealerCoordinateLookup(dealer);
+  if (!lookup) {
+    return null;
+  }
+
+  const cacheKey = `${lookup.mode}:${norm(lookup.query)}`;
+  if (!dealerCoordinateLookupCache.has(cacheKey)) {
+    dealerCoordinateLookupCache.set(
+      cacheKey,
+      (async () => {
+        const predictions = await getPlacePredictions(lookup.query, lookup.mode);
+        const bestMatch = predictions[0];
+        if (!bestMatch) {
+          return null;
+        }
+
+        const details = await getPlaceDetails(bestMatch.placeId);
+        const coords = getCoordinatePair(details?.latitude, details?.longitude);
+        if (!coords) {
+          return null;
+        }
+
+        return {
+          ...coords,
+          formattedAddress: String(details?.formattedAddress || '').trim() || undefined,
+        };
+      })().catch(() => null)
+    );
+  }
+
+  return await dealerCoordinateLookupCache.get(cacheKey)!;
+}
+
+const toRad = (deg: number) => (deg * Math.PI) / 180;
+function distanceMiles(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 3958.8;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+type SortMode = 'alpha' | 'nearest';
+type Segment = 'all' | 'equipment' | 'parts';
+
+const SELLER_ROLES = new Set(['dealer', 'pro_dealer']);
+
+/* ── Filter Dropdown ───────────────────────────────────────── */
+
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && searchRef.current) searchRef.current.focus();
+  }, [open]);
+
+  const filtered = search
+    ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-2 bg-bg border border-line px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-colors rounded-sm min-w-[160px] w-full hover:border-accent ${
+          value ? 'text-ink' : 'text-muted'
+        } ${open ? 'border-accent ring-1 ring-accent/30' : ''}`}
+      >
+        <span className="truncate flex-1 text-left">{value || placeholder}</span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-80 bg-bg border border-line shadow-2xl z-50 flex flex-col rounded-sm overflow-hidden">
+          {options.length > 8 && (
+            <div className="p-2 border-b border-line">
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${label.toLowerCase()}...`}
+                className="w-full bg-surface border border-line px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-ink placeholder:text-muted/50 outline-none focus:border-accent rounded-sm"
+              />
+            </div>
+          )}
+          <div className="overflow-y-auto flex-1">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); setSearch(''); }}
+              className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface ${
+                !value ? 'text-accent bg-accent/5' : 'text-muted'
+              }`}
+            >
+              All {label}s
+            </button>
+            {filtered.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { onChange(opt); setOpen(false); setSearch(''); }}
+                className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors hover:bg-surface border-t border-line/50 ${
+                  value === opt ? 'text-accent bg-accent/5' : 'text-ink'
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-muted text-center">
+                No matches
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── component ─────────────────────────────────────────────── */
+
 export function Dealers() {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+
+  /* ── state ───────────────────────────────────────────────── */
   const [dealers, setDealers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [segment, setSegment] = useState<Segment>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('alpha');
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationRequested, setLocationRequested] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [displayCount, setDisplayCount] = useState(20);
+  const [showMap, setShowMap] = useState(true);
+  const hydratedDealerIdsRef = useRef<Set<string>>(new Set());
+  const profileCoords = useMemo(
+    () => getCoordinatePair(user?.latitude, user?.longitude),
+    [user?.latitude, user?.longitude]
+  );
 
+  /* ── data fetch ──────────────────────────────────────────── */
   useEffect(() => {
     let active = true;
-
-    const loadDealers = async () => {
+    const load = async () => {
       setLoading(true);
       const payload = await equipmentService.getPublicDealerDirectory();
       if (!active) return;
       setDealers(payload);
       setLoading(false);
     };
+    void load();
+    return () => { active = false; };
+  }, []);
 
-    void loadDealers();
+  useEffect(() => {
+    let active = true;
+    const dealersNeedingCoords = dealers.filter((dealer) => {
+      const dealerId = String(dealer.id || dealer.uid || '').trim();
+      return Boolean(
+        dealerId &&
+        SELLER_ROLES.has(norm(dealer.role)) &&
+        !getCoordinatePair(dealer.latitude, dealer.longitude) &&
+        !hydratedDealerIdsRef.current.has(dealerId)
+      );
+    });
+
+    if (!dealersNeedingCoords.length) {
+      return () => {
+        active = false;
+      };
+    }
+
+    dealersNeedingCoords.forEach((dealer) => {
+      hydratedDealerIdsRef.current.add(String(dealer.id || dealer.uid || '').trim());
+    });
+
+    const hydrateMissingCoordinates = async () => {
+      const resolvedEntries = await Promise.all(
+        dealersNeedingCoords.map(async (dealer) => {
+          const dealerId = String(dealer.id || dealer.uid || '').trim();
+          const resolved = await lookupDealerCoordinates(dealer);
+          if (!dealerId || !resolved) {
+            return null;
+          }
+          return { dealerId, ...resolved };
+        })
+      );
+
+      if (!active) {
+        return;
+      }
+
+      const resolvedMap = new Map(
+        resolvedEntries
+          .filter((entry): entry is { dealerId: string; lat: number; lng: number; formattedAddress?: string } => Boolean(entry))
+          .map((entry) => [entry.dealerId, entry])
+      );
+
+      if (!resolvedMap.size) {
+        return;
+      }
+
+      setDealers((currentDealers) =>
+        currentDealers.map((dealer) => {
+          const dealerId = String(dealer.id || dealer.uid || '').trim();
+          const resolved = resolvedMap.get(dealerId);
+          if (!resolved || getCoordinatePair(dealer.latitude, dealer.longitude)) {
+            return dealer;
+          }
+
+          const fallbackLocation = String(dealer.location || '').trim();
+          const shouldUpdateLocation =
+            !fallbackLocation || /^location available on storefront$/i.test(fallbackLocation);
+
+          return {
+            ...dealer,
+            latitude: resolved.lat,
+            longitude: resolved.lng,
+            location: shouldUpdateLocation ? resolved.formattedAddress || fallbackLocation : fallbackLocation,
+          };
+        })
+      );
+    };
+
+    void hydrateMissingCoordinates();
 
     return () => {
       active = false;
     };
-  }, []);
-
-  const deferredQuery = useDeferredValue(query);
-  const normalizedQuery = normalizeQueryValue(deferredQuery);
-
-  const sortedDealers = useMemo(() => {
-    return [...dealers].sort((left, right) => getDealerDisplayName(left).localeCompare(getDealerDisplayName(right)));
   }, [dealers]);
 
+  /* ── user profile location as fallback ───────────────────── */
+  useEffect(() => {
+    if (userCoords) return;
+    if (profileCoords) {
+      setUserCoords(profileCoords);
+    }
+  }, [profileCoords, userCoords]);
+
+  /* ── geolocation request ─────────────────────────────────── */
+  const requestLocation = useCallback(() => {
+    const fallbackCoords = userCoords || profileCoords;
+
+    if (!navigator.geolocation) {
+      if (fallbackCoords) {
+        setUserCoords(fallbackCoords);
+        setSortMode('nearest');
+        setLocationError('Live location is unavailable in this browser. Using your saved location instead.');
+        return;
+      }
+      setLocationError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setLocationRequested(true);
+    setLocationError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setSortMode('nearest');
+        setLocationRequested(false);
+      },
+      (err) => {
+        const baseMessage = err.code === 1 ? 'Location permission denied.' : 'Unable to get your location.';
+        if (fallbackCoords) {
+          setUserCoords(fallbackCoords);
+          setSortMode('nearest');
+          setLocationError(`${baseMessage} Using your saved location instead.`);
+        } else {
+          setLocationError(baseMessage);
+        }
+        setLocationRequested(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+    );
+  }, [profileCoords, userCoords]);
+
+  /* ── derived filter option lists ─────────────────────────── */
+  const stateOptions = useMemo(() => {
+    const set = new Set<string>();
+    dealers.forEach((d) => {
+      const state = getDealerStateName(d);
+      if (state) set.add(state);
+    });
+    return [...set].filter(Boolean).sort(compareRegionNames);
+  }, [dealers]);
+
+  const countryOptions = useMemo(() => {
+    const set = new Set<string>();
+    dealers.forEach((d) => {
+      if (d.country) { set.add(d.country); return; }
+      const parts = (d.location || '').split(',').map((p) => p.trim()).filter(Boolean);
+      set.add(parts.length >= 3 ? parts[parts.length - 1] : 'United States');
+    });
+    return [...set].filter(Boolean).sort();
+  }, [dealers]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    dealers.forEach((d) => {
+      (d.servicesOfferedCategories || []).forEach((c) => set.add(c));
+    });
+    return [...set].filter(Boolean).sort();
+  }, [dealers]);
+
+  /* ── filtering + sorting ─────────────────────────────────── */
+  const deferredQuery = useDeferredValue(query);
+  const normalizedQuery = norm(deferredQuery);
+
   const filteredDealers = useMemo(() => {
-    if (!normalizedQuery) {
-      return sortedDealers;
+    let result = dealers.filter((d) => SELLER_ROLES.has(norm(d.role)));
+
+    if (segment === 'equipment') {
+      result = result.filter((d) =>
+        (d.servicesOfferedCategories || []).some((c) => !norm(c).includes('parts') && !norm(c).includes('attachment'))
+      );
+    } else if (segment === 'parts') {
+      result = result.filter((d) =>
+        (d.servicesOfferedCategories || []).some((c) => norm(c).includes('parts') || norm(c).includes('attachment'))
+      );
     }
 
-    return sortedDealers.filter((dealer) => {
-      const haystack = [
-        getDealerDisplayName(dealer),
-        dealer.location,
-        dealer.email,
-        dealer.website,
-        getDealerRoleLabel(dealer.role),
-      ]
-        .map((value) => normalizeQueryValue(value))
-        .join(' ');
+    if (stateFilter) {
+      result = result.filter((d) => {
+        return normalizeRegionName(getDealerStateName(d)) === normalizeRegionName(stateFilter);
+      });
+    }
 
-      return haystack.includes(normalizedQuery);
-    });
-  }, [normalizedQuery, sortedDealers]);
+    if (countryFilter) {
+      result = result.filter((d) => {
+        if (norm(d.country) === norm(countryFilter)) return true;
+        const parts = (d.location || '').split(',').map((p) => p.trim());
+        const locCountry = parts.length >= 3 ? parts[parts.length - 1] : 'United States';
+        return norm(locCountry) === norm(countryFilter);
+      });
+    }
 
+    if (categoryFilter) {
+      result = result.filter((d) =>
+        (d.servicesOfferedCategories || []).some((c) => norm(c) === norm(categoryFilter))
+      );
+    }
+
+    if (normalizedQuery) {
+      result = result.filter((d) => {
+        const haystack = [
+          getDealerDisplayName(d),
+          d.location,
+          d.state,
+          d.country,
+          d.email,
+          d.website,
+          getDealerRoleLabel(d.role),
+          ...(d.servicesOfferedCategories || []),
+        ].map(norm).join(' ');
+        return haystack.includes(normalizedQuery);
+      });
+    }
+
+    if (sortMode === 'nearest' && userCoords) {
+      result = [...result].sort((a, b) => {
+        const aCoords = getCoordinatePair(a.latitude, a.longitude);
+        const bCoords = getCoordinatePair(b.latitude, b.longitude);
+        const aDist = aCoords ? distanceMiles(userCoords.lat, userCoords.lng, aCoords.lat, aCoords.lng) : Infinity;
+        const bDist = bCoords ? distanceMiles(userCoords.lat, userCoords.lng, bCoords.lat, bCoords.lng) : Infinity;
+        return aDist - bDist;
+      });
+    } else {
+      result = [...result].sort((a, b) => getDealerDisplayName(a).localeCompare(getDealerDisplayName(b)));
+    }
+
+    return result;
+  }, [dealers, normalizedQuery, stateFilter, countryFilter, categoryFilter, segment, sortMode, userCoords]);
+
+  /* ── map-visible dealers (those with coordinates) ────────── */
+  const mappableDealers = useMemo(
+    () => filteredDealers.filter((d) => Boolean(getCoordinatePair(d.latitude, d.longitude))),
+    [filteredDealers]
+  );
+
+  /* ── stats ───────────────────────────────────────────────── */
   const stats = useMemo(() => {
-    const dealerCount = sortedDealers.filter((dealer) => String(dealer.role || '').trim().toLowerCase() === 'dealer').length;
-    const proDealerCount = sortedDealers.filter((dealer) => String(dealer.role || '').trim().toLowerCase() === 'pro_dealer').length;
+    const dealerCount = dealers.filter((d) => norm(d.role) === 'dealer').length;
+    const proDealerCount = dealers.filter((d) => norm(d.role) === 'pro_dealer').length;
+    return { total: dealers.length, dealerCount, proDealerCount };
+  }, [dealers]);
 
-    return {
-      total: sortedDealers.length,
-      dealerCount,
-      proDealerCount,
-    };
-  }, [sortedDealers]);
+  /* ── distance label ──────────────────────────────────────── */
+  const getDealerDistance = useCallback(
+    (dealer: Seller): string | null => {
+      const dealerCoords = getCoordinatePair(dealer.latitude, dealer.longitude);
+      if (!userCoords || !dealerCoords) return null;
+      const d = distanceMiles(userCoords.lat, userCoords.lng, dealerCoords.lat, dealerCoords.lng);
+      if (d < 1) return '< 1 mi';
+      return `${Math.round(d)} mi`;
+    },
+    [userCoords]
+  );
 
+  const hasActiveFilters = Boolean(stateFilter || countryFilter || categoryFilter || segment !== 'all' || normalizedQuery);
+
+  const clearAllFilters = () => {
+    setQuery('');
+    setStateFilter('');
+    setCountryFilter('');
+    setCategoryFilter('');
+    setSegment('all');
+    setDisplayCount(20);
+  };
+
+  /* ── render ──────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Dealer Network | Active Dealer Storefronts | Forestry Equipment Sales"
-        description="Browse active Forestry Equipment Sales dealer and pro dealer storefronts. Search the directory and open dealer inventory storefronts directly."
+        title="Find Forestry Equipment Dealers & Manufacturers | Forestry Equipment Sales"
+        description="Search forestry equipment dealers and manufacturers by name, state, country, and category. Sort by nearest location. Browse dealer and pro dealer storefronts."
         canonicalPath="/dealers"
+        imagePath="/page-photos/dealers.png"
+        preloadImage="/page-photos/dealers.png"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'CollectionPage',
+              name: 'Find Forestry Equipment Dealers & Manufacturers',
+              description: 'Search forestry equipment dealers and manufacturers by name, state, country, and category.',
+              url: buildSiteUrl('/dealers'),
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Dealers', item: buildSiteUrl('/dealers') },
+              ],
+            },
+            {
+              '@type': 'ItemList',
+              name: 'Active dealer storefronts',
+              numberOfItems: filteredDealers.length,
+              itemListElement: filteredDealers.slice(0, 50).map((dealer, index) => ({
+                '@type': 'ListItem',
+                position: index + 1,
+                url: buildSiteUrl(buildDealerPath(dealer)),
+                item: {
+                  '@type': 'Organization',
+                  name: getDealerDisplayName(dealer),
+                  address: getDealerLocationLabel(dealer) || dealer.location || undefined,
+                },
+              })),
+            },
+          ],
+        }}
       />
 
-      <Breadcrumbs
-        items={[
-          { label: 'Dealer Network', path: '/dealers' },
-        ]}
-      />
+      <Breadcrumbs items={[{ label: 'Dealers & Manufacturers', path: '/dealers' }]} />
 
-      <section className="border-b border-line bg-surface px-4 py-20 md:px-8">
-        <div className="mx-auto max-w-[1600px]">
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.8fr)] lg:items-end">
-            <div>
-              <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-accent/20 bg-accent/8 px-4 py-2">
-                <ShieldCheck size={16} className="text-accent" />
-                <span className="text-[10px] font-black uppercase tracking-[0.24em] text-accent">Dealer Network</span>
-              </div>
-              <h1 className="max-w-4xl text-4xl font-black uppercase tracking-tight text-ink md:text-6xl">
-                Active Dealer And Pro Dealer Storefronts
-              </h1>
-              <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-muted md:text-base">
-                Search every active dealer storefront on Forestry Equipment Sales. Results are ordered alphabetically and open
-                directly to the seller&apos;s live storefront.
-              </p>
-            </div>
+      <ImageHero
+        imageSrc="/page-photos/dealers.png"
+        imageAlt="Forestry Equipment Sales dealer network"
+        imageClassName="object-center"
+      >
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <Building2 size={20} className="text-accent" />
+            <span className="label-micro text-accent">Dealer & Manufacturer Directory</span>
+          </div>
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
+            Find Forestry Equipment <br />
+            <span className={heroSecondaryClass}>Dealers & Manufacturers</span>
+          </h1>
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
+            Search by name, state, country, or category served. Sort by nearest location to find dealers close to you.
+          </p>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {[
-                { label: 'Active Storefronts', value: stats.total },
-                { label: 'Dealers', value: stats.dealerCount },
-                { label: 'Pro Dealers', value: stats.proDealerCount },
-              ].map((stat) => (
-                <div key={stat.label} className="border border-line bg-bg p-5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{stat.label}</div>
-                  <div className="mt-3 text-3xl font-black tracking-tight text-ink">{stat.value}</div>
+          <div className="grid grid-cols-1 gap-4 mt-12 max-w-lg sm:grid-cols-3">
+            {[
+              { label: 'Active Storefronts', value: stats.total },
+              { label: 'Dealers', value: stats.dealerCount },
+              { label: 'Pro Dealers', value: stats.proDealerCount },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className={`border border-line p-5 backdrop-blur-sm ${theme === 'dark' ? 'bg-black/35' : 'bg-white/88'}`}
+              >
+                <div className={`text-[10px] font-black uppercase tracking-[0.2em] ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>
+                  {stat.label}
                 </div>
-              ))}
-            </div>
+                <div className={`mt-3 text-3xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-ink'}`}>
+                  {stat.value}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </section>
+      </ImageHero>
 
       <section className="px-4 py-14 md:px-8 md:py-20">
         <div className="mx-auto max-w-[1600px]">
-          <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          {/* ── Search + Filters ─────────────────────────────── */}
+          <div className="mb-10 space-y-6 rounded-sm border border-line bg-surface/60 p-6 md:p-8">
             <div>
               <h2 className="text-2xl font-black uppercase tracking-tight text-ink md:text-3xl">Search The Directory</h2>
               <p className="mt-2 text-sm font-medium text-muted">
-                Search by dealer name, location, email, website, or account type.
+                Find dealers by name, location, or category. Use the map to explore nearby.
               </p>
             </div>
 
-            <label className="flex w-full items-center gap-3 border border-line bg-surface px-4 py-4 text-sm font-medium text-muted shadow-sm lg:max-w-xl">
-              <Search size={18} className="text-accent" />
+            {/* Search bar */}
+            <div className="relative w-full">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted/60 pointer-events-none" />
               <input
                 type="search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search dealers, pro dealers, locations, or websites"
-                className="w-full border-none bg-transparent text-sm font-medium text-ink outline-none placeholder:text-muted/60"
+                onChange={(e) => { setQuery(e.target.value); setDisplayCount(20); }}
+                placeholder="Search by name, location, category..."
+                className="w-full bg-bg border border-line pl-12 pr-4 py-3.5 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted/50 outline-none rounded-sm transition-all focus:border-accent focus:shadow-[inset_0_0_0_1px_var(--accent),0_0_0_3px_rgba(22,163,74,0.18)]"
               />
-            </label>
+            </div>
+
+            {/* Filter row */}
+            <div className="flex flex-wrap items-end gap-4">
+              <FilterDropdown
+                label="State"
+                value={stateFilter}
+                options={stateOptions}
+                onChange={(v) => { setStateFilter(v); setDisplayCount(20); }}
+                placeholder="All States"
+              />
+
+              <FilterDropdown
+                label="Country"
+                value={countryFilter}
+                options={countryOptions}
+                onChange={(v) => { setCountryFilter(v); setDisplayCount(20); }}
+                placeholder="All Countries"
+              />
+
+              <FilterDropdown
+                label="Category Served"
+                value={categoryFilter}
+                options={categoryOptions}
+                onChange={(v) => { setCategoryFilter(v); setDisplayCount(20); }}
+                placeholder="All Categories"
+              />
+
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Segment</label>
+                <div className="flex">
+                  {([['all', 'All'], ['equipment', 'Equipment'], ['parts', 'Parts']] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => { setSegment(key); setDisplayCount(20); }}
+                      className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border transition-colors first:rounded-l-sm last:rounded-r-sm ${
+                        segment === key
+                          ? 'bg-accent text-white border-accent'
+                          : 'bg-bg border-line text-muted hover:text-ink'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Sort</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSortMode('alpha')}
+                    className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors ${
+                      sortMode === 'alpha' ? 'bg-accent text-white border-accent' : 'bg-bg border-line text-muted hover:text-ink'
+                    }`}
+                  >
+                    A-Z
+                  </button>
+                  <button
+                    type="button"
+                    onClick={requestLocation}
+                    disabled={locationRequested}
+                    className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest border rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 ${
+                      sortMode === 'nearest' ? 'bg-accent text-white border-accent' : 'bg-bg border-line text-muted hover:text-ink'
+                    }`}
+                  >
+                    <Navigation size={12} />
+                    {locationRequested ? 'Locating...' : 'Nearest'}
+                  </button>
+                </div>
+              </div>
+
+              {hasActiveFilters && (
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-transparent block mb-1.5">&nbsp;</label>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-accent border border-accent/30 rounded-sm hover:bg-accent/5 transition-colors flex items-center gap-1.5"
+                  >
+                    <X size={12} />
+                    Clear All
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {locationError && (
+              <p className="text-[10px] font-bold uppercase tracking-widest text-accent">{locationError}</p>
+            )}
           </div>
 
+          {/* ── Map Section ────────────────────────────────────── */}
+          <div className="mb-10 rounded-sm border border-line bg-surface/60 p-4 md:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <MapPin size={16} className="text-accent" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-ink">
+                  Dealer Locations
+                </span>
+                {mappableDealers.length > 0 && (
+                  <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                    {mappableDealers.length} on map
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMap(!showMap)}
+                className="text-[10px] font-black uppercase tracking-widest text-accent hover:underline"
+              >
+                {showMap ? 'Hide Map' : 'Show Map'}
+              </button>
+            </div>
+            {showMap && !loading && mappableDealers.length > 0 && (
+              <DealerMap dealers={mappableDealers} />
+            )}
+            {showMap && !loading && mappableDealers.length === 0 && (
+              <div className="border border-dashed border-line bg-surface px-8 py-12 text-center rounded-sm">
+                <MapPin size={24} className="mx-auto text-muted mb-3" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                  No dealers with map coordinates match your filters.
+                </p>
+              </div>
+            )}
+            {showMap && loading && (
+              <div className="h-[350px] md:h-[450px] border border-line bg-surface rounded-sm flex items-center justify-center">
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted animate-pulse">
+                  Loading map data...
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* ── Results info ──────────────────────────────────── */}
+          <div className="mb-6 flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-muted">
+              {filteredDealers.length} dealer{filteredDealers.length !== 1 ? 's' : ''}
+              {sortMode === 'nearest' && userCoords ? ' sorted by distance' : ' sorted alphabetically'}
+            </span>
+          </div>
+
+          {/* ── Dealer cards ─────────────────────────────────── */}
           {loading ? (
-            <div className="border border-line bg-surface px-8 py-16 text-center">
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-muted">Loading Active Dealer Directory...</div>
+            <div className="border border-line bg-surface px-8 py-16 text-center rounded-sm">
+              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-muted animate-pulse">Loading Dealer Directory...</div>
             </div>
           ) : filteredDealers.length === 0 ? (
-            <div className="border border-dashed border-line bg-surface px-8 py-16 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-line bg-bg text-accent">
+            <div className="border border-dashed border-line bg-surface px-8 py-16 text-center rounded-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-line bg-bg text-accent">
                 <Building2 size={24} />
               </div>
-              <h3 className="mt-6 text-2xl font-black uppercase tracking-tight text-ink">No Dealers Match This Search</h3>
+              <h3 className="mt-6 text-2xl font-black uppercase tracking-tight text-ink">No Dealers Match</h3>
               <p className="mx-auto mt-3 max-w-2xl text-sm font-medium leading-relaxed text-muted">
-                Try a broader search term or clear the search field to view the full alphabetical dealer directory.
+                Try a broader search or clear filters to view the full directory.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {filteredDealers.map((dealer) => {
-                const dealerName = getDealerDisplayName(dealer);
-                const dealerPath = buildDealerPath(dealer);
-                const websiteLabel = getWebsiteLabel(dealer.website);
+            <>
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                {filteredDealers.slice(0, displayCount).map((dealer) => {
+                  const dealerName = getDealerDisplayName(dealer);
+                  const dealerPath = buildDealerPath(dealer);
+                  const websiteLabel = getWebsiteLabel(dealer.website);
+                  const distance = getDealerDistance(dealer);
+                  const dealerInitials = getDealerInitials(dealerName);
 
-                return (
-                  <Link
-                    key={dealer.id}
-                    to={dealerPath}
-                    className="group border border-line bg-surface p-6 transition-all duration-200 hover:-translate-y-1 hover:border-accent/35 hover:shadow-xl"
-                  >
-                    <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-                      <div className="flex min-w-0 items-start gap-4">
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-bg text-accent">
-                          {dealer.logo ? (
-                            <img src={dealer.logo} alt={dealerName} className="h-full w-full object-cover" />
-                          ) : (
-                            <Building2 size={24} />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <h3 className="truncate text-2xl font-black uppercase tracking-tight text-ink">{dealerName}</h3>
-                            <span className="inline-flex items-center rounded-full border border-accent/20 bg-accent/8 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-accent">
-                              {getDealerRoleLabel(dealer.role)}
-                            </span>
+                  return (
+                    <Link
+                      key={dealer.id}
+                      to={dealerPath}
+                      className="group border border-line bg-bg p-6 transition-all duration-200 hover:-translate-y-1 hover:border-accent/35 hover:shadow-xl rounded-sm"
+                    >
+                      <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                        <div className="flex min-w-0 items-start gap-4">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-surface text-accent">
+                            {dealer.logo ? (
+                              <img src={dealer.logo} alt={dealerName} width={56} height={56} className="h-full w-full object-cover" loading="lazy" />
+                            ) : (
+                              <span className="text-sm font-black uppercase tracking-[0.18em] text-accent">{dealerInitials}</span>
+                            )}
                           </div>
-                          <p className="mt-3 text-sm font-medium leading-relaxed text-muted">
-                            Active seller storefront on Forestry Equipment Sales.
-                          </p>
+                          <div className="min-w-0">
+                            <h3 className="truncate text-2xl font-black uppercase tracking-tight text-ink">{dealerName}</h3>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                              <div className="border border-line bg-surface/60 px-4 py-3">
+                                <span className="label-micro mb-2 block">Storefront Type</span>
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-ink">
+                                  {getDealerRoleLabel(dealer.role)}
+                                </span>
+                              </div>
+                              {distance && (
+                                <div className="border border-line bg-surface/60 px-4 py-3">
+                                  <span className="label-micro mb-2 block">Distance</span>
+                                  <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-ink">
+                                    <Navigation size={12} className="text-accent" />
+                                    {distance}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            {(dealer.servicesOfferedCategories?.length ?? 0) > 0 && (
+                              <div className="mt-3 border border-line bg-surface/60 px-4 py-3">
+                                <span className="label-micro mb-2 block">Categories Served</span>
+                                <span className="text-xs font-medium leading-relaxed text-muted">
+                                  {dealer.servicesOfferedCategories!.slice(0, 4).join(', ')}
+                                  {dealer.servicesOfferedCategories!.length > 4 ? `, +${dealer.servicesOfferedCategories!.length - 4} more` : ''}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start text-[11px] font-black uppercase tracking-[0.18em] text-accent">
+                          <span>Open Storefront</span>
+                          <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 self-start text-[11px] font-black uppercase tracking-[0.18em] text-accent">
-                        <span>Open Storefront</span>
-                        <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+                      <div className="mt-6 grid grid-cols-1 gap-3 text-sm text-muted sm:grid-cols-3">
+                        <div className="flex items-start gap-2">
+                          <MapPin size={16} className="mt-0.5 shrink-0 text-accent" />
+                          <span className="leading-relaxed">{getDealerLocationLabel(dealer) || 'Location available on storefront'}</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Mail size={16} className="mt-0.5 shrink-0 text-accent" />
+                          <span className="break-all leading-relaxed">{dealer.email || 'Contact on storefront'}</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Globe size={16} className="mt-0.5 shrink-0 text-accent" />
+                          <span className="break-all leading-relaxed">{websiteLabel || 'Website on storefront'}</span>
+                        </div>
                       </div>
-                    </div>
+                    </Link>
+                  );
+                })}
+              </div>
 
-                    <div className="mt-6 grid grid-cols-1 gap-3 text-sm text-muted sm:grid-cols-3">
-                      <div className="flex items-start gap-2">
-                        <MapPin size={16} className="mt-0.5 shrink-0 text-accent" />
-                        <span className="leading-relaxed">{dealer.location || 'Location available on storefront'}</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <Mail size={16} className="mt-0.5 shrink-0 text-accent" />
-                        <span className="break-all leading-relaxed">{dealer.email || 'Contact email available on storefront'}</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <Globe size={16} className="mt-0.5 shrink-0 text-accent" />
-                        <span className="break-all leading-relaxed">{websiteLabel || 'Website linked on storefront'}</span>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+              {filteredDealers.length > displayCount && (
+                <button
+                  type="button"
+                  onClick={() => setDisplayCount((prev) => prev + 20)}
+                  className="mt-8 w-full py-4 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+                >
+                  View More ({filteredDealers.length - displayCount} remaining)
+                </button>
+              )}
+            </>
           )}
         </div>
       </section>

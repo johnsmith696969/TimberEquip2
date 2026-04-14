@@ -1,7 +1,7 @@
 export const AMV_MATCH_PRICE_PERCENT = 10;
 export const AMV_MATCH_HOURS_PERCENT = 10;
 export const AMV_MATCH_YEAR_RANGE = 2;
-export const AMV_MIN_COMPARABLES = 2;
+export const AMV_MIN_COMPARABLES = 1;
 
 export function isWithinPercentRange(value: number, target: number, percent: number): boolean {
   if (!Number.isFinite(value) || !Number.isFinite(target)) {

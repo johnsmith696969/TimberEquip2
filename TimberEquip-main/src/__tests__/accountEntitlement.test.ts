@@ -2,27 +2,30 @@ import { describe, it, expect } from 'vitest';
 import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 
 describe('resolveAccountEntitlement', () => {
-  it('returns admin access for super_admin role', () => {
+  it('returns operator-only access for super_admin role', () => {
     const result = resolveAccountEntitlement({ role: 'super_admin' });
-    expect(result.sellerWorkspaceAccess).toBe(true);
-    expect(result.sellerAccessMode).toBe('admin');
-    expect(result.canPostListings).toBe(true);
-    expect(result.dealerOsAccess).toBe(true);
-    expect(result.effectiveSellerCapability).toBe('admin');
-    expect(result.publicListingVisibility).toBe('admin_override');
+    expect(result.sellerWorkspaceAccess).toBe(false);
+    expect(result.adminWorkspaceAccess).toBe(true);
+    expect(result.sellerAccessMode).toBe('none');
+    expect(result.canPostListings).toBe(false);
+    expect(result.dealerOsAccess).toBe(false);
+    expect(result.effectiveSellerCapability).toBe('none');
+    expect(result.publicListingVisibility).toBe('not_applicable');
   });
 
-  it('returns admin access for admin role', () => {
+  it('returns operator-only access for admin role', () => {
     const result = resolveAccountEntitlement({ role: 'admin' });
-    expect(result.sellerWorkspaceAccess).toBe(true);
-    expect(result.sellerAccessMode).toBe('admin');
-    expect(result.dealerOsAccess).toBe(true);
+    expect(result.sellerWorkspaceAccess).toBe(false);
+    expect(result.adminWorkspaceAccess).toBe(true);
+    expect(result.sellerAccessMode).toBe('none');
+    expect(result.dealerOsAccess).toBe(false);
   });
 
-  it('returns admin access for developer role', () => {
+  it('returns operator-only access for developer role', () => {
     const result = resolveAccountEntitlement({ role: 'developer' });
-    expect(result.sellerWorkspaceAccess).toBe(true);
-    expect(result.sellerAccessMode).toBe('admin');
+    expect(result.sellerWorkspaceAccess).toBe(false);
+    expect(result.adminWorkspaceAccess).toBe(true);
+    expect(result.sellerAccessMode).toBe('none');
   });
 
   it('returns subscription-backed access for active individual_seller', () => {
@@ -34,6 +37,7 @@ describe('resolveAccountEntitlement', () => {
       subscriptionStatus: 'active',
     });
     expect(result.sellerWorkspaceAccess).toBe(true);
+    expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.sellerAccessMode).toBe('subscription');
     expect(result.canPostListings).toBe(true);
     expect(result.publicListingVisibility).toBe('publicly_eligible');
@@ -50,9 +54,10 @@ describe('resolveAccountEntitlement', () => {
       subscriptionStatus: 'active',
     });
     expect(result.sellerWorkspaceAccess).toBe(true);
+    expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.dealerOsAccess).toBe(true);
     expect(result.effectiveSellerCapability).toBe('dealer');
-    expect(result.billingLabel).toBe('FES-DealerOS');
+    expect(result.billingLabel).toBe('Forestry Equipment Sales DealerOS');
   });
 
   it('returns subscription-backed access for active fleet_dealer', () => {
@@ -64,9 +69,10 @@ describe('resolveAccountEntitlement', () => {
       subscriptionStatus: 'active',
     });
     expect(result.sellerWorkspaceAccess).toBe(true);
+    expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.dealerOsAccess).toBe(true);
     expect(result.effectiveSellerCapability).toBe('pro_dealer');
-    expect(result.billingLabel).toBe('FES-DealerOS');
+    expect(result.billingLabel).toBe('Forestry Equipment Sales DealerOS');
   });
 
   it('returns hidden_due_to_billing when subscription is past_due', () => {
@@ -94,17 +100,10 @@ describe('resolveAccountEntitlement', () => {
     expect(result.publicListingVisibility).toBe('admin_override');
   });
 
-  it('returns no seller access for buyer role', () => {
-    const result = resolveAccountEntitlement({ role: 'buyer' });
-    expect(result.sellerWorkspaceAccess).toBe(false);
-    expect(result.canPostListings).toBe(false);
-    expect(result.dealerOsAccess).toBe(false);
-    expect(result.publicListingVisibility).toBe('not_applicable');
-  });
-
   it('returns no seller access for member role', () => {
     const result = resolveAccountEntitlement({ role: 'member' });
     expect(result.sellerWorkspaceAccess).toBe(false);
+    expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.canPostListings).toBe(false);
   });
 
@@ -134,6 +133,7 @@ describe('resolveAccountEntitlement', () => {
   it('handles null user', () => {
     const result = resolveAccountEntitlement(null);
     expect(result.sellerWorkspaceAccess).toBe(false);
+    expect(result.adminWorkspaceAccess).toBe(false);
     expect(result.canPostListings).toBe(false);
     expect(result.subscriptionState).toBe('none');
     expect(result.billingLabel).toBe('n/a');

@@ -1,0 +1,115 @@
+## Dealer System — Data Connect Schema
+## Phase 5 of the Firestore → PostgreSQL migration.
+
+type DealerFeedProfile @table(name: "dealer_feed_profiles", key: "id") @index(fields: ["sellerUid"]) @index(fields: ["status"]) {
+  id: String!
+  sellerUid: String! @col(name: "seller_uid")
+  dealerName: String @col(name: "dealer_name")
+  dealerEmail: String @col(name: "dealer_email")
+  sourceName: String @col(name: "source_name") @default(value: "Dealer Feed")
+  sourceType: String @col(name: "source_type")
+  rawInput: String @col(name: "raw_input")
+  feedUrl: String @col(name: "feed_url")
+  apiEndpoint: String @col(name: "api_endpoint")
+  status: String @default(value: "active")
+  syncMode: String @col(name: "sync_mode") @default(value: "pull")
+  syncFrequency: String @col(name: "sync_frequency") @default(value: "manual")
+  nightlySyncEnabled: Boolean @col(name: "nightly_sync_enabled") @default(value: false)
+  autoPublish: Boolean @col(name: "auto_publish") @default(value: false)
+  fieldMapping: Any @col(name: "field_mapping") @default(sql: "'[]'::jsonb")
+  apiKeyPreview: String @col(name: "api_key_preview")
+  totalListingsSynced: Int @col(name: "total_listings_synced") @default(value: 0)
+  totalListingsActive: Int @col(name: "total_listings_active") @default(value: 0)
+  totalListingsCreated: Int @col(name: "total_listings_created") @default(value: 0)
+  totalListingsUpdated: Int @col(name: "total_listings_updated") @default(value: 0)
+  totalListingsDeleted: Int @col(name: "total_listings_deleted") @default(value: 0)
+  lastSyncAt: Timestamp @col(name: "last_sync_at")
+  nextSyncAt: Timestamp @col(name: "next_sync_at")
+  lastSyncStatus: String @col(name: "last_sync_status")
+  lastSyncMessage: String @col(name: "last_sync_message")
+  lastResolvedType: String @col(name: "last_resolved_type")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type DealerListing @table(name: "dealer_listings", key: "id") @index(fields: ["dealerFeedId"]) @index(fields: ["sellerUid"]) @index(fields: ["equipmentHash"]) {
+  id: String!
+  feed: DealerFeedProfile! @ref(fields: ["dealerFeedId"], references: ["id"])
+  dealerFeedId: String! @col(name: "dealer_feed_id")
+  sellerUid: String! @col(name: "seller_uid")
+  externalListingId: String! @col(name: "external_listing_id")
+  timberequipListingId: String @col(name: "timberequip_listing_id")
+  equipmentHash: String @col(name: "equipment_hash")
+  status: String @default(value: "active")
+  dealerSourceUrl: String @col(name: "dealer_source_url")
+  dataSource: String @col(name: "data_source") @default(value: "dealer")
+  externalData: Any @col(name: "external_data") @default(sql: "'{}'::jsonb")
+  mappedData: Any @col(name: "mapped_data") @default(sql: "'{}'::jsonb")
+  syncedAt: Timestamp @col(name: "synced_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type DealerFeedIngestLog @table(name: "dealer_feed_ingest_logs", key: "id") @index(fields: ["feedId"]) @index(fields: ["sellerUid"]) {
+  id: String!
+  feed: DealerFeedProfile @ref(fields: ["feedId"], references: ["id"])
+  feedId: String @col(name: "feed_id")
+  sellerUid: String! @col(name: "seller_uid")
+  actorUid: String @col(name: "actor_uid")
+  actorRole: String @col(name: "actor_role")
+  sourceName: String @col(name: "source_name")
+  totalReceived: Int @col(name: "total_received") @default(value: 0)
+  processed: Int @default(value: 0)
+  created: Int @default(value: 0)
+  updated: Int @default(value: 0)
+  upserted: Int @default(value: 0)
+  skipped: Int @default(value: 0)
+  archived: Int @default(value: 0)
+  errorCount: Int @col(name: "error_count") @default(value: 0)
+  errors: Any @default(sql: "'[]'::jsonb")
+  dryRun: Boolean @col(name: "dry_run") @default(value: false)
+  syncContext: Any @col(name: "sync_context") @default(sql: "'{}'::jsonb")
+  processedAt: Timestamp @col(name: "processed_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type DealerAuditLog @table(name: "dealer_audit_logs", key: "id") @index(fields: ["dealerFeedId"]) @index(fields: ["sellerUid"]) {
+  id: String!
+  feed: DealerFeedProfile @ref(fields: ["dealerFeedId"], references: ["id"])
+  dealerFeedId: String @col(name: "dealer_feed_id")
+  sellerUid: String! @col(name: "seller_uid")
+  action: String!
+  details: String
+  errorMessage: String @col(name: "error_message")
+  itemsProcessed: Int @col(name: "items_processed")
+  itemsSucceeded: Int @col(name: "items_succeeded")
+  itemsFailed: Int @col(name: "items_failed")
+  metadata: Any @default(sql: "'{}'::jsonb")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type DealerWebhookSubscription @table(name: "dealer_webhook_subscriptions", key: "id") @index(fields: ["dealerUid"]) {
+  id: String!
+  dealerUid: String! @col(name: "dealer_uid")
+  callbackUrl: String! @col(name: "callback_url")
+  events: Any @default(sql: "'[]'::jsonb")
+  active: Boolean @default(value: true)
+  secretMasked: String @col(name: "secret_masked")
+  failureCount: Int @col(name: "failure_count") @default(value: 0)
+  lastDeliveryAt: Timestamp @col(name: "last_delivery_at")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+}
+
+type DealerWidgetConfig @table(name: "dealer_widget_configs", key: "id") {
+  id: String!
+  cardStyle: String @col(name: "card_style") @default(value: "fes-native")
+  accentColor: String @col(name: "accent_color") @default(value: "#000000")
+  fontFamily: String @col(name: "font_family")
+  darkMode: Boolean @col(name: "dark_mode") @default(value: false)
+  showInquiry: Boolean @col(name: "show_inquiry") @default(value: true)
+  showCall: Boolean @col(name: "show_call") @default(value: true)
+  showDetails: Boolean @col(name: "show_details") @default(value: true)
+  pageSize: Int @col(name: "page_size") @default(value: 12)
+  customCss: String @col(name: "custom_css")
+  updatedAt: Timestamp @col(name: "updated_at") @default(expr: "request.time")
+}

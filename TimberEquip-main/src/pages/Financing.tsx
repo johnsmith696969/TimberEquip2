@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Calculator, ShieldCheck, Clock, 
@@ -10,14 +10,20 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { useAuth } from '../components/AuthContext';
-import { useTheme } from '../components/ThemeContext';
+import { ImageHero } from '../components/ImageHero';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 export function Financing() {
   const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
   const { user } = useAuth();
   const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -26,7 +32,6 @@ export function Financing() {
     businessStructure: '',
     legalEntityName: '',
     yearsInOperation: '',
-    annualRevenue: '',
     assetValue: '',
     requestedAmount: '',
     termLength: '60 Months',
@@ -44,20 +49,6 @@ export function Financing() {
       contactPhone: prev.contactPhone || user?.phoneNumber || '',
     }));
   }, [user?.displayName, user?.email, user?.phoneNumber]);
-
-  const isDarkMode = theme === 'dark';
-  const heroClasses = useMemo(() => ({
-    shell: isDarkMode ? 'bg-ink text-white' : 'bg-surface text-ink border-b border-line',
-    image: isDarkMode ? 'opacity-30' : 'opacity-18 saturate-[0.85] brightness-110',
-    gradient: isDarkMode
-      ? 'bg-gradient-to-r from-black/90 via-black/80 to-black/55'
-      : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76',
-    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/8',
-    iconChip: isDarkMode ? 'bg-accent text-white' : 'bg-accent/12 text-accent border border-accent/20',
-    eyebrow: isDarkMode ? 'text-accent' : 'text-accent',
-    titleLead: isDarkMode ? 'text-white' : 'text-ink',
-    body: isDarkMode ? 'text-white/75' : 'text-muted',
-  }), [isDarkMode]);
 
   const handleNext = () => setStep(prev => prev + 1);
   const handlePrev = () => setStep(prev => prev - 1);
@@ -90,7 +81,7 @@ export function Financing() {
         applicantPhone: formData.contactPhone,
         company: formData.legalEntityName,
         requestedAmount: formData.requestedAmount ? Number(formData.requestedAmount) : undefined,
-        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Annual revenue: ${formData.annualRevenue}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`,
+        message: `Structure: ${formData.businessStructure}; Years in operation: ${formData.yearsInOperation}; Equipment value: ${formData.assetValue}; Term: ${formData.termLength}; Down payment: ${formData.downPayment}`,
         contactConsentAccepted: true,
         contactConsentVersion: FINANCING_CONTACT_CONSENT_VERSION,
         contactConsentScope: 'financing_request_specific',
@@ -112,35 +103,50 @@ export function Financing() {
         title="Equipment Financing | Apply for Credit | Forestry Equipment Sales"
         description="Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales."
         canonicalPath="/financing"
-        imagePath="/page-photos/ponsse-buffalo-loading.jpg"
+        imagePath="/page-photos/ponsse-buffalo-loading.webp"
+        preloadImage="/page-photos/ponsse-buffalo-loading.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Service',
+              name: 'Forestry Equipment Financing',
+              description: 'Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months.',
+              url: buildSiteUrl('/financing'),
+              provider: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: buildSiteUrl(),
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Financing', item: buildSiteUrl('/financing') },
+              ],
+            },
+          ],
+        }}
       />
       {/* Header */}
-      <div className={`py-24 px-4 md:px-8 relative overflow-hidden transition-colors ${heroClasses.shell}`}>
-        <div className="absolute inset-0">
-          <img
-            src="/page-photos/ponsse-buffalo-loading.jpg"
-            alt="Ponsse Buffalo loading timber"
-            className={`w-full h-full object-cover transition-opacity ${heroClasses.image}`}
-          />
-          <div className={`absolute inset-0 transition-colors ${heroClasses.gradient}`} />
-          <div className={`absolute top-0 right-0 w-1/3 h-full skew-x-12 translate-x-1/2 transition-colors ${heroClasses.accentBand}`}></div>
-        </div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className={`w-10 h-10 flex items-center justify-center rounded-sm transition-colors ${heroClasses.iconChip}`}>
-              <Calculator size={20} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${heroClasses.eyebrow}`}>Financing Center</span>
+      <ImageHero imageSrc="/page-photos/ponsse-buffalo-loading.webp" imageAlt="Ponsse Buffalo loading timber">
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <Building size={20} className="text-accent" />
+            <span className="label-micro text-accent">Financing Center</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
-            <span className={heroClasses.titleLead}>Institutional</span> <br />
-            <span className="text-accent">Financing</span>
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
+            Institutional <br />
+            <span className={heroSecondaryClass}>Financing</span>
           </h1>
-          <p className={`font-medium max-w-2xl leading-relaxed transition-colors ${heroClasses.body}`}>
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
             Apply for equipment financing. Submit your details and get a credit decision, typically within one business day.
           </p>
         </div>
-      </div>
+      </ImageHero>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
@@ -174,8 +180,8 @@ export function Financing() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Business Structure</label>
-                          <select value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                          <label htmlFor="financing-business-structure" className="label-micro">Business Structure</label>
+                          <select id="financing-business-structure" value={formData.businessStructure} onChange={(e) => setFormData({ ...formData, businessStructure: e.target.value })} className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent">
                             <option value="">-Select-</option>
                             <option value="Corporation">Corporation</option>
                             <option value="LLC">LLC</option>
@@ -184,20 +190,16 @@ export function Financing() {
                           </select>
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Legal Entity Name</label>
-                          <input type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-entity-name" className="label-micro">Legal Entity Name</label>
+                          <input id="financing-entity-name" type="text" value={formData.legalEntityName} onChange={(e) => setFormData({ ...formData, legalEntityName: e.target.value })} placeholder="Legal Entity Name" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Years in Operation</label>
-                          <input type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
-                        </div>
-                        <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Annual Revenue (USD)</label>
-                          <input type="number" value={formData.annualRevenue} onChange={(e) => setFormData({ ...formData, annualRevenue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-years-operation" className="label-micro">Years in Operation</label>
+                          <input id="financing-years-operation" type="number" value={formData.yearsInOperation} onChange={(e) => setFormData({ ...formData, yearsInOperation: e.target.value })} placeholder="0" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
-                      <button onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit">
+                      <button type="button" onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit">
                         Continue to Equipment Details
                         <ArrowRight className="ml-3" size={18} />
                       </button>
@@ -219,16 +221,16 @@ export function Financing() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Estimated Equipment Value (USD)</label>
-                          <input type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-asset-value" className="label-micro">Estimated Equipment Value (USD)</label>
+                          <input id="financing-asset-value" type="number" value={formData.assetValue} onChange={(e) => setFormData({ ...formData, assetValue: e.target.value })} placeholder="0.00" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Requested Loan Amount (USD)</label>
-                          <input type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-requested-amount" className="label-micro">Requested Loan Amount (USD)</label>
+                          <input id="financing-requested-amount" type="number" value={formData.requestedAmount} onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })} placeholder="0.00" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Preferred Term Length</label>
-                          <select value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent">
+                          <label htmlFor="financing-term-length" className="label-micro">Preferred Term Length</label>
+                          <select id="financing-term-length" value={formData.termLength} onChange={(e) => setFormData({ ...formData, termLength: e.target.value })} className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent">
                             <option>24 Months</option>
                             <option>36 Months</option>
                             <option>48 Months</option>
@@ -238,14 +240,14 @@ export function Financing() {
                           </select>
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Down Payment Available (USD)</label>
-                          <input type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-down-payment" className="label-micro">Down Payment Available (USD)</label>
+                          <input id="financing-down-payment" type="number" value={formData.downPayment} onChange={(e) => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0.00" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
                       <div className="flex space-x-4">
-                        <button onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
-                        <button onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 flex-1">
+                        <button type="button" onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
+                        <button type="button" onClick={handleNext} className="btn-industrial btn-accent py-5 px-12 flex-1">
                           Continue to Verification
                           <ArrowRight className="ml-3" size={18} />
                         </button>
@@ -268,16 +270,16 @@ export function Financing() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Primary Contact Name</label>
-                          <input type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-contact-name" className="label-micro">Primary Contact Name</label>
+                          <input id="financing-contact-name" type="text" value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} placeholder="E.G. JOHN DOE" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3">
-                          <label className="label-micro">Primary Contact Email</label>
-                          <input type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-contact-email" className="label-micro">Primary Contact Email</label>
+                          <input id="financing-contact-email" type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} placeholder="YOUR@EMAIL.COM" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                         <div className="flex flex-col space-y-3 md:col-span-2">
-                          <label className="label-micro">Primary Contact Phone</label>
-                          <input type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent" />
+                          <label htmlFor="financing-contact-phone" className="label-micro">Primary Contact Phone</label>
+                          <input id="financing-contact-phone" type="tel" value={formData.contactPhone} onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })} placeholder="+1 (800) 000-0000" className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent" />
                         </div>
                       </div>
 
@@ -305,9 +307,10 @@ export function Financing() {
                       </p>
 
                       <div className="flex space-x-4">
-                        <button onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
-                        <button 
-                          onClick={handleSubmit} 
+                        <button type="button" onClick={handlePrev} className="btn-industrial py-5 px-12 bg-surface">Back</button>
+                        <button
+                          type="button"
+                          onClick={handleSubmit}
                           disabled={loading}
                           className="btn-industrial btn-accent py-5 px-12 flex-1 flex items-center justify-center"
                         >
@@ -363,7 +366,7 @@ export function Financing() {
                   { title: 'Fast Approvals', desc: 'Initial credit decisions typically rendered within 24 hours.', icon: Clock },
                   { title: 'Flexible Terms', desc: 'Customized repayment schedules up to 84 months.', icon: Activity },
                   { title: 'Competitive Rates', desc: 'Starting from 6.25% APR for qualified entities.', icon: TrendingUp },
-                  { title: 'Secure Handling', desc: 'All financial data is encrypted via AES-256 encryption.', icon: ShieldCheck }
+                  { title: 'Secure Handling', desc: 'All data submitted in this form is encrypted via HTTPS/TLS in transit and at rest by Google Cloud.', icon: ShieldCheck }
                 ].map((item, i) => (
                   <div key={i} className="flex space-x-4">
                     <div className="p-2 bg-bg border border-line rounded-sm h-fit">

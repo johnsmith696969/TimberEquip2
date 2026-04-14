@@ -319,13 +319,18 @@ async function loadRuntimeDocument(): Promise<{ overrides: FullEquipmentTaxonomy
 }
 
 async function loadMergedFullTaxonomy(): Promise<FullEquipmentTaxonomy> {
-  const [bundledTaxonomy, runtimeDocument] = await Promise.all([
+  const [jsonTaxonomy, runtimeDocument] = await Promise.all([
     loadBundledFullTaxonomy(),
     loadRuntimeDocument(),
   ]);
 
-  const merged = mergeFullTaxonomies(bundledTaxonomy, runtimeDocument.overrides);
-  return applyRemovals(merged, runtimeDocument.removals);
+  // Start with the static bundled EQUIPMENT_TAXONOMY as the definitive base
+  // so that categories/subcategories in equipmentData.ts are never silently lost
+  // when the JSON file is missing entries.
+  const base = buildFullTaxonomyFallback();
+  const withJsonModels = mergeFullTaxonomies(base, jsonTaxonomy);
+  const withOverrides = mergeFullTaxonomies(withJsonModels, runtimeDocument.overrides);
+  return applyRemovals(withOverrides, runtimeDocument.removals);
 }
 
 async function updateRuntimeTaxonomy(

@@ -1,64 +1,109 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Mail, Phone, Users } from 'lucide-react';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 const teamMembers = [
   {
     name: 'Aaron Blake',
     role: 'Co-Owner & Sales',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/1b63bbd7f47bcd5731c901a5ad68fa48393c8482.webp',
-    bio: 'With more than 22 years of experience in logging and equipment sales, Aaron has built a reputation as someone you can trust and who knows how to get deals done. He manages risk, supports all sales, and helps clients secure financing to close deals.',
+    bio: 'With nineteen years of experience in logging and equipment sales, Aaron has built a reputation as someone you can trust and who knows how to get deals done. He manages risk, supports all sales, and helps clients secure financing to close deals.',
   },
   {
     name: 'Erik Madsen',
     role: 'Co-Owner & Sales',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/2b41123220474453445f2a2e50123f64cafd5d0b.jpg',
-    bio: 'Erik brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
-  },
-  {
-    name: 'Kelly Brooks',
-    role: 'Front Office & Logistics',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/9d11f5ae877b93e2968e86026c9558ab7e740108.jpg',
-    bio: 'Kelly keeps our front office running like a machine. She handles phones, logistics, customs, overseas shipping, customer support, and website updates to make sure everything stays organized and efficient.',
+    bio: 'Erik has 14 years of experience in the industry. He brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
   },
   {
     name: 'Caleb Happy',
     role: 'Marketing & Platform Development',
-    image: 'https://ik.imagekit.io/aqa9zbltl/images/675a11d33eca36acc1fa34fa96075f11c1302b2a.jpg',
     bio: 'Caleb brings eight years of marketing experience and a hands-on systems mindset. He handles marketing, infrastructure, and customer relations to keep the platform running smoothly.',
   },
 ];
 
 export function OurTeam() {
+  const { theme } = useTheme();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+  const contactPanelClass = theme === 'dark' ? 'border border-white/10 bg-[#1C1917] text-white' : 'border border-line bg-surface text-ink';
+  const contactItemClass = theme === 'dark'
+    ? 'border border-white/10 text-white hover:border-accent'
+    : 'border border-line bg-bg text-ink hover:border-accent';
+  const contactMetaClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
+
   return (
     <div className="min-h-screen bg-bg">
       <Seo
         title="Our Team | Forestry Equipment Sales"
         description="Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development."
         canonicalPath="/our-team"
+        imagePath="/page-photos/john-deere-harvester.webp"
+        preloadImage="/page-photos/our-team.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'AboutPage',
+              name: 'Our Team | Forestry Equipment Sales',
+              description: 'Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development.',
+              url: buildSiteUrl('/our-team'),
+            },
+            {
+              '@type': 'Organization',
+              name: 'Forestry Equipment Sales',
+              url: buildSiteUrl(),
+              telephone: '(218) 720-0933',
+              email: 'support@forestryequipmentsales.com',
+              member: [
+                {
+                  '@type': 'Person',
+                  name: 'Aaron Blake',
+                  jobTitle: 'Co-Owner & Sales',
+                },
+                {
+                  '@type': 'Person',
+                  name: 'Erik Madsen',
+                  jobTitle: 'Co-Owner & Sales',
+                },
+                {
+                  '@type': 'Person',
+                  name: 'Caleb Happy',
+                  jobTitle: 'Marketing & Platform Development',
+                },
+              ],
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Our Team', item: buildSiteUrl('/our-team') },
+              ],
+            },
+          ],
+        }}
       />
 
-      <section className="relative overflow-hidden border-b border-line bg-surface px-4 py-24 md:px-8 md:py-28">
-        <div className="absolute right-0 top-0 h-full w-1/3 translate-x-1/2 skew-x-12 bg-accent/10" />
-        <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-6 flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-ink">
-              <Users className="text-accent" size={20} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">Our Team</span>
+      <ImageHero imageSrc="/page-photos/our-team.webp" imageAlt="The Forestry Equipment Sales team">
+        <div>
+          <div className="mb-6 flex items-center gap-3">
+            <Users className="text-accent" size={20} />
+            <span className="label-micro text-accent">Our Team</span>
           </div>
-          <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
+          <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             We Know The Industry
             <br />
-            <span className="text-muted">Because We Are From It</span>
+            <span className={heroSecondaryClass}>Because We Are From It</span>
           </h1>
-          <p className="max-w-3xl text-base font-medium leading-relaxed text-muted md:text-lg">
+          <p className={`max-w-3xl text-base font-medium leading-relaxed md:text-lg ${heroBodyClass}`}>
             This platform was not built by tech investors. It was built by people who have spent years around
             equipment, sellers, buyers, shipping, and the real work it takes to move iron.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <section className="bg-bg px-4 py-20 md:px-8 md:py-24">
         <div className="mx-auto max-w-[1600px]">
@@ -70,19 +115,13 @@ export function OurTeam() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3">
             {teamMembers.map((member) => (
               <div key={member.name} className="flex flex-col overflow-hidden border border-line bg-surface">
-                <div className="aspect-[4/5] overflow-hidden bg-bg">
-                  <img
-                    src={member.image}
-                    alt={member.name}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <div className="flex flex-1 flex-col p-6">
+                <div className="flex flex-1 flex-col p-8">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-bg border border-line">
+                    <Users className="text-accent" size={24} />
+                  </div>
                   <h2 className="text-2xl font-black uppercase tracking-tight">{member.name}</h2>
                   <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent">{member.role}</p>
                   <p className="mt-5 text-sm font-medium leading-relaxed text-muted">{member.bio}</p>
@@ -108,21 +147,21 @@ export function OurTeam() {
             </p>
           </div>
 
-          <div className="border border-line bg-ink p-8 text-white md:p-10">
+          <div className={`${contactPanelClass} p-8 md:p-10`}>
             <span className="label-micro mb-4 block text-accent">Reach Us</span>
             <div className="space-y-4">
-              <a href="tel:+12187200933" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">
+              <a href="tel:+12187200933" className={`flex items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
                 <Phone className="mt-0.5 text-accent" size={18} />
                 <div>
-                  <span className="label-micro block text-white/60">Customer Support</span>
-                  <span className="text-sm font-black tracking-tight text-white">(218) 720-0933</span>
+                  <span className={`label-micro block ${contactMetaClass}`}>Customer Support</span>
+                  <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
                 </div>
               </a>
-              <a href="mailto:info@forestryequipmentsales.com" className="flex items-start space-x-3 border border-white/10 p-4 transition-colors hover:border-accent">
+              <a href="mailto:support@forestryequipmentsales.com" className={`flex min-w-0 items-start space-x-3 p-4 transition-colors ${contactItemClass}`}>
                 <Mail className="mt-0.5 text-accent" size={18} />
-                <div>
-                  <span className="label-micro block text-white/60">Email</span>
-                  <span className="text-sm font-black tracking-tight text-white">info@forestryequipmentsales.com</span>
+                <div className="min-w-0">
+                  <span className={`label-micro block ${contactMetaClass}`}>Email</span>
+                  <span className="block break-all text-sm font-black tracking-tight">support@forestryequipmentsales.com</span>
                 </div>
               </a>
               <div className="pt-2">

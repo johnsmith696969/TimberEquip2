@@ -97,7 +97,7 @@ describe('Seo component', () => {
   it('sets og:image with default logo path', () => {
     render(<Seo title="Test" description="Desc" />);
     const ogImage = document.head.querySelector('meta[property="og:image"]') as HTMLMetaElement;
-    expect(ogImage?.content).toContain('Forestry_Equipment_Sales_Logo');
+    expect(ogImage?.content).toContain('Forestry_Equipment_Sales_Logo.png');
   });
 
   it('sets og:image with custom imagePath', () => {

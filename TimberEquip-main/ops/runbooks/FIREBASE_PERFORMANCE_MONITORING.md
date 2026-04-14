@@ -2,7 +2,7 @@
 
 ## Current State
 
-Forestry Equipment Sales now includes optional Firebase Performance Monitoring scaffolding in:
+TimberEquip now includes optional Firebase Performance Monitoring scaffolding in:
 
 - `src/services/performance.ts`
 - `src/main.tsx`

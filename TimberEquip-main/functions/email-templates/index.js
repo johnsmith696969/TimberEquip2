@@ -8,7 +8,7 @@
  *   firebase functions:secrets:set SENDGRID_API_KEY EMAIL_FROM ADMIN_EMAILS
  */
 
-const DEFAULT_MARKETPLACE_URL = 'https://www.forestryequipmentsales.com';
+const DEFAULT_MARKETPLACE_URL = 'https://timberequip.com';
 
 function normalizeMarketplaceUrl(url) {
   return String(url || DEFAULT_MARKETPLACE_URL).trim().replace(/\/+$/, '') || DEFAULT_MARKETPLACE_URL;
@@ -18,18 +18,23 @@ const MARKETPLACE_URL = normalizeMarketplaceUrl(process.env.EMAIL_MARKETPLACE_UR
 const SEARCH_URL = `${MARKETPLACE_URL}/search`;
 const PROFILE_URL = `${MARKETPLACE_URL}/profile`;
 const ADMIN_URL = `${MARKETPLACE_URL}/admin`;
+const CONTACT_URL = `${MARKETPLACE_URL}/contact`;
 const PRIVACY_URL = `${MARKETPLACE_URL}/privacy`;
 const TERMS_URL = `${MARKETPLACE_URL}/terms`;
-const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Header.png?v=20260327c`;
-const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=20260327c`;
+const EMAIL_BRAND_ASSET_VERSION = '20260407a';
+const EMAIL_HEADER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Logo_Email_Header.svg?v=${EMAIL_BRAND_ASSET_VERSION}`;
+const EMAIL_FOOTER_ASSET_URL = `${MARKETPLACE_URL}/Forestry_Equipment_Sales_Email_Footer.png?v=${EMAIL_BRAND_ASSET_VERSION}`;
+
+const EMAIL_PREFERENCE_FOOTER_MARKER = '<!--EMAIL_PREFERENCE_FOOTER-->';
 
 const BASE_STYLES = `
   :root { color-scheme: light only; supported-color-schemes: light only; }
+  .brand-green { color: #16A34A !important; }
   body { margin: 0; padding: 0; background: #f3f4f6 !important; font-family: 'Avenir Next', 'Segoe UI', sans-serif; color: #111827 !important; }
   .shell { background: linear-gradient(180deg, #111827 0%, #111827 180px, #f3f4f6 180px, #f3f4f6 100%); padding: 28px 14px; }
-  .wrapper { max-width: 640px; margin: 0 auto; background: #ffffff !important; border: 1px solid #d1d5db; box-shadow: 0 18px 48px rgba(17, 24, 39, 0.12); }
-  .header { background: #111827 !important; padding: 28px 40px 24px; }
-  .eyebrow { color: #4f8f3a; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; text-transform: uppercase; margin: 0 0 14px; }
+  .wrapper { max-width: 640px; margin: 0 auto; background: #ffffff !important; border: 1px solid #d1d5db; box-shadow: 0 26px 60px rgba(17, 24, 39, 0.16), 0 10px 22px rgba(17, 24, 39, 0.10); }
+  .header { background: linear-gradient(180deg, #0f172a 0%, #111827 100%) !important; padding: 28px 40px 24px; box-shadow: inset 0 -1px 0 rgba(255,255,255,0.06); }
+  .eyebrow { color: #4ADE80; font-size: 10px; font-weight: 900; letter-spacing: 0.22em; text-transform: uppercase; margin: 0 0 14px; text-shadow: 0 0 18px rgba(34, 197, 94, 0.18); }
   .header-logo-wrap { text-align: left; }
   .header-logo-img { display: block; width: 220px; max-width: 100%; height: auto; }
   .hero-title { color: #ffffff !important; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; margin: 20px 0 8px; }
@@ -37,29 +42,30 @@ const BASE_STYLES = `
   .header-divider { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 22px 0 0; }
   .body { padding: 40px; }
   .context-title { color: #111827 !important; font-size: 24px; font-weight: 900; margin: 0 0 20px; text-transform: uppercase; letter-spacing: -0.02em; }
-  .label { color: #2f6f2d; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 6px; }
+  .label { color: #15803D; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 6px; }
   .body h2 { color: #111827 !important; font-size: 20px; font-weight: 900; margin: 0 0 16px; text-transform: uppercase; letter-spacing: -0.02em; }
   .body p { color: #4b5563 !important; font-size: 14px; line-height: 1.65; margin: 0 0 16px; }
   .body p strong { color: #111827 !important; }
-  .panel { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important; border: 1px solid #e5e7eb; border-radius: 3px; padding: 20px; margin: 20px 0; }
-  .message-box { background: #eef6ed !important; border-left: 3px solid #4f8f3a; padding: 16px 20px; margin: 20px 0; border-radius: 2px; }
+  .panel { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important; border: 1px solid #e5e7eb; border-radius: 3px; padding: 20px; margin: 20px 0; box-shadow: 0 12px 28px rgba(17, 24, 39, 0.08); }
+  .message-box { background: #eefbf2 !important; border-left: 3px solid #16A34A; padding: 16px 20px; margin: 20px 0; border-radius: 2px; box-shadow: 0 8px 18px rgba(22, 163, 74, 0.10); }
   .message-box p { color: #224b22 !important; font-size: 14px; margin: 0; font-style: italic; }
-  .cta { display: inline-block; background: #4f8f3a; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; }
-  .cta-secondary { background: #ffffff !important; border: 1px solid #4f8f3a; color: #2f6f2d !important; }
+  .cta { display: inline-block; background: #16A34A; color: #ffffff !important; font-size: 11px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 14px 28px; text-decoration: none; border-radius: 2px; margin: 8px 8px 8px 0; box-shadow: 0 10px 22px rgba(22, 163, 74, 0.22); }
+  .cta-secondary { background: #ffffff !important; border: 2px solid #15803D; color: #15803D !important; box-shadow: 0 8px 18px rgba(21, 128, 61, 0.10); }
   .info-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .info-label { color: #6b7280 !important; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; min-width: 120px; }
   .info-value { color: #111827 !important; font-size: 11px; font-weight: 600; }
   .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
   .footer { background: #ffffff !important; padding: 24px 40px 32px; border-top: 1px solid #e5e7eb; }
   .footer-logo-wrap { margin: 0 0 18px; }
-  .footer-logo-img { display: block; width: 240px; max-width: 100%; height: auto; }
-  .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; }
+  .footer-logo-frame { display: inline-flex; align-items: center; justify-content: flex-start; width: auto; height: auto; border: none; background: transparent; box-shadow: none; }
+  .footer-logo-img { display: block; width: 180px; max-width: 100%; height: auto; }
+  .footer-grid { background: #f8fafc; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 18px; box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06); }
   .footer-title { color: #111827; font-size: 11px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 8px; }
   .footer p { color: #6b7280 !important; font-size: 11px; margin: 0; line-height: 1.5; }
-  .footer a { color: #2f6f2d; text-decoration: none; }
-  .badge { display: inline-block; background: rgba(79,143,58,0.12); border: 1px solid rgba(79,143,58,0.3); color: #2f6f2d; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; }
-  .success-badge { background: rgba(79,143,58,0.12); border-color: rgba(79,143,58,0.3); color: #2f6f2d; }
-  .warning-badge { background: rgba(79,143,58,0.12); border-color: rgba(79,143,58,0.3); color: #2f6f2d; }
+  .footer a { color: #15803D; text-decoration: none; font-weight: 700; }
+  .badge { display: inline-block; background: rgba(22, 163, 74, 0.12); border: 1px solid rgba(22, 163, 74, 0.28); color: #15803D; font-size: 10px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; }
+  .success-badge { background: rgba(22, 163, 74, 0.12); border-color: rgba(22, 163, 74, 0.28); color: #15803D; }
+  .warning-badge { background: rgba(22, 163, 74, 0.12); border-color: rgba(22, 163, 74, 0.28); color: #15803D; }
   @media (max-width: 640px) {
     .shell { padding: 0; background: #111827; }
     .wrapper { border-left: none; border-right: none; }
@@ -104,14 +110,17 @@ function baseLayout(title, headerSubtitle, content) {
       </div>
       <div class="footer">
         <div class="footer-logo-wrap">
-          <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales" />
+          <div class="footer-logo-frame">
+            <img class="footer-logo-img" src="${EMAIL_FOOTER_ASSET_URL}" alt="Forestry Equipment Sales" />
+          </div>
         </div>
         <div class="footer-grid">
           <p class="footer-title">Built For Forestry Equipment</p>
           <p>Forestry Equipment Sales connects buyers, sellers, and partners across used and new logging equipment, financing workflows, and industrial inventory marketing.</p>
         </div>
+        ${EMAIL_PREFERENCE_FOOTER_MARKER}
         <p>
-          &copy; ${new Date().getFullYear()} Forestry Equipment Sales &mdash; The Forestry Equipment Marketplace<br />
+          &copy; ${new Date().getFullYear()} Forestry Equipment Sales &mdash; The Forestry Equipment Sales Marketplace<br />
           <a href="${MARKETPLACE_URL}">Forestry Equipment Sales</a> &middot;
           <a href="${PRIVACY_URL}">Privacy Policy</a> &middot;
           <a href="${TERMS_URL}">Terms</a>
@@ -123,16 +132,21 @@ function baseLayout(title, headerSubtitle, content) {
 </html>`;
 }
 
-function renderOptionalEmailFooter(unsubscribeUrl, label = 'Unsubscribe from optional Forestry Equipment Sales emails') {
+function renderEmailPreferenceFooter(unsubscribeUrl, label = 'Manage email preferences or unsubscribe from optional automated emails') {
   if (!unsubscribeUrl) return '';
 
   return `
     <hr class="divider" />
     <p style="font-size:11px; color:#6b7280 !important;">
       Prefer fewer emails? <a href="${unsubscribeUrl}">${label}</a>.<br />
-      You will still receive required account, billing, listing, and security emails.
+      This link turns off optional automated marketplace emails for this address. Required security, billing, listing, and account-service emails may still be sent.
     </p>
   `;
+}
+
+function withEmailPreferenceFooter(html, options = {}) {
+  const footerHtml = renderEmailPreferenceFooter(options.unsubscribeUrl, options.label);
+  return String(html || '').replace(EMAIL_PREFERENCE_FOOTER_MARKER, footerHtml);
 }
 
 function renderInfoPanel(rows) {
@@ -245,6 +259,139 @@ const templates = {
       <p style="font-size:12px; color:#666;">
         This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.
       </p>
+    `);
+    return { subject, html };
+  },
+
+  passwordReset({ displayName, intro, resetUrl, loginUrl }) {
+    const subject = 'Reset your Forestry Equipment Sales password';
+    const html = baseLayout(subject, 'Reset Your Password', `
+      <p class="label">Account Recovery</p>
+      <h2>Choose a new password</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>${intro}</p>
+      <p>Use the secure password reset page below to choose a new password for your Forestry Equipment Sales account.</p>
+      ${renderInfoPanel([
+        { label: 'Destination', value: 'Forestry Equipment Sales password recovery workspace' },
+        { label: 'Security', value: 'Single-use link that expires automatically' },
+      ])}
+      <a href="${resetUrl}" class="cta">Open Secure Reset Page</a>
+      <a href="${loginUrl}" class="cta cta-secondary">Back To Login</a>
+      <hr class="divider" />
+      <p style="font-size:12px; color:#6b7280 !important;">
+        If the button does not work, copy and paste this secure link into your browser:<br />
+        <a href="${resetUrl}" style="word-break:break-word;">${resetUrl}</a>
+      </p>
+      <p>If you did not request this change, you can safely ignore this email and your password will stay the same.</p>
+    `);
+    return { subject, html };
+  },
+
+  passwordResetSuccess({ displayName, changedAt, loginUrl, supportUrl }) {
+    const subject = 'Your Forestry Equipment Sales password was changed';
+    const html = baseLayout(subject, 'Password Changed Successfully', `
+      <p class="label">Security Confirmation</p>
+      <h2>Your password has been updated</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>This is a confirmation that the password for your Forestry Equipment Sales account was changed successfully.</p>
+      ${renderInfoPanel([
+        { label: 'Changed', value: changedAt || 'Just now' },
+        { label: 'Account Access', value: 'Your new password is now required the next time you sign in.' },
+      ])}
+      <p>If you made this change, no further action is needed.</p>
+      <p>If you did <strong>not</strong> change your password, secure your account immediately and contact Forestry Equipment Sales support so we can help lock down access.</p>
+      <a href="${loginUrl}" class="cta">Sign In</a>
+      <a href="${supportUrl || CONTACT_URL}" class="cta cta-secondary">Contact Support</a>
+    `);
+    return { subject, html };
+  },
+
+  voicemailNotification({ sellerName, callerNumber, callTimestamp, dashboardUrl }) {
+    const subject = 'New voicemail on Forestry Equipment Sales';
+    const html = baseLayout(subject, 'Voicemail Received', `
+      <p class="label">Call Tracking</p>
+      <h2>A buyer left you a voicemail</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>A caller was unable to reach you live and left a voicemail through your Forestry Equipment Sales call tracking line.</p>
+      ${renderInfoPanel([
+        { label: 'Caller', value: callerNumber || 'Unknown caller' },
+        { label: 'Received', value: callTimestamp || 'Just now' },
+        { label: 'Next Step', value: 'Open your Calls tab to review the voicemail and return the lead quickly.' },
+      ])}
+      <a href="${dashboardUrl}" class="cta">Review Voicemail</a>
+    `);
+    return { subject, html };
+  },
+
+  dealerWidgetInquiryNotification({ sellerName, dealerName, buyerName, buyerEmail, buyerPhone, listingId, message, dashboardUrl }) {
+    const subject = `New dealer widget inquiry${dealerName ? ` for ${dealerName}` : ''}`;
+    const html = baseLayout(subject, 'Dealer Widget Inquiry', `
+      <p class="label">Dealer Widget Lead</p>
+      <h2>A buyer submitted an inquiry from your embedded storefront</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>A new inquiry was submitted through your Forestry Equipment Sales dealer widget${dealerName ? ` for <strong>${dealerName}</strong>` : ''}.</p>
+      ${renderInfoPanel([
+        { label: 'Buyer Name', value: buyerName || 'N/A' },
+        { label: 'Buyer Email', value: buyerEmail || 'N/A' },
+        { label: 'Buyer Phone', value: buyerPhone || 'Not provided' },
+        { label: 'Dealer', value: dealerName || 'Embedded storefront' },
+        { label: 'Listing ID', value: listingId || 'General storefront inquiry' },
+      ])}
+      ${message ? `<div class="message-box"><p>${message}</p></div>` : ''}
+      <a href="${dashboardUrl}" class="cta">Open DealerOS</a>
+    `);
+    return { subject, html };
+  },
+
+  paymentFailedPastDue({ displayName, planName, amountDue, invoiceNumber, retryDate, billingUrl, hostedInvoiceUrl }) {
+    const subject = `Payment issue for your ${planName} plan`;
+    const html = baseLayout(subject, 'Billing Action Required', `
+      <p class="label">Billing Notice</p>
+      <h2>We could not process your latest payment</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>We were unable to process the latest payment for your <span class="badge">${planName}</span> plan. Update your billing details to keep your Forestry Equipment Sales account and listings active.</p>
+      ${renderInfoPanel([
+        { label: 'Plan', value: planName || 'Marketplace subscription' },
+        { label: 'Amount Due', value: amountDue || 'Balance due' },
+        { label: 'Invoice', value: invoiceNumber || 'N/A' },
+        { label: 'Next Retry', value: retryDate || 'Stripe will retry automatically based on your billing schedule' },
+      ])}
+      <p>If the payment issue is not resolved, your subscription may move to past due status and your listings can be hidden from the marketplace until billing is restored.</p>
+      <a href="${billingUrl}" class="cta">Update Billing</a>
+      ${hostedInvoiceUrl ? `<a href="${hostedInvoiceUrl}" class="cta cta-secondary">View Invoice</a>` : ''}
+    `);
+    return { subject, html };
+  },
+
+  accountLocked({ displayName, actorName, supportUrl }) {
+    const subject = 'Your Forestry Equipment Sales account has been locked';
+    const html = baseLayout(subject, 'Account Locked', `
+      <p class="label">Account Status</p>
+      <h2>Your account is currently suspended</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your Forestry Equipment Sales account has been locked${actorName ? ` by <strong>${actorName}</strong>` : ''}. While this status is active, you may not be able to sign in or manage your listings.</p>
+      ${renderInfoPanel([
+        { label: 'Status', value: 'Locked' },
+        { label: 'Support', value: 'Contact the Forestry Equipment Sales team if you believe this was done in error.' },
+      ])}
+      <a href="${supportUrl || CONTACT_URL}" class="cta">Contact Support</a>
+    `);
+    return { subject, html };
+  },
+
+  accountUnlocked({ displayName, actorName, loginUrl, supportUrl }) {
+    const subject = 'Your Forestry Equipment Sales account has been unlocked';
+    const html = baseLayout(subject, 'Account Restored', `
+      <p class="label">Account Status</p>
+      <h2>Your account has been restored</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your Forestry Equipment Sales account has been unlocked${actorName ? ` by <strong>${actorName}</strong>` : ''}. You can sign in again and return to your account workspace.</p>
+      ${renderInfoPanel([
+        { label: 'Status', value: 'Active' },
+        { label: 'Next Step', value: 'Sign in and confirm your account details, listings, and billing status.' },
+      ])}
+      <a href="${loginUrl}" class="cta">Sign In</a>
+      <a href="${supportUrl || CONTACT_URL}" class="cta cta-secondary">Contact Support</a>
     `);
     return { subject, html };
   },
@@ -464,7 +611,7 @@ const templates = {
     return { subject, html };
   },
 
-  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
+  newMatchingListing({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
     const subject = `New Forestry Equipment Sales Match: ${listingTitle}`;
     const html = baseLayout(subject, 'New Matching Equipment', `
       <p class="label">Saved Search Match</p>
@@ -477,12 +624,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Matching Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location, unsubscribeUrl }) {
+  matchingListingPriceDrop({ displayName, searchName, listingTitle, listingUrl, previousPrice, currentPrice, location }) {
     const subject = `Price Drop Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Price Drop Alert', `
       <p class="label">Saved Search Match</p>
@@ -496,12 +642,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">Review Price Drop</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location, unsubscribeUrl }) {
+  matchingListingSold({ displayName, searchName, listingTitle, listingUrl, location }) {
     const subject = `Sold Alert: ${listingTitle}`;
     const html = baseLayout(subject, 'Listing Sold Alert', `
       <p class="label">Saved Search Match</p>
@@ -513,12 +658,11 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
 
-  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location, unsubscribeUrl }) {
+  similarListingRestocked({ displayName, searchName, listingTitle, listingUrl, listingPrice, location }) {
     const subject = `Similar Equipment Back In Stock: ${listingTitle}`;
     const html = baseLayout(subject, 'Similar Equipment Restocked', `
       <p class="label">Saved Search Match</p>
@@ -531,7 +675,6 @@ const templates = {
         <div class="info-row"><span class="info-label">Location</span><span class="info-value">${location}</span></div>
       </div>
       <a href="${listingUrl}" class="cta">View Similar Listing</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from saved-search emails')}
     `);
     return { subject, html };
   },
@@ -555,7 +698,7 @@ const templates = {
       </div>
       <p>Click the login link below, sign in with the temporary password, then reset your password from the reset link or the "Forgot Password" flow on the login screen.</p>
       <a href="${loginUrl}" class="cta">Open Login</a>
-      <a href="${resetLink}" class="cta" style="background:#ffffff; border:1px solid #4f8f3a; color:#2f6f2d; margin-left:12px;">Reset Password</a>
+      <a href="${resetLink}" class="cta" style="background:#2d6a4f; border:1px solid #2d6a4f; color:#ffffff; margin-left:12px;">Reset Password</a>
       <hr class="divider" />
       <p style="font-size:12px; color:#666;">For security, change the temporary password as soon as you sign in.</p>
     `);
@@ -615,7 +758,7 @@ const templates = {
     return { subject, html };
   },
 
-  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, totalViews, topMachines, dashboardUrl, unsubscribeUrl }) {
+  dealerMonthlyReport({ sellerName, monthLabel, totalListings, leadForms, callButtonClicks, connectedCalls, qualifiedCalls, missedCalls, totalViews, topMachines, dashboardUrl }) {
     const subject = `Your ${monthLabel} Forestry Equipment Sales Performance Report`;
     const topMachinesHtml = Array.isArray(topMachines) && topMachines.length > 0
       ? `<table style="width:100%; border-collapse:collapse; margin:16px 0;">
@@ -642,7 +785,7 @@ const templates = {
         <div class="info-row"><span class="info-label">Connected Calls</span><span class="info-value">${connectedCalls}</span></div>
         <div class="info-row"><span class="info-label">Qualified Calls (60s+)</span><span class="info-value">${qualifiedCalls}</span></div>
         <div class="info-row"><span class="info-label">Missed Calls</span><span class="info-value">${missedCalls}</span></div>
-        <div class="info-row"><span class="info-label">Listing Views</span><span class="info-value">${totalViews || 0}</span></div>
+        <div class="info-row"><span class="info-label">Storefront Views</span><span class="info-value">${totalViews || 0}</span></div>
       </div>
 
       <h2>Top Machines by Inquiry Volume</h2>
@@ -651,7 +794,6 @@ const templates = {
       <hr class="divider" />
       <p>These rolling 30-day totals combine listing views, inquiry submissions, and tracked calls. For questions about your report, contact the Forestry Equipment Sales team.</p>
       <a href="${dashboardUrl || PROFILE_URL}" class="cta">Open Seller Dashboard</a>
-      ${renderOptionalEmailFooter(unsubscribeUrl, 'Unsubscribe from monthly performance emails')}
     `);
     return { subject, html };
   },
@@ -690,6 +832,343 @@ const templates = {
     `);
     return { subject, html };
   },
+
+  auctionBidderRegistered({ displayName, auctionTitle, auctionUrl }) {
+    const subject = `You are registered for ${auctionTitle}`;
+    const html = baseLayout(subject, 'Auction Registration Confirmed', `
+      <p class="label">Auction Registration</p>
+      <h2>Your bidder profile is saved</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your bidder profile has been saved for <strong>${auctionTitle}</strong>. Complete identity verification and add a payment method to unlock live bidding.</p>
+      ${renderInfoPanel([
+        { label: 'Auction', value: auctionTitle },
+        { label: 'Next Step', value: 'Verify ID and add payment method' },
+      ])}
+      <a href="${auctionUrl}" class="cta">Open Auction</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionIdentitySubmitted({ displayName, auctionTitle, auctionUrl }) {
+    const subject = `ID verification received for ${auctionTitle}`;
+    const html = baseLayout(subject, 'Identity Verification Received', `
+      <p class="label">Auction Verification</p>
+      <h2>Your identity review is in progress</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>We received your identity submission for <strong>${auctionTitle}</strong>. Once Stripe finishes verification and your payment method is on file, your bidder profile will be approved automatically.</p>
+      <a href="${auctionUrl}" class="cta">Return to Auction</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionBidderApproved({ displayName, auctionTitle, auctionUrl }) {
+    const subject = `You are approved to bid in ${auctionTitle}`;
+    const html = baseLayout(subject, 'Approved To Bid', `
+      <p class="label">Bidder Approved</p>
+      <h2>Your auction access is active</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your bidder profile is approved for <strong>${auctionTitle}</strong>. You can now place bids on active lots.</p>
+      <a href="${auctionUrl}" class="cta">Start Bidding</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionOutbid({ displayName, auctionTitle, lotTitle, bidAmount, lotUrl }) {
+    const subject = `You were outbid on ${lotTitle}`;
+    const html = baseLayout(subject, 'You Were Outbid', `
+      <p class="label">Auction Alert</p>
+      <h2>Your lead bid has been surpassed</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Another bidder has placed a higher bid on <strong>${lotTitle}</strong> in <strong>${auctionTitle}</strong>.</p>
+      ${renderInfoPanel([
+        { label: 'Lot', value: lotTitle },
+        { label: 'Latest Bid', value: bidAmount },
+      ])}
+      <a href="${lotUrl}" class="cta">Review Lot</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionWinningBid({ displayName, auctionTitle, lotTitle, hammerPrice, invoiceUrl }) {
+    const subject = `Winning bid confirmed for ${lotTitle}`;
+    const html = baseLayout(subject, 'Winning Bid Confirmed', `
+      <p class="label">Auction Winner</p>
+      <h2>You won the lot</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>Your bid won <strong>${lotTitle}</strong> in <strong>${auctionTitle}</strong>.</p>
+      ${renderInfoPanel([
+        { label: 'Hammer Price', value: hammerPrice },
+        { label: 'Payment Terms', value: 'Payment due within 7 calendar days' },
+      ])}
+      <div class="panel">
+        <p><strong>Important:</strong> Buyer’s fees, titled document fees, card fees, tax, wire instructions, storage, and removal deadlines are listed with your invoice and auction terms.</p>
+      </div>
+      <a href="${invoiceUrl}" class="cta">View Invoice Details</a>
+    `);
+    return { subject, html };
+  },
+
+  auctionDownPaymentReceipt({ displayName, invoiceNumber, amountPaid, invoiceUrl }) {
+    const subject = `Auction payment receipt ${invoiceNumber}`;
+    const html = baseLayout(subject, 'Auction Payment Receipt', `
+      <p class="label">Payment Receipt</p>
+      <h2>Your payment was received</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>We received your auction payment and updated your invoice record.</p>
+      ${renderInfoPanel([
+        { label: 'Invoice', value: invoiceNumber },
+        { label: 'Amount Paid', value: amountPaid },
+      ])}
+      <a href="${invoiceUrl}" class="cta">Review Auction Purchase</a>
+    `);
+    return { subject, html };
+  },
+
+  /**
+   * Sent to the winning bidder when an invoice is generated after a lot closes.
+   */
+  auctionInvoiceGenerated({ displayName, auctionTitle, lotTitle, winningBid, buyerPremium, salesTax, totalDue, taxExempt, paymentDeadline, invoiceUrl }) {
+    const subject = `You won! Invoice for ${lotTitle} - ${auctionTitle}`;
+    const html = baseLayout(subject, 'You Won The Lot', `
+      <p class="label">Auction Invoice</p>
+      <h2>Congratulations on your winning bid</h2>
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>You are the winning bidder for <strong>${lotTitle}</strong> in <strong>${auctionTitle}</strong>. Your invoice has been generated and payment is due by the deadline below.</p>
+      ${renderInfoPanel([
+        { label: 'Lot', value: lotTitle },
+        { label: 'Auction', value: auctionTitle },
+        { label: 'Winning Bid', value: winningBid },
+        { label: 'Buyer Premium', value: buyerPremium },
+        { label: 'Sales Tax', value: taxExempt ? '$0.00 (Tax Exempt)' : salesTax },
+        { label: 'Total Due', value: totalDue },
+        { label: 'Payment Deadline', value: paymentDeadline },
+      ])}
+      ${taxExempt ? '<div class="message-box"><p>Tax exemption has been applied to this invoice based on your certificate on file.</p></div>' : ''}
+      <div class="panel">
+        <p><strong>Important:</strong> Payment is binding. Wire transfer and ACH are accepted. Card payments may incur a 3% processing fee. Storage fees may apply after the removal deadline.</p>
+      </div>
+      <a href="${invoiceUrl}" class="cta">View Invoice &amp; Pay</a>
+    `);
+    return { subject, html };
+  },
+
+  /**
+   * Sent to the seller when their lot has sold at auction.
+   */
+  auctionLotSoldSeller({ sellerName, auctionTitle, lotTitle, winningBid, estimatedPayout, commissionRate, paymentDeadline, lotUrl }) {
+    const subject = `Your lot ${lotTitle} has sold!`;
+    const html = baseLayout(subject, 'Your Lot Has Sold', `
+      <p class="label">Auction Sale Notification</p>
+      <h2>Your equipment has found a buyer</h2>
+      <p>Hi <strong>${sellerName}</strong>,</p>
+      <p>Great news — <strong>${lotTitle}</strong> has sold in <strong>${auctionTitle}</strong>.</p>
+      ${renderInfoPanel([
+        { label: 'Lot', value: lotTitle },
+        { label: 'Auction', value: auctionTitle },
+        { label: 'Winning Bid', value: winningBid },
+        { label: 'Commission', value: commissionRate },
+        { label: 'Estimated Payout', value: estimatedPayout },
+        { label: 'Buyer Payment Due', value: paymentDeadline },
+      ])}
+      <div class="panel">
+        <p><strong>Timeline:</strong> The buyer has until the payment deadline to submit payment. Once payment clears, the Forestry Equipment Sales team will coordinate payout to your account and equipment removal logistics.</p>
+      </div>
+      <a href="${lotUrl}" class="cta">View Lot Details</a>
+    `);
+    return { subject, html };
+  },
+
+  adminPlatformMonthlyReport({
+    monthLabel,
+    totalListings,
+    liveListings,
+    soldListings,
+    totalViews,
+    totalInquiries,
+    totalCalls,
+    connectedCalls,
+    qualifiedCalls,
+    missedCalls,
+    activeSubscriptions,
+    newSubscriptions,
+    cancelledSubscriptions,
+    estimatedMrr,
+    activeUsers,
+    newUsers,
+    topSellersSummary,
+    topListingsByViews,
+    dashboardUrl,
+  }) {
+    const fmtNum = (v) => Number(v || 0).toLocaleString('en-US');
+    const fmtCurrency = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const netSubs = (Number(newSubscriptions) || 0) - (Number(cancelledSubscriptions) || 0);
+    const netSubsLabel = netSubs > 0 ? `+${netSubs}` : String(netSubs);
+    const netSubsColor = netSubs >= 0 ? '#16A34A' : '#DC2626';
+
+    const metricCard = (label, value, subtext) => `
+      <td style="padding:12px 14px; text-align:center; vertical-align:top;">
+        <div style="font-size:10px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:#6b7280; margin-bottom:6px;">${label}</div>
+        <div style="font-size:28px; font-weight:900; color:#111827; letter-spacing:-0.03em; line-height:1;">${value}</div>
+        ${subtext ? `<div style="font-size:10px; color:#9ca3af; margin-top:4px;">${subtext}</div>` : ''}
+      </td>`;
+
+    const sellerRows = Array.isArray(topSellersSummary)
+      ? topSellersSummary.slice(0, 15).map((s, i) => `<tr>
+          <td style="padding:6px 10px; font-size:12px; color:#6b7280; border-bottom:1px solid #f3f4f6;">${i + 1}</td>
+          <td style="padding:6px 10px; font-size:12px; color:#111827; font-weight:600; border-bottom:1px solid #f3f4f6;">${s.name}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.listings)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.views)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.leads)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(s.calls)}</td>
+        </tr>`).join('')
+      : '';
+
+    const topListingsRows = Array.isArray(topListingsByViews)
+      ? topListingsByViews.slice(0, 10).map((l, i) => `<tr>
+          <td style="padding:6px 10px; font-size:12px; color:#6b7280; border-bottom:1px solid #f3f4f6;">${i + 1}</td>
+          <td style="padding:6px 10px; font-size:12px; color:#111827; font-weight:600; border-bottom:1px solid #f3f4f6;">${l.title}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(l.views)}</td>
+          <td style="text-align:right; padding:6px 10px; font-size:12px; color:#111827; border-bottom:1px solid #f3f4f6;">${fmtNum(l.inquiries)}</td>
+        </tr>`).join('')
+      : '';
+
+    const subject = `${monthLabel} — Platform Performance Report`;
+    const html = baseLayout(subject, `${monthLabel} Platform Report`, `
+      <p class="label">Admin Platform Report</p>
+      <h2>Full marketplace performance for ${monthLabel}</h2>
+      <p>This comprehensive report covers all platform activity across the Forestry Equipment Sales marketplace, including listings, engagement, subscriptions, and revenue.</p>
+
+      <hr class="divider" />
+
+      <p class="label">Inventory Overview</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0 24px;">
+        <tr style="background:#f8fafc;">
+          ${metricCard('Live Listings', fmtNum(liveListings))}
+          ${metricCard('Total Listings', fmtNum(totalListings))}
+          ${metricCard('Sold', fmtNum(soldListings))}
+        </tr>
+      </table>
+
+      <p class="label">Engagement (30-Day Rolling)</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0 24px;">
+        <tr style="background:#f8fafc;">
+          ${metricCard('Page Views', fmtNum(totalViews))}
+          ${metricCard('Inquiries', fmtNum(totalInquiries))}
+          ${metricCard('Calls', fmtNum(totalCalls), `${fmtNum(connectedCalls)} connected · ${fmtNum(qualifiedCalls)} qualified`)}
+        </tr>
+      </table>
+
+      <p class="label">Subscriptions &amp; Revenue</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0 24px;">
+        <tr style="background:#f8fafc;">
+          ${metricCard('Active Subs', fmtNum(activeSubscriptions))}
+          ${metricCard('New', `+${fmtNum(newSubscriptions)}`)}
+          ${metricCard('Cancelled', fmtNum(cancelledSubscriptions))}
+        </tr>
+        <tr style="background:#ffffff;">
+          ${metricCard('Net Change', `<span style="color:${netSubsColor};">${netSubsLabel}</span>`)}
+          ${metricCard('Est. MRR', fmtCurrency(estimatedMrr))}
+          ${metricCard('Active Users', fmtNum(activeUsers), `${fmtNum(newUsers)} new this period`)}
+        </tr>
+      </table>
+
+      <p class="label">Missed Calls</p>
+      <div class="panel">
+        <div class="info-row">
+          <span class="info-label">Missed / Voicemail</span>
+          <span class="info-value">${fmtNum(missedCalls)}</span>
+        </div>
+        <p style="margin-top:8px; font-size:12px; color:#6b7280;">Missed calls represent potential revenue lost. Consider follow-up campaigns for sellers with high miss rates.</p>
+      </div>
+
+      <hr class="divider" />
+
+      <h2>Top Sellers by Activity</h2>
+      ${sellerRows ? `
+      <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+        <tr style="background:#f8fafc;">
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">#</th>
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Seller</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Listings</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Leads</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Calls</th>
+        </tr>
+        ${sellerRows}
+      </table>` : '<p>No seller activity recorded this period.</p>'}
+
+      <hr class="divider" />
+
+      <h2>Top Listings by Views</h2>
+      ${topListingsRows ? `
+      <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+        <tr style="background:#f8fafc;">
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">#</th>
+          <th style="text-align:left; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Listing</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Views</th>
+          <th style="text-align:right; padding:8px 10px; font-size:10px; font-weight:900; letter-spacing:0.1em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid #e5e7eb;">Inquiries</th>
+        </tr>
+        ${topListingsRows}
+      </table>` : '<p>No listing view data available this period.</p>'}
+
+      <hr class="divider" />
+      <p>This report is generated automatically and sent to all platform administrators on the 1st of each month. For questions about metrics methodology or to update admin recipients, contact the engineering team.</p>
+      <a href="${dashboardUrl || ADMIN_URL}" class="cta">Open Admin Dashboard</a>
+    `);
+    return { subject, html };
+  },
+
+  managedAccountRoleChanged({ userName, oldRole, newRole, changedByName }) {
+    const formatRole = (r) => String(r || 'member').split('_').filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    const subject = `Your role has been updated to ${formatRole(newRole)}`;
+    const html = baseLayout(subject, 'Role Updated', `
+      <p class="label">Team Role Change</p>
+      <h2>Your team role has been updated</h2>
+      <p>Hi <strong>${userName}</strong>,</p>
+      <p><strong>${changedByName || 'Your account administrator'}</strong> has updated your role on Forestry Equipment Sales.</p>
+      <div style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:2px; padding:20px; margin:20px 0;">
+        <div class="info-row"><span class="info-label">Previous Role</span><span class="info-value">${formatRole(oldRole)}</span></div>
+        <div class="info-row"><span class="info-label">New Role</span><span class="info-value">${formatRole(newRole)}</span></div>
+      </div>
+      <p>Your permissions have been adjusted accordingly. If you have questions about this change, please contact your account administrator.</p>
+    `);
+    return { subject, html };
+  },
+
+  managedAccountRemoved({ userName, removedByName, company }) {
+    const subject = 'Your team account has been removed';
+    const html = baseLayout(subject, 'Account Removed', `
+      <p class="label">Team Account Update</p>
+      <h2>Your team account access has been revoked</h2>
+      <p>Hi <strong>${userName}</strong>,</p>
+      <p><strong>${removedByName || 'Your account administrator'}</strong> has removed your team access${company ? ` from <strong>${company}</strong>` : ''} on Forestry Equipment Sales.</p>
+      <p>You will no longer be able to manage listings or access the dealer workspace under this team. Your personal account and any saved data remain intact.</p>
+      <hr class="divider" />
+      <p style="font-size:12px; color:#666;">If you believe this was done in error, please contact the account owner directly.</p>
+    `);
+    return { subject, html };
+  },
+
+  contentModerationAlert({ listingId, reason, filePath, sellerUid }) {
+    const subject = `Content Moderation Alert: Listing ${listingId}`;
+    const html = baseLayout(subject, 'Content Flagged', `
+      <p class="label">Automated Content Review</p>
+      <h2>An uploaded image was blocked by content moderation</h2>
+      <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:2px; padding:20px; margin:20px 0;">
+        <div class="info-row"><span class="info-label">Listing ID</span><span class="info-value">${listingId || 'N/A'}</span></div>
+        <div class="info-row"><span class="info-label">Seller UID</span><span class="info-value">${sellerUid || 'N/A'}</span></div>
+        <div class="info-row"><span class="info-label">File</span><span class="info-value">${filePath || 'N/A'}</span></div>
+        <div class="info-row"><span class="info-label">Reason</span><span class="info-value">${reason || 'Policy violation detected'}</span></div>
+      </div>
+      <p>The image has been automatically deleted and the listing has been flagged for admin review. Please check the listing in the admin dashboard.</p>
+    `);
+    return { subject, html };
+  },
 };
 
-module.exports = { templates };
+module.exports = {
+  EMAIL_PREFERENCE_FOOTER_MARKER,
+  renderEmailPreferenceFooter,
+  templates,
+  withEmailPreferenceFooter,
+};

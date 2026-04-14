@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Clock3, Mail, MapPinned, Phone, ShieldCheck, Truck } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { equipmentService } from '../services/equipmentService';
 import { assessRecaptcha, getRecaptchaToken } from '../services/recaptchaService';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 const LOGISTICS_CONTACT_CONSENT_VERSION = 'logistics-contact-v1';
 
@@ -60,16 +62,16 @@ export function Logistics() {
 
   const isDarkMode = theme === 'dark';
   const heroClasses = useMemo(() => ({
-    shell: isDarkMode ? 'bg-ink text-white' : 'bg-surface text-ink border-b border-line',
-    image: isDarkMode ? 'opacity-30' : 'opacity-18 saturate-[0.85] brightness-110',
+    shell: isDarkMode ? 'bg-surface text-ink border-b border-line' : 'bg-surface text-ink border-b border-line',
+    image: isDarkMode
+      ? 'object-center opacity-[0.62] brightness-[0.72] saturate-[0.88]'
+      : 'object-center opacity-[0.055] brightness-125 saturate-50',
     gradient: isDarkMode
-      ? 'bg-gradient-to-r from-black/90 via-black/80 to-black/55'
-      : 'bg-gradient-to-r from-white/96 via-white/92 to-white/76',
-    accentBand: isDarkMode ? 'bg-accent/12' : 'bg-accent/8',
-    iconChip: isDarkMode ? 'bg-accent text-white' : 'bg-accent/12 text-accent border border-accent/20',
-    eyebrow: 'text-accent',
+      ? 'bg-gradient-to-r from-[#050608]/90 via-[#050608]/72 to-[#050608]/42'
+      : 'bg-gradient-to-r from-white via-white/[0.992] to-white/[0.95]',
+    accentBand: isDarkMode ? 'bg-accent/22' : 'bg-white/92',
     titleLead: isDarkMode ? 'text-white' : 'text-ink',
-    body: isDarkMode ? 'text-white/75' : 'text-muted',
+    body: isDarkMode ? 'text-white/75' : 'text-ink/72',
   }), [isDarkMode]);
 
   const updateField = (field: keyof LogisticsFormState, value: string) => {
@@ -158,6 +160,35 @@ export function Logistics() {
         title="Global Logistics | Trucking Request Form | Forestry Equipment Sales"
         description="Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team."
         canonicalPath="/logistics"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Service',
+              name: 'Forestry Equipment Logistics & Trucking',
+              description: 'Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team.',
+              url: buildSiteUrl('/logistics'),
+              provider: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: buildSiteUrl(),
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
+              },
+              areaServed: {
+                '@type': 'Place',
+                name: 'Worldwide',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Global Logistics', item: buildSiteUrl('/logistics') },
+              ],
+            },
+          ],
+        }}
       />
 
       <Breadcrumbs
@@ -167,22 +198,24 @@ export function Logistics() {
       />
 
       <section className={`relative overflow-hidden px-4 py-24 transition-colors md:px-8 ${heroClasses.shell}`}>
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-bg">
           <img
             src="/page-photos/winter-log-road.jpg"
             alt="Forestry equipment transport route"
+            width={1920}
+            height={1080}
             className={`h-full w-full object-cover transition-opacity ${heroClasses.image}`}
+            loading="eager"
+            fetchPriority="high"
           />
           <div className={`absolute inset-0 transition-colors ${heroClasses.gradient}`} />
           <div className={`absolute top-0 right-0 h-full w-1/3 translate-x-1/2 skew-x-12 transition-colors ${heroClasses.accentBand}`} />
         </div>
 
         <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-6 flex items-center space-x-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-sm transition-colors ${heroClasses.iconChip}`}>
-              <Truck size={20} />
-            </div>
-            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${heroClasses.eyebrow}`}>Global Logistics</span>
+          <div className="mb-6 flex items-center gap-3">
+            <Truck size={20} className="text-accent" />
+            <span className="label-micro text-accent">Global Logistics</span>
           </div>
 
           <h1 className="text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl">
@@ -234,8 +267,9 @@ export function Logistics() {
 
                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Primary Contact Name</label>
+                      <label htmlFor="logistics-name" className="label-micro">Primary Contact Name</label>
                       <input
+                        id="logistics-name"
                         type="text"
                         value={formData.name}
                         onChange={(event) => updateField('name', event.target.value)}
@@ -244,8 +278,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Company</label>
+                      <label htmlFor="logistics-company" className="label-micro">Company</label>
                       <input
+                        id="logistics-company"
                         type="text"
                         value={formData.company}
                         onChange={(event) => updateField('company', event.target.value)}
@@ -254,8 +289,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Email</label>
+                      <label htmlFor="logistics-email" className="label-micro">Email</label>
                       <input
+                        id="logistics-email"
                         type="email"
                         value={formData.email}
                         onChange={(event) => updateField('email', event.target.value)}
@@ -264,8 +300,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Phone</label>
+                      <label htmlFor="logistics-phone" className="label-micro">Phone</label>
                       <input
+                        id="logistics-phone"
                         type="tel"
                         value={formData.phone}
                         onChange={(event) => updateField('phone', event.target.value)}
@@ -274,8 +311,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3 md:col-span-2">
-                      <label className="label-micro">Equipment Reference</label>
+                      <label htmlFor="logistics-equipment-reference" className="label-micro">Equipment Reference</label>
                       <input
+                        id="logistics-equipment-reference"
                         type="text"
                         value={formData.equipmentReference}
                         onChange={(event) => updateField('equipmentReference', event.target.value)}
@@ -285,27 +323,28 @@ export function Logistics() {
                     </div>
                     <div className="flex flex-col space-y-3">
                       <label className="label-micro">Pickup Location</label>
-                      <input
-                        type="text"
+                      <GooglePlacesInput
+                        mode="city"
                         value={formData.pickupLocation}
-                        onChange={(event) => updateField('pickupLocation', event.target.value)}
+                        onChange={(value) => updateField('pickupLocation', value)}
+                        onSelect={(place) => updateField('pickupLocation', place ? `${place.city}, ${place.state}` : '')}
                         placeholder="Duluth, Minnesota"
-                        className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
                       <label className="label-micro">Destination</label>
-                      <input
-                        type="text"
+                      <GooglePlacesInput
+                        mode="city"
                         value={formData.destination}
-                        onChange={(event) => updateField('destination', event.target.value)}
+                        onChange={(value) => updateField('destination', value)}
+                        onSelect={(place) => updateField('destination', place ? `${place.city}, ${place.state}` : '')}
                         placeholder="Atlanta, Georgia"
-                        className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Preferred Timeline</label>
+                      <label htmlFor="logistics-timeline" className="label-micro">Preferred Timeline</label>
                       <input
+                        id="logistics-timeline"
                         type="text"
                         value={formData.timeline}
                         onChange={(event) => updateField('timeline', event.target.value)}
@@ -314,8 +353,9 @@ export function Logistics() {
                       />
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Trailer Type</label>
+                      <label htmlFor="logistics-trailer-type" className="label-micro">Trailer Type</label>
                       <select
+                        id="logistics-trailer-type"
                         value={formData.trailerType}
                         onChange={(event) => updateField('trailerType', event.target.value)}
                         className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
@@ -328,8 +368,9 @@ export function Logistics() {
                       </select>
                     </div>
                     <div className="flex flex-col space-y-3">
-                      <label className="label-micro">Load Ready</label>
+                      <label htmlFor="logistics-load-ready" className="label-micro">Load Ready</label>
                       <select
+                        id="logistics-load-ready"
                         value={formData.loadReady}
                         onChange={(event) => updateField('loadReady', event.target.value)}
                         className="border border-line bg-surface p-4 text-sm font-bold uppercase tracking-wider text-ink focus:border-accent focus:ring-accent"
@@ -340,8 +381,9 @@ export function Logistics() {
                       </select>
                     </div>
                     <div className="flex flex-col space-y-3 md:col-span-2">
-                      <label className="label-micro">Notes</label>
+                      <label htmlFor="logistics-notes" className="label-micro">Notes</label>
                       <textarea
+                        id="logistics-notes"
                         value={formData.notes}
                         onChange={(event) => updateField('notes', event.target.value)}
                         rows={6}
@@ -439,28 +481,22 @@ export function Logistics() {
               </div>
             </div>
 
-            <div className="border border-line bg-surface p-8">
-              <h3 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-accent">Need Immediate Help?</h3>
+            <div className="border border-line bg-surface p-8 md:p-10">
+              <span className="label-micro mb-4 block text-accent">Reach Us</span>
               <div className="space-y-4">
-                <a
-                  href="tel:+12187200933"
-                  className="flex items-center justify-between border border-line bg-bg px-5 py-4 text-sm font-black uppercase tracking-wider text-ink transition-colors hover:border-accent hover:text-accent"
-                >
-                  <span className="flex items-center gap-3">
-                    <Phone size={16} />
-                    (218) 720-0933
-                  </span>
-                  <ArrowRight size={16} />
+                <a href="tel:+12187200933" className="flex items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
+                  <Phone className="mt-0.5 text-accent" size={18} />
+                  <div>
+                    <span className="label-micro block text-muted">Customer Support</span>
+                    <span className="text-sm font-black tracking-tight">(218) 720-0933</span>
+                  </div>
                 </a>
-                <a
-                  href="mailto:info@forestryequipmentsales.com"
-                  className="flex items-center justify-between border border-line bg-bg px-5 py-4 text-sm font-black uppercase tracking-wider text-ink transition-colors hover:border-accent hover:text-accent"
-                >
-                  <span className="flex items-center gap-3">
-                    <Mail size={16} />
-                    info@forestryequipmentsales.com
-                  </span>
-                  <ArrowRight size={16} />
+                <a href="mailto:info@forestryequipmentsales.com" className="flex min-w-0 items-start space-x-3 p-4 border border-line bg-bg transition-colors hover:border-accent">
+                  <Mail className="mt-0.5 text-accent" size={18} />
+                  <div className="min-w-0">
+                    <span className="label-micro block text-muted">Email</span>
+                    <span className="block break-all text-sm font-black tracking-tight">info@forestryequipmentsales.com</span>
+                  </div>
                 </a>
               </div>
             </div>

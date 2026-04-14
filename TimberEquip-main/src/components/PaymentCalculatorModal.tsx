@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Calculator, TrendingDown } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { useTheme } from './ThemeContext';
 
 interface FinancingRequestPayload {
   buyerName: string;
@@ -53,6 +58,10 @@ export function PaymentCalculatorModal({
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const { alert, dialogProps } = useConfirmDialog();
+  const { theme } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
 
   // Reset defaults whenever the modal re-opens
   useEffect(() => {
@@ -67,6 +76,7 @@ export function PaymentCalculatorModal({
       setMessage('');
       setSubmitting(false);
       setSubmitted(false);
+      setConsentAccepted(false);
     }
   }, [isOpen]);
 
@@ -75,16 +85,6 @@ export function PaymentCalculatorModal({
   const monthly     = calcMonthlyPayment(principal, ratePct, termMonths);
   const totalCost   = monthly * termMonths + downAmount;
   const totalInterest = totalCost - price;
-  const hasUnsavedChanges =
-    !submitted &&
-    (termMonths !== 60 ||
-      ratePct !== 8.5 ||
-      downPct !== 10 ||
-      buyerName.trim().length > 0 ||
-      buyerEmail.trim().length > 0 ||
-      buyerPhone.trim().length > 0 ||
-      company.trim().length > 0 ||
-      message.trim().length > 0);
 
   const fmt = useCallback(
     (n: number) =>
@@ -100,7 +100,11 @@ export function PaymentCalculatorModal({
   const handleSubmitFinancingRequest = async () => {
     if (!onSubmitFinancingRequest || submitting) return;
     if (!buyerName.trim() || !buyerEmail.trim() || !buyerPhone.trim()) {
-      window.alert('Please enter your name, email, and phone to submit a financing request.');
+      await alert({ title: 'Missing Information', message: 'Please enter your name, email, and phone to submit a financing request.', variant: 'info' });
+      return;
+    }
+    if (!consentAccepted) {
+      await alert({ title: 'Consent Required', message: 'Please accept the contact consent before submitting.', variant: 'info' });
       return;
     }
 
@@ -110,7 +114,7 @@ export function PaymentCalculatorModal({
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'PAYMENT_CALCULATOR_FINANCING');
         if (!pass) {
-          window.alert('Security check failed. Please try again.');
+          await alert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
           setSubmitting(false);
           return;
         }
@@ -131,19 +135,28 @@ export function PaymentCalculatorModal({
       setSubmitted(true);
     } catch (error) {
       console.error('Failed to submit financing request:', error);
-      window.alert('Unable to submit financing request right now. Please try again.');
+      await alert({ title: 'Submission Error', message: 'Unable to submit financing request right now. Please try again.', variant: 'warning' });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const trapRef = useFocusTrap(isOpen);
+
   const handleClose = () => {
     if (submitting) return;
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
     onClose();
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !submitting) onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, submitting, onClose]);
+
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
@@ -152,30 +165,36 @@ export function PaymentCalculatorModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             onClick={handleClose}
             className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
           />
 
           {/* Modal */}
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calc-dialog-title"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="bg-bg border border-line relative z-10 mt-4 mb-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden shadow-2xl sm:my-8"
           >
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-ink text-white p-6 flex justify-between items-center">
+            <div className={`sticky top-0 z-10 p-6 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1C1917] text-white' : 'bg-surface text-ink border-b border-line'}`}>
               <div>
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
                   Payment Calculator
                 </span>
-                <h3 className="text-xl font-black tracking-tighter uppercase leading-snug line-clamp-1">
+                <h3 id="calc-dialog-title" className="text-xl font-black tracking-tighter uppercase leading-snug line-clamp-1">
                   {equipmentName}
                 </h3>
               </div>
               <button
                 onClick={handleClose}
-                className="p-2 bg-white/10 hover:bg-white/20 transition-colors rounded-sm"
+                className={`p-2 transition-colors rounded-sm ${theme === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'hover:bg-ink/5'}`}
               >
                 <X size={18} />
               </button>
@@ -191,17 +210,19 @@ export function PaymentCalculatorModal({
               {/* Down Payment */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="label-micro">Down Payment</label>
+                  <label htmlFor="calc-down-payment" className="label-micro">Down Payment</label>
                   <span className="text-sm font-black tracking-tighter">
                     {downPct}% — {fmt(downAmount)}
                   </span>
                 </div>
                 <input
+                  id="calc-down-payment"
                   type="range"
                   min={0}
                   max={50}
                   step={5}
                   value={downPct}
+                  aria-valuetext={`${downPct}%`}
                   onChange={(e) => setDownPct(Number(e.target.value))}
                   className="w-full accent-accent cursor-pointer"
                 />
@@ -237,15 +258,17 @@ export function PaymentCalculatorModal({
               {/* Interest Rate */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="label-micro">Annual Interest Rate</label>
+                  <label htmlFor="calc-interest-rate" className="label-micro">Annual Interest Rate</label>
                   <span className="text-sm font-black tracking-tighter">{ratePct.toFixed(2)}%</span>
                 </div>
                 <input
+                  id="calc-interest-rate"
                   type="range"
                   min={3}
                   max={19}
                   step={0.25}
                   value={ratePct}
+                  aria-valuetext={`${ratePct.toFixed(2)}%`}
                   onChange={(e) => setRatePct(Number(e.target.value))}
                   className="w-full accent-accent cursor-pointer"
                 />
@@ -256,31 +279,31 @@ export function PaymentCalculatorModal({
               </div>
 
               {/* Results */}
-              <div className="bg-ink text-white p-6 rounded-sm space-y-4">
+              <div className={`p-6 rounded-sm space-y-4 ${theme === 'dark' ? 'bg-ink text-white' : 'bg-surface border border-line text-ink'}`}>
                 <div className="flex justify-between items-end">
                   <div>
-                    <span className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em] block mb-1">
+                    <span className={`text-[10px] font-black uppercase tracking-[0.2em] block mb-1 ${theme === 'dark' ? 'text-white/60' : 'text-muted'}`}>
                       Est. Monthly Payment
                     </span>
                     <span className="text-4xl font-black tracking-tighter text-accent">
                       {fmt(monthly)}
                     </span>
-                    <span className="text-white/40 text-xs font-bold ml-2">/mo</span>
+                    <span className={`text-xs font-bold ml-2 ${theme === 'dark' ? 'text-white/40' : 'text-muted'}`}>/mo</span>
                   </div>
-                  <Calculator size={32} className="text-white/20" />
+                  <Calculator size={32} className={theme === 'dark' ? 'text-white/20' : 'text-muted/30'} />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-white/10">
+                <div className={`grid grid-cols-3 gap-3 pt-4 border-t ${theme === 'dark' ? 'border-white/10' : 'border-line'}`}>
                   <div className="flex flex-col">
-                    <span className="text-white/50 text-[9px] font-black uppercase tracking-widest mb-1">Principal</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>Principal</span>
                     <span className="text-sm font-black tracking-tighter">{fmt(principal)}</span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-white/50 text-[9px] font-black uppercase tracking-widest mb-1">Total Interest</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>Total Interest</span>
                     <span className="text-sm font-black tracking-tighter text-accent/80">{fmt(totalInterest)}</span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-white/50 text-[9px] font-black uppercase tracking-widest mb-1">Total Cost</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/50' : 'text-muted'}`}>Total Cost</span>
                     <span className="text-sm font-black tracking-tighter">{fmt(totalCost)}</span>
                   </div>
                 </div>
@@ -333,6 +356,17 @@ export function PaymentCalculatorModal({
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                     />
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={consentAccepted}
+                        onChange={(e) => setConsentAccepted(e.target.checked)}
+                        className="mt-0.5 accent-accent"
+                      />
+                      <span className="text-[9px] font-medium text-muted leading-relaxed">
+                        By submitting, I consent to be contacted by Forestry Equipment Sales and its financing partners regarding this equipment financing request via phone, email, or text. Standard rates may apply.
+                      </span>
+                    </label>
                     <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                       Protected by reCAPTCHA Enterprise before submission.
                     </p>
@@ -340,6 +374,8 @@ export function PaymentCalculatorModal({
                       type="button"
                       onClick={handleSubmitFinancingRequest}
                       disabled={submitting || !onSubmitFinancingRequest}
+                      aria-disabled={submitting || !onSubmitFinancingRequest}
+                      aria-busy={submitting}
                       className="btn-industrial btn-accent w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting ? 'Submitting...' : 'Send Financing Request'}
@@ -356,5 +392,7 @@ export function PaymentCalculatorModal({
         </div>
       )}
     </AnimatePresence>
+    <ConfirmDialog {...dialogProps} />
+    </>
   );
 }

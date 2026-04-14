@@ -14,7 +14,7 @@ service cloud.firestore {
     //   - phoneNumber: string (optional)
     //   - bio: string (optional, < 1000 chars)
     //   - location: string (optional, < 200 chars)
-    //   - role: string (enum: ['admin', 'editor', 'dealer', 'member', 'buyer'])
+    //   - role: string (enum: ['admin', 'editor', 'dealer', 'member'])
     //   - favorites: array (optional, items: string)
     //   - emailVerified: boolean (required)
     //   - createdAt: timestamp (required)
@@ -72,7 +72,9 @@ service cloud.firestore {
         ? 'dealer'
         : role == 'dealer_manager'
           ? 'pro_dealer'
-          : role;
+          : role == 'buyer'
+            ? 'member'
+            : role;
     }
 
     function getUserRole() {
@@ -170,7 +172,8 @@ service cloud.firestore {
     }
 
     function isPrivilegedAdminEmail() {
-      return isAuthenticated() && request.auth.token.email == "caleb@forestryequipmentsales.com" && request.auth.token.email_verified == true;
+      return isAuthenticated() && request.auth.token.email_verified == true &&
+        request.auth.token.role == 'super_admin';
     }
 
     function isAdmin() {
@@ -203,8 +206,8 @@ service cloud.firestore {
     }
 
     function canManageRole(targetRole) {
-          return (isAdmin() && normalizeUserRole(targetRole) in ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member', 'buyer']) ||
-            (isDealer() && normalizeUserRole(targetRole) in ['member', 'buyer']);
+          return (isAdmin() && normalizeUserRole(targetRole) in ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'member']) ||
+            (isDealer() && normalizeUserRole(targetRole) in ['member']);
     }
 
     function isValidEmail(email) {
@@ -216,7 +219,7 @@ service cloud.firestore {
     }
 
     function isValidUrl(url) {
-      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+      return url is string && url.matches("^https://.*");
     }
 
     // ===============================================================
@@ -227,7 +230,7 @@ service cloud.firestore {
       return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'role', 'emailVerified']) &&
              data.displayName is string && data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
-             data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'] &&
+             data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'] &&
              data.emailVerified is bool &&
              data.createdAt is timestamp &&
              (!('favorites' in data) || (data.favorites is list && data.favorites.size() < 1000));
@@ -237,23 +240,43 @@ service cloud.firestore {
       return data.uid == existing.uid &&
              data.role == existing.role &&
              (!('parentAccountUid' in existing) || (('parentAccountUid' in data) && data.parentAccountUid == existing.parentAccountUid)) &&
+             (!('accountAccessSource' in existing) || data.accountAccessSource == existing.accountAccessSource) &&
+             (!('accountStatus' in existing) || data.accountStatus == existing.accountStatus) &&
+             (!('activeSubscriptionPlanId' in existing) || data.activeSubscriptionPlanId == existing.activeSubscriptionPlanId) &&
+             (!('subscriptionStatus' in existing) || data.subscriptionStatus == existing.subscriptionStatus) &&
              data.displayName is string && data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
              (!('emailVerified' in data) || data.emailVerified is bool) &&
-             (!('createdAt' in existing) || data.createdAt == existing.createdAt || data.createdAt is timestamp) &&
+             (!('createdAt' in existing) || data.createdAt == existing.createdAt) &&
              (!('favorites' in data) || (data.favorites is list && data.favorites.size() < 1000)) &&
              (!('photoURL' in data) || data.photoURL == null || isValidUrl(data.photoURL)) &&
              (!('coverPhotoUrl' in data) || data.coverPhotoUrl == null || isValidUrl(data.coverPhotoUrl)) &&
+             (!('storefrontLogoUrl' in data) || data.storefrontLogoUrl == null || isValidUrl(data.storefrontLogoUrl)) &&
              (!('logo' in data) || data.logo == null || isValidUrl(data.logo)) &&
              (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 60)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
              (!('about' in data) || (data.about is string && data.about.size() <= 5000)) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
+             (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 200)) &&
+             (!('street1' in data) || (data.street1 is string && data.street1.size() <= 180)) &&
+             (!('street2' in data) || (data.street2 is string && data.street2.size() <= 180)) &&
+             (!('city' in data) || (data.city is string && data.city.size() <= 120)) &&
+             (!('state' in data) || (data.state is string && data.state.size() <= 120)) &&
+             (!('county' in data) || (data.county is string && data.county.size() <= 120)) &&
+             (!('postalCode' in data) || (data.postalCode is string && data.postalCode.size() <= 40)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 80)) &&
+             (!('latitude' in data) || data.latitude == null || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude == null || data.longitude is number) &&
              (!('company' in data) || (data.company is string && data.company.size() <= 200)) &&
              (!('website' in data) || (data.website is string && (data.website.size() == 0 || isValidUrl(data.website)))) &&
              (!('storefrontName' in data) || (data.storefrontName is string && data.storefrontName.size() <= 180)) &&
              (!('storefrontTagline' in data) || (data.storefrontTagline is string && data.storefrontTagline.size() <= 240)) &&
              (!('storefrontDescription' in data) || (data.storefrontDescription is string && data.storefrontDescription.size() <= 5000)) &&
+             (!('serviceAreaScopes' in data) || (data.serviceAreaScopes is list && data.serviceAreaScopes.size() <= 8)) &&
+             (!('serviceAreaStates' in data) || (data.serviceAreaStates is list && data.serviceAreaStates.size() <= 80)) &&
+             (!('serviceAreaCounties' in data) || (data.serviceAreaCounties is list && data.serviceAreaCounties.size() <= 120)) &&
+             (!('servicesOfferedCategories' in data) || (data.servicesOfferedCategories is list && data.servicesOfferedCategories.size() <= 40)) &&
+             (!('servicesOfferedSubcategories' in data) || (data.servicesOfferedSubcategories is list && data.servicesOfferedSubcategories.size() <= 120)) &&
              (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
              (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
              (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
@@ -297,6 +320,32 @@ service cloud.firestore {
              data.authorUid is string && data.authorUid.size() > 0 &&
              data.status in ['draft', 'published'] &&
              (!('reviewStatus' in data) || data.reviewStatus in ['draft', 'published', 'in_review', 'scheduled']);
+    }
+
+    function isValidNews(data) {
+      return data.keys().hasAll(['title', 'content']) &&
+             data.keys().hasOnly(['title', 'summary', 'content', 'author', 'date', 'image', 'category', 'seoTitle', 'seoDescription', 'seoKeywords', 'seoSlug', 'status', 'createdAt', 'updatedAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 500 &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 500000 &&
+             (!('summary' in data) || (data.summary is string && data.summary.size() <= 1000)) &&
+             (!('author' in data) || (data.author is string && data.author.size() <= 200)) &&
+             (!('image' in data) || (data.image is string && data.image.size() <= 2000)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
+             (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
+             (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
+             (!('seoSlug' in data) || (data.seoSlug is string && data.seoSlug.size() <= 200)) &&
+             (!('status' in data) || data.status in ['draft', 'published']);
+    }
+
+    function isValidConsentLog(data) {
+      return data.keys().hasOnly(['userUid', 'type', 'decision', 'version', 'userAgent', 'timestamp']) &&
+             data.userUid is string && data.userUid.size() > 0 && data.userUid.size() <= 128 &&
+             data.type is string && data.type.size() > 0 && data.type.size() <= 100 &&
+             data.decision is string && data.decision in ['accepted', 'declined'] &&
+             data.version is string && data.version.size() > 0 && data.version.size() <= 100 &&
+             (!('userAgent' in data) || (data.userAgent is string && data.userAgent.size() <= 500)) &&
+             data.timestamp is timestamp;
     }
 
     function isValidInquiryCreate(data) {
@@ -409,9 +458,9 @@ service cloud.firestore {
     }
 
     function isValidStorefront(data) {
-          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'seoTitle', 'seoDescription', 'seoKeywords', 'twilioPhoneNumber', 'createdAt', 'updatedAt']) &&
+          return data.keys().hasOnly(['uid', 'role', 'storefrontEnabled', 'storefrontSlug', 'canonicalPath', 'displayName', 'storefrontName', 'storefrontTagline', 'storefrontDescription', 'businessName', 'street1', 'street2', 'city', 'state', 'county', 'postalCode', 'country', 'latitude', 'longitude', 'location', 'phone', 'email', 'website', 'logo', 'coverPhotoUrl', 'serviceAreaScopes', 'serviceAreaStates', 'serviceAreaCounties', 'servicesOfferedCategories', 'servicesOfferedSubcategories', 'seoTitle', 'seoDescription', 'seoKeywords', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
-            data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller'] &&
+            data.role in ['dealer', 'pro_dealer', 'individual_seller'] &&
              data.storefrontEnabled is bool &&
             (!('storefrontSlug' in data) || (data.storefrontSlug is string && data.storefrontSlug.size() <= 200)) &&
             (!('canonicalPath' in data) || (data.canonicalPath is string && data.canonicalPath.size() <= 255)) &&
@@ -419,12 +468,27 @@ service cloud.firestore {
              isNonEmptyString(data.storefrontName, 180) &&
              (!('storefrontTagline' in data) || (data.storefrontTagline is string && data.storefrontTagline.size() <= 240)) &&
              (!('storefrontDescription' in data) || (data.storefrontDescription is string && data.storefrontDescription.size() <= 5000)) &&
+             (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 200)) &&
+             (!('street1' in data) || (data.street1 is string && data.street1.size() <= 180)) &&
+             (!('street2' in data) || (data.street2 is string && data.street2.size() <= 180)) &&
+             (!('city' in data) || (data.city is string && data.city.size() <= 120)) &&
+             (!('state' in data) || (data.state is string && data.state.size() <= 120)) &&
+             (!('county' in data) || (data.county is string && data.county.size() <= 120)) &&
+             (!('postalCode' in data) || (data.postalCode is string && data.postalCode.size() <= 40)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 80)) &&
+             (!('latitude' in data) || data.latitude == null || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude == null || data.longitude is number) &&
              (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 60)) &&
              (!('email' in data) || (data.email is string && (data.email.size() == 0 || isValidEmail(data.email)))) &&
              (!('website' in data) || (data.website is string && data.website.size() <= 200)) &&
              (!('logo' in data) || (data.logo is string && data.logo.size() <= 2000)) &&
              (!('coverPhotoUrl' in data) || (data.coverPhotoUrl is string && data.coverPhotoUrl.size() <= 2000)) &&
+             (!('serviceAreaScopes' in data) || (data.serviceAreaScopes is list && data.serviceAreaScopes.size() <= 8)) &&
+             (!('serviceAreaStates' in data) || (data.serviceAreaStates is list && data.serviceAreaStates.size() <= 80)) &&
+             (!('serviceAreaCounties' in data) || (data.serviceAreaCounties is list && data.serviceAreaCounties.size() <= 120)) &&
+             (!('servicesOfferedCategories' in data) || (data.servicesOfferedCategories is list && data.servicesOfferedCategories.size() <= 40)) &&
+             (!('servicesOfferedSubcategories' in data) || (data.servicesOfferedSubcategories is list && data.servicesOfferedSubcategories.size() <= 120)) &&
              (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 200)) &&
              (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 600)) &&
              (!('seoKeywords' in data) || (data.seoKeywords is list && data.seoKeywords.size() <= 30)) &&
@@ -485,7 +549,7 @@ service cloud.firestore {
              (!('dealerEmail' in data) || (data.dealerEmail is string && (data.dealerEmail.size() == 0 || isValidEmail(data.dealerEmail)))) &&
              isNonEmptyString(data.sourceName, 120) &&
              data.sourceType in ['auto', 'json', 'xml', 'csv'] &&
-             (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 500000)) &&
+             (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 100000)) &&
              (!('feedUrl' in data) || data.feedUrl == null || (data.feedUrl is string && (data.feedUrl.size() == 0 || isValidUrl(data.feedUrl)))) &&
              (!('apiEndpoint' in data) || data.apiEndpoint == null || (data.apiEndpoint is string && (data.apiEndpoint.size() == 0 || isValidUrl(data.apiEndpoint)))) &&
              (!('status' in data) || data.status in ['active', 'paused', 'disabled']) &&
@@ -640,7 +704,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isEditor() || isAdmin();
       allow create: if isAuthenticated() && (
-        (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.uid == request.auth.uid && request.resource.data.role in ['buyer', 'member']) ||
+        (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.uid == request.auth.uid && request.resource.data.role == 'member') ||
         (isOwner(userId) && isPrivilegedAdminEmail() && isValidUser(request.resource.data) && request.resource.data.uid == request.auth.uid && request.resource.data.role == 'super_admin') ||
         ((isAdmin() || isDealer()) && isValidManagedUserCreate(userId, request.resource.data))
       );
@@ -650,6 +714,12 @@ service cloud.firestore {
         (isOwner(userId) && isPrivilegedAdminEmail() && isValidUser(request.resource.data) && request.resource.data.role == 'super_admin')
       );
       allow delete: if isAdmin();
+
+      match /bidderProfile/{profileId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId) || isAdmin();
+        allow delete: if isAdmin();
+      }
     }
 
     match /storefronts/{storefrontId} {
@@ -660,7 +730,7 @@ service cloud.firestore {
           request.auth.uid == storefrontId &&
           hasSellerPostingAccess() &&
           request.resource.data.uid == request.auth.uid &&
-          request.resource.data.role in ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer', 'individual_seller']
+          request.resource.data.role in ['dealer', 'pro_dealer', 'individual_seller']
         )
       );
       allow delete: if isAdmin();
@@ -682,7 +752,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isAdmin() || 
         (isEditor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvedBy'])) ||
-        (request.auth.uid == resource.data.sellerUid && isValidListing(request.resource.data) && request.resource.data.approvalStatus == resource.data.approvalStatus)
+        (request.auth.uid == resource.data.sellerUid && isValidListing(request.resource.data) && request.resource.data.approvalStatus == resource.data.approvalStatus && (!('paymentStatus' in resource.data) || request.resource.data.paymentStatus == resource.data.paymentStatus))
       );
       allow delete: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.sellerUid);
     }
@@ -694,8 +764,8 @@ service cloud.firestore {
     }
 
     match /news/{postId} {
-      allow read: if true;
-      allow create, update: if isEditor();
+      allow read: if resource.data.status == 'published' || isEditor();
+      allow create, update: if isEditor() && isValidNews(request.resource.data);
       allow delete: if isAdmin();
     }
 
@@ -705,18 +775,23 @@ service cloud.firestore {
 
     match /inquiries/{inquiryId} {
       allow read: if isAuthenticated() && (isAdmin() || isEditor() || request.auth.uid == resource.data.sellerUid || request.auth.uid == resource.data.buyerUid);
-      allow create: if isValidInquiryCreate(request.resource.data);
+      allow create: if isAuthenticated() && isValidInquiryCreate(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
     match /financingRequests/{requestId} {
       allow read: if isAdmin() || isEditor();
-      allow create: if isValidFinancingRequest(request.resource.data);
+      allow create: if isAuthenticated() && isValidFinancingRequest(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
     match /invoices/{invoiceId} {
-      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userUid);
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.userUid ||
+        request.auth.uid == resource.data.buyerId ||
+        request.auth.uid == resource.data.sellerId
+      );
       allow write: if isAdmin();
     }
 
@@ -726,7 +801,7 @@ service cloud.firestore {
 
     match /consentLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userUid == request.auth.uid && isValidConsentLog(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
@@ -757,7 +832,7 @@ service cloud.firestore {
         request.auth.uid == resource.data.sellerUid ||
         request.auth.uid == resource.data.sellerId
       );
-      allow create: if isValidCallLogCreate(request.resource.data);
+      allow create: if isAuthenticated() && isValidCallLogCreate(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
@@ -802,11 +877,33 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
 
+      // ── Auction Platform ──────────────────────────────────────
       match /auctions/{auctionId} {
         allow read: if true;
         allow create, update: if isAdmin();
         allow delete: if isAdmin();
+
+        // Lots: public read, admin write via Cloud Functions
+        match /lots/{lotId} {
+          allow read: if true;
+          allow write: if false; // All writes via Cloud Functions
+
+          // Bids: authenticated users can read bids on lots they're involved in
+          match /bids/{bidId} {
+            allow read: if isAuthenticated();
+            allow write: if false; // All writes via Cloud Functions
+          }
+        }
       }
+
+      // Bidder profiles: nested under users
+      match /users/{userId}/bidderProfile/{docId} {
+        allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow delete: if isAdmin();
+      }
+      // ── End Auction Platform ───────────────────────────────────
 
       match /notifications/{notificationId} {
         allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.toUid);
@@ -929,6 +1026,40 @@ service cloud.firestore {
         allow read: if isAdmin();
         allow create, update: if isAdmin() && isValidListingMediaAudit(request.resource.data);
         allow delete: if isAdmin();
+      }
+
+      // ── Cloud Function-managed collections (Admin SDK bypasses rules) ──
+      match /adminStorefrontArchives/{docId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+      match /dealerWebhookDeliveryLogs/{docId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+      match /dealerWebhookSubscriptions/{docId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+      match /dealerWidgetConfigs/{docId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+      match /listingViewEvents/{docId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+      match /publicDealers/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+      match /rateLimits/{docId} {
+        allow read, write: if false;
+      }
+
+      // ── Catch-all deny — block any collection not explicitly listed ──
+      match /{document=**} {
+        allow read, write: if false;
       }
   }
 }

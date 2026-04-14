@@ -19,6 +19,8 @@ import {
 } from 'firebase/firestore';
 import { AccountBootstrapResponse, UserProfile, ManagedSubAccountInput, UserRole, SavedSearch, AlertPreferences } from '../types';
 import { getListingIdRemovalCandidates, normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { sanitizeServiceAreaScopes } from '../constants/storefrontRegions';
+import { normalizeScopedUserRole, supportsStorefrontRole } from '../utils/roleScopes';
 
 function slugifyStorefrontValue(value: string): string {
   return String(value || '')
@@ -39,24 +41,6 @@ enum OperationType {
   WRITE = 'write',
 }
 
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string;
-    email?: string | null;
-    emailVerified?: boolean;
-    isAnonymous?: boolean;
-    tenantId?: string | null;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
 
 const USER_PROFILE_CACHE_PREFIX = 'fes:user-profile-cache:';
 const SAVED_SEARCH_CACHE_PREFIX = 'fes:saved-search-cache:';
@@ -108,26 +92,8 @@ function writeCachedSavedSearches(uid: string, searches: SavedSearch[]): void {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.error(`Firestore ${operationType} error on ${path || 'unknown'}`);
+  throw new Error(`Firestore ${operationType} failed`);
 }
 
 function isQuotaExceededFirestoreError(error: unknown): boolean {
@@ -146,6 +112,24 @@ function sanitizeOptionalUrl(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
   const normalized = String(value ?? '').trim();
   return normalized || null;
+}
+
+function sanitizeOptionalStringArray(value: unknown, maxItems = 50, maxLength = 120): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => (item.length > maxLength ? item.slice(0, maxLength) : item));
+
+  return Array.from(new Set(normalized)).slice(0, maxItems);
+}
+
+function sanitizeOptionalNumber(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function sanitizeSeoKeywords(value: unknown): string[] | undefined {
@@ -178,12 +162,28 @@ function sanitizeUserProfilePayload(payload: Partial<UserProfile>): Partial<User
   if ('about' in payload) sanitized.about = sanitizeOptionalString(payload.about, 5000) || '';
   if ('bio' in payload) sanitized.bio = sanitizeOptionalString(payload.bio, 1000) || '';
   if ('location' in payload) sanitized.location = sanitizeOptionalString(payload.location, 200) || '';
+  if ('storefrontLogoUrl' in payload) sanitized.storefrontLogoUrl = sanitizeOptionalUrl(payload.storefrontLogoUrl) ?? null;
+  if ('businessName' in payload) sanitized.businessName = sanitizeOptionalString(payload.businessName, 200) || '';
+  if ('street1' in payload) sanitized.street1 = sanitizeOptionalString(payload.street1, 180) || '';
+  if ('street2' in payload) sanitized.street2 = sanitizeOptionalString(payload.street2, 180) || '';
+  if ('city' in payload) sanitized.city = sanitizeOptionalString(payload.city, 120) || '';
+  if ('state' in payload) sanitized.state = sanitizeOptionalString(payload.state, 120) || '';
+  if ('county' in payload) sanitized.county = sanitizeOptionalString(payload.county, 120) || '';
+  if ('postalCode' in payload) sanitized.postalCode = sanitizeOptionalString(payload.postalCode, 40) || '';
+  if ('country' in payload) sanitized.country = sanitizeOptionalString(payload.country, 80) || '';
+  if ('latitude' in payload) sanitized.latitude = sanitizeOptionalNumber(payload.latitude) ?? null;
+  if ('longitude' in payload) sanitized.longitude = sanitizeOptionalNumber(payload.longitude) ?? null;
   if ('photoURL' in payload) sanitized.photoURL = sanitizeOptionalUrl(payload.photoURL) ?? null;
   if ('coverPhotoUrl' in payload) sanitized.coverPhotoUrl = sanitizeOptionalUrl(payload.coverPhotoUrl) ?? null;
   if ('storefrontName' in payload) sanitized.storefrontName = sanitizeOptionalString(payload.storefrontName, 180) || '';
   if ('storefrontSlug' in payload) sanitized.storefrontSlug = sanitizeOptionalString(payload.storefrontSlug, 200) || '';
   if ('storefrontTagline' in payload) sanitized.storefrontTagline = sanitizeOptionalString(payload.storefrontTagline, 240) || '';
   if ('storefrontDescription' in payload) sanitized.storefrontDescription = sanitizeOptionalString(payload.storefrontDescription, 5000) || '';
+  if ('serviceAreaScopes' in payload) sanitized.serviceAreaScopes = sanitizeServiceAreaScopes(payload.serviceAreaScopes, 8);
+  if ('serviceAreaStates' in payload) sanitized.serviceAreaStates = sanitizeOptionalStringArray(payload.serviceAreaStates, 80, 120) || [];
+  if ('serviceAreaCounties' in payload) sanitized.serviceAreaCounties = sanitizeOptionalStringArray(payload.serviceAreaCounties, 120, 120) || [];
+  if ('servicesOfferedCategories' in payload) sanitized.servicesOfferedCategories = sanitizeOptionalStringArray(payload.servicesOfferedCategories, 40, 120) || [];
+  if ('servicesOfferedSubcategories' in payload) sanitized.servicesOfferedSubcategories = sanitizeOptionalStringArray(payload.servicesOfferedSubcategories, 120, 120) || [];
   if ('seoTitle' in payload) sanitized.seoTitle = sanitizeOptionalString(payload.seoTitle, 200) || '';
   if ('seoDescription' in payload) sanitized.seoDescription = sanitizeOptionalString(payload.seoDescription, 600) || '';
   if ('seoKeywords' in payload) sanitized.seoKeywords = sanitizeSeoKeywords(payload.seoKeywords) || [];
@@ -268,23 +268,22 @@ function deriveSeatContextFromProfile(profile: Partial<UserProfile> | null | und
 
 export const userService = {
   normalizeRole(role: string | undefined): UserRole {
-    const normalized = (role || '').toLowerCase();
+    const normalized = normalizeScopedUserRole(role);
     if (normalized === 'admin') return 'admin';
     if (normalized === 'super_admin') return 'super_admin';
     if (normalized === 'developer') return 'developer';
     if (normalized === 'content_manager') return 'content_manager';
     if (normalized === 'editor') return 'editor';
-    if (normalized === 'dealer_staff') return 'dealer';
     if (normalized === 'dealer') return 'dealer';
-    if (normalized === 'dealer_manager' || normalized === 'pro_dealer') return 'pro_dealer';
+    if (normalized === 'pro_dealer') return 'pro_dealer';
     if (normalized === 'individual_seller') return 'individual_seller';
     if (normalized === 'member') return 'member';
-    return 'buyer';
+    return 'member';
   },
 
   canCreateManagedRole(parentRole: UserRole, childRole: UserRole): boolean {
-    const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member', 'buyer'];
-    const dealerManagedRoles: UserRole[] = ['member', 'buyer'];
+    const adminManagedRoles: UserRole[] = ['admin', 'developer', 'content_manager', 'editor', 'dealer', 'pro_dealer', 'individual_seller', 'member'];
+    const dealerManagedRoles: UserRole[] = ['member'];
 
     if (parentRole === 'super_admin') return true;
     if (parentRole === 'admin') return adminManagedRoles.includes(childRole);
@@ -293,8 +292,7 @@ export const userService = {
   },
 
   supportsEnterpriseStorefront(role?: string): boolean {
-    const normalized = this.normalizeRole(role);
-    return ['individual_seller', 'dealer', 'pro_dealer', 'admin', 'super_admin'].includes(normalized);
+    return supportsStorefrontRole(this.normalizeRole(role));
   },
 
   supportsManagedStorefrontSync(role?: string): boolean {
@@ -348,7 +346,7 @@ export const userService = {
         photoURL: currentUser?.photoURL || null,
         emailVerified: currentUser?.emailVerified || false,
         accountStatus: 'active',
-        role: 'buyer',
+        role: 'member',
         createdAt: serverTimestamp(),
         ...sanitizedSeed,
         updatedAt: serverTimestamp(),
@@ -380,6 +378,21 @@ export const userService = {
       preferredSlug?: string;
       storefrontTagline?: string;
       storefrontDescription?: string;
+      businessName?: string;
+      street1?: string;
+      street2?: string;
+      city?: string;
+      state?: string;
+      county?: string;
+      postalCode?: string;
+      country?: string;
+      latitude?: number | null;
+      longitude?: number | null;
+      serviceAreaScopes?: string[];
+      serviceAreaStates?: string[];
+      serviceAreaCounties?: string[];
+      servicesOfferedCategories?: string[];
+      servicesOfferedSubcategories?: string[];
       location?: string;
       phone?: string;
       email?: string;
@@ -410,12 +423,73 @@ export const userService = {
     const storefrontSnapshot = await getDoc(storefrontRef);
     const existingStorefront = storefrontSnapshot.exists() ? storefrontSnapshot.data() || {} : {};
     const preferredSlug = String(input.preferredSlug || '').trim();
-    const requestedSlug = preferredSlug || String(existingStorefront.storefrontSlug || '').trim() || storefrontName;
-    const storefrontSlug = await this.generateUniqueStorefrontSlug(requestedSlug, normalizedUid);
-    const canonicalPath = `/seller/${storefrontSlug}`;
     const seoKeywords = Array.isArray(input.seoKeywords)
       ? input.seoKeywords.map((keyword) => String(keyword || '').trim()).filter(Boolean).slice(0, 30)
       : [];
+    const businessName = String(input.businessName || '').trim();
+    const street1 = String(input.street1 || '').trim();
+    const street2 = String(input.street2 || '').trim();
+    const city = String(input.city || '').trim();
+    const state = String(input.state || '').trim();
+
+    const isDealerRole = role === 'dealer' || role === 'pro_dealer';
+    const baseName = preferredSlug || String(existingStorefront.storefrontSlug || '').trim() || storefrontName;
+    const requestedSlug = isDealerRole && city && state && !baseName.toLowerCase().includes(city.toLowerCase())
+      ? `${baseName}-${city}-${state}`
+      : baseName;
+    const storefrontSlug = await this.generateUniqueStorefrontSlug(requestedSlug, normalizedUid);
+    const canonicalPath = `/dealers/${storefrontSlug}`;
+    const county = String(input.county || '').trim();
+    const postalCode = String(input.postalCode || '').trim();
+    const country = String(input.country || '').trim();
+    const serviceAreaScopes = sanitizeServiceAreaScopes(input.serviceAreaScopes, 8);
+    const serviceAreaStates = Array.from(new Set((input.serviceAreaStates || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 80);
+    const serviceAreaCounties = Array.from(new Set((input.serviceAreaCounties || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 120);
+    const servicesOfferedCategories = Array.from(new Set((input.servicesOfferedCategories || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 40);
+    const servicesOfferedSubcategories = Array.from(new Set((input.servicesOfferedSubcategories || []).map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 120);
+    const normalizedLocation = String(input.location || '').trim() || [city, state, country].filter(Boolean).join(', ');
+
+    if (auth.currentUser && auth.currentUser.uid === normalizedUid) {
+      const payload = sanitizeUserProfilePayload({
+        role,
+        storefrontEnabled: true,
+        storefrontSlug,
+        storefrontName,
+        storefrontTagline: String(input.storefrontTagline || '').trim(),
+        storefrontDescription: String(input.storefrontDescription || '').trim(),
+        businessName,
+        street1,
+        street2,
+        city,
+        state,
+        county,
+        postalCode,
+        country,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        serviceAreaScopes,
+        serviceAreaStates,
+        serviceAreaCounties,
+        servicesOfferedCategories,
+        servicesOfferedSubcategories,
+        location: normalizedLocation,
+        phoneNumber: String(input.phone || '').trim(),
+        email: String(input.email || '').trim(),
+        website: String(input.website || '').trim(),
+        storefrontLogoUrl: String(input.logo || '').trim(),
+        coverPhotoUrl: String(input.coverPhotoUrl || '').trim(),
+        seoTitle: String(input.seoTitle || '').trim(),
+        seoDescription: String(input.seoDescription || '').trim(),
+        seoKeywords,
+      });
+
+      await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+
+      return { storefrontSlug, canonicalPath };
+    }
 
     await this.ensureUserProfileDocument(normalizedUid, {
       role,
@@ -424,14 +498,30 @@ export const userService = {
 
     await setDoc(doc(db, 'users', normalizedUid), {
       website: String(input.website || '').trim(),
-      location: String(input.location || '').trim(),
+      location: normalizedLocation,
+      businessName,
+      street1,
+      street2,
+      city,
+      state,
+      county,
+      postalCode,
+      country,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
       phoneNumber: String(input.phone || '').trim(),
       coverPhotoUrl: String(input.coverPhotoUrl || '').trim(),
+      storefrontLogoUrl: String(input.logo || '').trim(),
       storefrontEnabled: true,
       storefrontSlug,
       storefrontName,
       storefrontTagline: String(input.storefrontTagline || '').trim(),
       storefrontDescription: String(input.storefrontDescription || '').trim(),
+      serviceAreaScopes,
+      serviceAreaStates,
+      serviceAreaCounties,
+      servicesOfferedCategories,
+      servicesOfferedSubcategories,
       seoTitle: String(input.seoTitle || '').trim(),
       seoDescription: String(input.seoDescription || '').trim(),
       seoKeywords,
@@ -450,12 +540,27 @@ export const userService = {
         storefrontName,
         storefrontTagline: String(input.storefrontTagline || '').trim(),
         storefrontDescription: String(input.storefrontDescription || '').trim(),
-        location: String(input.location || '').trim(),
+        businessName,
+        street1,
+        street2,
+        city,
+        state,
+        county,
+        postalCode,
+        country,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        location: normalizedLocation,
         phone: String(input.phone || '').trim(),
         email: String(input.email || '').trim(),
         website: String(input.website || '').trim(),
         logo: String(input.logo || '').trim(),
         coverPhotoUrl: String(input.coverPhotoUrl || '').trim(),
+        serviceAreaScopes,
+        serviceAreaStates,
+        serviceAreaCounties,
+        servicesOfferedCategories,
+        servicesOfferedSubcategories,
         seoTitle: String(input.seoTitle || '').trim(),
         seoDescription: String(input.seoDescription || '').trim(),
         seoKeywords,
@@ -488,17 +593,32 @@ export const userService = {
         role,
         storefrontEnabled: true,
         storefrontSlug,
-        canonicalPath: `/seller/${storefrontSlug}`,
+        canonicalPath: `/dealers/${storefrontSlug}`,
         displayName,
         storefrontName: String((profile as any).storefrontName || displayName).trim(),
         storefrontTagline: String((profile as any).storefrontTagline || '').trim(),
         storefrontDescription: String((profile as any).storefrontDescription || profile.about || '').trim(),
         location: String(profile.location || '').trim(),
+        businessName: String((profile as any).businessName || profile.company || '').trim(),
+        street1: String((profile as any).street1 || '').trim(),
+        street2: String((profile as any).street2 || '').trim(),
+        city: String((profile as any).city || '').trim(),
+        state: String((profile as any).state || '').trim(),
+        county: String((profile as any).county || '').trim(),
+        postalCode: String((profile as any).postalCode || '').trim(),
+        country: String((profile as any).country || '').trim(),
+        latitude: sanitizeOptionalNumber((profile as any).latitude) ?? null,
+        longitude: sanitizeOptionalNumber((profile as any).longitude) ?? null,
         phone: String(profile.phoneNumber || '').trim(),
         email: String(profile.email || '').trim(),
         website: String((profile as any).website || '').trim(),
         logo: String((profile as any).storefrontLogoUrl || profile.photoURL || '').trim(),
         coverPhotoUrl: String((profile as any).coverPhotoUrl || '').trim(),
+        serviceAreaScopes: sanitizeServiceAreaScopes((profile as any).serviceAreaScopes, 8),
+        serviceAreaStates: sanitizeOptionalStringArray((profile as any).serviceAreaStates, 80, 120) || [],
+        serviceAreaCounties: sanitizeOptionalStringArray((profile as any).serviceAreaCounties, 120, 120) || [],
+        servicesOfferedCategories: sanitizeOptionalStringArray((profile as any).servicesOfferedCategories, 40, 120) || [],
+        servicesOfferedSubcategories: sanitizeOptionalStringArray((profile as any).servicesOfferedSubcategories, 120, 120) || [],
         seoTitle: String((profile as any).seoTitle || '').trim(),
         seoDescription: String((profile as any).seoDescription || '').trim(),
         seoKeywords: Array.isArray((profile as any).seoKeywords)
@@ -727,6 +847,22 @@ export const userService = {
         'about',
         'bio',
         'location',
+        'storefrontLogoUrl',
+        'businessName',
+        'street1',
+        'street2',
+        'city',
+        'state',
+        'county',
+        'postalCode',
+        'country',
+        'latitude',
+        'longitude',
+        'serviceAreaScopes',
+        'serviceAreaStates',
+        'serviceAreaCounties',
+        'servicesOfferedCategories',
+        'servicesOfferedSubcategories',
         'photoURL',
         'coverPhotoUrl',
         'role',
@@ -793,7 +929,7 @@ export const userService = {
     if (creatorRole === 'dealer' || creatorRole === 'pro_dealer') {
       const seatContext = await this.getManagedAccountSeatContext(ownerUid);
       if (seatContext.seatLimit < 1) {
-        throw new Error('An active Dealer or Fleet Dealer subscription is required before adding managed accounts.');
+        throw new Error('An active Dealer or Pro Dealer subscription is required before adding managed accounts.');
       }
       if (seatContext.seatCount >= seatContext.seatLimit) {
         throw new Error(`Your current subscription includes up to ${seatContext.seatLimit} managed accounts. Remove one before adding another.`);

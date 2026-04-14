@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { 
-  ArrowLeft, Check, X, Info, 
-  TrendingUp, TrendingDown, Clock, 
+import {
+  ArrowLeft, Check, X, Info,
+  TrendingUp, TrendingDown, Clock,
   Activity, ShieldCheck, MapPin
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -11,12 +11,14 @@ import { Listing } from '../types';
 import { useLocale } from '../components/LocaleContext';
 import { buildListingPath } from '../utils/listingPath';
 import { Seo } from '../components/Seo';
+import { InquiryModal } from '../components/InquiryModal';
 
 export function Compare() {
   const { formatNumber, formatPrice } = useLocale();
   const [searchParams] = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inquiryListing, setInquiryListing] = useState<Listing | null>(null);
 
   useEffect(() => {
     const ids = searchParams.get('ids')?.split(',') || [];
@@ -68,7 +70,7 @@ export function Compare() {
           </div>
           <div className="text-right">
             <span className="label-micro text-accent mb-1 block">Comparison Tool</span>
-            <span className="text-sm font-black uppercase tracking-widest">{formatNumber(listings.length)} Equipment Loaded</span>
+            <span className="text-sm font-black uppercase tracking-widest">{formatNumber(listings.length)} {listings.length === 1 ? 'Machine' : 'Machines'} Loaded</span>
           </div>
         </div>
       </div>
@@ -85,7 +87,7 @@ export function Compare() {
                   <th key={listing.id} className="p-6 bg-bg border border-line min-w-[300px]">
                     <div className="flex flex-col items-start text-left">
                       <div className="aspect-[16/9] w-full bg-surface mb-6 overflow-hidden rounded-sm">
-                        <img src={listing.images[0]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={listing.images[0]} alt={`${listing.year || ''} ${listing.manufacturer || ''} ${listing.model || ''} - ${listing.category || 'Equipment'}`.replace(/\s+/g, ' ').trim()} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                       <span className="label-micro mb-1">{listing.manufacturer}</span>
                       <h3 className="text-sm font-black uppercase tracking-tight mb-4 line-clamp-1">{listing.title}</h3>
@@ -173,7 +175,10 @@ export function Compare() {
                       <Link to={buildListingPath(listing)} className="btn-industrial py-2.5 text-center bg-ink text-bg">
                         View Details
                       </Link>
-                      <button className="btn-industrial btn-accent py-2.5">
+                      <button
+                        className="btn-industrial btn-accent py-2.5"
+                        onClick={() => setInquiryListing(listing)}
+                      >
                         Inquire
                       </button>
                     </div>
@@ -184,6 +189,14 @@ export function Compare() {
           </table>
         </div>
       </div>
+
+      {inquiryListing && (
+        <InquiryModal
+          isOpen
+          onClose={() => setInquiryListing(null)}
+          listing={inquiryListing}
+        />
+      )}
     </div>
   );
 }

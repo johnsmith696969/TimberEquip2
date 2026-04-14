@@ -337,6 +337,23 @@ export const EQUIPMENT_TAXONOMY = {
       "WALLENSTEIN",
       "WEILER"
     ],
+    "Processors / Harvesters": [
+      "CAT",
+      "CATERPILLAR",
+      "ECOLOG",
+      "JOHN DEERE",
+      "KOMATSU",
+      "LOGMAX",
+      "LOGSET",
+      "PONSSE",
+      "ROTTNE",
+      "SP MASKINER",
+      "TIGERCAT",
+      "TIMBCO",
+      "TIMBERPRO",
+      "VALMET",
+      "WARATAH"
+    ],
     "Skidders": [
       "BLOUNT CAT",
       "CATERPILLAR",

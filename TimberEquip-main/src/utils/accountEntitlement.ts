@@ -1,14 +1,12 @@
 import type { AccountEntitlement, UserProfile } from '../types';
+import { isDealerSellerRole, isOperatorOnlyRole, isSellerRole, normalizeScopedUserRole } from './roleScopes';
 
 function normalize(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
 function normalizeRole(role: unknown): string {
-  const normalized = normalize(role);
-  if (normalized === 'dealer_staff') return 'dealer';
-  if (normalized === 'dealer_manager') return 'pro_dealer';
-  return normalized;
+  return normalizeScopedUserRole(String(role || ''));
 }
 
 function normalizeAccessSource(source: unknown): UserProfile['accountAccessSource'] {
@@ -43,14 +41,6 @@ function normalizeAccountStatus(status: unknown): UserProfile['accountStatus'] {
   return 'active';
 }
 
-function isAdminRole(role: string): boolean {
-  return role === 'super_admin' || role === 'admin' || role === 'developer';
-}
-
-function isSellerRole(role: string): boolean {
-  return role === 'individual_seller' || role === 'dealer' || role === 'pro_dealer';
-}
-
 function capabilityFromPlan(planId: UserProfile['activeSubscriptionPlanId']): AccountEntitlement['effectiveSellerCapability'] {
   if (planId === 'individual_seller') return 'owner_operator';
   if (planId === 'dealer') return 'dealer';
@@ -67,7 +57,7 @@ function capabilityFromRole(role: string): AccountEntitlement['effectiveSellerCa
 
 function resolveBillingLabel(planId: UserProfile['activeSubscriptionPlanId'], role: string): string {
   if (planId === 'dealer' || planId === 'fleet_dealer' || role === 'dealer' || role === 'pro_dealer') {
-    return 'FES-DealerOS';
+    return 'Forestry Equipment Sales DealerOS';
   }
   if (planId === 'individual_seller' || role === 'individual_seller') {
     return 'Forestry Equipment Sales';
@@ -82,24 +72,24 @@ export function resolveAccountEntitlement(user: Partial<UserProfile> | null | un
   const activeSubscriptionPlanId = normalizePlanId(user?.activeSubscriptionPlanId);
   const subscriptionState = normalizeSubscriptionState(user?.subscriptionStatus);
 
-  const adminAccess = isAdminRole(role);
-  const adminOverrideAccess = !adminAccess
+  const adminWorkspaceAccess = isOperatorOnlyRole(role);
+  const adminOverrideAccess = !adminWorkspaceAccess
     && isSellerRole(role)
     && accountStatus === 'active'
     && accountAccessSource === 'admin_override';
-  const subscriptionBackedAccess = !adminAccess
+  const subscriptionBackedAccess = !adminWorkspaceAccess
     && accountStatus === 'active'
     && accountAccessSource === 'subscription'
     && !!activeSubscriptionPlanId
     && subscriptionState !== 'past_due'
     && subscriptionState !== 'pending';
-  const sellerWorkspaceAccess = adminAccess || adminOverrideAccess || subscriptionBackedAccess;
+  const sellerWorkspaceAccess = adminOverrideAccess || subscriptionBackedAccess;
 
   let publicListingVisibility: AccountEntitlement['publicListingVisibility'] = 'not_applicable';
   let visibilityReason: AccountEntitlement['visibilityReason'] = 'non_seller_role';
-  if (adminAccess || adminOverrideAccess) {
+  if (adminOverrideAccess) {
     publicListingVisibility = 'admin_override';
-    visibilityReason = adminAccess ? 'admin_role' : 'admin_override';
+    visibilityReason = 'admin_override';
   } else if (subscriptionBackedAccess) {
     publicListingVisibility = 'publicly_eligible';
     visibilityReason = 'active_subscription';
@@ -110,23 +100,22 @@ export function resolveAccountEntitlement(user: Partial<UserProfile> | null | un
 
   const planCapability = capabilityFromPlan(activeSubscriptionPlanId);
   const roleCapability = capabilityFromRole(role);
-  const effectiveSellerCapability = adminAccess
-    ? 'admin'
-    : (subscriptionBackedAccess || adminOverrideAccess)
-      ? (planCapability !== 'none' ? planCapability : roleCapability)
-      : 'none';
+  const effectiveSellerCapability = (subscriptionBackedAccess || adminOverrideAccess)
+    ? (planCapability !== 'none' ? planCapability : roleCapability)
+    : 'none';
 
   return {
     subscriptionState,
     effectiveSellerCapability,
-    sellerAccessMode: adminAccess ? 'admin' : adminOverrideAccess ? 'admin_override' : subscriptionBackedAccess ? 'subscription' : 'none',
+    sellerAccessMode: adminOverrideAccess ? 'admin_override' : subscriptionBackedAccess ? 'subscription' : 'none',
     sellerWorkspaceAccess,
+    adminWorkspaceAccess,
     canPostListings: sellerWorkspaceAccess,
-    dealerOsAccess: adminAccess || ((role === 'dealer' || role === 'pro_dealer') && sellerWorkspaceAccess),
+    dealerOsAccess: isDealerSellerRole(role) && sellerWorkspaceAccess,
     publicListingVisibility,
     visibilityReason,
     billingLabel: resolveBillingLabel(activeSubscriptionPlanId, role),
-    overrideSource: adminOverrideAccess ? 'admin_override' : adminAccess ? 'admin_role' : null,
+    overrideSource: adminOverrideAccess ? 'admin_override' : null,
   };
 }
 

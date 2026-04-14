@@ -52,14 +52,17 @@ service firebase.storage {
     // Private files (invoices, documents) - accessible only by owner/admins
     match /private/{userId}/documents/{fileName} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid))
+        && validateDocument(request.resource);
       allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
     }
 
     // Temporary uploads (auto-delete files)
     match /temp/{userId}/{fileName} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('text/.*'));
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
@@ -71,9 +74,9 @@ service firebase.storage {
 
     // Helper functions
     function isAdmin(uid) {
-      // First check token email (works without Firestore lookup)
-      return (request.auth.token.email in ['calebhappy@gmail.com'] && request.auth.token.email_verified == true) ||
-        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer', 'content_manager', 'editor'];
+      // Check custom claims first (fast, no Firestore lookup), then fall back to profile doc
+      return (request.auth.token.role in ['super_admin', 'admin', 'developer'] && request.auth.token.email_verified == true) ||
+        get(/databases/ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer'];
     }
 
     function isOwner(uid, listingId) {

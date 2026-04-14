@@ -1,6 +1,8 @@
-const SITE_KEY = '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0';
+const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
 const SCRIPT_SRC = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(SITE_KEY)}`;
 const PRODUCTION_RECAPTCHA_HOSTS = new Set([
+  'timberequip.com',
+  'www.timberequip.com',
   'forestryequipmentsales.com',
   'www.forestryequipmentsales.com',
   'mobile-app-equipment-sales.web.app',
@@ -27,6 +29,10 @@ function shouldUseEnterpriseRecaptcha(): boolean {
 
   const hostname = String(window.location.hostname || '').trim().toLowerCase();
   return PRODUCTION_RECAPTCHA_HOSTS.has(hostname);
+}
+
+export function isRecaptchaProtectionEnabled(): boolean {
+  return shouldUseEnterpriseRecaptcha();
 }
 
 function loadEnterpriseRecaptchaScript(): Promise<void> {
@@ -91,12 +97,13 @@ export async function getRecaptchaToken(action: string): Promise<string | null> 
         }
       });
     });
-  } catch {
+  } catch (err) {
+    console.warn('reCAPTCHA token generation failed:', err);
     return null;
   }
 }
 
-/** Returns true if the submission should be allowed. Fails open on any error. */
+/** Returns true if the submission should be allowed. Fails closed in production. */
 export async function assessRecaptcha(token: string, action: string): Promise<boolean> {
   if (!shouldUseEnterpriseRecaptcha()) {
     return true;
@@ -108,10 +115,36 @@ export async function assessRecaptcha(token: string, action: string): Promise<bo
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, action }),
     });
-    if (!res.ok) return true;
+    if (!res.ok) return false;
     const data = await res.json();
-    return data.pass !== false;
-  } catch {
+    return data.pass === true;
+  } catch (err) {
+    console.warn('reCAPTCHA assessment failed (fail-closed):', err);
+    return false;
+  }
+}
+
+export async function verifyRecaptchaAction(action: string): Promise<boolean> {
+  if (!shouldUseEnterpriseRecaptcha()) {
     return true;
   }
+
+  if (!SITE_KEY) {
+    console.warn('[reCAPTCHA] Site key is not configured — skipping verification.');
+    return true;
+  }
+
+  // Attempt token generation with one retry on failure
+  let token = await getRecaptchaToken(action);
+  if (!token) {
+    token = await getRecaptchaToken(action);
+  }
+  if (!token) {
+    // Token generation failed after retry (script blocked, network error, wrong key).
+    // Fail closed — reject the request to prevent bot bypass.
+    console.warn(`[reCAPTCHA] Token generation failed for action "${action}" — blocking request.`);
+    return false;
+  }
+
+  return assessRecaptcha(token, action);
 }

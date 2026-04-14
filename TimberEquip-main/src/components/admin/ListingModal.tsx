@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Upload, Video, ShieldCheck, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Video, ShieldCheck, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Listing, ListingConditionChecklist } from '../../types';
 import { getSchemaForListing } from '../../constants/categorySpecs';
 import { EQUIPMENT_TAXONOMY } from '../../constants/equipmentData';
 import { storageService } from '../../services/storageService';
+import { GooglePlacesInput } from '../GooglePlacesInput';
+import type { GooglePlaceSelection } from '../../services/placesService';
 import { taxonomyService, FullEquipmentTaxonomy } from '../../services/taxonomyService';
+import {
+  getCanonicalOptionLabel,
+  getTaxonomyCategoryOptions,
+  getTaxonomyManufacturerOptions,
+  getTaxonomyModelOptions,
+  getTaxonomySubcategoryOptions,
+  resolveEquipmentTaxonomySelection,
+} from '../../utils/equipmentTaxonomy';
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB
@@ -32,43 +42,24 @@ const FALLBACK_FULL_TAXONOMY: FullEquipmentTaxonomy = Object.fromEntries(
 const DEFAULT_TOP_LEVEL_CATEGORY = Object.keys(EQUIPMENT_TAXONOMY)[0] || '';
 const DEFAULT_SUBCATEGORY = Object.keys(EQUIPMENT_TAXONOMY[DEFAULT_TOP_LEVEL_CATEGORY] || {})[0] || '';
 
-const findTopLevelCategoryForSubcategory = (taxonomy: FullEquipmentTaxonomy, subcategory: string): string | null => {
-  for (const [category, subcategories] of Object.entries(taxonomy)) {
-    if (subcategory in subcategories) {
-      return category;
-    }
-  }
-  return null;
-};
-
 const inferCategorySelection = (
   taxonomy: FullEquipmentTaxonomy,
   listing?: Partial<Listing> | null
 ): { category: string; subcategory: string } => {
-  const categoryValue = String(listing?.category || '').trim();
-  const subcategoryValue = String(listing?.subcategory || '').trim();
+  const resolved = resolveEquipmentTaxonomySelection(taxonomy, {
+    category: listing?.category,
+    subcategory: listing?.subcategory,
+    manufacturer: listing?.manufacturer || listing?.make,
+    model: listing?.model,
+  });
 
-  if (categoryValue && taxonomy[categoryValue]) {
-    if (subcategoryValue && taxonomy[categoryValue][subcategoryValue]) {
-      return { category: categoryValue, subcategory: subcategoryValue };
+  if (resolved.category && taxonomy[resolved.category]) {
+    if (resolved.subcategory && taxonomy[resolved.category][resolved.subcategory]) {
+      return { category: resolved.category, subcategory: resolved.subcategory };
     }
 
-    const firstSubcategory = Object.keys(taxonomy[categoryValue] || {})[0] || '';
-    return { category: categoryValue, subcategory: firstSubcategory };
-  }
-
-  if (subcategoryValue) {
-    const inferredCategory = findTopLevelCategoryForSubcategory(taxonomy, subcategoryValue);
-    if (inferredCategory) {
-      return { category: inferredCategory, subcategory: subcategoryValue };
-    }
-  }
-
-  if (categoryValue) {
-    const inferredCategory = findTopLevelCategoryForSubcategory(taxonomy, categoryValue);
-    if (inferredCategory) {
-      return { category: inferredCategory, subcategory: categoryValue };
-    }
+    const firstSubcategory = Object.keys(taxonomy[resolved.category] || {})[0] || '';
+    return { category: resolved.category, subcategory: firstSubcategory };
   }
 
   return {
@@ -92,6 +83,7 @@ interface ListingModalProps {
   onClose: () => void;
   onSave: (listing: any) => void | Promise<void>;
   listing?: Listing | null;
+  showSellerAssignment?: boolean;
 }
 
 // ── SpecField renderer ────────────────────────────────────────────────────────
@@ -109,9 +101,15 @@ interface SpecInputProps {
   onChange: (key: string, value: any) => void;
 }
 
+let _selectZeroFrameId: number | null = null;
 const selectZeroValue = (event: React.FocusEvent<HTMLInputElement>) => {
   if (event.target.value === '0') {
-    requestAnimationFrame(() => event.target.select());
+    if (_selectZeroFrameId !== null) cancelAnimationFrame(_selectZeroFrameId);
+    const target = event.target;
+    _selectZeroFrameId = requestAnimationFrame(() => {
+      _selectZeroFrameId = null;
+      target.select();
+    });
   }
 };
 
@@ -198,8 +196,8 @@ function SpecInput({ fieldKey, label, type, required, unit, options, placeholder
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalProps) {
-  const [validationError, setValidationError] = useState('');
+export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssignment = false }: ListingModalProps) {
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [submitError, setSubmitError] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -207,24 +205,27 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
   const [isSaving, setIsSaving] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number>(0);
   const [videoUploadProgress, setVideoUploadProgress] = useState<number>(0);
+  const [imageDragIdx, setImageDragIdx] = useState<number | null>(null);
   const [listingStorageId, setListingStorageId] = useState<string>(createDraftListingId());
   const [fullTaxonomy, setFullTaxonomy] = useState<FullEquipmentTaxonomy>(FALLBACK_FULL_TAXONOMY);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const defaultForm = () => ({
+    sellerUid: '',
+    sellerId: '',
     title: '',
     category: DEFAULT_TOP_LEVEL_CATEGORY,
     subcategory: DEFAULT_SUBCATEGORY,
     manufacturer: '',
     make: '',
     model: '',
-    year: new Date().getFullYear(),
+    year: '' as unknown as number,
     price: 0,
     currency: 'USD',
     condition: 'Used',
     location: '',
-    hours: 0,
+    hours: '' as unknown as number,
     stockNumber: '',
     serialNumber: '',
     images: [] as string[],
@@ -264,6 +265,8 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
       setFormData({
         ...defaultForm(),
         ...listing,
+        sellerUid: String((listing as Listing & { sellerUid?: string }).sellerUid || (listing as Listing & { sellerId?: string }).sellerId || ''),
+        sellerId: String((listing as Listing & { sellerId?: string }).sellerId || (listing as Listing & { sellerUid?: string }).sellerUid || ''),
         images: normalizedImages,
         imageTitles: normalizeListingImageTitles(normalizedImages, listing.imageTitles),
         category: inferred.category,
@@ -279,17 +282,22 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
         subcategory: inferred.subcategory,
       });
     }
-    setValidationError('');
+    setValidationErrors([]);
     setSubmitError('');
     setUploadError('');
   }, [listing, isOpen]);
 
-  const categoryOptions = Object.keys(fullTaxonomy);
-  const subcategoryOptions = Object.keys(fullTaxonomy[formData.category] || {});
+  const categoryOptions = getTaxonomyCategoryOptions(fullTaxonomy);
+  const subcategoryOptions = getTaxonomySubcategoryOptions(fullTaxonomy, formData.category);
   const selectedMake = (formData.manufacturer || formData.make || '').trim();
-  const makeMap = fullTaxonomy[formData.category]?.[formData.subcategory] || {};
-  const manufacturerOptions = Object.keys(makeMap);
-  const modelOptions = selectedMake ? (makeMap[selectedMake] || []) : [];
+  const manufacturerOptions = getTaxonomyManufacturerOptions(fullTaxonomy, formData.category, formData.subcategory);
+  const canonicalSelectedMake = getCanonicalOptionLabel(manufacturerOptions, selectedMake);
+  const modelOptions = getTaxonomyModelOptions(
+    fullTaxonomy,
+    formData.category,
+    formData.subcategory,
+    canonicalSelectedMake || selectedMake
+  );
 
   const schema = getSchemaForListing(formData.category, formData.subcategory);
 
@@ -471,28 +479,33 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
   const handleSubmit = async () => {
     setSubmitError('');
 
-    if (!formData.category.trim()) { setValidationError('Category is required.'); return; }
-    if (!String(formData.subcategory || '').trim()) { setValidationError('Subcategory is required.'); return; }
-    if (!formData.title.trim()) { setValidationError('Listing title is required.'); return; }
-    if (!String(formData.manufacturer || formData.make || '').trim()) { setValidationError('Manufacturer is required.'); return; }
-    if (!formData.model.trim()) { setValidationError('Model is required.'); return; }
-    if (!Number.isFinite(Number(formData.year)) || Number(formData.year) <= 0) { setValidationError('Year is required.'); return; }
-    if (!Number.isFinite(Number(formData.hours)) || Number(formData.hours) < 0) { setValidationError('Operating hours are required.'); return; }
-    if (!String(formData.condition || '').trim()) { setValidationError('Condition is required.'); return; }
-    if (!Number.isFinite(Number(formData.price)) || Number(formData.price) < 0) { setValidationError('Price is required.'); return; }
-    if (!formData.location.trim()) { setValidationError('Location is required.'); return; }
+    const errors: string[] = [];
+    if (!formData.category.trim()) errors.push('Category is required.');
+    if (!String(formData.subcategory || '').trim()) errors.push('Subcategory is required.');
+    if (!formData.title.trim()) errors.push('Listing title is required.');
+    if (!String(formData.manufacturer || formData.make || '').trim()) errors.push('Manufacturer is required.');
+    if (!formData.model.trim()) errors.push('Model is required.');
+    if (!Number.isFinite(Number(formData.year)) || Number(formData.year) <= 0) errors.push('Year is required.');
+    if (!Number.isFinite(Number(formData.hours)) || Number(formData.hours) < 0) errors.push('Operating hours are required.');
+    if (!String(formData.condition || '').trim()) errors.push('Condition is required.');
+    if (!Number.isFinite(Number(formData.price)) || Number(formData.price) < 0) errors.push('Price is required.');
+    if (!formData.location.trim()) errors.push('Location is required.');
 
     const imgCount = formData.images.length;
-    if (imgCount < MIN_IMAGE_COUNT) { setValidationError(`Minimum ${MIN_IMAGE_COUNT} images required. You have ${imgCount}.`); return; }
-    if (imgCount > 40) { setValidationError('Maximum 40 images allowed.'); return; }
+    if (imgCount < MIN_IMAGE_COUNT) errors.push(`Minimum ${MIN_IMAGE_COUNT} images required. You have ${imgCount}.`);
+    if (imgCount > 40) errors.push('Maximum 40 images allowed.');
 
     const hydraulicsLeakStatus = formData.conditionChecklist.hydraulicsLeakStatus;
     if (hydraulicsLeakStatus && !['yes', 'no'].includes(String(hydraulicsLeakStatus))) {
-      setValidationError('Hydraulics leak status must be set to Yes or No.');
+      errors.push('Hydraulics leak status must be set to Yes or No.');
+    }
+
+    if (errors.length > 0) {
+      setValidationErrors(errors);
       return;
     }
 
-    setValidationError('');
+    setValidationErrors([]);
 
     try {
       setIsSaving(true);
@@ -570,6 +583,25 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 Basic Information
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {showSellerAssignment ? (
+                  <div className="space-y-1 lg:col-span-3">
+                    <label className="label-micro">Seller Account UID <span className="text-accent">*</span></label>
+                    <input
+                      type="text"
+                      value={formData.sellerUid || ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        sellerUid: e.target.value,
+                        sellerId: e.target.value,
+                      })}
+                      className="input-industrial w-full"
+                      placeholder="seller-account-uid"
+                    />
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                      Admin-created listings must be assigned to the owning seller or dealer account.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="space-y-1 lg:col-span-2">
                   <label className="label-micro">Listing Title <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.title}
@@ -612,9 +644,12 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="label-micro">Manufacturer / Brand <span className="text-accent">*</span></label>
+                  <label className="label-micro">Make <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.manufacturer || formData.make}
-                    onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value, make: e.target.value, model: '' })}
+                    onChange={(e) => {
+                      const nextManufacturer = getCanonicalOptionLabel(manufacturerOptions, e.target.value) || e.target.value;
+                      setFormData({ ...formData, manufacturer: nextManufacturer, make: nextManufacturer, model: '' });
+                    }}
                     className="input-industrial w-full" placeholder="e.g. Tigercat"
                     list="listing-manufacturer-options" />
                   <datalist id="listing-manufacturer-options">
@@ -626,7 +661,10 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 <div className="space-y-1">
                   <label className="label-micro">Model <span className="text-accent">*</span></label>
                   <input type="text" required value={formData.model}
-                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                    onChange={(e) => {
+                      const nextModel = getCanonicalOptionLabel(modelOptions, e.target.value) || e.target.value;
+                      setFormData({ ...formData, model: nextModel });
+                    }}
                     className="input-industrial w-full" placeholder="e.g. 855E"
                     list="listing-model-options" />
                   <datalist id="listing-model-options">
@@ -637,16 +675,21 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 </div>
                 <div className="space-y-1">
                   <label className="label-micro">Year <span className="text-accent">*</span></label>
-                  <input type="number" required value={formData.year}
-                    onFocus={selectZeroValue}
-                    onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
-                    className="input-industrial w-full" min={1960} max={new Date().getFullYear() + 1} />
+                  <select required value={formData.year}
+                    onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) || ('' as unknown as number) })}
+                    className="input-industrial w-full">
+                    <option value="">Select Year</option>
+                    {Array.from({ length: new Date().getFullYear() - 1960 + 1 }, (_, i) => new Date().getFullYear() - i).map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="label-micro">Operating Hours <span className="text-accent">*</span></label>
                   <input type="number" required value={formData.hours}
+                    placeholder="Enter hours"
                     onFocus={selectZeroValue}
-                    onChange={(e) => setFormData({ ...formData, hours: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, hours: e.target.value === '' ? ('' as unknown as number) : (parseInt(e.target.value) || 0) })}
                     className="input-industrial w-full" min={0} />
                 </div>
                 <div className="space-y-1">
@@ -695,9 +738,22 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 </div>
                 <div className="space-y-1">
                   <label className="label-micro">Location <span className="text-accent">*</span></label>
-                  <input type="text" required value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="input-industrial w-full" placeholder="City, State / Province" />
+                  <GooglePlacesInput
+                    mode="city"
+                    value={formData.location}
+                    onChange={(value) => setFormData({ ...formData, location: value })}
+                    onSelect={(place: GooglePlaceSelection) => {
+                      const parts: string[] = [];
+                      if (place.city) parts.push(place.city);
+                      if (place.state) parts.push(place.state);
+                      if (place.country && place.country !== 'US' && place.country !== 'United States') parts.push(place.country);
+                      const formatted = parts.length > 0 ? parts.join(', ') : place.formattedAddress;
+                      setFormData((prev) => ({ ...prev, location: formatted }));
+                    }}
+                    placeholder="City, State / Province"
+                    leadingIconClassName="hidden"
+                    inputClassName="!pl-3"
+                  />
                 </div>
               </div>
               <label className="flex items-center gap-3 cursor-pointer w-fit">
@@ -922,7 +978,31 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
 
               <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
                 {formData.images.map((img, i) => (
-                  <div key={`${img}-${i}`} className="flex flex-col gap-2 bg-surface border border-line rounded-sm overflow-hidden p-2">
+                  <div key={`${img}-${i}`}
+                    draggable
+                    onDragStart={() => setImageDragIdx(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (imageDragIdx !== null && imageDragIdx !== i) {
+                        setFormData((prev) => {
+                          const images = [...prev.images];
+                          const imageTitles = normalizeListingImageTitles(prev.images, prev.imageTitles);
+                          const imageVariants = [...(prev.imageVariants || [])];
+                          const [movedImg] = images.splice(imageDragIdx, 1);
+                          images.splice(i, 0, movedImg);
+                          const [movedTitle] = imageTitles.splice(imageDragIdx, 1);
+                          imageTitles.splice(i, 0, movedTitle);
+                          if (imageVariants.length > imageDragIdx) {
+                            const [movedVar] = imageVariants.splice(imageDragIdx, 1);
+                            imageVariants.splice(i, 0, movedVar);
+                          }
+                          return { ...prev, images, imageTitles, imageVariants };
+                        });
+                      }
+                      setImageDragIdx(null);
+                    }}
+                    onDragEnd={() => setImageDragIdx(null)}
+                    className={`flex flex-col gap-2 bg-surface border rounded-sm overflow-hidden p-2 cursor-grab active:cursor-grabbing ${imageDragIdx === i ? 'border-accent opacity-50' : 'border-line'}`}>
                     <div className="relative aspect-video overflow-hidden rounded-sm group">
                       <img
                         src={img}
@@ -950,6 +1030,24 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                         Photo {i + 1}
                       </span>
                       <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveImage(i, -1)}
+                          aria-label={`Move image ${i + 1} up`}
+                          disabled={i === 0}
+                          className="p-1 text-muted hover:text-ink disabled:opacity-30"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveImage(i, 1)}
+                          aria-label={`Move image ${i + 1} down`}
+                          disabled={i === formData.images.length - 1}
+                          className="p-1 text-muted hover:text-ink disabled:opacity-30"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
                         <button
                           type="button"
                           onClick={() => moveImage(i, -1)}
@@ -989,7 +1087,10 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                     {uploadingImages ? (
                       <>
                         <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mb-1" />
-                        <span className="text-[9px] font-black uppercase">{imageUploadProgress}%</span>
+                        <span className="text-[9px] font-black uppercase">Uploading {imageUploadProgress}%</span>
+                        <div className="h-1 w-3/4 bg-accent/20 rounded overflow-hidden mt-1">
+                          <div className="h-full bg-accent transition-all duration-300" style={{ width: `${imageUploadProgress}%` }} />
+                        </div>
                       </>
                     ) : (
                       <>
@@ -1004,8 +1105,14 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
               <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif"
                 multiple className="hidden"
                 onChange={(e) => handleImageFiles(e.target.files)} />
+              <span className="text-[9px] font-bold text-muted uppercase tracking-wider">
+                Max 10 MB per image · Max 500 MB per video
+              </span>
               <p className="text-[9px] text-muted font-bold uppercase tracking-widest">
                 JPG / PNG / WEBP / AVIF up to 10 MB each. First image = cover photo. Reorder with arrows and add optional photo titles. Min {MIN_IMAGE_COUNT} · Max 40.
+              </p>
+              <p className="text-[9px] text-muted font-bold uppercase tracking-widest">
+                Photo uploads may take a few minutes depending on file size and internet speed.
               </p>
               {uploadError && (
                 <p className="text-[9px] text-accent font-bold uppercase tracking-widest">{uploadError}</p>
@@ -1077,11 +1184,15 @@ export function ListingModal({ isOpen, onClose, onSave, listing }: ListingModalP
                 placeholder="Describe the machine's condition, recent maintenance, service history, and any notable features or defects..." />
             </section>
 
-            {/* ── Validation error ────────────────────────────────────────────── */}
-            {validationError && (
+            {/* ── Validation errors ───────────────────────────────────────────── */}
+            {validationErrors.length > 0 && (
               <div className="flex items-start gap-3 bg-accent/10 border border-accent p-4 rounded-sm">
                 <AlertCircle size={16} className="text-accent flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] font-black uppercase tracking-widest text-accent">{validationError}</p>
+                <ul className="list-disc list-inside space-y-1">
+                  {validationErrors.map((error, idx) => (
+                    <li key={idx} className="text-[11px] font-black uppercase tracking-widest text-accent">{error}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {submitError && (

@@ -77,7 +77,7 @@ vi.mock('../constants/equipmentData', () => ({
 
 vi.mock('../utils/privilegedAdmin', () => ({
   isPrivilegedAdminEmail: vi.fn(() => false),
-  SUPERADMIN_EMAIL: 'calebhappy@gmail.com',
+  SUPERADMIN_EMAIL: 'admin@example.com',
 }));
 
 import { equipmentService } from '../services/equipmentService';

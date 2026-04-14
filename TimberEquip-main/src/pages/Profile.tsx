@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
-  Search, Clock, CheckCircle2, 
+  Clock, CheckCircle2, Eye,
   ArrowRight, LayoutDashboard,
   LogOut, Bell, Package,
   CreditCard, Edit, Trash2, Plus,
@@ -13,11 +13,13 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { billingService, SELLER_PLAN_DEFINITIONS } from '../services/billingService';
+import { getListingCapDisplayLabel, isUnlimitedListingCap } from '../utils/listingCaps';
 import { useAuth } from '../components/AuthContext';
 import { ListingModal } from '../components/admin/ListingModal';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
+import { ManagedRolesTab } from '../components/ManagedRolesTab';
 import { useLocale } from '../components/LocaleContext';
 import { CallLog, Currency, FinancingRequest, Inquiry, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
 import { auth } from '../firebase';
@@ -29,6 +31,25 @@ import { resolveAccountEntitlement } from '../utils/accountEntitlement';
 import { getSellerProgramStatementLabel } from '../utils/sellerProgramAgreement';
 import { getSellerPlanMarketingLabel } from '../utils/sellerPlans';
 import { Seo } from '../components/Seo';
+import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
+import { TagSelectorModal } from '../components/TagSelectorModal';
+import { GooglePlacesInput } from '../components/GooglePlacesInput';
+import { taxonomyService, type FullEquipmentTaxonomy } from '../services/taxonomyService';
+import { type GooglePlaceSelection } from '../services/placesService';
+import {
+  getTaxonomyCategoryOptions,
+  getTaxonomySubcategoryOptions,
+} from '../utils/equipmentTaxonomy';
+import {
+  SERVICE_AREA_SCOPE_OPTIONS,
+  STOREFRONT_COUNTRY_OPTIONS,
+  matchesRegionQuery,
+  sanitizeServiceAreaScopes,
+} from '../constants/storefrontRegions';
+import { getCountiesForStates } from '../constants/usCounties';
+import { buildDealerPath } from '../utils/seoRoutes';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   completeSmsMfaEnrollment,
   createVisibleRecaptchaVerifier,
@@ -42,6 +63,7 @@ import {
 
 const ADMIN_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer']);
 const CONTENT_STUDIO_PROFILE_ROLES = new Set(['super_admin', 'admin', 'developer', 'content_manager', 'editor']);
+const ACCOUNT_OVERVIEW_TAB_LABEL = 'Account Overview';
 const LANGUAGE_OPTIONS: Language[] = ['EN', 'FR', 'DE', 'FI', 'PL', 'IT', 'CS', 'ES', 'RO', 'LV', 'PT', 'SK', 'ET', 'NO', 'DA', 'HU', 'LT', 'SV'];
 const CURRENCY_OPTIONS: Currency[] = ['USD', 'CAD', 'EUR', 'GBP', 'NOK', 'SEK', 'CHF', 'PLN', 'CZK', 'RON', 'DKK', 'HUF'];
 const REQUIRE_EMAIL_VERIFICATION = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim() === 'mobile-app-equipment-sales';
@@ -70,6 +92,7 @@ export function Profile() {
   const { formatPrice, language, currency, setLanguage, setCurrency } = useLocale();
   const { user, logout, toggleFavorite, patchCurrentUserProfile } = useAuth();
   const navigate = useNavigate();
+  const { confirm: showConfirm, alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams] = useSearchParams();
   const hasUser = Boolean(user);
   const entitlement = useMemo(() => resolveAccountEntitlement(user), [user]);
@@ -83,22 +106,25 @@ export function Profile() {
   );
   const hasAdminProfileScope = Boolean(normalizedRole && ADMIN_PROFILE_ROLES.has(normalizedRole));
   const hasContentStudioProfileScope = Boolean(normalizedRole && CONTENT_STUDIO_PROFILE_ROLES.has(normalizedRole));
-  const canViewSavedEquipment = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
-  const canViewSearchAlerts = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewSavedEquipment = hasUser && ['member', 'individual_seller', 'dealer', 'pro_dealer'].includes(normalizedRole);
+  const canViewSearchAlerts = hasUser && ['member', 'individual_seller', 'dealer', 'pro_dealer'].includes(normalizedRole);
   const canViewMyListings = hasSellerWorkspaceAccess;
   const canViewSellerInquiries = hasSellerWorkspaceAccess;
   const canViewSellerCalls = canViewMyListings;
-  const canViewBuyerFinancing = hasUser && ['buyer', 'member', 'individual_seller'].includes(normalizedRole);
+  const canViewBuyerFinancing = hasUser && ['member', 'individual_seller'].includes(normalizedRole);
   const storefrontTabLabel = user?.role === 'individual_seller' ? 'Public Profile' : 'Storefront';
+  const profilePageTitle = user?.role === 'pro_dealer'
+    ? 'Pro Dealer Storefront'
+    : user?.role === 'dealer'
+      ? 'Dealer Storefront'
+      : 'Profile';
   const roleDisplayLabel = getUserRoleDisplayLabel(user?.role);
   const hasPaidSellerSubscription = entitlement.sellerAccessMode === 'subscription';
   const subscriptionPlanLabel = hasPaidSellerSubscription
     ? getSellerPlanMarketingLabel(user?.activeSubscriptionPlanId)
     : normalizedRole === 'member'
-      ? 'Free Member'
-      : normalizedRole === 'buyer'
-        ? 'Buyer'
-        : 'No active seller plan';
+      ? 'Member'
+      : 'No active seller plan';
   const subscriptionStatusLabel = String(
     entitlement.subscriptionState !== 'none'
       ? entitlement.subscriptionState
@@ -126,7 +152,7 @@ export function Profile() {
         ? 'hidden until billing is restored'
         : 'not applicable';
   const profileTabs = useMemo(() => {
-    const tabs = ['Profile'];
+    const tabs = [ACCOUNT_OVERVIEW_TAB_LABEL];
     if (canViewSavedEquipment) tabs.push('Saved Equipment');
     if (canViewSearchAlerts) tabs.push('Search Alerts');
     if (canViewMyListings) tabs.push('My Listings');
@@ -134,6 +160,7 @@ export function Profile() {
     if (canViewSellerCalls) tabs.push('Calls');
     if (canViewBuyerFinancing) tabs.push('Financing');
     if (hasStorefrontAccess) tabs.push(storefrontTabLabel);
+    if (hasDealerWorkspaceAccess || hasAdminProfileScope) tabs.push('Managed Roles');
     tabs.push('Privacy & Data', 'Account Settings');
     return tabs;
   }, [
@@ -143,11 +170,13 @@ export function Profile() {
     canViewSearchAlerts,
     canViewSellerCalls,
     canViewSellerInquiries,
+    hasAdminProfileScope,
+    hasDealerWorkspaceAccess,
     hasStorefrontAccess,
     storefrontTabLabel,
   ]);
   const profileTabItems = useMemo(() => {
-    const items = [{ label: 'Profile', icon: LayoutDashboard }];
+    const items: Array<{ label: string; icon: React.ComponentType<{ className?: string; size?: number }>; href?: string }> = [{ label: ACCOUNT_OVERVIEW_TAB_LABEL, icon: User }];
     if (canViewSavedEquipment) items.push({ label: 'Saved Equipment', icon: Bookmark });
     if (canViewSearchAlerts) items.push({ label: 'Search Alerts', icon: Bell });
     if (canViewMyListings) items.push({ label: 'My Listings', icon: Package });
@@ -156,6 +185,12 @@ export function Profile() {
     if (canViewBuyerFinancing) items.push({ label: 'Financing', icon: CreditCard });
     if (hasStorefrontAccess) {
       items.push({ label: storefrontTabLabel, icon: Building2 });
+    }
+    if (hasDealerWorkspaceAccess) {
+      items.push({ label: 'DealerOS', icon: Database, href: '/dealer-os' });
+    }
+    if (hasDealerWorkspaceAccess || hasAdminProfileScope) {
+      items.push({ label: 'Managed Roles', icon: Users });
     }
     items.push(
       { label: 'Privacy & Data', icon: Shield },
@@ -169,6 +204,7 @@ export function Profile() {
     canViewSearchAlerts,
     canViewSellerCalls,
     canViewSellerInquiries,
+    hasDealerWorkspaceAccess,
     hasStorefrontAccess,
     storefrontTabLabel,
   ]);
@@ -185,7 +221,7 @@ export function Profile() {
     }
 
     const items = [
-      { label: 'Admin Overview', icon: LayoutDashboard, href: '/admin' },
+      { label: ACCOUNT_OVERVIEW_TAB_LABEL, icon: LayoutDashboard, href: '/admin' },
       { label: 'Performance', icon: Activity, href: '/admin?tab=tracking' },
       { label: 'Accounts', icon: Building2, href: '/admin?tab=accounts' },
       { label: 'Billing', icon: CreditCard, href: '/admin?tab=billing' },
@@ -203,8 +239,8 @@ export function Profile() {
   const resolveRequestedProfileTab = useCallback((requestedTab: string | null) => {
     const normalizedRequestedTab = requestedTab?.trim().toLowerCase() || '';
     const tabAlias =
-      normalizedRequestedTab === 'overview'
-        ? 'profile'
+      normalizedRequestedTab === 'profile'
+        ? 'overview'
         : normalizedRequestedTab === 'settings'
         ? 'account settings'
         : normalizedRequestedTab === 'privacy'
@@ -215,18 +251,22 @@ export function Profile() {
       return null;
     }
 
+    if (tabAlias === 'overview') {
+      return ACCOUNT_OVERVIEW_TAB_LABEL;
+    }
+
     return profileTabs.find((tab) => tab.toLowerCase() === tabAlias) || null;
   }, [profileTabs]);
   const resolvedRequestedProfileTab = useMemo(
-    () => resolveRequestedProfileTab(searchParams.get('tab')) || 'Profile',
+    () => resolveRequestedProfileTab(searchParams.get('tab')) || ACCOUNT_OVERVIEW_TAB_LABEL,
     [resolveRequestedProfileTab, searchParams]
   );
   const activeTab = resolvedRequestedProfileTab;
   const profileSeoTitle = `${activeTab} | Forestry Equipment Sales`;
-  const profileSeoDescription = activeTab === 'Profile'
+  const profileSeoDescription = activeTab === ACCOUNT_OVERVIEW_TAB_LABEL
     ? 'Manage your Forestry Equipment Sales account, listings, saved equipment, and subscription settings.'
     : `Manage ${activeTab.toLowerCase()} from your Forestry Equipment Sales account workspace.`;
-  const profileCanonicalPath = activeTab === 'Profile' ? '/profile' : `/profile?tab=${encodeURIComponent(activeTab)}`;
+  const profileCanonicalPath = '/profile';
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isListingModalOpen, setIsListingModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -250,6 +290,7 @@ export function Profile() {
   const [isSavingStorefront, setIsSavingStorefront] = useState(false);
   const [storefrontError, setStorefrontError] = useState('');
   const [storefrontNotice, setStorefrontNotice] = useState('');
+  const [storefrontAddressQuery, setStorefrontAddressQuery] = useState('');
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const mfaRecaptchaRef = useRef<RecaptchaVerifier | null>(null);
@@ -273,16 +314,32 @@ export function Profile() {
     storefrontSlug: '',
     storefrontTagline: '',
     storefrontDescription: '',
+    businessName: '',
+    street1: '',
+    street2: '',
+    city: '',
+    state: '',
+    county: '',
+    postalCode: '',
+    country: 'United States',
+    latitude: null as number | null,
+    longitude: null as number | null,
     location: '',
     phone: '',
     email: '',
     website: '',
     logo: '',
     coverPhotoUrl: '',
+    serviceAreaScopes: [] as string[],
+    serviceAreaStates: [] as string[],
+    serviceAreaCounties: [] as string[],
+    servicesOfferedCategories: [] as string[],
+    servicesOfferedSubcategories: [] as string[],
     seoTitle: '',
     seoDescription: '',
     seoKeywordsCsv: '',
   });
+  const [storefrontTaxonomy, setStorefrontTaxonomy] = useState<FullEquipmentTaxonomy>({});
   const [smsMfaFactors, setSmsMfaFactors] = useState<SmsMfaFactorSummary[]>([]);
   const [mfaPhoneNumber, setMfaPhoneNumber] = useState('');
   const [mfaDisplayName, setMfaDisplayName] = useState('');
@@ -340,7 +397,9 @@ export function Profile() {
             const listingCap = matchedPlan?.listingCap || user?.listingCap || 0;
             setCheckoutNotice(
               listingCap > 0
-                ? `Subscription activated. Your account can post up to ${listingCap} active ${listingCap === 1 ? 'machine' : 'machines'}.`
+                ? isUnlimitedListingCap(listingCap)
+                  ? 'Subscription activated. Your account can now post unlimited active machines.'
+                  : `Subscription activated. Your account can post up to ${getListingCapDisplayLabel(listingCap, 'active machine', 'active machines')}.`
                 : 'Subscription activated. Your account can now post listings.'
             );
           } else {
@@ -441,22 +500,98 @@ export function Profile() {
         ? user.seoKeywords.join(', ')
         : '';
 
+    const sellerName = storefrontPreview?.storefrontName || user.storefrontName || user.company || user.displayName || '';
+    const sellerLocation = storefrontPreview?.location || user.location || '';
+    const roleLabel = user.role === 'pro_dealer' ? 'Pro Dealer' : user.role === 'dealer' ? 'Dealer' : (user.role as string) === 'owner_operator' ? 'Owner-Operator' : '';
+    const locationSuffix = sellerLocation ? ` in ${sellerLocation}` : '';
+
+    const defaultSeoTitle = sellerName
+      ? `${sellerName} | ${roleLabel || 'Equipment Seller'} on Forestry Equipment Sales`
+      : '';
+    const defaultSeoDescription = sellerName
+      ? `Browse forestry and logging equipment from ${sellerName}${locationSuffix}. Verified ${roleLabel || 'seller'} on Forestry Equipment Sales — the trusted marketplace for industrial forestry machinery, skidders, harvesters, feller bunchers, and more.`
+      : '';
+    const defaultSeoKeywords = [
+      sellerName,
+      'forestry equipment',
+      'logging equipment',
+      'used forestry equipment',
+      roleLabel ? `${roleLabel.toLowerCase()} forestry` : '',
+      sellerLocation || '',
+      'skidders', 'harvesters', 'feller bunchers', 'forwarders',
+    ].filter(Boolean).join(', ');
+
     setStorefrontForm({
-      storefrontName: storefrontPreview?.storefrontName || user.storefrontName || user.company || user.displayName || '',
+      storefrontName: sellerName,
       storefrontSlug: storefrontPreview?.storefrontSlug || user.storefrontSlug || '',
       storefrontTagline: storefrontPreview?.storefrontTagline || user.storefrontTagline || '',
       storefrontDescription: storefrontPreview?.storefrontDescription || user.storefrontDescription || user.about || '',
-      location: storefrontPreview?.location || user.location || '',
+      businessName: storefrontPreview?.businessName || user.businessName || user.company || sellerName,
+      street1: storefrontPreview?.street1 || user.street1 || '',
+      street2: storefrontPreview?.street2 || user.street2 || '',
+      city: storefrontPreview?.city || user.city || '',
+      state: storefrontPreview?.state || user.state || '',
+      county: storefrontPreview?.county || user.county || '',
+      postalCode: storefrontPreview?.postalCode || user.postalCode || '',
+      country: storefrontPreview?.country || user.country || 'United States',
+      latitude: typeof storefrontPreview?.latitude === 'number' ? storefrontPreview.latitude : typeof user.latitude === 'number' ? user.latitude : null,
+      longitude: typeof storefrontPreview?.longitude === 'number' ? storefrontPreview.longitude : typeof user.longitude === 'number' ? user.longitude : null,
+      location: sellerLocation,
       phone: storefrontPreview?.phone || user.phoneNumber || '',
       email: storefrontPreview?.email || user.email || '',
       website: storefrontPreview?.website || user.website || '',
-      logo: storefrontPreview?.logo || user.photoURL || '',
+      logo: storefrontPreview?.logo || user.storefrontLogoUrl || user.photoURL || '',
       coverPhotoUrl: storefrontPreview?.coverPhotoUrl || user.coverPhotoUrl || '',
-      seoTitle: storefrontPreview?.seoTitle || user.seoTitle || '',
-      seoDescription: storefrontPreview?.seoDescription || user.seoDescription || '',
-      seoKeywordsCsv: keywords,
+      serviceAreaScopes: sanitizeServiceAreaScopes(storefrontPreview?.serviceAreaScopes || user.serviceAreaScopes || [], 8),
+      serviceAreaStates: storefrontPreview?.serviceAreaStates || user.serviceAreaStates || [],
+      serviceAreaCounties: storefrontPreview?.serviceAreaCounties || user.serviceAreaCounties || [],
+      servicesOfferedCategories: storefrontPreview?.servicesOfferedCategories || user.servicesOfferedCategories || [],
+      servicesOfferedSubcategories: storefrontPreview?.servicesOfferedSubcategories || user.servicesOfferedSubcategories || [],
+      seoTitle: storefrontPreview?.seoTitle || user.seoTitle || defaultSeoTitle,
+      seoDescription: storefrontPreview?.seoDescription || user.seoDescription || defaultSeoDescription,
+      seoKeywordsCsv: keywords || defaultSeoKeywords,
     });
   }, [storefrontPreview, user]);
+
+  useEffect(() => {
+    const nextAddressQuery = [
+      storefrontForm.street1,
+      storefrontForm.city,
+      storefrontForm.state,
+      storefrontForm.postalCode,
+      storefrontForm.country,
+    ].filter(Boolean).join(', ') || storefrontForm.location || '';
+
+    setStorefrontAddressQuery((current) => (current === nextAddressQuery ? current : nextAddressQuery));
+  }, [
+    storefrontForm.city,
+    storefrontForm.country,
+    storefrontForm.location,
+    storefrontForm.postalCode,
+    storefrontForm.state,
+    storefrontForm.street1,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStorefrontTaxonomy = async () => {
+      try {
+        const taxonomy = await taxonomyService.getFullTaxonomy();
+        if (active) {
+          setStorefrontTaxonomy(taxonomy);
+        }
+      } catch (error) {
+        console.warn('Unable to load storefront taxonomy options right now:', error);
+      }
+    };
+
+    void loadStorefrontTaxonomy();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || auth.currentUser?.uid !== user.uid) {
@@ -477,6 +612,53 @@ export function Profile() {
     resetRecaptchaVerifier(mfaRecaptchaRef.current);
     mfaRecaptchaRef.current = null;
   }, []);
+
+  const storefrontCategoryOptions = useMemo(
+    () => getTaxonomyCategoryOptions(storefrontTaxonomy).map((value) => ({ value, count: 0 })),
+    [storefrontTaxonomy]
+  );
+
+  const storefrontSubcategoryOptions = useMemo(() => {
+    return getTaxonomySubcategoryOptions(
+      storefrontTaxonomy,
+      storefrontForm.servicesOfferedCategories
+    ).map((value) => ({ value, count: 0 }));
+  }, [storefrontForm.servicesOfferedCategories, storefrontTaxonomy]);
+
+  const storefrontServiceAreaScopeOptions = useMemo(
+    () => SERVICE_AREA_SCOPE_OPTIONS.map((value) => ({ value, count: 0 })),
+    []
+  );
+
+  const BROAD_SCOPES = new Set(['USA', 'Canada', 'Global']);
+  const selectedStatesFromScope = useMemo(
+    () => storefrontForm.serviceAreaScopes.filter((s) => !BROAD_SCOPES.has(s)),
+    [storefrontForm.serviceAreaScopes]
+  );
+
+  const countySuggestions = useMemo(() => {
+    const allStates = [...new Set([...selectedStatesFromScope, ...storefrontForm.serviceAreaStates])];
+    const stateCounties = getCountiesForStates(allStates);
+    const suggestions = new Set<string>(stateCounties);
+    if (storefrontForm.county.trim()) suggestions.add(storefrontForm.county.trim());
+    storefrontForm.serviceAreaCounties.forEach((county) => suggestions.add(county));
+    return Array.from(suggestions).sort((left, right) => left.localeCompare(right));
+  }, [storefrontForm.county, storefrontForm.serviceAreaCounties, selectedStatesFromScope, storefrontForm.serviceAreaStates]);
+  const hasStorefrontGeoCoordinates =
+    typeof storefrontForm.latitude === 'number' &&
+    typeof storefrontForm.longitude === 'number' &&
+    !(Math.abs(storefrontForm.latitude) < 0.000001 && Math.abs(storefrontForm.longitude) < 0.000001);
+
+  useEffect(() => {
+    if (!storefrontForm.servicesOfferedSubcategories.length) return;
+    if (!Object.keys(storefrontTaxonomy).length) return;
+
+    const allowed = new Set(storefrontSubcategoryOptions.map((option) => option.value));
+    const filtered = storefrontForm.servicesOfferedSubcategories.filter((value) => allowed.has(value));
+    if (filtered.length !== storefrontForm.servicesOfferedSubcategories.length) {
+      setStorefrontForm((prev) => ({ ...prev, servicesOfferedSubcategories: filtered }));
+    }
+  }, [storefrontForm.servicesOfferedSubcategories, storefrontSubcategoryOptions, storefrontTaxonomy]);
 
   const handleSettingsInputChange = (key: keyof typeof settingsForm, value: string) => {
     setSettingsForm((prev) => ({ ...prev, [key]: value }));
@@ -564,7 +746,7 @@ export function Profile() {
       const verificationId = await startSmsMfaEnrollment(authUser, normalizedPhoneNumber, verifier);
       setMfaVerificationId(verificationId);
       setMfaVerificationCode('');
-      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for ForestryEquipmentSales.com. Enter the code below to finish enrollment.`);
+      setMfaNotice(`Verification code sent to ${normalizedPhoneNumber} for Forestry Equipment Sales.com. Enter the code below to finish enrollment.`);
     } catch (error) {
       resetProfileMfaRecaptcha();
       setMfaError(getMfaErrorMessage(error, 'Unable to start SMS multi-factor enrollment right now.'));
@@ -849,7 +1031,7 @@ export function Profile() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `forestry-equipment-sales-data-export-${user?.uid}.json`;
+    a.download = `timberequip-data-export-${user?.uid}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -864,7 +1046,7 @@ export function Profile() {
       window.location.href = '/';
     } catch (error) {
       console.error('Error deleting account:', error);
-      alert('Failed to delete account. Please contact support.');
+      await showAlert({ title: 'Error', message: 'Failed to delete account. Please contact support.', variant: 'warning' });
     }
   };
 
@@ -941,6 +1123,14 @@ export function Profile() {
   const [financingRequests, setFinancingRequests] = useState<FinancingRequest[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [listingSearchQuery, setListingSearchQuery] = useState('');
+  const [listingDisplayCount, setListingDisplayCount] = useState(10);
+  const [selectedListingIds, setSelectedListingIds] = useState<Set<string>>(new Set());
+  const [financingDisplayCount, setFinancingDisplayCount] = useState(10);
+  const [inquirySearchQuery, setInquirySearchQuery] = useState('');
+  const [inquiryDisplayCount, setInquiryDisplayCount] = useState(10);
+  const [callSearchQuery, setCallSearchQuery] = useState('');
+  const [callDisplayCount, setCallDisplayCount] = useState(10);
   const listingTitleLookup = useMemo(
     () => new Map(myListings.map((listing) => [listing.id, listing.title])),
     [myListings]
@@ -952,7 +1142,7 @@ export function Profile() {
     }
 
     replaceProfileSearchParams((nextParams) => {
-      if (nextTab === 'Profile') {
+      if (nextTab === ACCOUNT_OVERVIEW_TAB_LABEL) {
         nextParams.delete('tab');
       } else {
         nextParams.set('tab', nextTab);
@@ -1013,7 +1203,7 @@ export function Profile() {
   const getProfileSectionsForTab = useCallback((tab: string) => {
     const sections = new Set<string>();
 
-    if (tab === 'Profile') {
+    if (tab === ACCOUNT_OVERVIEW_TAB_LABEL) {
       if (canViewSavedEquipment) sections.add('savedAssets');
       if (canViewSearchAlerts) sections.add('savedSearches');
       if (canViewMyListings) sections.add('myListings');
@@ -1048,46 +1238,63 @@ export function Profile() {
       return;
     }
 
-    switch (section) {
-      case 'myListings': {
-        const nextListings = await equipmentService.getMyListings();
-        setMyListings(nextListings);
-        break;
+    try {
+      switch (section) {
+        case 'myListings': {
+          if (hasAdminProfileScope) {
+            const allListings: Listing[] = [];
+            let cursor: string | null = null;
+            let hasMore = true;
+            while (hasMore) {
+              const page = await equipmentService.getAdminListingsPage({ pageSize: 100, cursor: cursor ?? undefined });
+              allListings.push(...page.listings);
+              cursor = page.nextCursor;
+              hasMore = page.hasMore;
+            }
+            setMyListings(allListings);
+          } else {
+            const nextListings = await equipmentService.getMyListings();
+            setMyListings(nextListings);
+          }
+          break;
+        }
+        case 'financingRequests': {
+          const nextFinancingRequests = await equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role });
+          setFinancingRequests(nextFinancingRequests);
+          break;
+        }
+        case 'savedSearches': {
+          const nextSavedSearches = await userService.getSavedSearches(user.uid);
+          setSavedSearches(nextSavedSearches);
+          break;
+        }
+        case 'savedAssets': {
+          const nextSavedAssets = user.favorites && user.favorites.length > 0
+            ? await equipmentService.getListingsByIds(user.favorites)
+            : [];
+          setSavedAssets(nextSavedAssets);
+          break;
+        }
+        case 'calls': {
+          const nextCalls = await equipmentService.getMyCalls();
+          setCalls(nextCalls);
+          break;
+        }
+        case 'inquiries': {
+          const nextInquiries = await equipmentService.getMyInquiries();
+          setInquiries(nextInquiries);
+          break;
+        }
+        case 'storefrontPreview': {
+          const nextStorefront = await equipmentService.getMyStorefront();
+          setStorefrontPreview(nextStorefront || null);
+          break;
+        }
+        default:
+          break;
       }
-      case 'financingRequests': {
-        const nextFinancingRequests = await equipmentService.getFinancingRequests({ userUid: user.uid, role: user.role });
-        setFinancingRequests(nextFinancingRequests);
-        break;
-      }
-      case 'savedSearches': {
-        const nextSavedSearches = await userService.getSavedSearches(user.uid);
-        setSavedSearches(nextSavedSearches);
-        break;
-      }
-      case 'savedAssets': {
-        const nextSavedAssets = user.favorites && user.favorites.length > 0
-          ? await equipmentService.getListingsByIds(user.favorites)
-          : [];
-        setSavedAssets(nextSavedAssets);
-        break;
-      }
-      case 'calls': {
-        const nextCalls = await equipmentService.getMyCalls();
-        setCalls(nextCalls);
-        break;
-      }
-      case 'inquiries': {
-        const nextInquiries = await equipmentService.getMyInquiries();
-        setInquiries(nextInquiries);
-        break;
-      }
-      case 'storefrontPreview': {
-        const nextStorefront = await equipmentService.getMyStorefront();
-        setStorefrontPreview(nextStorefront || null);
-        break;
-      }
-      default:
-        break;
+    } catch (error) {
+      console.warn(`Profile section "${section}" failed to load:`, error);
     }
   }, [user]);
 
@@ -1099,7 +1306,7 @@ export function Profile() {
   const isCurrentProfileTabReady = currentProfileSections.every((section) => loadedProfileSections[section]);
   const shouldShowProfileLoadingShell =
     profileDataLoading &&
-    activeTab === 'Profile' &&
+    activeTab === ACCOUNT_OVERVIEW_TAB_LABEL &&
     currentProfileSections.length > 0 &&
     !isCurrentProfileTabReady &&
     Object.keys(loadedProfileSections).length === 0;
@@ -1137,8 +1344,10 @@ export function Profile() {
           return next;
         });
 
-        if (results.some((result) => result.status === 'rejected')) {
-          setProfileDataError('Some account data could not be loaded. Refresh to retry.');
+        // Individual section loaders handle their own errors gracefully.
+        // Only surface an error if every single section failed.
+        if (results.length > 0 && results.every((result) => result.status === 'rejected')) {
+          setProfileDataError('Unable to load account data right now. Refresh to retry.');
         }
       } catch (error) {
         if (cancelled || profileSectionRequestIdRef.current !== requestId) {
@@ -1177,10 +1386,11 @@ export function Profile() {
     ? Math.max(featuredListingCap - featuredListingCount, 0)
     : null;
   const isOwnerOperatorAccount = normalizedRole === 'individual_seller';
+  const canBulkDeleteListings = Boolean(normalizedRole && ['super_admin', 'admin', 'developer', 'dealer', 'pro_dealer'].includes(normalizedRole));
   const featuredSlotsHelperText = remainingFeaturedSlots === null
     ? 'Unlimited featured control'
     : isOwnerOperatorAccount
-      ? `${remainingFeaturedSlots} featured upgrade slot${remainingFeaturedSlots === 1 ? '' : 's'} remaining`
+      ? 'Purchase featured listing upgrades at $20/each'
       : `${remainingFeaturedSlots} slots remaining`;
 
   const formatDateLabel = (value?: string) => {
@@ -1353,7 +1563,8 @@ export function Profile() {
   };
 
   const handleDeleteListing = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this listing?')) {
+    const ok = await showConfirm({ title: 'Confirm Delete', message: 'Are you sure you want to delete this listing?', variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) {
       return;
     }
 
@@ -1362,8 +1573,47 @@ export function Profile() {
       setMyListings((prev) => prev.filter((listing) => listing.id !== id));
     } catch (error) {
       console.error('Failed to delete listing:', error);
-      alert('Unable to delete listing right now. Please try again.');
+      await showAlert({ title: 'Error', message: 'Unable to delete listing right now. Please try again.', variant: 'warning' });
     }
+  };
+
+  const handleBulkDeleteListings = async () => {
+    const count = selectedListingIds.size;
+    if (count === 0) return;
+    const message = count === 1
+      ? 'Are you sure you want to delete this listing?'
+      : `Are you sure you want to delete these ${count} listings?`;
+    const ok = await showConfirm({ title: 'Confirm Delete', message, variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) return;
+
+    const ids = [...selectedListingIds];
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        await equipmentService.deleteListing(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    setMyListings((prev) => prev.filter((listing) => !ids.includes(listing.id) || failed.includes(listing.id)));
+    setSelectedListingIds(new Set());
+    if (failed.length > 0) {
+      setListingActionError(`${failed.length} listing${failed.length !== 1 ? 's' : ''} could not be deleted.`);
+    } else {
+      setListingActionNotice(`${count} listing${count !== 1 ? 's' : ''} deleted.`);
+    }
+  };
+
+  const toggleListingSelection = (id: string) => {
+    setSelectedListingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleSaveListing = async (listingData: any) => {
@@ -1412,7 +1662,43 @@ export function Profile() {
   };
 
   const handleStorefrontInputChange = (key: keyof typeof storefrontForm, value: string) => {
-    setStorefrontForm((prev) => ({ ...prev, [key]: value }));
+    setStorefrontForm((prev) => ({ ...prev, [key]: value } as typeof prev));
+  };
+
+  const handleStorefrontPlaceSelect = (place: GooglePlaceSelection) => {
+    setStorefrontForm((prev) => {
+      const resolvedCity = place.city || prev.city;
+      const resolvedState = place.state || prev.state;
+      const resolvedCountry = place.country || prev.country || 'United States';
+
+      return {
+        ...prev,
+        street1: place.street1 || prev.street1,
+        city: resolvedCity,
+        state: resolvedState,
+        county: place.county || prev.county,
+        postalCode: place.postalCode || prev.postalCode,
+        country: resolvedCountry,
+        location: [resolvedCity, resolvedState, resolvedCountry].filter(Boolean).join(', ') || place.formattedAddress || prev.location,
+        latitude: typeof place.latitude === 'number' ? place.latitude : prev.latitude,
+        longitude: typeof place.longitude === 'number' ? place.longitude : prev.longitude,
+      };
+    });
+  };
+
+  const handleStorefrontArrayChange = (
+    key:
+      | 'serviceAreaScopes'
+      | 'serviceAreaStates'
+      | 'serviceAreaCounties'
+      | 'servicesOfferedCategories'
+      | 'servicesOfferedSubcategories',
+    values: string[]
+  ) => {
+    setStorefrontForm((prev) => ({
+      ...prev,
+      [key]: key === 'serviceAreaScopes' ? sanitizeServiceAreaScopes(values, 8) : values,
+    } as typeof prev));
   };
 
   const handleSaveStorefront = async () => {
@@ -1442,6 +1728,21 @@ export function Profile() {
           preferredSlug: storefrontForm.storefrontSlug.trim(),
           storefrontTagline: storefrontForm.storefrontTagline.trim(),
           storefrontDescription: storefrontForm.storefrontDescription.trim(),
+          businessName: storefrontForm.businessName.trim(),
+          street1: storefrontForm.street1.trim(),
+          street2: storefrontForm.street2.trim(),
+          city: storefrontForm.city.trim(),
+          state: storefrontForm.state.trim(),
+          county: storefrontForm.county.trim(),
+          postalCode: storefrontForm.postalCode.trim(),
+          country: storefrontForm.country.trim(),
+          latitude: storefrontForm.latitude,
+          longitude: storefrontForm.longitude,
+          serviceAreaScopes: storefrontForm.serviceAreaScopes,
+          serviceAreaStates: storefrontForm.serviceAreaStates,
+          serviceAreaCounties: storefrontForm.serviceAreaCounties,
+          servicesOfferedCategories: storefrontForm.servicesOfferedCategories,
+          servicesOfferedSubcategories: storefrontForm.servicesOfferedSubcategories,
           location: storefrontForm.location.trim(),
           phone: storefrontForm.phone.trim(),
           email: storefrontForm.email.trim().toLowerCase(),
@@ -1469,6 +1770,16 @@ export function Profile() {
 
   const renderOverview = () => (
     <div className="space-y-12">
+      <div className="space-y-4">
+        <div>
+          <span className="label-micro text-accent block mb-2">Account Dashboard</span>
+          <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">{ACCOUNT_OVERVIEW_TAB_LABEL}</h3>
+        </div>
+        <p className="max-w-3xl text-xs font-medium uppercase tracking-widest leading-relaxed text-muted">
+          Review your latest account activity, saved equipment, live listings, lead flow, and financing activity from one workspace.
+        </p>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
@@ -1493,39 +1804,57 @@ export function Profile() {
         })}
       </div>
 
-      {/* Recent Activity */}
-      <div className="bg-bg border border-line shadow-sm">
-        <div className="p-6 border-b border-line flex justify-between items-center bg-surface/30">
-          <h3 className="text-xs font-black uppercase tracking-widest">Recent Activity</h3>
-          <button className="text-[10px] font-bold text-accent uppercase hover:underline">View All</button>
-        </div>
-        <div className="divide-y divide-line">
-          {[
-            { action: 'Equipment Saved', target: '2022 Tigercat 855E', time: '2 hours ago' },
-            { action: 'Inquiry Sent', target: '2019 John Deere 959M', time: '1 day ago' },
-            { action: 'Alert Triggered', target: 'New Skidder Inventory', time: '3 days ago' },
-            { action: 'Profile Login', target: 'Mobile Device', time: '5 days ago' }
-          ].map((activity, i) => (
-            <div key={i} className="p-6 flex justify-between items-center hover:bg-surface/50 transition-colors">
-              <div className="flex items-center space-x-4">
-                <div className="w-2 h-2 bg-accent rounded-full"></div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold uppercase tracking-wider">{activity.action}</span>
-                  <span className="text-[10px] font-medium text-muted uppercase tracking-widest">{activity.target}</span>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{activity.time}</span>
+      {/* Recent Activity — populated from user's own data */}
+      {(() => {
+        const recentItems: Array<{ action: string; target: string; time: string }> = [];
+        if (canViewSellerInquiries) {
+          inquiries.slice(0, 3).forEach((inq) => {
+            const title = listingTitleLookup.get(inq.listingId || '') || inq.listingId || 'Equipment';
+            const _inqCreatedAt = inq.createdAt as unknown as string | { toDate: () => Date } | null | undefined;
+            const ago = _inqCreatedAt ? new Date(typeof _inqCreatedAt === 'object' && 'toDate' in _inqCreatedAt ? (_inqCreatedAt as { toDate: () => Date }).toDate() : _inqCreatedAt as string).toLocaleDateString() : '';
+            recentItems.push({ action: `Inquiry — ${inq.status || 'New'}`, target: title, time: ago });
+          });
+        }
+        if (canViewSavedEquipment) {
+          savedAssets.slice(0, 2).forEach((listing) => {
+            recentItems.push({ action: 'Saved Equipment', target: listing.title || 'Equipment', time: '' });
+          });
+        }
+        if (canViewMyListings) {
+          myListings.slice(0, 2).forEach((listing) => {
+            recentItems.push({ action: `Listing — ${listing.status || 'active'}`, target: listing.title || 'Equipment', time: '' });
+          });
+        }
+        if (recentItems.length === 0) return null;
+        return (
+          <div className="bg-bg border border-line shadow-sm">
+            <div className="p-6 border-b border-line flex justify-between items-center bg-surface/30">
+              <h3 className="text-xs font-black uppercase tracking-widest">Recent Activity</h3>
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="divide-y divide-line">
+              {recentItems.slice(0, 6).map((activity, i) => (
+                <div key={i} className="p-6 flex justify-between items-center hover:bg-surface/50 transition-colors">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-2 h-2 bg-accent rounded-full"></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold uppercase tracking-wider">{activity.action}</span>
+                      <span className="text-[10px] font-medium text-muted uppercase tracking-widest">{activity.target}</span>
+                    </div>
+                  </div>
+                  {activity.time ? <span className="text-[10px] font-bold text-muted uppercase tracking-widest">{activity.time}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
   const renderMyListings = () => (
     <div className="space-y-8">
       <div className="flex justify-between items-center gap-3 flex-wrap">
-        <h3 className="text-sm font-black uppercase tracking-widest">My Inventory</h3>
+        <h3 className="text-sm font-black uppercase tracking-widest">{hasAdminProfileScope ? 'All Listings' : 'My Inventory'}</h3>
         <div className="flex items-center gap-2 flex-wrap">
           {myListings.length > 0 && (
             <button onClick={exportMyListingsCSV} className="btn-industrial py-2 px-4 flex items-center text-[10px]">
@@ -1567,7 +1896,11 @@ export function Profile() {
             {remainingManagedListings === null ? 'Unlimited' : remainingManagedListings}
           </p>
           <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-            {finiteListingCap === null ? 'Admin / super admin unlimited posting access' : `${finiteListingCap} listing allowance`}
+            {finiteListingCap === null
+              ? 'Admin / super admin unlimited posting access'
+              : isOwnerOperatorAccount
+                ? `${finiteListingCap} listing slot included — purchase additional at $39/each`
+                : `${finiteListingCap} listing allowance`}
           </p>
         </div>
         <div className="rounded-sm border border-line bg-surface p-4">
@@ -1580,14 +1913,68 @@ export function Profile() {
           </p>
           {isOwnerOperatorAccount && (
             <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-accent">
-              Owner-Operators can upgrade one active listing to featured.
+              Purchase featured listing upgrades to boost visibility — $20 per listing.
             </p>
           )}
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4">
-        {myListings.map((listing) => (
-           <div key={listing.id} className="bg-surface border border-line p-4 flex flex-col sm:flex-row gap-4 shadow-sm hover:border-accent/50 transition-colors">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <input
+          type="text"
+          value={listingSearchQuery}
+          onChange={(e) => { setListingSearchQuery(e.target.value); setListingDisplayCount(10); }}
+          placeholder="Search listings..."
+          className="input-industrial w-full max-w-sm px-3 text-[10px] font-bold uppercase tracking-widest"
+        />
+        <span className="text-[9px] font-black uppercase tracking-widest text-muted whitespace-nowrap">
+          {(() => { const lq = listingSearchQuery.toLowerCase(); const filtered = lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings; return `${filtered.length} listing${filtered.length !== 1 ? 's' : ''}`; })()}
+        </span>
+      </div>
+      {canBulkDeleteListings && myListings.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-2 cursor-pointer text-[10px] font-black uppercase tracking-widest text-muted">
+            <input
+              type="checkbox"
+              className="accent-accent w-4 h-4"
+              checked={(() => { const lq = listingSearchQuery.toLowerCase(); const visible = (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount); return visible.length > 0 && visible.every(l => selectedListingIds.has(l.id)); })()}
+              onChange={(e) => {
+                const lq = listingSearchQuery.toLowerCase();
+                const visible = (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount);
+                if (e.target.checked) {
+                  setSelectedListingIds((prev) => { const next = new Set(prev); visible.forEach(l => next.add(l.id)); return next; });
+                } else {
+                  setSelectedListingIds((prev) => { const next = new Set(prev); visible.forEach(l => next.delete(l.id)); return next; });
+                }
+              }}
+            />
+            Select All
+          </label>
+          {selectedListingIds.size > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleBulkDeleteListings()}
+              className="btn-industrial btn-accent py-2 px-4 flex items-center text-[10px]"
+            >
+              <Trash2 size={14} className="mr-2" />
+              Delete Selected ({selectedListingIds.size})
+            </button>
+          )}
+        </div>
+      )}
+      <div className="max-h-[700px] overflow-y-auto pr-1 grid grid-cols-1 gap-4">
+        {(() => { const lq = listingSearchQuery.toLowerCase(); return (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).slice(0, listingDisplayCount); })().map((listing) => (
+           <div key={listing.id} className={`bg-surface border p-4 flex flex-col sm:flex-row gap-4 shadow-sm transition-colors ${selectedListingIds.has(listing.id) ? 'border-accent' : 'border-line hover:border-accent/50'}`}>
+             {canBulkDeleteListings && (
+               <div className="flex items-start pt-1 flex-shrink-0">
+                 <input
+                   type="checkbox"
+                   className="accent-accent w-4 h-4 cursor-pointer"
+                   checked={selectedListingIds.has(listing.id)}
+                   onChange={() => toggleListingSelection(listing.id)}
+                   aria-label={`Select ${listing.title}`}
+                 />
+               </div>
+             )}
              <div className="w-full sm:w-40 md:w-48 aspect-video bg-bg border border-line overflow-hidden rounded-sm flex-shrink-0">
               <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
             </div>
@@ -1614,10 +2001,10 @@ export function Profile() {
                  <div className="flex items-center gap-2 flex-shrink-0">
                    <span className="text-base md:text-xl font-black tracking-tighter">{formatPrice(listing.price, listing.currency || 'USD', 0)}</span>
                    <div className="flex gap-1 sm:hidden">
-                     <button onClick={() => handleEditListing(listing)} className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
+                     <button onClick={() => handleEditListing(listing)} aria-label="Edit listing" className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
                        <Edit size={14} />
                      </button>
-                     <button onClick={() => handleDeleteListing(listing.id)} className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
+                     <button onClick={() => handleDeleteListing(listing.id)} aria-label="Delete listing" className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm">
                        <Trash2 size={14} />
                      </button>
                    </div>
@@ -1626,6 +2013,8 @@ export function Profile() {
               <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
                 <span className="flex items-center"><Clock size={12} className="mr-1" /> {listing.hours} HRS</span>
                 <span className="flex items-center"><MapPin size={12} className="mr-1" /> {listing.location}</span>
+                <span className="flex items-center"><Eye size={12} className="mr-1" /> {listing.views || 0} VIEWS</span>
+                <span className="flex items-center"><MessageSquare size={12} className="mr-1" /> {listing.leads || 0} LEADS</span>
                 {listing.featured ? <span className="flex items-center text-accent"><Star size={12} className="mr-1" /> FEATURED</span> : null}
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -1667,14 +2056,16 @@ export function Profile() {
               </div>
             </div>
              <div className="hidden sm:flex sm:flex-col gap-2 flex-shrink-0">
-              <button 
+              <button
                 onClick={() => handleEditListing(listing)}
+                aria-label="Edit listing"
                 className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm"
               >
                 <Edit size={16} />
               </button>
-              <button 
+              <button
                 onClick={() => handleDeleteListing(listing.id)}
+                aria-label="Delete listing"
                 className="p-2 bg-bg border border-line text-muted hover:text-accent hover:border-accent transition-all rounded-sm"
               >
                 <Trash2 size={16} />
@@ -1683,13 +2074,22 @@ export function Profile() {
           </div>
         ))}
       </div>
+      {(() => { const lq = listingSearchQuery.toLowerCase(); const total = (lq ? myListings.filter(l => [l.title, l.category, l.location, l.make, l.model, l.id].some(f => String(f || '').toLowerCase().includes(lq))) : myListings).length; return total > listingDisplayCount ? (
+        <button
+          type="button"
+          onClick={() => setListingDisplayCount((prev) => prev + 10)}
+          className="mt-4 w-full py-3 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+        >
+          View More ({total - listingDisplayCount} remaining)
+        </button>
+      ) : null; })()}
     </div>
   );
 
   const renderAlerts = () => (
     <div className="space-y-8">
       <h3 className="text-sm font-black uppercase tracking-widest">Search Alerts & Notifications</h3>
-      <div className="grid grid-cols-1 gap-4">
+      <div className="max-h-[500px] overflow-y-auto pr-1 grid grid-cols-1 gap-4">
         {savedSearches.map((alert) => (
            <div key={alert.id} className="bg-surface border border-line p-4 md:p-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 shadow-sm">
             <div className="space-y-1">
@@ -1705,10 +2105,10 @@ export function Profile() {
               <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${alert.status === 'active' ? 'bg-data/10 text-data' : 'bg-line text-muted'}`}>
                 {alert.status}
               </span>
-              <button className="p-2 text-muted hover:text-ink transition-colors" onClick={() => handleToggleSavedSearchStatus(alert)}>
+              <button className="p-2 text-muted hover:text-ink transition-colors" onClick={() => handleToggleSavedSearchStatus(alert)} aria-label="Toggle saved search status">
                 <Settings size={16} />
               </button>
-              <button className="p-2 text-muted hover:text-accent transition-colors" onClick={() => handleDeleteSavedSearch(alert.id)}>
+              <button className="p-2 text-muted hover:text-accent transition-colors" onClick={() => handleDeleteSavedSearch(alert.id)} aria-label="Delete saved search">
                 <Trash2 size={16} />
               </button>
             </div>
@@ -1756,8 +2156,8 @@ export function Profile() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {financingRequests.map((request) => (
+        <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
+          {financingRequests.slice(0, financingDisplayCount).map((request) => (
             <div key={request.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="space-y-2 min-w-0">
@@ -1769,7 +2169,7 @@ export function Profile() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${request.status === 'Won' ? 'bg-data/10 text-data' : request.status === 'Lost' || request.status === 'Closed' ? 'bg-accent/10 text-accent' : 'bg-ink text-white'}`}>
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${request.status === 'Won' ? 'bg-data/10 text-data' : request.status === 'Lost' || request.status === 'Closed' ? 'bg-accent/10 text-accent' : 'bg-surface text-ink border border-line'}`}>
                     {request.status}
                   </span>
                   <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
@@ -1797,6 +2197,15 @@ export function Profile() {
               </div>
             </div>
           ))}
+          {financingRequests.length > financingDisplayCount && (
+            <button
+              type="button"
+              onClick={() => setFinancingDisplayCount((prev) => prev + 10)}
+              className="w-full py-3 text-center text-[10px] font-black uppercase tracking-widest text-accent border border-line bg-surface hover:bg-bg transition-colors rounded-sm"
+            >
+              View More ({financingRequests.length - financingDisplayCount} remaining)
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1811,9 +2220,9 @@ export function Profile() {
         return 'bg-accent/10 text-accent';
       case 'Qualified':
       case 'Contacted':
-        return 'bg-amber-500/10 text-amber-700';
+        return 'bg-amber-500/10 text-amber-600';
       default:
-        return 'bg-ink text-white';
+        return 'bg-surface text-muted';
     }
   };
 
@@ -1857,59 +2266,97 @@ export function Profile() {
             Buyer inquiry submissions from your live listings will appear here automatically.
           </p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {inquiries.map((inquiry) => (
-            <div key={inquiry.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2 min-w-0">
-                  <p className="text-xs font-black uppercase tracking-widest">{inquiry.buyerName || 'Unknown buyer'}</p>
-                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
-                    <span>{inquiry.type || 'Inquiry'}</span>
-                    <span>{formatDateLabel(inquiry.createdAt)}</span>
-                    <span>{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General listing inquiry'}</span>
+      ) : (() => {
+        const q = inquirySearchQuery.toLowerCase();
+        const filtered = q
+          ? inquiries.filter((inq) =>
+              (inq.buyerName || '').toLowerCase().includes(q) ||
+              (inq.buyerEmail || '').toLowerCase().includes(q) ||
+              (inq.message || '').toLowerCase().includes(q) ||
+              (inq.status || '').toLowerCase().includes(q) ||
+              (listingTitleLookup.get(inq.listingId || '') || '').toLowerCase().includes(q)
+            )
+          : inquiries;
+        const visible = filtered.slice(0, inquiryDisplayCount);
+        const hasMore = filtered.length > inquiryDisplayCount;
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search inquiries..."
+                value={inquirySearchQuery}
+                onChange={(e) => { setInquirySearchQuery(e.target.value); setInquiryDisplayCount(10); }}
+                className="w-full bg-surface border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2.5 placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div className="max-h-[700px] overflow-y-auto pr-1 space-y-4">
+              {visible.map((inquiry) => (
+                <div key={inquiry.id} className="bg-surface border border-line p-6 space-y-5 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2 min-w-0">
+                      <p className="text-xs font-black uppercase tracking-widest">{inquiry.buyerName || 'Unknown buyer'}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
+                        <span>{inquiry.type || 'Inquiry'}</span>
+                        <span>{formatDateLabel(inquiry.createdAt)}</span>
+                        <span>{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General listing inquiry'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInquiryStatusClasses(inquiry.status)}`}>
+                        {inquiry.status}
+                      </span>
+                      {inquiry.assignedToName ? (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                          Assigned: {inquiry.assignedToName}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-bold uppercase tracking-widest">
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Contact</p>
+                      <p className="text-xs text-ink break-words">{inquiry.buyerEmail || 'No email provided'}</p>
+                      <p className="text-muted normal-case">{inquiry.buyerPhone || 'No phone provided'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Listing</p>
+                      <p className="text-xs text-ink break-words">{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General inquiry'}</p>
+                      <p className="text-muted">Seller UID: {inquiry.sellerUid || inquiry.sellerId || 'Unknown'}</p>
+                    </div>
+                    <div className="bg-bg border border-line p-4 space-y-2">
+                      <p className="text-muted">Lead Quality</p>
+                      <p className="text-xs text-ink">Spam Score: {inquiry.spamScore ?? 0}</p>
+                      <p className="text-muted break-words">{inquiry.spamFlags?.length ? inquiry.spamFlags.join(', ') : 'No flags'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-bg border border-line p-4 space-y-2">
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Buyer Message</p>
+                    <p className="text-[11px] leading-relaxed text-ink break-words">
+                      {inquiry.message || 'No additional message was provided.'}
+                    </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm ${getInquiryStatusClasses(inquiry.status)}`}>
-                    {inquiry.status}
-                  </span>
-                  {inquiry.assignedToName ? (
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                      Assigned: {inquiry.assignedToName}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-bold uppercase tracking-widest">
-                <div className="bg-bg border border-line p-4 space-y-2">
-                  <p className="text-muted">Contact</p>
-                  <p className="text-xs text-ink break-words">{inquiry.buyerEmail || 'No email provided'}</p>
-                  <p className="text-muted normal-case">{inquiry.buyerPhone || 'No phone provided'}</p>
-                </div>
-                <div className="bg-bg border border-line p-4 space-y-2">
-                  <p className="text-muted">Listing</p>
-                  <p className="text-xs text-ink break-words">{listingTitleLookup.get(inquiry.listingId || '') || inquiry.listingId || 'General inquiry'}</p>
-                  <p className="text-muted">Seller UID: {inquiry.sellerUid || inquiry.sellerId || 'Unknown'}</p>
-                </div>
-                <div className="bg-bg border border-line p-4 space-y-2">
-                  <p className="text-muted">Lead Quality</p>
-                  <p className="text-xs text-ink">Spam Score: {inquiry.spamScore ?? 0}</p>
-                  <p className="text-muted break-words">{inquiry.spamFlags?.length ? inquiry.spamFlags.join(', ') : 'No flags'}</p>
-                </div>
-              </div>
-
-              <div className="bg-bg border border-line p-4 space-y-2">
-                <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Buyer Message</p>
-                <p className="text-[11px] leading-relaxed text-ink break-words">
-                  {inquiry.message || 'No additional message was provided.'}
-                </p>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted pt-2">
+              <span>Showing {visible.length} of {filtered.length} inquiries</span>
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setInquiryDisplayCount((prev) => prev + 10)}
+                  className="btn-industrial py-2 px-4 text-[10px]"
+                >
+                  View More
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
@@ -1953,75 +2400,116 @@ export function Profile() {
             Calls will appear here when buyers press the call button on your listings.
           </p>
         </div>
-      ) : (
-        <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-[10px] font-bold uppercase tracking-widest text-left">
-              <thead className="bg-surface text-muted">
-                <tr>
-                  <th className="px-6 py-4">Caller</th>
-                  <th className="px-6 py-4">Caller Phone</th>
-                  <th className="px-6 py-4">Ad</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Audio</th>
-                  <th className="px-6 py-4">Source</th>
-                  <th className="px-6 py-4">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calls.map((call) => (
-                  <tr key={call.id} className="border-t border-line hover:bg-surface/60 transition-colors">
-                    <td className="px-6 py-4 text-ink">
-                      <div className="flex flex-col gap-1 normal-case">
-                        <span className="text-xs font-black tracking-tight uppercase">{call.callerName || 'Unknown Caller'}</span>
-                        <span className="text-[10px] font-bold text-muted">{call.callerEmail || (call.isAuthenticated ? 'Signed-in user' : 'Guest caller')}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-ink normal-case">{call.callerPhone || 'Not provided'}</td>
-                    <td className="px-6 py-4 text-ink">
-                      <div className="flex flex-col gap-1 normal-case">
-                        <span className="text-xs font-black tracking-tight uppercase">{call.listingTitle || 'Untitled Listing'}</span>
-                        <span className="text-[10px] font-bold text-muted">ID: {call.listingId || 'Unknown'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex px-2 py-1 rounded-sm bg-data/10 text-data text-[9px] font-black uppercase tracking-widest">
-                        {call.status || 'Initiated'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 normal-case">
-                      {call.recordingUrl ? (
-                        <div className="flex flex-col gap-2">
-                          <audio controls preload="none" className="max-w-[220px]">
-                            <source src={`/api/account/calls/${encodeURIComponent(call.id)}/recording`} type="audio/mpeg" />
-                          </audio>
-                          <a
-                            href={`/api/account/calls/${encodeURIComponent(call.id)}/recording`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[10px] font-bold text-accent hover:text-ink transition-colors"
-                          >
-                            Open audio
-                          </a>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-bold text-muted">No audio</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-muted">{call.source || 'unknown'}</td>
-                    <td className="px-6 py-4 text-muted normal-case">{formatDateLabel(call.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      ) : (() => {
+        const q = callSearchQuery.toLowerCase();
+        const filtered = q
+          ? calls.filter((call) =>
+              (call.callerName || '').toLowerCase().includes(q) ||
+              (call.callerEmail || '').toLowerCase().includes(q) ||
+              (call.callerPhone || '').toLowerCase().includes(q) ||
+              (call.listingTitle || '').toLowerCase().includes(q) ||
+              (call.status || '').toLowerCase().includes(q)
+            )
+          : calls;
+        const visible = filtered.slice(0, callDisplayCount);
+        const hasMore = filtered.length > callDisplayCount;
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search calls..."
+                value={callSearchQuery}
+                onChange={(e) => { setCallSearchQuery(e.target.value); setCallDisplayCount(10); }}
+                className="w-full bg-surface border border-line text-[10px] font-bold uppercase tracking-widest px-3 py-2.5 placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div className="bg-bg border border-line rounded-sm shadow-sm overflow-hidden">
+              <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
+                <table className="w-full min-w-[1120px] text-[10px] font-bold uppercase tracking-widest text-left">
+                  <thead className="bg-surface text-muted sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-4">Caller</th>
+                      <th className="px-6 py-4">Caller Phone</th>
+                      <th className="px-6 py-4">Ad</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Audio</th>
+                      <th className="px-6 py-4">Source</th>
+                      <th className="px-6 py-4">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((call) => (
+                      <tr key={call.id} className="border-t border-line hover:bg-surface/60 transition-colors">
+                        <td className="px-6 py-4 text-ink">
+                          <div className="flex flex-col gap-1 normal-case">
+                            <span className="text-xs font-black tracking-tight uppercase">{call.callerName || 'Unknown Caller'}</span>
+                            <span className="text-[10px] font-bold text-muted">{call.callerEmail || (call.isAuthenticated ? 'Signed-in user' : 'Guest caller')}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-ink normal-case">{call.callerPhone || 'Not provided'}</td>
+                        <td className="px-6 py-4 text-ink">
+                          <div className="flex flex-col gap-1 normal-case">
+                            <span className="text-xs font-black tracking-tight uppercase">{call.listingTitle || 'Untitled Listing'}</span>
+                            <span className="text-[10px] font-bold text-muted">ID: {call.listingId || 'Unknown'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex px-2 py-1 rounded-sm bg-data/10 text-data text-[9px] font-black uppercase tracking-widest">
+                            {call.status || 'Initiated'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 normal-case">
+                          {call.recordingUrl ? (
+                            <div className="flex flex-col gap-2">
+                              <audio controls preload="none" className="max-w-[220px]">
+                                <source src={`/api/account/calls/${encodeURIComponent(call.id)}/recording`} type="audio/mpeg" />
+                              </audio>
+                              <a
+                                href={`/api/account/calls/${encodeURIComponent(call.id)}/recording`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] font-bold text-accent hover:text-ink transition-colors"
+                              >
+                                Open audio
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-muted">No audio</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-muted">{call.source || 'unknown'}</td>
+                        <td className="px-6 py-4 text-muted normal-case">{formatDateLabel(call.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted pt-2">
+              <span>Showing {visible.length} of {filtered.length} calls</span>
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setCallDisplayCount((prev) => prev + 10)}
+                  className="btn-industrial py-2 px-4 text-[10px]"
+                >
+                  View More
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 
   const renderStorefront = () => {
-    const publicPath = `/seller/${storefrontPreview?.storefrontSlug || storefrontForm.storefrontSlug || user?.uid || ''}`;
+    const publicPath = buildDealerPath({
+      id: user?.uid || '',
+      storefrontSlug: storefrontPreview?.storefrontSlug || storefrontForm.storefrontSlug || user?.uid || '',
+    });
 
     return (
       <div className="space-y-12">
@@ -2031,8 +2519,8 @@ export function Profile() {
               <h3 className="text-sm font-black uppercase tracking-widest">{storefrontTabLabel} Settings</h3>
               <p className="text-[10px] font-bold text-muted uppercase tracking-widest mt-2 max-w-3xl">
                 {user?.role === 'individual_seller'
-                  ? 'This controls your public owner-operator profile, canonical seller URL, search metadata, and storefront presentation.'
-                  : 'This controls your storefront branding, canonical seller URL, and the metadata used by your public seller page.'}
+                  ? 'This controls your public owner-operator profile, canonical dealer URL, search metadata, and structured storefront presentation.'
+                  : 'This controls your storefront branding, canonical dealer URL, service coverage, and the metadata used by your public dealer page.'}
               </p>
             </div>
             <Link to={publicPath} className="btn-industrial btn-accent py-2 px-4 text-[10px]">
@@ -2040,73 +2528,188 @@ export function Profile() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-surface border border-line p-6">
               <span className="label-micro block mb-2">Canonical URL</span>
               <p className="text-xs font-black uppercase tracking-widest break-all">{publicPath}</p>
             </div>
             <div className="bg-surface border border-line p-6">
-              <span className="label-micro block mb-2">Logo Source</span>
-              <p className="text-xs font-black uppercase tracking-widest break-all">{storefrontForm.logo || 'Uses account profile image'}</p>
+              <span className="label-micro block mb-2">Auto Geocode</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">
+                {hasStorefrontGeoCoordinates
+                  ? `${storefrontForm.latitude!.toFixed(5)}, ${storefrontForm.longitude!.toFixed(5)}`
+                  : 'Select a Google address or save a valid storefront address'}
+              </p>
             </div>
             <div className="bg-surface border border-line p-6">
-              <span className="label-micro block mb-2">Cover Source</span>
-              <p className="text-xs font-black uppercase tracking-widest break-all">{storefrontForm.coverPhotoUrl || 'Uses account cover image'}</p>
+              <span className="label-micro block mb-2">Services Offered</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">
+                {storefrontForm.servicesOfferedSubcategories.length || storefrontForm.servicesOfferedCategories.length || 0} selected
+              </p>
+            </div>
+            <div className="bg-surface border border-line p-6">
+              <span className="label-micro block mb-2">Service Area Coverage</span>
+              <p className="text-xs font-black uppercase tracking-widest break-all">
+                {storefrontForm.serviceAreaScopes.length + storefrontForm.serviceAreaStates.length + storefrontForm.serviceAreaCounties.length || 0} selectors active
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-2">
-              <label className="label-micro">{storefrontTabLabel} Name</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontName} onChange={(e) => handleStorefrontInputChange('storefrontName', e.target.value)} />
+              <label htmlFor="profile-storefront-name" className="label-micro">{storefrontTabLabel} Name</label>
+              <input id="profile-storefront-name" type="text" className="input-industrial w-full" value={storefrontForm.storefrontName} onChange={(e) => handleStorefrontInputChange('storefrontName', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Canonical Slug</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontSlug} onChange={(e) => handleStorefrontInputChange('storefrontSlug', e.target.value)} placeholder="auto-generated-from-name" />
+              <label htmlFor="profile-storefront-slug" className="label-micro">Canonical Slug</label>
+              <input id="profile-storefront-slug" type="text" className="input-industrial w-full" value={storefrontForm.storefrontSlug} onChange={(e) => handleStorefrontInputChange('storefrontSlug', e.target.value)} placeholder="auto-generated-from-name" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-business-name" className="label-micro">Legal Business Name</label>
+              <input id="profile-storefront-business-name" type="text" className="input-industrial w-full" value={storefrontForm.businessName} onChange={(e) => handleStorefrontInputChange('businessName', e.target.value)} placeholder="Business name used on your storefront and schema" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">Tagline</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.storefrontTagline} onChange={(e) => handleStorefrontInputChange('storefrontTagline', e.target.value)} placeholder="Short positioning line for the public page" />
+              <label htmlFor="profile-storefront-tagline" className="label-micro">Tagline</label>
+              <input id="profile-storefront-tagline" type="text" className="input-industrial w-full" value={storefrontForm.storefrontTagline} onChange={(e) => handleStorefrontInputChange('storefrontTagline', e.target.value)} placeholder="Short positioning line for the public page" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">Description</label>
-              <textarea rows={5} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Tell buyers what you sell, where you operate, and why they should work with you." />
+              <label htmlFor="profile-storefront-description" className="label-micro">Unique About Section</label>
+              <textarea id="profile-storefront-description" rows={7} className="input-industrial w-full" value={storefrontForm.storefrontDescription} onChange={(e) => handleStorefrontInputChange('storefrontDescription', e.target.value)} placeholder="Describe the equipment you specialize in, brands carried, service territory, buyer support, financing or logistics help, and what makes your business credible." />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                Write original descriptive copy. Explain what you sell, where you operate, how buyers should work with you, and why your dealership is different.
+              </p>
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Location</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} />
+              <label htmlFor="profile-storefront-website" className="label-micro">Website</label>
+              <input id="profile-storefront-website" type="text" className="input-industrial w-full" value={storefrontForm.website} onChange={(e) => handleStorefrontInputChange('website', e.target.value)} placeholder="https://example.com" />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Website</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.website} onChange={(e) => handleStorefrontInputChange('website', e.target.value)} placeholder="https://example.com" />
+              <label htmlFor="profile-storefront-email" className="label-micro">Public Email</label>
+              <input id="profile-storefront-email" type="email" className="input-industrial w-full" value={storefrontForm.email} onChange={(e) => handleStorefrontInputChange('email', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="label-micro">Public Email</label>
-              <input type="email" className="input-industrial w-full" value={storefrontForm.email} onChange={(e) => handleStorefrontInputChange('email', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="label-micro">Public Phone</label>
-              <input type="tel" className="input-industrial w-full" value={storefrontForm.phone} onChange={(e) => handleStorefrontInputChange('phone', e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="label-micro">Logo URL Override</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.logo} onChange={(e) => handleStorefrontInputChange('logo', e.target.value)} placeholder="Leave blank to reuse account profile image" />
-            </div>
-            <div className="space-y-2">
-              <label className="label-micro">Cover URL Override</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.coverPhotoUrl} onChange={(e) => handleStorefrontInputChange('coverPhotoUrl', e.target.value)} placeholder="Leave blank to reuse account cover image" />
+              <label htmlFor="profile-storefront-phone" className="label-micro">Public Phone</label>
+              <input id="profile-storefront-phone" type="tel" className="input-industrial w-full" value={storefrontForm.phone} onChange={(e) => handleStorefrontInputChange('phone', e.target.value)} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">SEO Title</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} />
+              <label htmlFor="profile-storefront-location" className="label-micro">Display Location Summary</label>
+              <input id="profile-storefront-location" type="text" className="input-industrial w-full" value={storefrontForm.location} onChange={(e) => handleStorefrontInputChange('location', e.target.value)} placeholder="Optional. Leave blank to derive from city, state, and country." />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">SEO Description</label>
-              <textarea rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} />
+              <label htmlFor="profile-storefront-google-address" className="label-micro">Google Address Lookup</label>
+              <GooglePlacesInput
+                id="profile-storefront-google-address"
+                mode="address"
+                value={storefrontAddressQuery}
+                onChange={setStorefrontAddressQuery}
+                onSelect={handleStorefrontPlaceSelect}
+                placeholder="Search business address with Google"
+                helperText="Select a verified Google address to autofill street, city, state, postal code, country, and map coordinates."
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-street1" className="label-micro">Street Address 1</label>
+              <input id="profile-storefront-street1" type="text" className="input-industrial w-full" value={storefrontForm.street1} onChange={(e) => handleStorefrontInputChange('street1', e.target.value)} placeholder="Street address used for mapping and geo coordinates" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-street2" className="label-micro">Street Address 2</label>
+              <input id="profile-storefront-street2" type="text" className="input-industrial w-full" value={storefrontForm.street2} onChange={(e) => handleStorefrontInputChange('street2', e.target.value)} placeholder="Suite, yard number, or optional secondary line" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-city" className="label-micro">City</label>
+              <input id="profile-storefront-city" type="text" className="input-industrial w-full" value={storefrontForm.city} onChange={(e) => handleStorefrontInputChange('city', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-state" className="label-micro">State / Province</label>
+              <input id="profile-storefront-state" type="text" className="input-industrial w-full" value={storefrontForm.state} onChange={(e) => handleStorefrontInputChange('state', e.target.value)} placeholder="State or province for your storefront address" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-county" className="label-micro">County</label>
+              <input id="profile-storefront-county" type="text" className="input-industrial w-full" value={storefrontForm.county} onChange={(e) => handleStorefrontInputChange('county', e.target.value)} placeholder="Primary county for the physical business location" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-postal-code" className="label-micro">Postal Code</label>
+              <input id="profile-storefront-postal-code" type="text" className="input-industrial w-full" value={storefrontForm.postalCode} onChange={(e) => handleStorefrontInputChange('postalCode', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-country" className="label-micro">Country</label>
+              <select id="profile-storefront-country" className="input-industrial w-full" value={storefrontForm.country} onChange={(e) => handleStorefrontInputChange('country', e.target.value)}>
+                {STOREFRONT_COUNTRY_OPTIONS.map((country) => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="label-micro">Calculated Latitude / Longitude</label>
+              <div className="input-industrial w-full min-h-[46px] flex items-center text-xs font-black uppercase tracking-widest text-muted">
+                {hasStorefrontGeoCoordinates
+                  ? `${storefrontForm.latitude!.toFixed(6)}, ${storefrontForm.longitude!.toFixed(6)}`
+                  : 'Auto-populated after Google address selection or when the storefront address is saved'}
+              </div>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="label-micro">SEO Keywords</label>
-              <input type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" />
+              <label className="label-micro">Service Area Coverage</label>
+              <MultiSelectDropdown
+                label="Service Area Scope"
+                placeholder="Select USA, Canada, Global, or individual states"
+                options={storefrontServiceAreaScopeOptions}
+                selected={storefrontForm.serviceAreaScopes}
+                onChange={(values) => handleStorefrontArrayChange('serviceAreaScopes', values)}
+                searchable
+                matchFn={matchesRegionQuery}
+              />
+              <div className="mt-4">
+                <TagSelectorModal
+                  label="Service Area Counties"
+                  placeholder={selectedStatesFromScope.length || storefrontForm.serviceAreaStates.length ? 'Search counties in your selected states' : 'Select states first to see counties'}
+                  selected={storefrontForm.serviceAreaCounties}
+                  onChange={(values) => handleStorefrontArrayChange('serviceAreaCounties', values)}
+                  suggestions={countySuggestions}
+                  searchPlaceholder="Search counties..."
+                  addButtonLabel="Add County"
+                />
+              </div>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="label-micro">Services Offered</label>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <MultiSelectDropdown
+                  label="Service Categories"
+                  placeholder="Select categories you service or sell"
+                  options={storefrontCategoryOptions}
+                  selected={storefrontForm.servicesOfferedCategories}
+                  onChange={(values) => handleStorefrontArrayChange('servicesOfferedCategories', values)}
+                  searchable
+                />
+                <MultiSelectDropdown
+                  label="Service Subcategories"
+                  placeholder="Select specific machine families"
+                  options={storefrontSubcategoryOptions}
+                  selected={storefrontForm.servicesOfferedSubcategories}
+                  onChange={(values) => handleStorefrontArrayChange('servicesOfferedSubcategories', values)}
+                  searchable
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-logo" className="label-micro">Logo URL Override</label>
+              <input id="profile-storefront-logo" type="text" className="input-industrial w-full" value={storefrontForm.logo} onChange={(e) => handleStorefrontInputChange('logo', e.target.value)} placeholder="Leave blank to reuse account profile image" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="profile-storefront-cover" className="label-micro">Cover URL Override</label>
+              <input id="profile-storefront-cover" type="text" className="input-industrial w-full" value={storefrontForm.coverPhotoUrl} onChange={(e) => handleStorefrontInputChange('coverPhotoUrl', e.target.value)} placeholder="Leave blank to reuse account cover image" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="profile-storefront-seo-title" className="label-micro">SEO Title {!hasAdminProfileScope && <span className="text-muted text-[9px]">(Admin Only)</span>}</label>
+              <input id="profile-storefront-seo-title" type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} readOnly={!hasAdminProfileScope} disabled={!hasAdminProfileScope} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="profile-storefront-seo-description" className="label-micro">SEO Description {!hasAdminProfileScope && <span className="text-muted text-[9px]">(Admin Only)</span>}</label>
+              <textarea id="profile-storefront-seo-description" rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} readOnly={!hasAdminProfileScope} disabled={!hasAdminProfileScope} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="profile-storefront-seo-keywords" className="label-micro">SEO Keywords {!hasAdminProfileScope && <span className="text-muted text-[9px]">(Admin Only)</span>}</label>
+              <input id="profile-storefront-seo-keywords" type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" readOnly={!hasAdminProfileScope} disabled={!hasAdminProfileScope} />
             </div>
           </div>
 
@@ -2132,12 +2735,12 @@ export function Profile() {
               type="button"
               onClick={() => openAssetPicker('avatar')}
               disabled={isUploadingAvatar}
-              className="w-24 h-24 bg-surface border border-line rounded-sm overflow-hidden flex items-center justify-center transition hover:border-accent disabled:opacity-60"
+              className="w-24 h-24 bg-accent/10 border border-accent/20 rounded-sm overflow-hidden flex items-center justify-center shadow-sm transition hover:border-accent disabled:opacity-60"
             >
               {settingsForm.photoURL ? (
                 <img src={settingsForm.photoURL} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <User size={30} className="text-muted" />
+                <User size={30} className="text-accent" />
               )}
             </button>
             <input
@@ -2203,8 +2806,9 @@ export function Profile() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-2">
-            <label className="label-micro">Full Name</label>
+            <label htmlFor="profile-settings-name" className="label-micro">Full Name</label>
             <input
+              id="profile-settings-name"
               type="text"
               className="input-industrial w-full"
               value={settingsForm.displayName}
@@ -2212,8 +2816,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Email Address</label>
+            <label htmlFor="profile-settings-email" className="label-micro">Email Address</label>
             <input
+              id="profile-settings-email"
               type="email"
               className="input-industrial w-full"
               value={settingsForm.email}
@@ -2221,8 +2826,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Phone Number</label>
+            <label htmlFor="profile-settings-phone" className="label-micro">Phone Number</label>
             <input
+              id="profile-settings-phone"
               type="tel"
               className="input-industrial w-full"
               placeholder="+1 (555) 000-0000"
@@ -2231,8 +2837,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Company Name</label>
+            <label htmlFor="profile-settings-company" className="label-micro">Company Name</label>
             <input
+              id="profile-settings-company"
               type="text"
               className="input-industrial w-full"
               value={settingsForm.company}
@@ -2240,8 +2847,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Website</label>
+            <label htmlFor="profile-settings-website" className="label-micro">Website</label>
             <input
+              id="profile-settings-website"
               type="url"
               className="input-industrial w-full"
               placeholder="https://example.com"
@@ -2250,8 +2858,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Preferred Language</label>
+            <label htmlFor="profile-settings-language" className="label-micro">Preferred Language</label>
             <select
+              id="profile-settings-language"
               className="input-industrial w-full"
               value={settingsForm.preferredLanguage}
               onChange={(e) => handleSettingsInputChange('preferredLanguage', e.target.value as Language)}
@@ -2262,8 +2871,9 @@ export function Profile() {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="label-micro">Preferred Currency</label>
+            <label htmlFor="profile-settings-currency" className="label-micro">Preferred Currency</label>
             <select
+              id="profile-settings-currency"
               className="input-industrial w-full"
               value={settingsForm.preferredCurrency}
               onChange={(e) => handleSettingsInputChange('preferredCurrency', e.target.value as Currency)}
@@ -2274,18 +2884,21 @@ export function Profile() {
             </select>
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="label-micro">Address</label>
-            <input
-              type="text"
-              className="input-industrial w-full"
+            <label htmlFor="profile-settings-address" className="label-micro">Address</label>
+            <GooglePlacesInput
+              id="profile-settings-address"
+              mode="address"
               placeholder="Street, City, State/Province, Country"
               value={settingsForm.location}
-              onChange={(e) => handleSettingsInputChange('location', e.target.value)}
+              onChange={(value) => handleSettingsInputChange('location', value)}
+              onSelect={(place) => handleSettingsInputChange('location', place.formattedAddress)}
+              helperText="Use a Google-verified address for cleaner profile linking and location consistency."
             />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="label-micro">Short Bio</label>
+            <label htmlFor="profile-settings-bio" className="label-micro">Short Bio</label>
             <textarea
+              id="profile-settings-bio"
               className="input-industrial w-full min-h-[100px]"
               placeholder="Short introduction shown across your account presence"
               value={settingsForm.bio}
@@ -2293,8 +2906,9 @@ export function Profile() {
             />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="label-micro">About</label>
+            <label htmlFor="profile-settings-about" className="label-micro">About</label>
             <textarea
+              id="profile-settings-about"
               className="input-industrial w-full min-h-[140px]"
               placeholder="Company background, specialties, service area, or buyer preferences"
               value={settingsForm.about}
@@ -2332,7 +2946,7 @@ export function Profile() {
             { label: 'Billing Label', value: billingLabel },
             { label: 'Listing Visibility', value: listingVisibilityLabel },
             { label: 'SMS MFA', value: smsMfaFactors.length > 0 ? 'enabled' : 'not enrolled' },
-            { label: 'Listing Capacity', value: hasAdminPublishingAccess(user) ? 'unlimited' : String(getManagedListingCap(user) ?? 0) },
+            { label: 'Listing Capacity', value: hasAdminPublishingAccess(user) ? 'Unlimited active machines' : getListingCapDisplayLabel(getManagedListingCap(user) ?? 0, 'active machine', 'active machines') },
             { label: 'Managed Seats', value: typeof user?.managedAccountCap === 'number' ? String(user.managedAccountCap) : '0' },
             { label: 'Email Verified', value: user?.emailVerified ? 'verified' : 'unverified' },
             { label: 'Storefront Access', value: hasStorefrontAccess ? 'enabled' : 'not available' },
@@ -2393,8 +3007,9 @@ export function Profile() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="label-micro">Mobile Number For SMS Codes</label>
+                  <label htmlFor="profile-mfa-phone" className="label-micro">Mobile Number For SMS Codes</label>
                   <input
+                    id="profile-mfa-phone"
                     type="tel"
                     className="input-industrial w-full"
                     placeholder="+15551234567"
@@ -2406,8 +3021,9 @@ export function Profile() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <label className="label-micro">Device Label</label>
+                  <label htmlFor="profile-mfa-device-label" className="label-micro">Device Label</label>
                   <input
+                    id="profile-mfa-device-label"
                     type="text"
                     className="input-industrial w-full"
                     placeholder="Primary mobile"
@@ -2558,7 +3174,8 @@ export function Profile() {
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm('Are you sure you want to cancel your subscription? It will remain active until the end of your current billing period.')) return;
+                    const ok = await showConfirm({ title: 'Cancel Subscription', message: 'Are you sure you want to cancel your subscription? It will remain active until the end of your current billing period.', variant: 'danger', confirmLabel: 'Cancel Subscription', cancelLabel: 'Keep Subscription' });
+                    if (!ok) return;
                     try {
                       await billingService.cancelSubscription();
                       setSettingsNotice('Your subscription has been scheduled for cancellation at the end of the current billing period.');
@@ -2601,7 +3218,7 @@ export function Profile() {
 
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
           <div className="flex items-center space-x-4 md:space-x-8 min-w-0">
-            <div className="w-24 h-24 bg-ink flex items-center justify-center rounded-sm border border-line overflow-hidden">
+            <div className="w-24 h-24 bg-accent/10 border border-accent/20 shadow-sm flex items-center justify-center rounded-sm overflow-hidden">
               {profilePhotoPreview ? (
                 <img src={profilePhotoPreview} alt={user?.displayName || 'Profile'} className="w-full h-full object-cover" />
               ) : (
@@ -2609,7 +3226,7 @@ export function Profile() {
               )}
             </div>
             <div className="flex flex-col min-w-0">
-              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{roleDisplayLabel} Profile</span>
+              <span className={`label-micro mb-2 uppercase tracking-widest ${coverPhotoPreview ? 'text-accent' : 'text-accent'}`}>{profilePageTitle}</span>
               <h1 className={`text-2xl md:text-4xl font-black uppercase tracking-tighter truncate ${coverPhotoPreview ? 'text-white' : ''}`}>
                 {user?.displayName}
               </h1>
@@ -2677,20 +3294,31 @@ export function Profile() {
 
         <div className="lg:hidden mb-8">
           <div className="grid grid-cols-2 gap-2">
-            {profileTabItems.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => selectProfileTab(item.label)}
-              className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
-                activeTab === item.label
-                  ? 'bg-ink text-white border-ink'
-                  : 'bg-surface border-line text-muted hover:border-accent/50 hover:text-ink'
-              }`}
-            >
-              <item.icon size={14} className="shrink-0" />
-              <span className="truncate text-center">{item.label}</span>
-            </button>
-            ))}
+            {profileTabItems.map((item) =>
+              item.href ? (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className="w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden bg-surface border-accent/30 text-accent hover:border-accent"
+                >
+                  <item.icon size={14} className="shrink-0" />
+                  <span className="truncate text-center">{item.label}</span>
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  onClick={() => selectProfileTab(item.label)}
+                  className={`w-full min-w-0 flex items-center justify-center gap-2 px-3 py-2 rounded-sm border text-[10px] font-black uppercase tracking-widest transition-colors overflow-hidden ${
+                    activeTab === item.label
+                      ? 'bg-ink text-bg border-ink'
+                      : 'bg-surface border-line text-muted hover:border-accent/50 hover:text-ink'
+                  }`}
+                >
+                  <item.icon size={14} className="shrink-0" />
+                  <span className="truncate text-center">{item.label}</span>
+                </button>
+              )
+            )}
           </div>
         </div>
 
@@ -2715,16 +3343,28 @@ export function Profile() {
               </div>
             )}
 
-            {profileTabItems.map((item) => (
-              <button 
-                key={item.label}
-                onClick={() => selectProfileTab(item.label)}
-                className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-white shadow-lg' : 'hover:bg-surface text-muted'}`}
-              >
-                <item.icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            ))}
+            {profileTabItems.map((item) =>
+              item.href ? (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className="w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm hover:bg-surface text-accent"
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                  <ArrowRight size={14} className="ml-auto opacity-50" />
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  onClick={() => selectProfileTab(item.label)}
+                  className={`w-full flex items-center space-x-4 p-4 text-xs font-black uppercase tracking-widest transition-colors rounded-sm ${activeTab === item.label ? 'bg-ink text-bg shadow-lg' : 'hover:bg-surface text-muted'}`}
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              )
+            )}
           </div>
 
           {/* Main Content */}
@@ -2738,13 +3378,20 @@ export function Profile() {
                 </div>
               ) : (
                 <>
-              {activeTab === 'Profile' && renderOverview()}
+              {activeTab === ACCOUNT_OVERVIEW_TAB_LABEL && renderOverview()}
               {activeTab === 'My Listings' && renderMyListings()}
               {activeTab === 'Search Alerts' && renderAlerts()}
               {activeTab === 'Inquiries' && renderInquiries()}
               {activeTab === 'Calls' && renderCalls()}
               {activeTab === 'Financing' && renderFinancing()}
               {activeTab === storefrontTabLabel && hasStorefrontAccess && renderStorefront()}
+              {activeTab === 'Managed Roles' && user && (
+                <ManagedRolesTab
+                  ownerUid={user.parentAccountUid || user.uid}
+                  isAdmin={hasAdminProfileScope}
+                  seatLimit={typeof user.managedAccountCap === 'number' ? user.managedAccountCap : 3}
+                />
+              )}
               {activeTab === 'Account Settings' && renderSettings()}
               {activeTab === 'Privacy & Data' && (
                 <div className="space-y-12">
@@ -2772,7 +3419,7 @@ export function Profile() {
                       </p>
                       <button 
                         onClick={handleExportData}
-                        className="btn-industrial bg-bg py-4 px-8 text-[10px] font-black uppercase tracking-widest hover:bg-ink hover:text-white transition-all"
+                        className="btn-industrial bg-bg py-4 px-8 text-[10px] font-black uppercase tracking-widest hover:bg-ink hover:text-bg transition-all"
                       >
                         Export My Data
                       </button>
@@ -2801,23 +3448,23 @@ export function Profile() {
                     </div>
                   </div>
 
-                  <div className="bg-ink text-white p-12 rounded-sm space-y-8">
+                  <div className="bg-surface border border-line p-12 rounded-sm space-y-8">
                     <div className="flex items-center space-x-4">
                       <ClipboardList className="text-accent" size={32} />
                       <h3 className="text-xl font-black uppercase tracking-tighter">Account Status</h3>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
                       <div className="flex flex-col space-y-2">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Profile Setup</span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Profile Setup</span>
                         <span className="text-xs font-black uppercase tracking-widest text-data">Complete</span>
                       </div>
                       <div className="flex flex-col space-y-2">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Billing Setup</span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Billing Setup</span>
                         <span className="text-xs font-black uppercase tracking-widest text-data">Active</span>
                       </div>
                       <div className="flex flex-col space-y-2">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Last Account Update</span>
-                        <span className="text-xs font-black uppercase tracking-widest text-white">March 15, 2026</span>
+                        <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Last Account Update</span>
+                        <span className="text-xs font-black uppercase tracking-widest">March 15, 2026</span>
                       </div>
                     </div>
                   </div>
@@ -2832,8 +3479,9 @@ export function Profile() {
                       <div key={listing.id} className="bg-surface border border-line overflow-hidden rounded-sm shadow-sm group">
                         <div className="aspect-video relative">
                           <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
-                          <button 
+                          <button
                             onClick={() => toggleFavorite(listing.id)}
+                            aria-label="Remove from favorites"
                             className="absolute top-4 right-4 p-2 bg-ink/80 text-accent rounded-sm hover:bg-ink transition-colors"
                           >
                             <Bookmark size={16} fill="currentColor" />
@@ -2904,6 +3552,8 @@ export function Profile() {
           </motion.div>
         </div>
       )}
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

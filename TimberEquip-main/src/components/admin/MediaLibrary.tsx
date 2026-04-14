@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Trash2, X, Image, Search } from 'lucide-react';
+import { Trash2, X, Image } from 'lucide-react';
 import { MediaItem } from '../../types';
 import { cmsService } from '../../services/cmsService';
 import { useAuth } from '../AuthContext';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface Props {
   items: MediaItem[];
@@ -11,6 +13,7 @@ interface Props {
 
 export function MediaLibrary({ items, onRefresh }: Props) {
   const { user } = useAuth();
+  const { confirm, dialogProps } = useConfirmDialog();
   const [search,       setSearch]       = useState('');
   const [tagFilter,    setTagFilter]    = useState('');
   const [editTagsId,   setEditTagsId]   = useState<string | null>(null);
@@ -56,7 +59,8 @@ export function MediaLibrary({ items, onRefresh }: Props) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this media item?')) return;
+    const ok = await confirm({ title: 'Delete Media', message: 'Delete this media item?', variant: 'danger' });
+    if (!ok) return;
     await cmsService.deleteMedia(id);
     onRefresh();
   };
@@ -112,15 +116,15 @@ export function MediaLibrary({ items, onRefresh }: Props) {
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3">
-        <div className="flex items-center bg-bg border border-line px-4 py-2 rounded-sm flex-1 min-w-[200px]">
-          <Search size={14} className="text-muted mr-3" />
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by filename…"
-            className="bg-transparent border-none text-[10px] font-bold focus:ring-0 w-full text-ink uppercase"
+            placeholder="Search by filename..."
+            className="input-industrial w-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest"
           />
+
         </div>
         <select
           value={tagFilter}
@@ -141,7 +145,7 @@ export function MediaLibrary({ items, onRefresh }: Props) {
       {filtered.length === 0 ? (
         <div className="bg-bg border border-dashed border-line rounded-sm p-12 flex flex-col items-center text-center">
           <Image size={40} className="text-muted/30 mb-4" />
-          <p className="text-[10px] font-black text-muted uppercase tracking-widest">No media items found</p>
+          <p className="text-[10px] font-black text-muted uppercase tracking-widest">No media files yet. Upload images using the form above or add them from the listing editor.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -227,6 +231,7 @@ export function MediaLibrary({ items, onRefresh }: Props) {
           ))}
         </div>
       )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

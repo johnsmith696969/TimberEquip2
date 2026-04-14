@@ -1,4 +1,4 @@
-type Listing @table(name: "listings", key: "id") {
+type Listing @table(name: "listings", key: "id") @index(fields: ["legacyFirestoreId"]) @index(fields: ["lifecycleState", "updatedAt"]) {
   id: UUID! @default(expr: "uuidV4()")
   legacyFirestoreId: String @col(name: "legacy_firestore_id")
   sellerPartyId: String! @col(name: "seller_party_id")

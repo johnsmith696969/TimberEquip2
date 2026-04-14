@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeSeoSlug,
   titleCaseSlug,
+  canonicalizeManufacturer,
+  getListingManufacturer,
   buildCategoryPath,
   buildManufacturerPath,
   buildManufacturerModelPath,
@@ -9,7 +11,10 @@ import {
   buildManufacturerCategoryPath,
   buildDealerPath,
   isDealerRole,
+  expandRegionName,
   getStateFromLocation,
+  getListingStateName,
+  matchesStateSlug,
   MARKET_ROUTE_LABELS,
   CANONICAL_MARKET_ROUTE_KEY,
 } from '../utils/seoRoutes';
@@ -92,6 +97,27 @@ describe('buildManufacturerCategoryPath', () => {
   });
 });
 
+describe('canonicalizeManufacturer', () => {
+  it('normalizes manufacturer aliases', () => {
+    expect(canonicalizeManufacturer('cat')).toBe('CATERPILLAR');
+  });
+
+  it('normalizes capitalization and duplicate spacing', () => {
+    expect(canonicalizeManufacturer('  john   deere  ')).toBe('JOHN DEERE');
+  });
+});
+
+describe('getListingManufacturer', () => {
+  it('returns a consistent display name across capitalization variants', () => {
+    expect(getListingManufacturer({ make: 'JOHN DEERE' } as never)).toBe('John Deere');
+    expect(getListingManufacturer({ make: 'john deere' } as never)).toBe('John Deere');
+  });
+
+  it('formats canonical aliases for display', () => {
+    expect(getListingManufacturer({ make: 'cat' } as never)).toBe('Caterpillar');
+  });
+});
+
 describe('buildDealerPath', () => {
   it('prefers storefrontSlug', () => {
     expect(buildDealerPath({ id: 'uid123', storefrontSlug: 'acme-logging' })).toBe('/dealers/acme-logging');
@@ -109,14 +135,13 @@ describe('isDealerRole', () => {
     expect(isDealerRole('dealer_staff')).toBe(true);
   });
 
-  it('returns true for admin roles', () => {
-    expect(isDealerRole('admin')).toBe(true);
-    expect(isDealerRole('super_admin')).toBe(true);
-    expect(isDealerRole('developer')).toBe(true);
+  it('returns false for operator-only roles', () => {
+    expect(isDealerRole('admin')).toBe(false);
+    expect(isDealerRole('super_admin')).toBe(false);
+    expect(isDealerRole('developer')).toBe(false);
   });
 
   it('returns false for non-dealer roles', () => {
-    expect(isDealerRole('buyer')).toBe(false);
     expect(isDealerRole('member')).toBe(false);
     expect(isDealerRole('individual_seller')).toBe(false);
   });
@@ -131,12 +156,58 @@ describe('getStateFromLocation', () => {
     expect(getStateFromLocation('Madison, Wisconsin, USA')).toBe('Wisconsin');
   });
 
+  it('extracts state from city, state format', () => {
+    expect(getStateFromLocation('Macon, Georgia')).toBe('Georgia');
+  });
+
+  it('extracts state from state, country format', () => {
+    expect(getStateFromLocation('Minnesota, USA')).toBe('Minnesota');
+  });
+
   it('extracts state from state-only', () => {
     expect(getStateFromLocation('Wisconsin')).toBe('Wisconsin');
   });
 
   it('returns empty for undefined', () => {
     expect(getStateFromLocation(undefined)).toBe('');
+  });
+});
+
+describe('getListingStateName', () => {
+  it('prefers a valid explicit state field when present', () => {
+    expect(getListingStateName({ location: 'Macon, Georgia', state: 'Georgia', city: 'Macon' })).toBe('Georgia');
+  });
+
+  it('falls back to parsing the location string', () => {
+    expect(getListingStateName({ location: 'Macon, Georgia', city: 'Macon' })).toBe('Georgia');
+  });
+
+  it('expands state abbreviations', () => {
+    expect(getListingStateName({ location: 'Duluth, MN', city: 'Duluth' })).toBe('Minnesota');
+  });
+
+  it('does not treat the city as the state when only a city is present', () => {
+    expect(getListingStateName({ location: 'Macon', city: 'Macon' })).toBe('');
+  });
+});
+
+describe('expandRegionName', () => {
+  it('expands abbreviations to full names', () => {
+    expect(expandRegionName('MN')).toBe('Minnesota');
+  });
+
+  it('preserves full state names', () => {
+    expect(expandRegionName('Oregon')).toBe('Oregon');
+  });
+});
+
+describe('matchesStateSlug', () => {
+  it('matches full-name slugs against abbreviations', () => {
+    expect(matchesStateSlug('MN', 'minnesota')).toBe(true);
+  });
+
+  it('matches abbreviation slugs against full names', () => {
+    expect(matchesStateSlug('Minnesota', 'mn')).toBe(true);
   });
 });
 

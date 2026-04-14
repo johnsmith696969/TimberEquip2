@@ -15,9 +15,14 @@ import {
 } from 'lucide-react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { billingService, type ListingPlanId } from '../services/billingService';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useAuth } from '../components/AuthContext';
 import { hasActiveSellerSubscription } from '../utils/sellerAccess';
 import {
@@ -73,7 +78,9 @@ type SellerTier = {
 };
 
 export function AdPrograms() {
+  const { theme } = useTheme();
   const navigate = useNavigate();
+  const { alert: showAlert, dialogProps } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isAuthenticated } = useAuth();
   const sellerTypesRef = useRef<HTMLElement | null>(null);
@@ -105,6 +112,9 @@ export function AdPrograms() {
     };
   });
   const flowIntent = String(searchParams.get('intent') || '').trim().toLowerCase();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
 
   const openLeadForm = (type: 'media-kit' | 'support') => {
     setRequestType(type);
@@ -131,43 +141,60 @@ export function AdPrograms() {
       planId: 'individual_seller',
       roleLabel: 'owner-operator',
       icon: User,
-      summary: 'For independent owners and small operators selling equipment directly.',
+      summary: 'For independent owners and small operators selling equipment directly. Add listing slots at $39/each and featured upgrades at $20/each.',
       features: [
-        'Professional seller profile',
-        'Direct inquiry capture',
+        '1 active listing included (expand up to 10)',
+        'Professional seller profile page',
+        'Direct inquiry capture with email alerts',
+        'Full listing specs, photos, and condition notes',
+        'Google-indexed listing with SEO placement',
         'Listing review and approval workflow',
-        'Optional Featured Inventory add-on',
+        'Featured listing upgrade available ($20/each)',
       ],
     },
     {
       title: 'Dealer',
-      price: '$499/MO',
+      price: '$250/MO',
       planId: 'dealer',
       roleLabel: 'dealer',
       icon: Building2,
-      summary: 'For active dealerships managing inventory, leads, and branded growth campaigns.',
+      summary: 'Full-service dealership platform with inventory feeds, website syndication, lead management, and branded storefront.',
       features: [
-        'Dealer storefront and branding',
         'Up to 50 active machine listings',
-        'Priority inventory management tools',
-        'Lead notifications and response workflow',
-        'Optional Featured Inventory add-on for extra placement',
+        '3 featured inventory slots included',
+        'DealerOS command center dashboard',
+        'Branded dealer storefront with custom URL',
+        'JSON / XML / CSV feed imports with nightly auto-sync',
+        'Website widget builder (embed, iframe, web component)',
+        'Public JSON feed for third-party syndication',
+        'Webhook notifications for listing events',
+        'Direct API access with API key authentication',
+        'Lead inbox with CRM workflow and assignment',
+        'Internal notes and lead status tracking',
+        'Screened call tracking and lead notifications',
+        'Bulk import toolkit for large inventories',
+        'Performance analytics and reporting',
+        'Managed team seats',
       ],
       highlight: true,
     },
     {
       title: 'Pro Dealer',
-      price: '$999/MO',
+      price: '$500/MO',
       planId: 'fleet_dealer',
       roleLabel: 'pro dealer',
       icon: Crown,
-      summary: 'For high-volume dealer groups that need expanded scale, visibility, and ad coverage.',
+      summary: 'Enterprise-scale dealer platform for high-volume groups needing maximum listings, visibility, and syndication coverage.',
       features: [
         'Up to 150 active machine listings',
-        'Expanded dealer merchandising',
-        'Top placement opportunities',
-        'Priority admin support',
-        'Optional Featured Inventory add-on for extra placement',
+        '6 featured inventory slots included',
+        'Everything in Dealer plan plus:',
+        'Priority placement across all browse surfaces',
+        'Expanded dealer merchandising and storefront',
+        'Monthly dealer performance reports',
+        'Advanced feed management and multi-source sync',
+        'Enterprise billing labels and invoicing',
+        'Priority admin support and onboarding',
       ],
     },
   ];
@@ -182,7 +209,7 @@ export function AdPrograms() {
   const currentSellerPlanId = hasCurrentSellerSubscription ? user?.activeSubscriptionPlanId || null : null;
   const currentSellerPlanLabel = getSellerPlanMarketingLabel(currentSellerPlanId);
   const currentSellerPlanPurchaseLabel = getSellerPlanPurchaseLabel(currentSellerPlanId);
-  const currentSellerBillingLabel = currentSellerPlanId ? getSellerProgramStatementLabel(currentSellerPlanId) : 'Free Member';
+  const currentSellerBillingLabel = currentSellerPlanId ? getSellerProgramStatementLabel(currentSellerPlanId) : 'Member';
   const selectedPlanChangeDirection = getSellerPlanChangeDirection(currentSellerPlanId, selectedSellerPlan || null);
   const isCurrentSelectedPlan = Boolean(currentSellerPlanId && selectedSellerPlan === currentSellerPlanId);
   const canExpandOwnerOperatorPlan = selectedSellerPlan === 'individual_seller' && currentSellerPlanId === 'individual_seller';
@@ -408,7 +435,7 @@ export function AdPrograms() {
       if (rcToken) {
         const pass = await assessRecaptcha(rcToken, 'MEDIA_KIT_REQUEST');
         if (!pass) {
-          alert('Security check failed. Please try again.');
+          await showAlert({ title: 'Security Error', message: 'Security check failed. Please try again.', variant: 'warning' });
           setSendingMediaKit(false);
           return;
         }
@@ -424,7 +451,7 @@ export function AdPrograms() {
       setMediaKitForm({ firstName: '', companyName: '', email: '', phone: '', notes: '' });
     } catch (error) {
       console.error('Failed to submit media kit request:', error);
-      alert('Unable to send the media kit request right now.');
+      await showAlert({ title: 'Request Failed', message: 'Unable to send the media kit request right now.', variant: 'warning' });
     } finally {
       setSendingMediaKit(false);
     }
@@ -436,30 +463,51 @@ export function AdPrograms() {
         title="Seller Ad Programs | List Equipment | Forestry Equipment Sales"
         description="Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace."
         canonicalPath="/ad-programs"
+        preloadImage="/page-photos/winter-log-road.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Service',
+              name: 'Seller Ad Programs',
+              description: 'Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace.',
+              url: buildSiteUrl('/ad-programs'),
+              provider: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: buildSiteUrl(),
+                telephone: '(218) 720-0933',
+                email: 'support@forestryequipmentsales.com',
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl() },
+                { '@type': 'ListItem', position: 2, name: 'Seller Ad Programs', item: buildSiteUrl('/ad-programs') },
+              ],
+            },
+          ],
+        }}
       />
       {/* Hero Section */}
-      <section className="relative py-24 px-4 md:px-8 border-b border-line overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src="/page-photos/winter-log-road.jpg"
-            alt="Winter logging road through snow-covered forest"
-            className="w-full h-full object-cover opacity-20"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
-        </div>
-        
-        <div className="max-w-7xl mx-auto relative z-10">
+      <ImageHero
+        imageSrc="/page-photos/winter-log-road.webp"
+        imageAlt="Winter logging road through snow-covered forest"
+        contentClassName="max-w-7xl"
+      >
+        <div>
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="max-w-3xl"
           >
             <span className="label-micro text-accent mb-4 block">Seller Growth</span>
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none mb-8">
+            <h1 className={`text-5xl md:text-7xl font-black tracking-tighter leading-none mb-8 ${heroHeadingClass}`}>
               SELLER TOOLS <br />
-              <span className="text-accent">AND VISIBILITY</span>
+              <span className={heroSecondaryClass}>AND VISIBILITY</span>
             </h1>
-            <p className="text-lg text-muted leading-relaxed mb-10 max-w-2xl">
+            <p className={`text-lg leading-relaxed mb-10 max-w-2xl ${heroBodyClass}`}>
               Choose your Forestry Equipment Sales seller plan, complete the on-site enrollment form,
               agree to the seller legal terms, and continue into branded Stripe checkout.
             </p>
@@ -473,7 +521,7 @@ export function AdPrograms() {
             </div>
           </motion.div>
         </div>
-      </section>
+      </ImageHero>
 
       <section ref={sellerTypesRef} className="py-24 px-4 md:px-8 border-b border-line bg-surface">
         <div className="max-w-7xl mx-auto">
@@ -868,7 +916,7 @@ export function AdPrograms() {
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-3">Enterprise Billing Logic</p>
                 <ul className="space-y-2 text-sm text-muted leading-relaxed">
                   <li>The subscription is tied to this logged-in account, not just the visible role string.</li>
-                  <li>Dealer and Pro Dealer subscriptions map to FES-DealerOS billing labels and invoice records.</li>
+                  <li>Dealer and Pro Dealer subscriptions map to Forestry Equipment Sales DealerOS billing labels and invoice records.</li>
                   <li>If billing lapses, listings stay stored in the database but public visibility is suspended until billing is restored.</li>
                 </ul>
               </div>
@@ -1007,6 +1055,8 @@ export function AdPrograms() {
         )}
 
       </AnimatePresence>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

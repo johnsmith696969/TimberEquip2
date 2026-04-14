@@ -1,19 +1,29 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
-  Mail, Phone, MapPin, 
-  Globe, ShieldCheck, Clock, 
-  ArrowRight, CheckCircle2, AlertCircle,
-  TrendingUp, Activity, LayoutDashboard,
-  ChevronRight, MessageSquare, Send,
+  Mail, MapPin, Clock,
+  CheckCircle2, MessageSquare, Send,
   Headphones, HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { AlertMessage } from '../components/AlertMessage';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
+import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 export function Contact() {
+  const { theme } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+  const supportPanelClass = theme === 'dark' ? 'bg-[#1C1917] text-white border border-white/10' : 'bg-surface text-ink border border-line';
+  const supportBodyClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [contactError, setContactError] = useState('');
@@ -67,29 +77,54 @@ export function Contact() {
   return (
     <div className="min-h-screen bg-bg">
       <Seo
-        title="Contact Us | Forestry Equipment Sales"
-        description="Get in touch with Forestry Equipment Sales for equipment inquiries, seller support, dealer partnerships, and general questions."
+        title="Contact Forestry Equipment Sales | Sales, Support, and Dealer Help"
+        description="Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination."
         canonicalPath="/contact"
+        imagePath="/page-photos/grapple-hero-image.webp"
+        preloadImage="/page-photos/contact-us.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'ContactPage',
+              name: 'Contact Forestry Equipment Sales',
+              url: buildSiteUrl('/contact'),
+            },
+            {
+              '@type': 'Organization',
+              name: 'Forestry Equipment Sales',
+              url: buildSiteUrl(),
+              email: 'info@forestryequipmentsales.com',
+              contactPoint: [
+                { '@type': 'ContactPoint', contactType: 'customer service', email: 'support@forestryequipmentsales.com', availableLanguage: 'English' },
+                { '@type': 'ContactPoint', contactType: 'sales', email: 'info@forestryequipmentsales.com', availableLanguage: 'English' },
+              ],
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Contact', item: buildSiteUrl('/contact') },
+              ],
+            },
+          ],
+        }}
       />
-      {/* Editorial Header */}
-      <section className="bg-surface border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="w-10 h-10 bg-ink flex items-center justify-center rounded-sm">
-              <MessageSquare className="text-accent" size={20} />
-            </div>
-            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Contact Center</span>
+      <ImageHero imageSrc="/page-photos/contact-us.webp" imageAlt="Contact Forestry Equipment Sales">
+        <div>
+          <div className="mb-6 flex items-center gap-3">
+            <MessageSquare size={20} className="text-accent" />
+            <span className="label-micro text-accent">Contact Center</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className={`mb-8 text-5xl font-black uppercase tracking-tighter leading-none md:text-7xl ${heroHeadingClass}`}>
             Contact <br />
-            <span className="text-muted">Us</span>
+            <span className={heroSecondaryClass}>Us</span>
           </h1>
-          <p className="text-muted font-medium max-w-2xl leading-relaxed">
+          <p className={`max-w-2xl font-medium leading-relaxed ${heroBodyClass}`}>
             Have a question about a listing, your account, or dealer services? Reach out and we will get back to you.
           </p>
         </div>
-      </section>
+      </ImageHero>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
@@ -99,11 +134,12 @@ export function Contact() {
               <div className="p-12">
                 <AnimatePresence mode="wait">
                   {step === 1 ? (
-                    <motion.div 
+                    <motion.div
                       key="form"
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : undefined}
                       className="space-y-10"
                     >
                       <div className="flex flex-col">
@@ -114,33 +150,36 @@ export function Contact() {
                       <form onSubmit={handleSubmit} className="space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           <div className="flex flex-col space-y-3">
-                            <label className="label-micro">Your Name</label>
+                            <label htmlFor="contact-name" className="label-micro">Your Name</label>
                             <input
+                              id="contact-name"
                               required
                               type="text"
                               value={contactForm.name}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
                               placeholder="E.G. JOHN DOE"
-                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                              className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent"
                             />
                           </div>
                           <div className="flex flex-col space-y-3">
-                            <label className="label-micro">Email Address</label>
+                            <label htmlFor="contact-email" className="label-micro">Email Address</label>
                             <input
+                              id="contact-email"
                               required
                               type="email"
                               value={contactForm.email}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
                               placeholder="YOUR@EMAIL.COM"
-                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                              className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent"
                             />
                           </div>
                           <div className="flex flex-col space-y-3 md:col-span-2">
-                            <label className="label-micro">Inquiry Category</label>
+                            <label htmlFor="contact-category" className="label-micro">Inquiry Category</label>
                             <select
+                              id="contact-category"
                               value={contactForm.category}
                               onChange={(e) => setContactForm((prev) => ({ ...prev, category: e.target.value }))}
-                              className="bg-surface border border-line p-4 text-sm font-bold uppercase tracking-wider focus:ring-accent focus:border-accent"
+                              className="bg-surface border border-line pl-4 pr-10 py-4 text-sm font-bold uppercase tracking-wider text-ink focus:ring-accent focus:border-accent"
                             >
                               <option>General Support</option>
                               <option>Market Intelligence</option>
@@ -150,8 +189,9 @@ export function Contact() {
                             </select>
                           </div>
                           <div className="flex flex-col space-y-3 md:col-span-2">
-                            <label className="label-micro">Message Content</label>
+                            <label htmlFor="contact-message" className="label-micro">Message Content</label>
                             <textarea
+                              id="contact-message"
                               required
                               rows={6}
                               value={contactForm.message}
@@ -163,14 +203,15 @@ export function Contact() {
                         </div>
 
                         {contactError && (
-                          <p className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm mb-4">{contactError}</p>
+                          <AlertMessage severity="error" className="mb-4">{contactError}</AlertMessage>
                         )}
                         <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                           Protected by reCAPTCHA Enterprise before submission.
                         </p>
-                        <button 
-                          type="submit" 
+                        <button
+                          type="submit"
                           disabled={loading}
+                          aria-disabled={loading}
                           className="btn-industrial btn-accent py-5 px-12 w-full md:w-fit flex items-center justify-center"
                         >
                           {loading ? (
@@ -185,10 +226,11 @@ export function Contact() {
                       </form>
                     </motion.div>
                   ) : (
-                    <motion.div 
+                    <motion.div
                       key="success"
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : undefined}
                       className="py-20 flex flex-col items-center text-center"
                     >
                       <div className="w-24 h-24 bg-data/10 text-data flex items-center justify-center rounded-full mb-10">
@@ -215,37 +257,41 @@ export function Contact() {
               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-accent">Contact Information</h4>
               <div className="space-y-10">
                 {[
-                  { title: 'Global Support', desc: '+1 (800) TIMBER-EQUIP', icon: Headphones, link: 'tel:+18008462373' },
-                  { title: 'Email Support', desc: 'SUPPORT@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com' },
-                  { title: 'Global HQ', desc: '4335 KINGSTON RD, DULUTH, MN 55803', icon: MapPin, link: '#' },
-                  { title: 'Market Hours', desc: '24/7 GLOBAL ACCESS', icon: Clock, link: '#' }
-                ].map((item, i) => (
-                  <a 
-                    key={i} 
-                    href={item.link}
-                    className="flex space-x-4 group"
+                  { title: 'Support', desc: '+1 (218) 720-0933', icon: Headphones, link: 'tel:+12187200933', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Email Support', desc: 'support@forestryequipmentsales.com', icon: Mail, link: 'mailto:support@forestryequipmentsales.com', valueClassName: 'block break-all text-sm font-black text-muted leading-relaxed normal-case tracking-tight' },
+                  { title: 'HQ', desc: '1518 E SUPERIOR ST, DULUTH, MN 55812', icon: MapPin, link: 'https://maps.google.com/?q=1518+E+Superior+St+Duluth+MN+55812', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' },
+                  { title: 'Hours of Operation', desc: 'PHONE M-F 8AM-5PM CST | EMAIL 8AM-10PM CST', icon: Clock, link: '', valueClassName: 'text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest' }
+                ].map((item, i) => {
+                  const Wrapper = item.link ? 'a' : 'div';
+                  const wrapperProps = item.link ? { href: item.link } : {};
+                  return (
+                  <Wrapper
+                    key={i}
+                    {...wrapperProps}
+                    className="flex min-w-0 space-x-4 group"
                   >
                     <div className="p-3 bg-bg border border-line rounded-sm h-fit group-hover:border-accent transition-colors">
                       <item.icon className="text-accent" size={20} />
                     </div>
-                    <div className="flex flex-col">
+                    <div className="flex min-w-0 flex-col">
                       <span className="text-xs font-black uppercase tracking-tight mb-1 group-hover:text-accent transition-colors">{item.title}</span>
-                      <p className="text-[10px] font-medium text-muted leading-relaxed uppercase tracking-widest">{item.desc}</p>
+                      <p className={item.valueClassName}>{item.desc}</p>
                     </div>
-                  </a>
-                ))}
+                  </Wrapper>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="bg-ink p-8 text-white rounded-sm">
+            <div className={`${supportPanelClass} rounded-sm p-8`}>
               <div className="flex items-center space-x-3 mb-6">
                 <HelpCircle className="text-accent" size={24} />
-                <h4 className="text-sm font-black uppercase tracking-tighter">Knowledge Base</h4>
+                <h4 className="text-sm font-black uppercase tracking-tighter">Frequently Asked Questions</h4>
               </div>
-              <p className="text-[11px] font-medium text-white/60 leading-relaxed mb-8">
-                Access our comprehensive documentation and FAQ center for immediate assistance.
+              <p className={`mb-8 text-[11px] font-medium leading-relaxed ${supportBodyClass}`}>
+                Find answers to common questions about buying, selling, subscriptions, financing, and more.
               </p>
-              <button className="btn-industrial btn-accent w-full py-4">Access FAQ Center</button>
+              <Link to="/faq" className="btn-industrial btn-accent w-full py-4 text-center block">View FAQ</Link>
             </div>
           </div>
         </div>

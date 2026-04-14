@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowUpRight,
-  BadgeCheck,
   Building2,
   Copy,
   Database,
@@ -31,10 +30,13 @@ import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { type Inquiry, type Listing, type Seller } from '../types';
 import { buildListingPath } from '../utils/listingPath';
+import { getListingCapDisplayLabel } from '../utils/listingCaps';
 import { canAccessDealerOs, getDealerInventoryOwnerUid, getFeaturedListingCap, getManagedListingCap } from '../utils/sellerAccess';
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 import { useLocale } from '../components/LocaleContext';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   buildDealerFeedApiCurlSnippet,
   buildDealerFeedSampleUrl,
@@ -65,6 +67,7 @@ function isImportedListing(listing: Listing): boolean {
 export function DealerOS() {
   const { user } = useAuth();
   const { formatPrice } = useLocale();
+  const { confirm: showConfirm, dialogProps } = useConfirmDialog();
   const ownerUid = getDealerInventoryOwnerUid(user);
   const featuredCap = getFeaturedListingCap(user);
   const dealerAccess = canAccessDealerOs(user);
@@ -113,6 +116,31 @@ export function DealerOS() {
   const [leadActionLoading, setLeadActionLoading] = useState(false);
   const [leadActionError, setLeadActionError] = useState('');
   const [leadActionSuccess, setLeadActionSuccess] = useState('');
+
+  /* Widget Builder state */
+  const [widgetCardStyle, setWidgetCardStyle] = useState<'fes-native' | 'grid' | 'list' | 'compact'>('fes-native');
+  const [widgetAccentColor, setWidgetAccentColor] = useState('#16A34A');
+  const [widgetFontFamily, setWidgetFontFamily] = useState('');
+  const [widgetDarkMode, setWidgetDarkMode] = useState(false);
+  const [widgetShowInquiry, setWidgetShowInquiry] = useState(true);
+  const [widgetShowCall, setWidgetShowCall] = useState(true);
+  const [widgetShowDetails, setWidgetShowDetails] = useState(true);
+  const [widgetPageSize, setWidgetPageSize] = useState(12);
+  const [widgetSaving, setWidgetSaving] = useState(false);
+  const [widgetNotice, setWidgetNotice] = useState('');
+  const [widgetError, setWidgetError] = useState('');
+  const [widgetConfigLoaded, setWidgetConfigLoaded] = useState(false);
+
+  /* Webhook state */
+  const [webhooks, setWebhooks] = useState<Array<{ id: string; callbackUrl: string; events: string[]; active: boolean; secretMasked: string; failureCount: number }>>([]);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookEvents, setWebhookEvents] = useState<string[]>(['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted']);
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookNotice, setWebhookNotice] = useState('');
+  const [webhookError, setWebhookError] = useState('');
+  const [webhookLogs, setWebhookLogs] = useState<Array<{ id: string; webhookId: string; event: string; listingId: string; statusCode: number | null; success: boolean; deliveredAt?: unknown; errorMessage?: string }>>([]);
+  const [webhookLogsLoading, setWebhookLogsLoading] = useState(false);
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [leadNoteDraft, setLeadNoteDraft] = useState('');
   const loadDealerOsData = async () => {
     if (!ownerUid) {
@@ -138,6 +166,22 @@ export function DealerOS() {
       setSeatSummary({ seatLimit: managedSeats.seatLimit, seatCount: managedSeats.seatCount });
       setProfiles(savedProfiles);
       setStorefrontProfile(sellerProfile || null);
+
+      /* Load widget config + webhooks in background */
+      dealerFeedService.getWidgetConfig(ownerUid).then((cfg) => {
+        if (cfg.cardStyle) setWidgetCardStyle(cfg.cardStyle as typeof widgetCardStyle);
+        if (cfg.accentColor) setWidgetAccentColor(String(cfg.accentColor));
+        if (cfg.fontFamily) setWidgetFontFamily(String(cfg.fontFamily));
+        if (typeof cfg.darkMode === 'boolean') setWidgetDarkMode(cfg.darkMode);
+        if (typeof cfg.showInquiry === 'boolean') setWidgetShowInquiry(cfg.showInquiry);
+        if (typeof cfg.showCall === 'boolean') setWidgetShowCall(cfg.showCall);
+        if (typeof cfg.showDetails === 'boolean') setWidgetShowDetails(cfg.showDetails);
+        if (cfg.pageSize) setWidgetPageSize(Number(cfg.pageSize));
+        setWidgetConfigLoaded(true);
+      }).catch(() => setWidgetConfigLoaded(true));
+
+      dealerFeedService.getWebhooks(ownerUid).then((wh) => setWebhooks(wh)).catch(() => {});
+      dealerFeedService.getWebhookDeliveryLogs(ownerUid).then((l) => setWebhookLogs(l)).catch(() => {});
     } catch (error) {
       setPageError(error instanceof Error ? error.message : 'DealerOS could not load yet.');
     } finally {
@@ -189,10 +233,8 @@ export function DealerOS() {
   const finiteListingCap = getManagedListingCap(user);
   const remainingListingSlots = finiteListingCap === null ? null : Math.max(finiteListingCap - activeListings.length, 0);
   const listingAllowanceText = finiteListingCap !== null
-    ? `${finiteListingCap} managed listings • ${remainingListingSlots} remaining`
-    : user?.role === 'pro_dealer'
-      ? '150 managed listings'
-      : '50 managed listings';
+    ? `${getListingCapDisplayLabel(finiteListingCap, 'managed listing', 'managed listings')} - ${remainingListingSlots} remaining`
+    : 'Unlimited managed listings';
   const featuredListings = useMemo(
     () => activeListings.filter((listing) => !!listing.featured),
     [activeListings]
@@ -221,14 +263,14 @@ export function DealerOS() {
     () => inquiries.find((inquiry) => inquiry.id === selectedInquiryId) || null,
     [inquiries, selectedInquiryId]
   );
-  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.forestryequipmentsales.com';
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
   const publicDealerId = storefrontProfile?.storefrontSlug || ownerUid;
   const publicDealerPageUrl = publicDealerId ? `${appOrigin}/dealers/${encodeURIComponent(publicDealerId)}` : '';
   const publicDealerFeedUrl = publicDealerId ? `${appOrigin}/api/public/dealers/${encodeURIComponent(publicDealerId)}/feed.json` : '';
   const publicDealerEmbedUrl = publicDealerId ? `${appOrigin}/api/public/dealers/${encodeURIComponent(publicDealerId)}/embed?limit=12` : '';
   const publicDealerEmbedScriptUrl = `${appOrigin}/api/public/dealer-embed.js`;
   const embedScriptSnippet = publicDealerId
-    ? `<div id="forestryequipmentsales-dealer-inventory"></div>\n<script src="${publicDealerEmbedScriptUrl}" data-dealer="${publicDealerId}" data-target="forestryequipmentsales-dealer-inventory" data-limit="12" data-featured-only="false" data-height="980"></script>`
+    ? `<div id="timberequip-dealer-inventory"></div>\n<script src="${publicDealerEmbedScriptUrl}" data-dealer="${publicDealerId}" data-target="timberequip-dealer-inventory" data-limit="12" data-featured-only="false" data-height="980"></script>`
     : '';
   const iframeSnippet = publicDealerId
     ? `<iframe src="${publicDealerEmbedUrl}" loading="lazy" style="width:100%;min-height:980px;border:0;" referrerpolicy="strict-origin-when-cross-origin"></iframe>`
@@ -308,7 +350,8 @@ export function DealerOS() {
   };
 
   const handleDeleteListing = async (listing: Listing) => {
-    if (!window.confirm(`Delete ${listing.title}? This cannot be undone.`)) {
+    const ok = await showConfirm({ title: 'Confirm Delete', message: `Delete ${listing.title}? This cannot be undone.`, variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) {
       return;
     }
 
@@ -425,7 +468,8 @@ export function DealerOS() {
 
   const handleDeleteFeedProfile = async (profile: DealerFeedProfile) => {
     if (!ownerUid) return;
-    if (!window.confirm(`Delete the feed profile "${profile.sourceName}"?`)) {
+    const ok = await showConfirm({ title: 'Confirm Delete', message: `Delete the feed profile "${profile.sourceName}"?`, variant: 'danger', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
+    if (!ok) {
       return;
     }
 
@@ -687,65 +731,67 @@ export function DealerOS() {
         description="Manage your dealer inventory, leads, feed imports, and storefront settings."
         robots={NOINDEX_ROBOTS}
       />
-      <section className="grid gap-6 rounded-sm border border-line bg-surface p-6 lg:grid-cols-[1.6fr_1fr]">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent">
-              <BadgeCheck size={12} /> DealerOS
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
-              {user?.role === 'pro_dealer' ? 'Pro Dealer Workspace' : 'Dealer Workspace'}
-            </span>
-          </div>
-          <div>
-            <h1 className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl">Manage Inventory, Imports, and Featured Placement</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted">
-              DealerOS keeps live inventory, feed imports, and featured listing placement in one operator workspace. Featured listings stay at the front of public browse surfaces.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setEditingListing(null);
-                setIsModalOpen(true);
-              }}
-              className="btn-industrial btn-accent flex items-center gap-2 px-5 py-3"
-            >
-              <Plus size={14} /> Add Machine
-            </button>
-            <button
-              type="button"
-              onClick={() => void loadDealerOsData()}
-              className="btn-industrial flex items-center gap-2 px-5 py-3"
-            >
-              <RefreshCw size={14} /> Refresh Workspace
-            </button>
-            <Link to="/profile" className="btn-industrial flex items-center gap-2 px-5 py-3">
-              <Settings size={14} /> Storefront Settings
-            </Link>
-            <Link to="/sell" className="btn-industrial flex items-center gap-2 px-5 py-3">
-              <ArrowUpRight size={14} /> Listing Form
-            </Link>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-          {[
-            { label: 'Active Inventory', value: activeListings.length, icon: Package },
-            { label: 'Listings Remaining', value: remainingListingSlots === null ? 'Unlimited' : remainingListingSlots, icon: Layers },
-            { label: 'Featured Slots', value: `${featuredListings.length}/${featuredCap || 0}`, icon: Star },
-            { label: 'New Leads', value: newLeadCount, icon: Building2 },
-            { label: 'Imported Units', value: importedListings.length, icon: Database },
-          ].map((card) => (
-            <div key={card.label} className="rounded-sm border border-line bg-bg p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{card.label}</span>
-                <card.icon size={15} className="text-accent" />
-              </div>
-              <div className="mt-3 text-3xl font-black tracking-tight text-ink">{card.value}</div>
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">
+                DealerOS
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
+                {user?.role === 'pro_dealer' ? 'Pro Dealer Workspace' : 'Dealer Workspace'}
+              </span>
             </div>
-          ))}
+            <div>
+              <h1 className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl">Manage Inventory, Imports, and Featured Placement</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted">
+                DealerOS keeps live inventory, feed imports, and featured listing placement in one operator workspace. Featured listings stay at the front of public browse surfaces.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingListing(null);
+                  setIsModalOpen(true);
+                }}
+                className="btn-industrial btn-accent flex items-center gap-2 px-5 py-3"
+              >
+                <Plus size={14} /> Add Machine
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadDealerOsData()}
+                className="btn-industrial flex items-center gap-2 px-5 py-3"
+              >
+                <RefreshCw size={14} /> Refresh Workspace
+              </button>
+              <Link to="/profile" className="btn-industrial flex items-center gap-2 px-5 py-3">
+                <Settings size={14} /> Storefront Settings
+              </Link>
+              <Link to="/sell" className="btn-industrial flex items-center gap-2 px-5 py-3">
+                <ArrowUpRight size={14} /> Listing Form
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            {[
+              { label: 'Active Inventory', value: activeListings.length, icon: Package },
+              { label: 'Listings Remaining', value: remainingListingSlots === null ? 'Unlimited' : remainingListingSlots, icon: Layers },
+              { label: 'Featured Slots', value: `${featuredListings.length}/${featuredCap || 0}`, icon: Star },
+              { label: 'New Leads', value: newLeadCount, icon: Building2 },
+              { label: 'Imported Units', value: importedListings.length, icon: Database },
+            ].map((card) => (
+              <div key={card.label} className="rounded-sm border border-line bg-bg p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">{card.label}</span>
+                  <card.icon size={15} className="text-accent" />
+                </div>
+                <div className="mt-3 text-3xl font-black tracking-tight text-ink">{card.value}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -770,7 +816,7 @@ export function DealerOS() {
       />
 
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-sm border border-line bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Featured Listing Control</h2>
@@ -813,7 +859,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="rounded-sm border border-line bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Account Capacity</h2>
           <div className="mt-5 space-y-3">
             <div className="rounded-sm border border-line bg-bg p-4">
@@ -841,7 +887,7 @@ export function DealerOS() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-sm border border-line bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Import Console</h2>
@@ -1081,6 +1127,9 @@ export function DealerOS() {
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">
                 {feedDryRun ? 'Dry Run Enabled' : 'Live Import Enabled'}
               </span>
+              {!feedDryRun && (
+                <span className="text-[10px] font-bold text-accent">Changes will write to live inventory</span>
+              )}
             </div>
 
             {feedError ? (
@@ -1112,7 +1161,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="rounded-sm border border-line bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Feed Preview</h2>
           <div className="mt-5 space-y-4">
             <div className="rounded-sm border border-line bg-bg p-4">
@@ -1230,7 +1279,7 @@ export function DealerOS() {
         </div>
       </section>
 
-      <section className="rounded-sm border border-line bg-surface p-6">
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Dealer Site Syndication</h2>
@@ -1253,6 +1302,22 @@ export function DealerOS() {
         {syndicationNotice ? (
           <div className="mt-5 rounded-sm border border-line bg-bg p-4 text-sm font-bold text-ink">{syndicationNotice}</div>
         ) : null}
+
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { step: '1', title: 'JSON Feed', desc: 'Share raw inventory data with partners and downstream systems.' },
+            { step: '2', title: 'Embed Widget', desc: 'Add an interactive inventory browser to any dealer website.' },
+            { step: '3', title: 'Iframe Fallback', desc: 'Use when the dealer site only supports iframe markup.' },
+          ].map((s) => (
+            <div key={s.step} className="flex items-start gap-3 rounded-sm border border-line bg-bg p-4">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-black text-accent">{s.step}</span>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">{s.title}</div>
+                <div className="mt-1 text-xs text-muted">{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-sm border border-line bg-bg p-4">
@@ -1345,29 +1410,448 @@ export function DealerOS() {
         </div>
       </section>
 
+      {/* ── Widget Builder ──────────────────────────────────── */}
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Widget Builder</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              Customize and embed an interactive inventory widget on any website. Supports four card styles including Forestry Equipment Sales Native, with optional inquiry forms, call buttons, and detail lightbox.
+            </p>
+          </div>
+        </div>
+
+        {widgetNotice ? <div className="mt-4 rounded-sm border border-data/30 bg-data/10 p-3 text-sm font-bold text-data">{widgetNotice}</div> : null}
+        {widgetError ? <div className="mt-4 rounded-sm border border-accent/30 bg-accent/10 p-3 text-sm font-bold text-accent">{widgetError}</div> : null}
+
+        <div className="mt-5 grid gap-6 lg:grid-cols-2">
+          {/* Customizer */}
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Card Style</label>
+              <div className="flex flex-wrap gap-2">
+                {(['fes-native', 'grid', 'list', 'compact'] as const).map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    onClick={() => setWidgetCardStyle(style)}
+                    className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-colors ${widgetCardStyle === style ? 'border-ink bg-bg text-ink' : 'border-line text-muted hover:border-ink/30'}`}
+                  >
+                    {style === 'fes-native' ? 'Forestry Equipment Sales Native' : style}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Accent Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={widgetAccentColor}
+                    onChange={(e) => setWidgetAccentColor(e.target.value)}
+                    className="h-8 w-10 cursor-pointer border border-line rounded-sm bg-bg"
+                  />
+                  <input
+                    type="text"
+                    value={widgetAccentColor}
+                    onChange={(e) => setWidgetAccentColor(e.target.value)}
+                    className="input-industrial w-full text-[11px] font-mono"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Font Family</label>
+                <select
+                  value={widgetFontFamily}
+                  onChange={(e) => setWidgetFontFamily(e.target.value)}
+                  className="input-industrial w-full text-[11px]"
+                >
+                  <option value="">System Default</option>
+                  <option value="Inter, sans-serif">Inter</option>
+                  <option value="'Roboto', sans-serif">Roboto</option>
+                  <option value="'Open Sans', sans-serif">Open Sans</option>
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="'Courier New', monospace">Courier New</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-1">Page Size</label>
+                <input
+                  type="range"
+                  min={3}
+                  max={24}
+                  step={3}
+                  value={widgetPageSize}
+                  onChange={(e) => setWidgetPageSize(Number(e.target.value))}
+                  className="w-full accent-accent"
+                />
+                <div className="text-[10px] font-bold text-muted text-center">{widgetPageSize} per page</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetDarkMode} onChange={(e) => setWidgetDarkMode(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Dark Mode</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Match your dark-themed website</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowInquiry} onChange={(e) => setWidgetShowInquiry(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Inquiry</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Inquiry form button on each card</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowCall} onChange={(e) => setWidgetShowCall(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Call</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Click-to-call button on each card</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={widgetShowDetails} onChange={(e) => setWidgetShowDetails(e.target.checked)} className="accent-accent mt-0.5" />
+                  <span className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">Show Details</span>
+                    <span className="text-[10px] font-normal normal-case tracking-normal text-muted/70">Lightbox detail view on card click</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3 pt-2">
+              <button
+                type="button"
+                disabled={widgetSaving || !publicDealerId}
+                onClick={async () => {
+                  if (!ownerUid) return;
+                  setWidgetSaving(true);
+                  setWidgetError('');
+                  setWidgetNotice('');
+                  try {
+                    await dealerFeedService.saveWidgetConfig(ownerUid, {
+                      cardStyle: widgetCardStyle,
+                      accentColor: widgetAccentColor,
+                      fontFamily: widgetFontFamily,
+                      darkMode: widgetDarkMode,
+                      showInquiry: widgetShowInquiry,
+                      showCall: widgetShowCall,
+                      showDetails: widgetShowDetails,
+                      pageSize: widgetPageSize,
+                    });
+                    setWidgetNotice('Widget configuration saved.');
+                  } catch (err) {
+                    setWidgetError(err instanceof Error ? err.message : 'Failed to save widget configuration.');
+                  } finally {
+                    setWidgetSaving(false);
+                  }
+                }}
+                className="btn-industrial btn-accent px-5 py-2.5 text-[10px]"
+              >
+                {widgetSaving ? 'Saving...' : 'Save Config'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const snippet = publicDealerId
+                    ? `<fes-dealer-inventory data-dealer="${publicDealerId}"${widgetCardStyle !== 'fes-native' ? ` data-card-style="${widgetCardStyle}"` : ''}${widgetAccentColor !== '#16A34A' ? ` data-accent-color="${widgetAccentColor}"` : ''}${widgetFontFamily ? ` data-font-family="${widgetFontFamily}"` : ''}${widgetDarkMode ? ' data-dark-mode="true"' : ''}${!widgetShowInquiry ? ' data-show-inquiry="false"' : ''}${!widgetShowCall ? ' data-show-call="false"' : ''}${!widgetShowDetails ? ' data-show-details="false"' : ''}${widgetPageSize !== 12 ? ` data-page-size="${widgetPageSize}"` : ''}></fes-dealer-inventory>\n<script src="${appOrigin}/api/public/dealer-widget.js"></script>`
+                    : '';
+                  if (!snippet) {
+                    setWidgetError('Storefront must be saved before generating widget snippet.');
+                    return;
+                  }
+                  void navigator.clipboard.writeText(snippet).then(
+                    () => { setWidgetNotice('Widget snippet copied to clipboard.'); setWidgetError(''); },
+                    () => { setWidgetError('Failed to copy snippet.'); }
+                  );
+                }}
+                className="btn-industrial px-5 py-2.5 text-[10px]"
+              >
+                <Copy size={12} className="mr-1 inline" /> Copy Widget Snippet
+              </button>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-2">Live Preview</label>
+            <div className="rounded-sm border border-line overflow-hidden" style={{ minHeight: 360 }}>
+              {publicDealerId ? (
+                <iframe
+                  key={`${widgetCardStyle}-${widgetAccentColor}-${widgetDarkMode}-${widgetPageSize}-${widgetShowInquiry}-${widgetShowCall}-${widgetShowDetails}`}
+                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;}</style></head><body><fes-dealer-inventory data-dealer="${publicDealerId}" data-card-style="${widgetCardStyle}" data-accent-color="${widgetAccentColor}"${widgetFontFamily ? ` data-font-family="${widgetFontFamily}"` : ''} data-dark-mode="${widgetDarkMode}" data-show-inquiry="${widgetShowInquiry}" data-show-call="${widgetShowCall}" data-show-details="${widgetShowDetails}" data-page-size="${widgetPageSize}"></fes-dealer-inventory><script src="${appOrigin}/api/public/dealer-widget.js"><\/script></body></html>`}
+                  className="w-full border-0"
+                  style={{ minHeight: 360 }}
+                  title="Widget Preview"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full p-8 text-center">
+                  <p className="text-sm font-bold text-muted">Save your storefront to preview the widget.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Widget embed snippet display */}
+        {publicDealerId ? (
+          <div className="mt-5 rounded-sm border border-line bg-bg p-4">
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted mb-2">Widget Embed Code</div>
+            <textarea
+              readOnly
+              rows={3}
+              value={`<fes-dealer-inventory data-dealer="${publicDealerId}"${widgetCardStyle !== 'fes-native' ? ` data-card-style="${widgetCardStyle}"` : ''}${widgetAccentColor !== '#16A34A' ? ` data-accent-color="${widgetAccentColor}"` : ''}${widgetDarkMode ? ' data-dark-mode="true"' : ''}></fes-dealer-inventory>\n<script src="${appOrigin}/api/public/dealer-widget.js"></script>`}
+              className="input-industrial w-full resize-none font-mono text-[11px]"
+            />
+          </div>
+        ) : null}
+      </section>
+
+      {/* ── Webhook Management ──────────────────────────────── */}
+      <section className="rounded-sm border border-line bg-surface p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight text-ink">Webhook Notifications</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              Receive real-time HMAC-signed HTTP POST notifications whenever listings are created, updated, sold, or deleted. Integrate with CRM, ERP, or custom systems.
+            </p>
+          </div>
+        </div>
+
+        {webhookNotice ? <div className="mt-4 rounded-sm border border-data/30 bg-data/10 p-3 text-sm font-bold text-data">{webhookNotice}</div> : null}
+        {webhookError ? <div className="mt-4 rounded-sm border border-accent/30 bg-accent/10 p-3 text-sm font-bold text-accent">{webhookError}</div> : null}
+
+        {/* Add webhook form */}
+        <div className="mt-5 rounded-sm border border-line bg-bg p-4">
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted mb-3">Add Webhook Subscription</div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <div className="flex-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-muted block mb-1">Callback URL</label>
+              <input
+                type="url"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://your-server.com/webhooks/fes"
+                className="input-industrial w-full text-[11px]"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={webhookSaving || !webhookUrl.trim()}
+              onClick={async () => {
+                if (!ownerUid || !webhookUrl.trim()) return;
+                setWebhookSaving(true);
+                setWebhookError('');
+                setWebhookNotice('');
+                try {
+                  const result = await dealerFeedService.createWebhook({
+                    sellerUid: ownerUid,
+                    callbackUrl: webhookUrl.trim(),
+                    events: webhookEvents,
+                  });
+                  setWebhookNotice('Webhook created successfully. The signing secret is shown below — copy it now, it will not be displayed again.');
+                  if (result.id && result.secret) {
+                    setRevealedSecrets((prev) => ({ ...prev, [result.id]: result.secret }));
+                  }
+                  setWebhookUrl('');
+                  const fresh = await dealerFeedService.getWebhooks(ownerUid);
+                  setWebhooks(fresh);
+                } catch (err) {
+                  setWebhookError(err instanceof Error ? err.message : 'Failed to create webhook.');
+                } finally {
+                  setWebhookSaving(false);
+                }
+              }}
+              className="btn-industrial btn-accent px-5 py-2.5 text-[10px] shrink-0"
+            >
+              {webhookSaving ? 'Creating...' : 'Add Webhook'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {['listing.created', 'listing.updated', 'listing.sold', 'listing.deleted'].map((evt) => (
+              <label key={evt} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={webhookEvents.includes(evt)}
+                  onChange={(e) => {
+                    setWebhookEvents((prev) =>
+                      e.target.checked ? [...prev, evt] : prev.filter((x) => x !== evt)
+                    );
+                  }}
+                  className="accent-accent"
+                />
+                <span className="text-[10px] font-bold text-muted">{evt}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Existing webhooks */}
+        {webhooks.length > 0 ? (
+          <div className="mt-5 overflow-hidden rounded-sm border border-line">
+            <div className="divide-y divide-line bg-bg">
+              {webhooks.map((wh) => (
+                <div key={wh.id} className="flex flex-col gap-2 px-4 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex h-2 w-2 rounded-full ${wh.active ? 'bg-data' : 'bg-muted'}`} />
+                      <span className="text-sm font-bold text-ink truncate">{wh.callbackUrl}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] font-bold text-muted">
+                      Events: {wh.events.join(', ')} &middot; Secret: {revealedSecrets[wh.id] || wh.secretMasked}
+                      {wh.failureCount > 0 ? ` · ${wh.failureCount} failures` : ''}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const secret = await dealerFeedService.revealWebhookSecret(wh.id);
+                          setRevealedSecrets((prev) => ({ ...prev, [wh.id]: secret }));
+                        } catch { /* ignore */ }
+                      }}
+                      className="btn-industrial px-2 py-1 text-[10px]"
+                    >
+                      <Eye size={12} className="mr-1 inline" /> Reveal Secret
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setWebhookNotice('');
+                        setWebhookError('');
+                        try {
+                          const result = await dealerFeedService.testWebhook(wh.id);
+                          setWebhookNotice(result.ok ? `Test delivery succeeded (HTTP ${result.statusCode}).` : `Test delivery failed: ${result.error}`);
+                        } catch (err) {
+                          setWebhookError(err instanceof Error ? err.message : 'Test delivery failed.');
+                        }
+                      }}
+                      className="btn-industrial px-2 py-1 text-[10px]"
+                    >
+                      <RefreshCw size={12} className="mr-1 inline" /> Test
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setWebhookError('');
+                        setWebhookNotice('');
+                        try {
+                          await dealerFeedService.deleteWebhook(wh.id);
+                          setWebhooks((prev) => prev.filter((w) => w.id !== wh.id));
+                          setWebhookNotice('Webhook deleted.');
+                        } catch (err) {
+                          setWebhookError(err instanceof Error ? err.message : 'Failed to delete webhook.');
+                        }
+                      }}
+                      className="btn-industrial px-2 py-1 text-[10px] text-accent"
+                    >
+                      <Trash2 size={12} className="mr-1 inline" /> Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-sm border border-dashed border-line bg-bg p-8 text-center">
+            <p className="text-sm font-bold text-muted">No webhook subscriptions configured yet.</p>
+          </div>
+        )}
+
+        {/* Delivery Logs */}
+        {webhooks.length > 0 ? (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Recent Deliveries</div>
+              <button
+                type="button"
+                className="rounded-sm border border-line px-2 py-1 text-[10px] font-bold text-muted hover:text-ink"
+                disabled={webhookLogsLoading}
+                onClick={async () => {
+                  if (!ownerUid) return;
+                  setWebhookLogsLoading(true);
+                  try {
+                    const fresh = await dealerFeedService.getWebhookDeliveryLogs(ownerUid);
+                    setWebhookLogs(fresh);
+                  } catch { /* ignore */ }
+                  setWebhookLogsLoading(false);
+                }}
+              >
+                <RefreshCw size={10} className={`mr-1 inline ${webhookLogsLoading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+            {webhookLogs.length > 0 ? (
+              <div className="overflow-x-auto rounded-sm border border-line">
+                <table className="w-full min-w-[600px] text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-line bg-bg text-[10px] font-black uppercase tracking-[0.15em] text-muted">
+                      <th className="px-3 py-2">Event</th>
+                      <th className="px-3 py-2">Listing</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">HTTP</th>
+                      <th className="px-3 py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {webhookLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-line/50 last:border-0">
+                        <td className="px-3 py-2 font-mono">{log.event}</td>
+                        <td className="px-3 py-2 font-mono text-muted">{log.listingId.slice(0, 12)}...</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${log.success ? 'bg-data/10 text-data' : 'bg-accent/10 text-accent'}`}>
+                            {log.success ? 'OK' : 'FAIL'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">{log.statusCode ?? '—'}</td>
+                        <td className="px-3 py-2 text-muted">{formatLogTime(log.deliveredAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">No delivery logs yet.</p>
+            )}
+          </div>
+        ) : null}
+      </section>
+
       <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
-        <div className="rounded-sm border border-line bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-ink">Lead Inbox</h2>
               <p className="mt-1 text-sm text-muted">Track new inbound leads, assign follow-up, and leave internal notes without leaving DealerOS.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(['all', 'new', 'working', 'closed'] as LeadFilter[]).map((filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  onClick={() => setLeadFilter(filter)}
-                  className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${leadFilter === filter ? 'border-ink bg-bg text-ink' : 'border-line text-muted'}`}
-                >
-                  {filter}
-                </button>
-              ))}
+              {(['all', 'new', 'working', 'closed'] as LeadFilter[]).map((filter) => {
+                const count =
+                  filter === 'all' ? inquiries.length
+                  : filter === 'new' ? inquiries.filter((i) => i.status === 'New').length
+                  : filter === 'working' ? inquiries.filter((i) => ['Contacted', 'Qualified', 'Won'].includes(i.status)).length
+                  : inquiries.filter((i) => ['Lost', 'Closed'].includes(i.status)).length;
+                return (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setLeadFilter(filter)}
+                    className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${leadFilter === filter ? 'border-ink bg-bg text-ink' : 'border-line text-muted'}`}
+                  >
+                    {filter}<span className="ml-1.5 text-[9px]">{count}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div className="mt-5 overflow-hidden rounded-sm border border-line">
-            <div className="divide-y divide-line bg-surface">
+            <div className="max-h-[500px] overflow-y-auto divide-y divide-line bg-surface">
               {filteredInquiries.length === 0 ? (
                 <div className="px-4 py-10 text-center text-sm font-bold text-muted">No leads match the current filter.</div>
               ) : (
@@ -1400,7 +1884,7 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="rounded-sm border border-line bg-surface p-6">
+        <div className="rounded-sm border border-line bg-surface p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-black uppercase tracking-tight text-ink">Lead Detail</h2>
             {selectedInquiry ? (
@@ -1551,14 +2035,16 @@ export function DealerOS() {
           </div>
         </div>
 
-        <div className="mt-5 overflow-x-auto rounded-sm border border-line">
-          <table className="w-full min-w-[980px] text-left">
+        <div className="mt-5 max-h-[600px] overflow-y-auto overflow-x-auto rounded-sm border border-line">
+          <table className="w-full min-w-[1100px] text-left">
             <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
               <tr>
                 <th className="px-4 py-3">Machine</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Featured</th>
                 <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3 text-right">Views</th>
+                <th className="px-4 py-3 text-right">Leads</th>
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Feed</th>
                 <th className="px-4 py-3">Actions</th>
@@ -1567,11 +2053,11 @@ export function DealerOS() {
             <tbody className="divide-y divide-line bg-surface">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-muted">Loading DealerOS inventory…</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm font-bold text-muted">Loading DealerOS inventory…</td>
                 </tr>
               ) : filteredListings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm font-bold text-muted">No listings match the current filter.</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm font-bold text-muted">No listings match the current filter.</td>
                 </tr>
               ) : (
                 filteredListings.map((listing) => (
@@ -1592,6 +2078,8 @@ export function DealerOS() {
                       </button>
                     </td>
                     <td className="px-4 py-4 text-xs font-bold text-ink">{formatPrice(listing.price, listing.currency)}</td>
+                    <td className="px-4 py-4 text-xs font-bold text-ink text-right">{listing.views || 0}</td>
+                    <td className="px-4 py-4 text-xs font-bold text-ink text-right">{listing.leads || 0}</td>
                     <td className="px-4 py-4 text-xs text-muted">{listing.location || '—'}</td>
                     <td className="px-4 py-4 text-xs text-muted">{listing.externalSource?.sourceName || 'Manual'}</td>
                     <td className="px-4 py-4">
@@ -1632,7 +2120,7 @@ export function DealerOS() {
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-sm border border-line bg-surface p-6">
           <h2 className="text-lg font-black uppercase tracking-tight text-ink">Recent Import Activity</h2>
-          <div className="mt-5 overflow-x-auto rounded-sm border border-line">
+          <div className="mt-5 max-h-[400px] overflow-y-auto overflow-x-auto rounded-sm border border-line">
             <table className="w-full min-w-[720px] text-left">
               <thead className="bg-bg text-[10px] font-black uppercase tracking-[0.2em] text-muted">
                 <tr>
@@ -1686,6 +2174,8 @@ export function DealerOS() {
         listing={editingListing}
         onSave={handleSaveListing}
       />
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

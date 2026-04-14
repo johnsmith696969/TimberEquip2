@@ -7,7 +7,12 @@ schema:
     postgresql:
       database: timberequip
       cloudSql:
-        instanceId: REPLACE_WITH_CLOUD_SQL_INSTANCE_ID
+        instanceId: timberequip-dc
         schemaValidation: COMPATIBLE
 connectorDirs:
   - ./listingGovernance
+  - ./marketplace
+  - ./billing
+  - ./auctions
+  - ./leads
+  - ./dealers

@@ -128,7 +128,7 @@ export function MetaAdProgramBreakdown() {
                 'Dealer uploads machine to Forestry Equipment Sales',
                 'Machine is approved and published',
                 'Inventory is prepared for Meta catalog structure',
-                'Traffic campaigns point buys back to dealer storefronts on forestryequipmentsales.com',
+                'Traffic campaigns point buys back to dealer storefronts on Forestry Equipment Sales',
                 'Lead is captured and routed to the right seller',
               ].map((step, index) => (
                 <div

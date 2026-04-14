@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 export interface BreadcrumbItem {
   label: string;
@@ -35,7 +36,7 @@ export function Breadcrumbs({ items = [] }: Props) {
       '@type': 'ListItem',
       'position': idx + 1,
       'name': item.label,
-      'item': `https://www.forestryequipmentsales.com${item.path}`
+      'item': buildSiteUrl(item.path)
     }))
   };
 
@@ -54,11 +55,11 @@ export function Breadcrumbs({ items = [] }: Props) {
           <React.Fragment key={item.path}>
             {idx > 0 && <ChevronRight size={12} className="flex-shrink-0" />}
             {idx === breadcrumbs.length - 1 ? (
-              <span className="flex-shrink-0 text-ink">{item.label}</span>
+              <span className="flex-shrink-0 text-ink" aria-current="page">{item.label}</span>
             ) : (
               <Link
                 to={item.path}
-                className="flex-shrink-0 text-accent hover:underline transition-colors"
+                className="flex-shrink-0 text-accent-link hover:underline transition-colors"
               >
                 {item.label}
               </Link>
@@ -80,27 +81,28 @@ function getDefaultBreadcrumbs(pathname: string): BreadcrumbItem[] {
   switch (pathname) {
     case '/':
       return [];
-    case '/search':
-      const crumbs: BreadcrumbItem[] = [{ label: 'Search', path: '/search' }];
+    case '/search': {
+      const crumbs: BreadcrumbItem[] = [{ label: 'Equipment for Sale', path: '/search' }];
       if (category) {
-        crumbs.push({ 
-          label: category, 
-          path: `/search?category=${encodeURIComponent(category)}` 
+        crumbs.push({
+          label: category,
+          path: `/search?category=${encodeURIComponent(category)}`
         });
       }
       if (subcategory && category) {
-        crumbs.push({ 
-          label: subcategory, 
-          path: `/search?category=${encodeURIComponent(category)}&subcategory=${encodeURIComponent(subcategory)}` 
+        crumbs.push({
+          label: subcategory,
+          path: `/search?category=${encodeURIComponent(category)}&subcategory=${encodeURIComponent(subcategory)}`
         });
       }
-      if (manufacturer && category) {
-        crumbs.push({ 
-          label: manufacturer, 
-          path: `/search?category=${encodeURIComponent(category)}&manufacturer=${encodeURIComponent(manufacturer)}` 
-        });
+      if (manufacturer) {
+        const mfgPath = category
+          ? `/search?category=${encodeURIComponent(category)}&manufacturer=${encodeURIComponent(manufacturer)}`
+          : `/search?manufacturer=${encodeURIComponent(manufacturer)}`;
+        crumbs.push({ label: manufacturer, path: mfgPath });
       }
       return crumbs;
+    }
     case '/categories':
       return [{ label: 'Categories', path: '/categories' }];
     case '/sell':

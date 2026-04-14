@@ -3,14 +3,42 @@ import { motion } from 'framer-motion';
 import { Shield, Lock, Eye, FileText, UserCheck, Trash2, Download, Globe, Users, AlertTriangle, Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Seo } from '../components/Seo';
+import { buildSiteUrl } from '../utils/siteUrl';
+import { useTheme } from '../components/ThemeContext';
 
 export function Privacy() {
+  const { theme } = useTheme();
+  const contactPanelClass = theme === 'dark' ? 'bg-[#1C1917] text-white border border-white/10' : 'bg-surface text-ink border border-line';
+  const contactBodyClass = theme === 'dark' ? 'text-white/60' : 'text-muted';
+  const contactSubtleClass = theme === 'dark' ? 'text-white/40' : 'text-muted';
+
   return (
     <div className="min-h-screen bg-bg py-24 px-4 md:px-8">
       <Seo
         title="Privacy Policy | Forestry Equipment Sales"
         description="Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant. Data encryption, third-party processors, and your rights explained."
         canonicalPath="/privacy"
+        ogType="website"
+        imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'WebPage',
+              name: 'Privacy Policy',
+              description: 'Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant.',
+              url: buildSiteUrl('/privacy'),
+              lastReviewed: '2026-03-29',
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+                { '@type': 'ListItem', position: 2, name: 'Privacy Policy', item: buildSiteUrl('/privacy') },
+              ],
+            },
+          ],
+        }}
       />
       <div className="max-w-4xl mx-auto">
         <motion.div
@@ -60,9 +88,9 @@ export function Privacy() {
             <section className="space-y-6">
               <h2 className="text-2xl font-black uppercase tracking-tighter text-ink">1. Introduction &amp; Scope</h2>
               <p>
-                This Privacy Policy ("Policy") describes how Forestry Equipment Sales, LLC ("FES," "we," "us," or "our")
-                collects, uses, stores, shares, and protects personal information when you access or use our website at
-                forestryequipmentsales.com, our mobile applications, our APIs, and any related services (collectively, the "Platform").
+                This Privacy Policy ("Policy") describes how Forestry Equipment Sales, LLC ("Forestry Equipment Sales", "we", "us", or "our")
+                collects, uses, stores, shares, and protects personal information when you access or use the Forestry Equipment Sales website,
+                our mobile applications, our APIs, and any related services (collectively, the "Platform").
               </p>
               <p>
                 This Policy applies to all users of the Platform, including equipment buyers, sellers, dealers, service partners,
@@ -93,7 +121,7 @@ export function Privacy() {
                     <li>Professional credentials, certifications, and licensing information</li>
                     <li>Job title and authority to act on behalf of a business entity</li>
                     <li>Profile photograph (optional)</li>
-                    <li>Tax identification number or EIN (for dealer accounts — transmitted directly to Stripe, not stored by FES)</li>
+                    <li>Tax identification number or EIN (for dealer accounts — transmitted directly to Stripe, not stored by Forestry Equipment Sales)</li>
                   </ul>
                 </div>
 
@@ -242,7 +270,7 @@ export function Privacy() {
 
               <p>
                 We may also share data with legal advisors, auditors, and law enforcement authorities when required by law or
-                to protect the rights, safety, and property of FES, our users, or the public.
+                to protect the rights, safety, and property of Forestry Equipment Sales, our users, or the public.
               </p>
             </section>
 
@@ -562,22 +590,22 @@ export function Privacy() {
             </section>
 
             {/* Contact Section */}
-            <section className="bg-ink text-white p-12 rounded-sm space-y-6">
+            <section className={`${contactPanelClass} p-12 rounded-sm space-y-6`}>
               <h2 className="text-2xl font-black uppercase tracking-tighter text-accent">Contact Data Protection Officer</h2>
-              <p className="text-white/60">
+              <p className={contactBodyClass}>
                 If you have questions about this policy, wish to exercise your rights, or want to file a
                 privacy-related complaint, contact our Data Protection Center:
               </p>
-              <p className="text-white/60">
+              <p className={contactBodyClass}>
                 If your concern involves voice-call metadata, forwarding numbers, or telephone privacy information similar to customer proprietary network information (CPNI), you may also file a privacy complaint with the FCC through the{' '}
                 <a href="https://consumercomplaints.fcc.gov/hc/en-us/articles/8824334151572-Privacy-Complaints" target="_blank" rel="noopener noreferrer" className="text-accent underline">
                   FCC Privacy Complaints Center
                 </a>.
               </p>
               <div className="flex flex-col space-y-2 font-black tracking-tight">
-                <span>privacy@forestryequipmentsales.com</span>
-                <span>+1 (800) 846-2373</span>
-                <span className="text-white/40 text-sm font-medium mt-2">Forestry Equipment Sales, LLC — Duluth, Minnesota, United States</span>
+                <span>info@forestryequipmentsales.com</span>
+                <span>+1 (218) 720-0933</span>
+                <span className={`${contactSubtleClass} text-sm font-medium mt-2`}>Forestry Equipment Sales, LLC — 1518 E Superior St, Duluth, MN 55812</span>
               </div>
             </section>
           </div>
@@ -586,3 +614,4 @@ export function Privacy() {
     </div>
   );
 }
+

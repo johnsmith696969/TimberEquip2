@@ -8,7 +8,6 @@ coverage/
 .env*
 !.env.example
 .firebase-web-config.local.json
-firebase-applet-config.json
 test-results/
 playwright-report/
 .playwright-cli/

@@ -1,8 +1,7 @@
 import { UserRole } from '../types';
 
 export const EDITABLE_USER_ROLE_OPTIONS: ReadonlyArray<{ value: UserRole; label: string }> = [
-  { value: 'buyer', label: 'Buyer' },
-  { value: 'member', label: 'Free Member' },
+  { value: 'member', label: 'Member' },
   { value: 'individual_seller', label: 'Owner-Operator' },
   { value: 'dealer', label: 'Dealer' },
   { value: 'pro_dealer', label: 'Pro Dealer' },
@@ -16,7 +15,7 @@ export const EDITABLE_USER_ROLE_OPTIONS: ReadonlyArray<{ value: UserRole; label:
 export function normalizeEditableUserRole(role?: UserRole | string | null): UserRole {
   switch (role) {
     case 'buyer':
-      return 'buyer';
+      return 'member';
     case 'member':
       return 'member';
     case 'individual_seller':
@@ -40,7 +39,7 @@ export function normalizeEditableUserRole(role?: UserRole | string | null): User
     case 'pro_dealer':
       return 'pro_dealer';
     default:
-      return 'buyer';
+      return 'member';
   }
 }
 
@@ -56,7 +55,7 @@ export function getAssignableUserRoleOptions(actorRole?: UserRole | string | nul
   }
 
   if (normalizedActorRole === 'dealer' || normalizedActorRole === 'pro_dealer' || normalizedActorRole === 'dealer_manager' || normalizedActorRole === 'dealer_staff') {
-    return EDITABLE_USER_ROLE_OPTIONS.filter((option) => ['member', 'buyer'].includes(option.value));
+    return EDITABLE_USER_ROLE_OPTIONS.filter((option) => option.value === 'member');
   }
 
   return [];
@@ -64,10 +63,8 @@ export function getAssignableUserRoleOptions(actorRole?: UserRole | string | nul
 
 export function getUserRoleDisplayLabel(role?: UserRole | string | null): string {
   switch (normalizeEditableUserRole(role)) {
-    case 'buyer':
-      return 'Buyer';
     case 'member':
-      return 'Free Member';
+      return 'Member';
     case 'individual_seller':
       return 'Owner-Operator';
     case 'developer':
@@ -85,6 +82,6 @@ export function getUserRoleDisplayLabel(role?: UserRole | string | null): string
     case 'pro_dealer':
       return 'Pro Dealer';
     default:
-      return 'Buyer';
+      return 'Member';
   }
 }

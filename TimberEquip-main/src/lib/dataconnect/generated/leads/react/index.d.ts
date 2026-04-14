@@ -1,0 +1,60 @@
+import { GetInquiryByIdData, GetInquiryByIdVariables, ListInquiriesBySellerData, ListInquiriesBySellerVariables, ListInquiriesByBuyerData, ListInquiriesByBuyerVariables, ListInquiriesByListingData, ListInquiriesByListingVariables, ListInquiriesByStatusData, ListInquiriesByStatusVariables, GetFinancingRequestByIdData, GetFinancingRequestByIdVariables, ListFinancingRequestsBySellerData, ListFinancingRequestsBySellerVariables, ListFinancingRequestsByBuyerData, ListFinancingRequestsByBuyerVariables, GetCallLogByIdData, GetCallLogByIdVariables, ListCallLogsBySellerData, ListCallLogsBySellerVariables, ListCallLogsByListingData, ListCallLogsByListingVariables, ListContactRequestsByStatusData, ListContactRequestsByStatusVariables, UpsertInquiryData, UpsertInquiryVariables, UpdateInquiryStatusData, UpdateInquiryStatusVariables, UpsertFinancingRequestData, UpsertFinancingRequestVariables, InsertCallLogData, InsertCallLogVariables, InsertContactRequestData, InsertContactRequestVariables, UpdateContactRequestStatusData, UpdateContactRequestStatusVariables } from '../';
+import { UseDataConnectQueryResult, useDataConnectQueryOptions, UseDataConnectMutationResult, useDataConnectMutationOptions} from '@tanstack-query-firebase/react/data-connect';
+import { UseQueryResult, UseMutationResult} from '@tanstack/react-query';
+import { DataConnect } from 'firebase/data-connect';
+import { FirebaseError } from 'firebase/app';
+
+
+export function useGetInquiryById(vars: GetInquiryByIdVariables, options?: useDataConnectQueryOptions<GetInquiryByIdData>): UseDataConnectQueryResult<GetInquiryByIdData, GetInquiryByIdVariables>;
+export function useGetInquiryById(dc: DataConnect, vars: GetInquiryByIdVariables, options?: useDataConnectQueryOptions<GetInquiryByIdData>): UseDataConnectQueryResult<GetInquiryByIdData, GetInquiryByIdVariables>;
+
+export function useListInquiriesBySeller(vars: ListInquiriesBySellerVariables, options?: useDataConnectQueryOptions<ListInquiriesBySellerData>): UseDataConnectQueryResult<ListInquiriesBySellerData, ListInquiriesBySellerVariables>;
+export function useListInquiriesBySeller(dc: DataConnect, vars: ListInquiriesBySellerVariables, options?: useDataConnectQueryOptions<ListInquiriesBySellerData>): UseDataConnectQueryResult<ListInquiriesBySellerData, ListInquiriesBySellerVariables>;
+
+export function useListInquiriesByBuyer(vars: ListInquiriesByBuyerVariables, options?: useDataConnectQueryOptions<ListInquiriesByBuyerData>): UseDataConnectQueryResult<ListInquiriesByBuyerData, ListInquiriesByBuyerVariables>;
+export function useListInquiriesByBuyer(dc: DataConnect, vars: ListInquiriesByBuyerVariables, options?: useDataConnectQueryOptions<ListInquiriesByBuyerData>): UseDataConnectQueryResult<ListInquiriesByBuyerData, ListInquiriesByBuyerVariables>;
+
+export function useListInquiriesByListing(vars: ListInquiriesByListingVariables, options?: useDataConnectQueryOptions<ListInquiriesByListingData>): UseDataConnectQueryResult<ListInquiriesByListingData, ListInquiriesByListingVariables>;
+export function useListInquiriesByListing(dc: DataConnect, vars: ListInquiriesByListingVariables, options?: useDataConnectQueryOptions<ListInquiriesByListingData>): UseDataConnectQueryResult<ListInquiriesByListingData, ListInquiriesByListingVariables>;
+
+export function useListInquiriesByStatus(vars: ListInquiriesByStatusVariables, options?: useDataConnectQueryOptions<ListInquiriesByStatusData>): UseDataConnectQueryResult<ListInquiriesByStatusData, ListInquiriesByStatusVariables>;
+export function useListInquiriesByStatus(dc: DataConnect, vars: ListInquiriesByStatusVariables, options?: useDataConnectQueryOptions<ListInquiriesByStatusData>): UseDataConnectQueryResult<ListInquiriesByStatusData, ListInquiriesByStatusVariables>;
+
+export function useGetFinancingRequestById(vars: GetFinancingRequestByIdVariables, options?: useDataConnectQueryOptions<GetFinancingRequestByIdData>): UseDataConnectQueryResult<GetFinancingRequestByIdData, GetFinancingRequestByIdVariables>;
+export function useGetFinancingRequestById(dc: DataConnect, vars: GetFinancingRequestByIdVariables, options?: useDataConnectQueryOptions<GetFinancingRequestByIdData>): UseDataConnectQueryResult<GetFinancingRequestByIdData, GetFinancingRequestByIdVariables>;
+
+export function useListFinancingRequestsBySeller(vars: ListFinancingRequestsBySellerVariables, options?: useDataConnectQueryOptions<ListFinancingRequestsBySellerData>): UseDataConnectQueryResult<ListFinancingRequestsBySellerData, ListFinancingRequestsBySellerVariables>;
+export function useListFinancingRequestsBySeller(dc: DataConnect, vars: ListFinancingRequestsBySellerVariables, options?: useDataConnectQueryOptions<ListFinancingRequestsBySellerData>): UseDataConnectQueryResult<ListFinancingRequestsBySellerData, ListFinancingRequestsBySellerVariables>;
+
+export function useListFinancingRequestsByBuyer(vars: ListFinancingRequestsByBuyerVariables, options?: useDataConnectQueryOptions<ListFinancingRequestsByBuyerData>): UseDataConnectQueryResult<ListFinancingRequestsByBuyerData, ListFinancingRequestsByBuyerVariables>;
+export function useListFinancingRequestsByBuyer(dc: DataConnect, vars: ListFinancingRequestsByBuyerVariables, options?: useDataConnectQueryOptions<ListFinancingRequestsByBuyerData>): UseDataConnectQueryResult<ListFinancingRequestsByBuyerData, ListFinancingRequestsByBuyerVariables>;
+
+export function useGetCallLogById(vars: GetCallLogByIdVariables, options?: useDataConnectQueryOptions<GetCallLogByIdData>): UseDataConnectQueryResult<GetCallLogByIdData, GetCallLogByIdVariables>;
+export function useGetCallLogById(dc: DataConnect, vars: GetCallLogByIdVariables, options?: useDataConnectQueryOptions<GetCallLogByIdData>): UseDataConnectQueryResult<GetCallLogByIdData, GetCallLogByIdVariables>;
+
+export function useListCallLogsBySeller(vars: ListCallLogsBySellerVariables, options?: useDataConnectQueryOptions<ListCallLogsBySellerData>): UseDataConnectQueryResult<ListCallLogsBySellerData, ListCallLogsBySellerVariables>;
+export function useListCallLogsBySeller(dc: DataConnect, vars: ListCallLogsBySellerVariables, options?: useDataConnectQueryOptions<ListCallLogsBySellerData>): UseDataConnectQueryResult<ListCallLogsBySellerData, ListCallLogsBySellerVariables>;
+
+export function useListCallLogsByListing(vars: ListCallLogsByListingVariables, options?: useDataConnectQueryOptions<ListCallLogsByListingData>): UseDataConnectQueryResult<ListCallLogsByListingData, ListCallLogsByListingVariables>;
+export function useListCallLogsByListing(dc: DataConnect, vars: ListCallLogsByListingVariables, options?: useDataConnectQueryOptions<ListCallLogsByListingData>): UseDataConnectQueryResult<ListCallLogsByListingData, ListCallLogsByListingVariables>;
+
+export function useListContactRequestsByStatus(vars: ListContactRequestsByStatusVariables, options?: useDataConnectQueryOptions<ListContactRequestsByStatusData>): UseDataConnectQueryResult<ListContactRequestsByStatusData, ListContactRequestsByStatusVariables>;
+export function useListContactRequestsByStatus(dc: DataConnect, vars: ListContactRequestsByStatusVariables, options?: useDataConnectQueryOptions<ListContactRequestsByStatusData>): UseDataConnectQueryResult<ListContactRequestsByStatusData, ListContactRequestsByStatusVariables>;
+
+export function useUpsertInquiry(options?: useDataConnectMutationOptions<UpsertInquiryData, FirebaseError, UpsertInquiryVariables>): UseDataConnectMutationResult<UpsertInquiryData, UpsertInquiryVariables>;
+export function useUpsertInquiry(dc: DataConnect, options?: useDataConnectMutationOptions<UpsertInquiryData, FirebaseError, UpsertInquiryVariables>): UseDataConnectMutationResult<UpsertInquiryData, UpsertInquiryVariables>;
+
+export function useUpdateInquiryStatus(options?: useDataConnectMutationOptions<UpdateInquiryStatusData, FirebaseError, UpdateInquiryStatusVariables>): UseDataConnectMutationResult<UpdateInquiryStatusData, UpdateInquiryStatusVariables>;
+export function useUpdateInquiryStatus(dc: DataConnect, options?: useDataConnectMutationOptions<UpdateInquiryStatusData, FirebaseError, UpdateInquiryStatusVariables>): UseDataConnectMutationResult<UpdateInquiryStatusData, UpdateInquiryStatusVariables>;
+
+export function useUpsertFinancingRequest(options?: useDataConnectMutationOptions<UpsertFinancingRequestData, FirebaseError, UpsertFinancingRequestVariables>): UseDataConnectMutationResult<UpsertFinancingRequestData, UpsertFinancingRequestVariables>;
+export function useUpsertFinancingRequest(dc: DataConnect, options?: useDataConnectMutationOptions<UpsertFinancingRequestData, FirebaseError, UpsertFinancingRequestVariables>): UseDataConnectMutationResult<UpsertFinancingRequestData, UpsertFinancingRequestVariables>;
+
+export function useInsertCallLog(options?: useDataConnectMutationOptions<InsertCallLogData, FirebaseError, InsertCallLogVariables>): UseDataConnectMutationResult<InsertCallLogData, InsertCallLogVariables>;
+export function useInsertCallLog(dc: DataConnect, options?: useDataConnectMutationOptions<InsertCallLogData, FirebaseError, InsertCallLogVariables>): UseDataConnectMutationResult<InsertCallLogData, InsertCallLogVariables>;
+
+export function useInsertContactRequest(options?: useDataConnectMutationOptions<InsertContactRequestData, FirebaseError, InsertContactRequestVariables>): UseDataConnectMutationResult<InsertContactRequestData, InsertContactRequestVariables>;
+export function useInsertContactRequest(dc: DataConnect, options?: useDataConnectMutationOptions<InsertContactRequestData, FirebaseError, InsertContactRequestVariables>): UseDataConnectMutationResult<InsertContactRequestData, InsertContactRequestVariables>;
+
+export function useUpdateContactRequestStatus(options?: useDataConnectMutationOptions<UpdateContactRequestStatusData, FirebaseError, UpdateContactRequestStatusVariables>): UseDataConnectMutationResult<UpdateContactRequestStatusData, UpdateContactRequestStatusVariables>;
+export function useUpdateContactRequestStatus(dc: DataConnect, options?: useDataConnectMutationOptions<UpdateContactRequestStatusData, FirebaseError, UpdateContactRequestStatusVariables>): UseDataConnectMutationResult<UpdateContactRequestStatusData, UpdateContactRequestStatusVariables>;

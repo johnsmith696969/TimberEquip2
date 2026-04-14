@@ -1,39 +1,94 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
+/* Font metric overrides to prevent CLS during async font load */
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial');
+  size-adjust: 107.64%;
+  ascent-override: 90%;
+  descent-override: 22.43%;
+  line-gap-override: 0%;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Inter Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  
+
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-line: var(--line);
   --color-ink: var(--ink);
   --color-accent: var(--accent);
+  --color-accent-link: var(--accent-link);
   --color-secondary: var(--secondary);
   --color-data: var(--data);
   --color-muted: var(--muted);
+
+  /* Z-index scale — documented hierarchy for consistent stacking */
+  --z-sticky: 40;       /* sticky bars, quick search */
+  --z-dropdown: 50;     /* language/currency dropdowns */
+  --z-modal-login: 60;  /* login prompt modal */
+  --z-modal-sub: 70;    /* subscription modal */
+  --z-mobile-menu: 100; /* mobile navigation overlay */
+  --z-modal: 110;       /* inquiry, multi-select modals */
+  --z-modal-calc: 120;  /* payment calculator modal */
+  --z-confirm: 200;     /* confirm/alert dialog (always on top) */
 }
 
 :root {
+  color-scheme: light;
   --bg: #FFFFFF;
   --surface: #F5F5F4;
   --line: #E7E5E4;
   --ink: #1C1917;
   --btn-text: #FFFFFF;
   --accent: #16A34A; /* Timber Green */
+  --accent-link: #15803D; /* WCAG AA link green (4.56:1 on white) */
   --secondary: #334155; /* Slate */
   --data: #10B981; /* Success Green */
   --muted: #78716C;
+  --shadow-card: 0 16px 34px rgba(28, 25, 23, 0.08), 0 4px 12px rgba(28, 25, 23, 0.05);
+  --shadow-lift: 0 24px 52px rgba(28, 25, 23, 0.14), 0 10px 26px rgba(28, 25, 23, 0.08);
+  --shadow-button: 0 8px 18px rgba(28, 25, 23, 0.10), 0 2px 6px rgba(28, 25, 23, 0.05);
+  --shadow-button-hover: 0 12px 24px rgba(22, 163, 74, 0.16), 0 4px 12px rgba(28, 25, 23, 0.07);
+  --shadow-input: 0 4px 10px rgba(28, 25, 23, 0.04);
 }
 
-.dark {
+:root.dark {
+  color-scheme: dark;
   --bg: #0C0A09;
   --surface: #1C1917;
   --line: #292524;
   --ink: #FAFAF9;
   --btn-text: #FAFAF9;
+  --accent: #22C55E;
+  --accent-link: #22C55E;
+  --secondary: #94A3B8;
+  --data: #34D399;
   --muted: #A8A29E;
+  --shadow-card: 0 18px 40px rgba(0, 0, 0, 0.42), 0 6px 18px rgba(0, 0, 0, 0.28);
+  --shadow-lift: 0 26px 56px rgba(0, 0, 0, 0.52), 0 10px 28px rgba(0, 0, 0, 0.32);
+  --shadow-button: 0 10px 22px rgba(0, 0, 0, 0.32), 0 3px 10px rgba(0, 0, 0, 0.24);
+  --shadow-button-hover: 0 14px 28px rgba(34, 197, 94, 0.18), 0 6px 18px rgba(0, 0, 0, 0.28);
+  --shadow-input: 0 6px 14px rgba(0, 0, 0, 0.20);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) {
+    color-scheme: dark;
+    --bg: #0C0A09;
+    --surface: #1C1917;
+    --line: #292524;
+    --ink: #FAFAF9;
+    --btn-text: #FAFAF9;
+    --accent: #22C55E;
+    --accent-link: #22C55E;
+    --secondary: #94A3B8;
+    --data: #34D399;
+    --muted: #A8A29E;
+  }
 }
 
 /* Prevent horizontal overflow site-wide */
@@ -51,6 +106,13 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* The app intentionally focuses <main> on route changes for accessibility.
+   Suppress the browser's default outline there so mobile doesn't show a seam
+   under the quick-search bar on refresh. */
+main#main:focus {
+  outline: none;
+}
+
 /* Pre-promote card & animated image elements to GPU composite layer */
 .group {
   -webkit-backface-visibility: hidden;
@@ -58,6 +120,13 @@ body {
 }
 
 .group img {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* GPU-promote Framer Motion and other animated elements */
+[data-animated],
+.motion-safe *[style*="transform"] {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
 }
@@ -84,7 +153,7 @@ body {
 }
 
 .label-micro {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 600;
@@ -99,17 +168,33 @@ body {
 
 /* Buttons */
 .btn-industrial {
-  @apply bg-secondary font-black uppercase tracking-widest px-2.5 flex items-center justify-center gap-1.5 hover:opacity-90 transition-all active:scale-95 rounded-sm;
+  @apply bg-secondary font-black uppercase tracking-widest px-2.5 flex items-center justify-center gap-1.5 transition-all active:scale-95 rounded-sm;
   color: var(--btn-text);
   font-size: 11px;
   line-height: 1;
   min-height: 34px;
   padding-top: 7px;
   padding-bottom: 7px;
+  box-shadow: var(--shadow-button);
+}
+
+.btn-industrial:hover {
+  box-shadow: var(--shadow-button-hover);
+  transform: translateY(-1px);
+}
+
+.btn-industrial:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
 }
 
 .btn-accent {
   @apply bg-accent border-accent;
+}
+
+.btn-accent:hover {
+  background-color: color-mix(in srgb, var(--accent) 85%, black);
+  border-color: color-mix(in srgb, var(--accent) 85%, black);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .btn-outline {
@@ -120,20 +205,48 @@ body {
 
 /* Inputs */
 .input-industrial {
-  @apply bg-surface border px-2 py-1 text-[10px] font-bold text-ink outline-none transition-all rounded-sm placeholder:text-muted/50;
+  @apply bg-surface border px-3 py-2.5 text-[10px] font-bold text-ink outline-none transition-all rounded-sm placeholder:text-muted/50;
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
 }
 
 .select-industrial {
-  @apply bg-surface border px-2 py-1 text-[10px] font-bold text-ink outline-none transition-all rounded-sm appearance-none cursor-pointer;
+  @apply bg-surface border px-3 py-2.5 pr-8 text-[10px] font-bold text-ink outline-none transition-all rounded-sm appearance-none cursor-pointer;
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
 }
 
 .input-industrial:focus,
 .select-industrial:focus {
-  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18), var(--shadow-input);
+}
+
+.surface-elevated {
+  box-shadow: var(--shadow-card);
+}
+
+.surface-elevated:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+:where(div, section, article, aside, form)[class*="rounded"][class*="border-line"][class*="bg-bg"],
+:where(div, section, article, aside, form)[class*="rounded"][class*="border-line"][class*="bg-surface"] {
+  box-shadow: var(--shadow-card);
+}
+
+/* Force dark-mode option elements to match theme (browsers default to white bg) */
+:root.dark select,
+:root.dark option {
+  background-color: var(--surface);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) select,
+  :root:not(.light):not(.dark) option {
+    background-color: var(--surface);
+    color: var(--ink);
+  }
 }
 
 /* Override browser autofill blue/yellow backgrounds */
@@ -169,4 +282,9 @@ select:-webkit-autofill:focus {
   to {
     transform: translate3d(-50%, 0, 0);
   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

@@ -3,14 +3,16 @@ import { Link } from 'react-router-dom';
 import {
   Clock,
   ArrowRight,
-  LayoutDashboard,
+  Newspaper,
   ShieldCheck,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
 import { NewsPost } from '../types';
+import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
+import { buildSiteUrl } from '../utils/siteUrl';
 
 function slugifyNewsTitle(value: string) {
   return String(value || '')
@@ -27,24 +29,30 @@ function getNewsPostPath(post: NewsPost) {
 }
 
 export function Blog() {
+  const { theme } = useTheme();
   const [news, setNews] = useState<NewsPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const { theme } = useTheme();
+  const [error, setError] = useState<string | null>(null);
+  const heroHeadingClass = theme === 'dark' ? 'text-white' : 'text-ink';
+  const heroSecondaryClass = theme === 'dark' ? 'text-white/70' : 'text-accent';
+  const heroBodyClass = theme === 'dark' ? 'text-white/70' : 'text-muted';
+
+  const fetchNews = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await equipmentService.getNews();
+      setNews(data);
+    } catch (err) {
+      console.error('Error fetching news:', err);
+      setNews([]);
+      setError('Unable to load news. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchNews = async () => {
-      setLoading(true);
-      try {
-        const data = await equipmentService.getNews();
-        setNews(data);
-      } catch (error) {
-        console.error('Error fetching news:', error);
-        setNews([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     void fetchNews();
   }, []);
 
@@ -54,53 +62,61 @@ export function Blog() {
         title="Equipment News | Market Reports & Industry Updates | Forestry Equipment Sales"
         description="Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales."
         canonicalPath="/blog"
+        preloadImage="/page-photos/pine-dirt-road.webp"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Blog',
+              name: 'Forestry Equipment Sales Blog',
+              description: 'Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales.',
+              url: buildSiteUrl('/blog'),
+              publisher: {
+                '@type': 'Organization',
+                name: 'Forestry Equipment Sales',
+                url: buildSiteUrl(),
+              },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl() },
+                { '@type': 'ListItem', position: 2, name: 'Blog', item: buildSiteUrl('/blog') },
+              ],
+            },
+          ],
+        }}
       />
 
-      <section className="border-b border-line py-24 px-4 md:px-8 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src="/page-photos/pine-dirt-road.jpg"
-            alt="Pine dirt road through the forest"
-            className="w-full h-full object-cover opacity-20"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/95 via-bg/85 to-bg/60" />
-        </div>
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-accent/10 skew-x-12 translate-x-1/2"></div>
-        <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="flex items-center space-x-3 mb-6">
-            <div
-              className={`w-10 h-10 flex items-center justify-center rounded-sm border ${
-                theme === 'dark' ? 'bg-ink border-white/10' : 'bg-bg border-line'
-              }`}
-            >
-              <LayoutDashboard className={theme === 'dark' ? 'text-accent' : 'text-ink'} size={20} />
-            </div>
-            <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em]">Industry Insights</span>
+      <ImageHero imageSrc="/page-photos/pine-dirt-road.webp" imageAlt="Pine dirt road through the forest">
+        <div>
+          <div className="flex items-center gap-3 mb-6">
+            <Newspaper size={20} className="text-accent" />
+            <span className="label-micro text-accent">Industry Insights</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none">
+          <h1 className={`text-5xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none ${heroHeadingClass}`}>
             Market <br />
-            <span className="text-muted">Newsletter</span>
+            <span className={heroSecondaryClass}>Newsletter</span>
           </h1>
-          <p className="text-muted font-medium max-w-2xl leading-relaxed">
+          <p className={`font-medium max-w-2xl leading-relaxed ${heroBodyClass}`}>
             Institutional-grade analysis, regulatory updates, and global market reports for the forestry equipment industry.
             Stay ahead of the market with real-time data and expert insights.
           </p>
-          <div className="mt-10 flex flex-wrap gap-3">
-            <Link to="/forestry-equipment-for-sale" className="btn-industrial btn-accent px-6 py-3 text-center">
-              Browse Live Inventory
-            </Link>
-            <Link to="/categories" className="btn-industrial bg-bg px-6 py-3 text-center">
-              Explore Categories
-            </Link>
-            <Link to="/dealers" className="btn-industrial bg-bg px-6 py-3 text-center">
-              View Dealers
-            </Link>
-          </div>
         </div>
-      </section>
+      </ImageHero>
 
-      <div className="max-w-[1200px] mx-auto px-4 md:px-8 py-24">
-        {loading ? (
+      <div className="max-w-[1200px] mx-auto px-4 md:px-8 py-24" aria-live="polite" aria-busy={loading}>
+        {error ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <p className="text-sm font-bold text-muted mb-4">{error}</p>
+            <button
+              onClick={() => { setError(null); fetchNews(); }}
+              className="btn-industrial btn-accent px-6 py-3"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : loading ? (
           <div className="space-y-16">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="flex flex-col space-y-6 animate-pulse">
@@ -142,8 +158,11 @@ export function Blog() {
                   <img
                     src={post.image}
                     alt={post.title}
+                    width={1050}
+                    height={450}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                   <div className="absolute top-6 left-6">
                     <span className="bg-accent text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-sm shadow-lg">
@@ -160,7 +179,7 @@ export function Blog() {
                     </div>
                     <div className="flex items-center">
                       <ShieldCheck size={12} className="mr-2" />
-                      Verified Report
+                      {post.author || 'Forestry Equipment Sales'}
                     </div>
                   </div>
 

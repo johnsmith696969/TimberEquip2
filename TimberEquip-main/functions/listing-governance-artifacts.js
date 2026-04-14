@@ -23,7 +23,7 @@ function governanceDateToIso(value) {
 
 function toFirestoreTimestampOrServerNow(value) {
   const parsed = governanceTimestampToDate(value);
-  return parsed ? admin.firestore.Timestamp.fromDate(parsed) : admin.firestore.FieldValue.serverTimestamp();
+  return parsed || new Date();
 }
 
 function buildGovernanceStateSnapshot(shadow, rawData = {}) {
@@ -200,7 +200,7 @@ async function syncListingGovernanceArtifactsForWrite({
       status: anomalies.length ? 'failed' : 'completed',
       summary: buildGovernanceReportSummary(listingId, afterShadow, anomalies),
       createdAt: createdAtValue,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: new Date(),
       createdByUid: 'system',
       artifactSource: source,
       actorUid,
@@ -232,7 +232,7 @@ async function syncListingGovernanceArtifactsForWrite({
       status: primaryImagePresent ? 'completed' : 'failed',
       summary: buildMediaAuditSummary(listingId, after, anomalies),
       createdAt: createdAtValue,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: new Date(),
       createdByUid: 'system',
       artifactSource: source,
       imageCount,
@@ -250,7 +250,7 @@ async function syncListingGovernanceArtifactsForWrite({
       fromState: buildGovernanceStateSnapshot(beforeShadow, before || {}),
       toState: buildGovernanceStateSnapshot(afterShadow, after || {}),
       actorUid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date(),
       artifactSource: source,
       anomalyCodes: anomalies,
     });

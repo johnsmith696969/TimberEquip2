@@ -5,7 +5,7 @@ const rootDir = process.cwd();
 const allowIndexing = process.env.ALLOW_INDEXING === 'true';
 
 const robotsText = allowIndexing
-  ? 'User-agent: *\nAllow: /\n\nSitemap: https://www.forestryequipmentsales.com/sitemap.xml\n'
+  ? 'User-agent: *\nAllow: /\n\nSitemap: https://www.timberequip.com/sitemap.xml\n'
   : 'User-agent: *\nDisallow: /\n';
 
 const hostingConfig = {
@@ -21,16 +21,6 @@ const hostingConfig = {
     rewrites: [
       { source: '/api/**', function: 'apiProxy' },
       { source: '/sitemap.xml', function: 'publicPages' },
-      { source: '/logging-equipment-for-sale', function: 'publicPages' },
-      { source: '/forestry-equipment-for-sale', function: 'publicPages' },
-      { source: '/categories', function: 'publicPages' },
-      { source: '/categories/**', function: 'publicPages' },
-      { source: '/manufacturers', function: 'publicPages' },
-      { source: '/manufacturers/**', function: 'publicPages' },
-      { source: '/states', function: 'publicPages' },
-      { source: '/states/**', function: 'publicPages' },
-      { source: '/dealers', function: 'publicPages' },
-      { source: '/dealers/**', function: 'publicPages' },
       { source: '**', destination: '/index.html' },
     ],
     headers: [

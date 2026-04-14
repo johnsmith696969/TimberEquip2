@@ -1,0 +1,281 @@
+## Marketplace connector — User & Storefront queries/mutations
+## Used by the React client SDK and Cloud Functions admin SDK.
+
+# ─── Queries ────────────────────────────────────────────────────────────
+
+query GetUserById($id: String!) @auth(level: NO_ACCESS) {
+  user(id: $id) {
+    id
+    email
+    displayName
+    phoneNumber
+    role
+    emailVerified
+    photoUrl
+    location
+    latitude
+    longitude
+    company
+    businessName
+    accountStatus
+    storefrontEnabled
+    storefrontSlug
+    storefrontName
+    mfaEnabled
+    favorites
+    createdAt
+    updatedAt
+  }
+}
+
+query GetUserByEmail($email: String!) @auth(level: NO_ACCESS) {
+  users(where: { email: { eq: $email } }, limit: 1) {
+    id
+    email
+    displayName
+    role
+    accountStatus
+    storefrontEnabled
+    storefrontSlug
+  }
+}
+
+query ListUsersByRole($role: String!, $limit: Int = 50, $offset: Int = 0) @auth(level: NO_ACCESS) {
+  users(where: { role: { eq: $role } }, limit: $limit, offset: $offset, orderBy: [{ createdAt: DESC }]) {
+    id
+    email
+    displayName
+    role
+    accountStatus
+    storefrontEnabled
+    createdAt
+  }
+}
+
+query GetStorefrontBySlug($slug: String!) @auth(level: NO_ACCESS) {
+  storefronts(where: { storefrontSlug: { eq: $slug }, storefrontEnabled: { eq: true } }, limit: 1) {
+    id
+    userId
+    storefrontSlug
+    canonicalPath
+    storefrontName
+    storefrontTagline
+    storefrontDescription
+    logoUrl
+    coverPhotoUrl
+    businessName
+    city
+    state
+    location
+    phone
+    email
+    website
+    serviceAreaScopes
+    serviceAreaStates
+    servicesOfferedCategories
+    seoTitle
+    seoDescription
+  }
+}
+
+query GetStorefrontByUserId($userId: String!) @auth(level: NO_ACCESS) {
+  storefronts(where: { userId: { eq: $userId } }, limit: 1) {
+    id
+    userId
+    storefrontEnabled
+    storefrontSlug
+    storefrontName
+    storefrontTagline
+    storefrontDescription
+    businessName
+    location
+    phone
+    email
+    website
+    seoTitle
+    seoDescription
+    createdAt
+    updatedAt
+  }
+}
+
+query ListActiveStorefronts($limit: Int = 100, $offset: Int = 0) @auth(level: NO_ACCESS) {
+  storefronts(
+    where: { storefrontEnabled: { eq: true } }
+    limit: $limit
+    offset: $offset
+    orderBy: [{ storefrontName: ASC }]
+  ) {
+    id
+    userId
+    storefrontSlug
+    storefrontName
+    businessName
+    city
+    state
+    logoUrl
+    servicesOfferedCategories
+  }
+}
+
+# ─── Mutations ──────────────────────────────────────────────────────────
+
+mutation UpsertUser(
+  $id: String!,
+  $email: String!,
+  $displayName: String,
+  $phoneNumber: String,
+  $bio: String,
+  $role: String!,
+  $emailVerified: Boolean,
+  $photoUrl: String,
+  $location: String,
+  $latitude: Float,
+  $longitude: Float,
+  $company: String,
+  $businessName: String,
+  $street1: String,
+  $street2: String,
+  $city: String,
+  $state: String,
+  $county: String,
+  $postalCode: String,
+  $country: String,
+  $website: String,
+  $accountStatus: String,
+  $parentAccountUid: String,
+  $accountAccessSource: String,
+  $mfaEnabled: Boolean,
+  $mfaMethod: String,
+  $mfaPhoneNumber: String,
+  $mfaEnrolledAt: Timestamp,
+  $favorites: Any,
+  $storefrontEnabled: Boolean,
+  $storefrontSlug: String,
+  $storefrontName: String,
+  $storefrontTagline: String,
+  $storefrontDescription: String,
+  $storefrontLogoUrl: String,
+  $coverPhotoUrl: String,
+  $seoTitle: String,
+  $seoDescription: String,
+  $seoKeywords: Any,
+  $metadataJson: Any
+) @auth(level: NO_ACCESS) @transaction {
+  user_upsert(data: {
+    id: $id,
+    email: $email,
+    displayName: $displayName,
+    phoneNumber: $phoneNumber,
+    bio: $bio,
+    role: $role,
+    emailVerified: $emailVerified,
+    photoUrl: $photoUrl,
+    location: $location,
+    latitude: $latitude,
+    longitude: $longitude,
+    company: $company,
+    businessName: $businessName,
+    street1: $street1,
+    street2: $street2,
+    city: $city,
+    state: $state,
+    county: $county,
+    postalCode: $postalCode,
+    country: $country,
+    website: $website,
+    accountStatus: $accountStatus,
+    parentAccountUid: $parentAccountUid,
+    accountAccessSource: $accountAccessSource,
+    mfaEnabled: $mfaEnabled,
+    mfaMethod: $mfaMethod,
+    mfaPhoneNumber: $mfaPhoneNumber,
+    mfaEnrolledAt: $mfaEnrolledAt,
+    favorites: $favorites,
+    storefrontEnabled: $storefrontEnabled,
+    storefrontSlug: $storefrontSlug,
+    storefrontName: $storefrontName,
+    storefrontTagline: $storefrontTagline,
+    storefrontDescription: $storefrontDescription,
+    storefrontLogoUrl: $storefrontLogoUrl,
+    coverPhotoUrl: $coverPhotoUrl,
+    seoTitle: $seoTitle,
+    seoDescription: $seoDescription,
+    seoKeywords: $seoKeywords,
+    metadataJson: $metadataJson
+  })
+}
+
+mutation UpsertStorefront(
+  $id: String!,
+  $userId: String!,
+  $storefrontEnabled: Boolean,
+  $storefrontSlug: String,
+  $canonicalPath: String,
+  $storefrontName: String,
+  $storefrontTagline: String,
+  $storefrontDescription: String,
+  $logoUrl: String,
+  $coverPhotoUrl: String,
+  $businessName: String,
+  $street1: String,
+  $street2: String,
+  $city: String,
+  $state: String,
+  $county: String,
+  $postalCode: String,
+  $country: String,
+  $location: String,
+  $latitude: Float,
+  $longitude: Float,
+  $phone: String,
+  $email: String,
+  $website: String,
+  $serviceAreaScopes: Any,
+  $serviceAreaStates: Any,
+  $serviceAreaCounties: Any,
+  $servicesOfferedCategories: Any,
+  $servicesOfferedSubcategories: Any,
+  $seoTitle: String,
+  $seoDescription: String,
+  $seoKeywords: Any
+) @auth(level: NO_ACCESS) @transaction {
+  storefront_upsert(data: {
+    id: $id,
+    userId: $userId,
+    storefrontEnabled: $storefrontEnabled,
+    storefrontSlug: $storefrontSlug,
+    canonicalPath: $canonicalPath,
+    storefrontName: $storefrontName,
+    storefrontTagline: $storefrontTagline,
+    storefrontDescription: $storefrontDescription,
+    logoUrl: $logoUrl,
+    coverPhotoUrl: $coverPhotoUrl,
+    businessName: $businessName,
+    street1: $street1,
+    street2: $street2,
+    city: $city,
+    state: $state,
+    county: $county,
+    postalCode: $postalCode,
+    country: $country,
+    location: $location,
+    latitude: $latitude,
+    longitude: $longitude,
+    phone: $phone,
+    email: $email,
+    website: $website,
+    serviceAreaScopes: $serviceAreaScopes,
+    serviceAreaStates: $serviceAreaStates,
+    serviceAreaCounties: $serviceAreaCounties,
+    servicesOfferedCategories: $servicesOfferedCategories,
+    servicesOfferedSubcategories: $servicesOfferedSubcategories,
+    seoTitle: $seoTitle,
+    seoDescription: $seoDescription,
+    seoKeywords: $seoKeywords
+  })
+}
+
+mutation DeleteUser($id: String!) @auth(level: NO_ACCESS) {
+  user_delete(id: $id)
+}

@@ -18,8 +18,8 @@ STRIPE_WEBHOOK_SECRET_VALUE="REPLACE_WITH_STRIPE_WEBHOOK_SECRET"
 
 # SendGrid / email
 SENDGRID_API_KEY_VALUE="REPLACE_WITH_SENDGRID_API_KEY"
-EMAIL_FROM_VALUE="Forestry Equipment Sales <caleb@forestryequipmentsales.com>"
-ADMIN_EMAILS_VALUE="calebhappy@gmail.com,caleb@forestryequipmentsales.com"
+EMAIL_FROM_VALUE="REPLACE_WITH_SENDER_EMAIL"
+ADMIN_EMAILS_VALUE="REPLACE_WITH_ADMIN_EMAILS"
 
 set_secret() {
   local name="$1"

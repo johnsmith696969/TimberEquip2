@@ -1,0 +1,85 @@
+## Users & Storefronts — Data Connect Schema
+## Phase 2 of the Firestore → PostgreSQL migration.
+
+type User @table(name: "users", key: "id") @index(fields: ["email"]) @index(fields: ["role"]) @index(fields: ["storefrontSlug"]) {
+  id: String!
+  email: String!
+  displayName: String @col(name: "display_name")
+  phoneNumber: String @col(name: "phone_number")
+  bio: String
+  role: String! @default(value: "member")
+  emailVerified: Boolean @col(name: "email_verified") @default(value: false)
+  photoUrl: String @col(name: "photo_url")
+  location: String
+  latitude: Float @col(name: "latitude", dataType: "decimal(10,7)")
+  longitude: Float @col(name: "longitude", dataType: "decimal(10,7)")
+  company: String
+  businessName: String @col(name: "business_name")
+  street1: String
+  street2: String
+  city: String
+  state: String
+  county: String
+  postalCode: String @col(name: "postal_code")
+  country: String
+  website: String
+  accountStatus: String @col(name: "account_status") @default(value: "active")
+  parentAccountUid: String @col(name: "parent_account_uid")
+  accountAccessSource: String @col(name: "account_access_source")
+  mfaEnabled: Boolean @col(name: "mfa_enabled") @default(value: false)
+  mfaMethod: String @col(name: "mfa_method")
+  mfaPhoneNumber: String @col(name: "mfa_phone_number")
+  mfaEnrolledAt: Timestamp @col(name: "mfa_enrolled_at")
+  favorites: Any @col(name: "favorites") @default(sql: "'[]'::jsonb")
+  storefrontEnabled: Boolean @col(name: "storefront_enabled") @default(value: false)
+  storefrontSlug: String @col(name: "storefront_slug")
+  storefrontName: String @col(name: "storefront_name")
+  storefrontTagline: String @col(name: "storefront_tagline")
+  storefrontDescription: String @col(name: "storefront_description")
+  storefrontLogoUrl: String @col(name: "storefront_logo_url")
+  coverPhotoUrl: String @col(name: "cover_photo_url")
+  seoTitle: String @col(name: "seo_title")
+  seoDescription: String @col(name: "seo_description")
+  seoKeywords: Any @col(name: "seo_keywords") @default(sql: "'[]'::jsonb")
+  metadataJson: Any @col(name: "metadata_json") @default(sql: "'{}'::jsonb")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}
+
+type Storefront @table(name: "storefronts", key: "id") @index(fields: ["storefrontSlug"]) @index(fields: ["userId"]) {
+  id: String!
+  user: User! @ref(fields: ["userId"], references: ["id"])
+  userId: String! @col(name: "user_id")
+  storefrontEnabled: Boolean @col(name: "storefront_enabled") @default(value: false)
+  storefrontSlug: String @col(name: "storefront_slug")
+  canonicalPath: String @col(name: "canonical_path")
+  storefrontName: String @col(name: "storefront_name")
+  storefrontTagline: String @col(name: "storefront_tagline")
+  storefrontDescription: String @col(name: "storefront_description")
+  logoUrl: String @col(name: "logo_url")
+  coverPhotoUrl: String @col(name: "cover_photo_url")
+  businessName: String @col(name: "business_name")
+  street1: String
+  street2: String
+  city: String
+  state: String
+  county: String
+  postalCode: String @col(name: "postal_code")
+  country: String
+  location: String
+  latitude: Float @col(name: "latitude", dataType: "decimal(10,7)")
+  longitude: Float @col(name: "longitude", dataType: "decimal(10,7)")
+  phone: String
+  email: String
+  website: String
+  serviceAreaScopes: Any @col(name: "service_area_scopes") @default(sql: "'[]'::jsonb")
+  serviceAreaStates: Any @col(name: "service_area_states") @default(sql: "'[]'::jsonb")
+  serviceAreaCounties: Any @col(name: "service_area_counties") @default(sql: "'[]'::jsonb")
+  servicesOfferedCategories: Any @col(name: "services_offered_categories") @default(sql: "'[]'::jsonb")
+  servicesOfferedSubcategories: Any @col(name: "services_offered_subcategories") @default(sql: "'[]'::jsonb")
+  seoTitle: String @col(name: "seo_title")
+  seoDescription: String @col(name: "seo_description")
+  seoKeywords: Any @col(name: "seo_keywords") @default(sql: "'[]'::jsonb")
+  createdAt: Timestamp! @col(name: "created_at") @default(expr: "request.time")
+  updatedAt: Timestamp! @col(name: "updated_at") @default(expr: "request.time")
+}

@@ -19,6 +19,7 @@ import {
   hasAdminPublishingAccess,
   rememberSellerReturnTo,
 } from '../utils/sellerAccess';
+import { getActiveListingCapMessage, isUnlimitedListingCap } from '../utils/listingCaps';
 const SUPPORTED_PLANS = new Set<ListingPlanId>(['individual_seller', 'dealer', 'fleet_dealer']);
 
 export function Sell() {
@@ -227,12 +228,13 @@ export function Sell() {
       }
       if (!adminCanPublishWithoutPayment && activeListingCap && user?.uid) {
         const activeListingUsage = await equipmentService.getSellerListingUsage(user.uid);
-        if (activeListingUsage >= activeListingCap) {
-          throw new Error(`Your account includes up to ${activeListingCap} active ${activeListingCap === 1 ? 'listing' : 'listings'}. Upgrade or mark one as sold before posting another.`);
+        if (!isUnlimitedListingCap(activeListingCap) && activeListingUsage >= activeListingCap) {
+          throw new Error(getActiveListingCapMessage('Your account', activeListingCap));
         }
       }
+      const { id: _stripId, ...createPayload } = formData as any;
       const listingId = await equipmentService.addListing({
-        ...formData,
+        ...createPayload,
         sellerUid: uid,
         status: 'pending',
         views: 0,
@@ -345,7 +347,7 @@ export function Sell() {
             <div className="mt-4 bg-accent/10 border border-accent/30 rounded-sm p-5">
               <p className="text-[11px] font-black uppercase tracking-widest text-accent mb-2">Seller Activation Required</p>
               <p className="text-sm text-ink/80 mb-4">
-                Redirecting you to seller plan signup. Free member accounts can sign in and save inventory, but posting requires an active seller plan.
+                Redirecting you to seller plan signup. Member accounts can sign in and save inventory, but posting requires an active seller plan.
               </p>
               <button onClick={() => navigate(`/ad-programs?intent=list-equipment${selectedPlanFromQuery ? `&plan=${encodeURIComponent(selectedPlanFromQuery)}` : ''}`)} className="btn-industrial btn-accent py-3 px-6">
                 {selectedPlanFromQuery ? 'Activate Selected Plan' : 'Choose Seller Plan'}

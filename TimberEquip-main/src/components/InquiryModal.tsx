@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReducedMotion } from '../hooks/useReducedMotion';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { X, CheckCircle2 } from 'lucide-react';
 import { Listing } from '../types';
 import { equipmentService } from '../services/equipmentService';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
+import { useTheme } from './ThemeContext';
 
 const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
 
@@ -14,6 +17,8 @@ interface InquiryModalProps {
 }
 
 export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
+  const { theme } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
   const initialMessage = `I'm interested in the ${listing.title}. Please provide more details regarding its condition and availability.`;
   const [inquirySent, setInquirySent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -40,18 +45,19 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
     setContactConsentAccepted(false);
   }, [initialMessage, isOpen, listing.id]);
 
-  const hasUnsavedChanges =
-    !inquirySent &&
-    (inquiryForm.name.trim().length > 0 ||
-      inquiryForm.email.trim().length > 0 ||
-      inquiryForm.phone.trim().length > 0 ||
-      inquiryForm.message.trim() !== initialMessage.trim());
+  const trapRef = useFocusTrap(isOpen);
 
   const handleClose = () => {
     if (submitting) return;
-    if (hasUnsavedChanges && !window.confirm('Are you sure you want to discard changes?')) return;
     onClose();
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !submitting) onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, submitting, onClose]);
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,26 +121,32 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             onClick={handleClose}
             className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
           ></motion.div>
           
-          <motion.div 
+          <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inquiry-dialog-title"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden"
           >
-            <div className="bg-ink text-white p-8 flex justify-between items-center">
+            <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-ink text-white' : 'bg-surface border-b border-line text-ink'}`}>
               <div className="flex flex-col">
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
-                <h3 className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
+                <h3 id="inquiry-dialog-title" className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
               </div>
-              <button onClick={handleClose} className="p-2 hover:bg-white/10 transition-colors">
+              <button onClick={handleClose} className={`p-2 transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-white/10'}`}>
                 <X size={24} />
               </button>
             </div>
@@ -145,27 +157,29 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                   <div className="w-16 h-16 bg-data/10 text-data flex items-center justify-center rounded-full mb-6">
                     <CheckCircle2 size={32} />
                   </div>
-                  <h4 className="text-2xl font-black uppercase tracking-tighter mb-2">Inquiry Transmitted</h4>
+                  <h4 className="text-2xl font-black uppercase tracking-tighter mb-2">Inquiry Sent</h4>
                   <p className="text-muted text-sm font-medium">The seller has been notified and will contact you shortly.</p>
                 </div>
               ) : (
                 <form onSubmit={handleInquirySubmit} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="flex flex-col space-y-2">
-                      <label className="label-micro">Full Name</label>
-                      <input 
+                      <label htmlFor="inquiry-name" className="label-micro">Full Name</label>
+                      <input
+                        id="inquiry-name"
                         required
-                        type="text" 
+                        type="text"
                         className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                         value={inquiryForm.name}
                         onChange={(e) => setInquiryForm({...inquiryForm, name: e.target.value})}
                       />
                     </div>
                     <div className="flex flex-col space-y-2">
-                      <label className="label-micro">Email Address</label>
-                      <input 
+                      <label htmlFor="inquiry-email" className="label-micro">Email Address</label>
+                      <input
+                        id="inquiry-email"
                         required
-                        type="email" 
+                        type="email"
                         className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                         value={inquiryForm.email}
                         onChange={(e) => setInquiryForm({...inquiryForm, email: e.target.value})}
@@ -173,18 +187,20 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                     </div>
                   </div>
                   <div className="flex flex-col space-y-2">
-                    <label className="label-micro">Phone Number</label>
-                    <input 
+                    <label htmlFor="inquiry-phone" className="label-micro">Phone Number</label>
+                    <input
+                      id="inquiry-phone"
                       required
-                      type="tel" 
+                      type="tel"
                       className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
                       value={inquiryForm.phone}
                       onChange={(e) => setInquiryForm({...inquiryForm, phone: e.target.value})}
                     />
                   </div>
                   <div className="flex flex-col space-y-2">
-                    <label className="label-micro">Message / Requirements</label>
-                    <textarea 
+                    <label htmlFor="inquiry-message" className="label-micro">Message / Requirements</label>
+                    <textarea
+                      id="inquiry-message"
                       required
                       rows={4}
                       className="bg-surface border border-line p-4 text-sm font-bold focus:ring-accent focus:border-accent"
@@ -201,17 +217,17 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
                       onChange={(e) => setContactConsentAccepted(e.target.checked)}
                     />
                     <span>
-                      I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing, is not a condition of purchase, and I may withdraw it at any time.
+                      I consent to Forestry Equipment Sales and the seller for this specific listing contacting me by phone, SMS, or email about this machine and this request. This consent is specific to this seller and this listing.
                     </span>
                   </label>
                   <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
                     Protected by reCAPTCHA Enterprise before submission.
                   </p>
                   {inquiryError && (
-                    <p className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm">{inquiryError}</p>
+                    <p role="alert" className="text-xs font-medium text-red-500 bg-red-500/10 border border-red-500/30 p-3 rounded-sm">{inquiryError}</p>
                   )}
                   <button type="submit" disabled={submitting} className="btn-industrial btn-accent w-full py-5 text-base disabled:opacity-60 disabled:cursor-not-allowed">
-                    {submitting ? 'Sending Inquiry...' : 'Transmit Inquiry'}
+                    {submitting ? 'Sending Inquiry...' : 'Send Inquiry'}
                   </button>
                 </form>
               )}

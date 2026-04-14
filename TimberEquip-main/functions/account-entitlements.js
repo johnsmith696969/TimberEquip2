@@ -2,11 +2,15 @@ function normalize(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+const {
+  normalizeScopedUserRole,
+  isOperatorOnlyRole,
+  isSellerRole,
+  isDealerSellerRole,
+} = require('./role-scopes.js');
+
 function normalizeRole(role) {
-  const normalized = normalize(role);
-  if (normalized === 'dealer_staff') return 'dealer';
-  if (normalized === 'dealer_manager') return 'pro_dealer';
-  return normalized;
+  return normalizeScopedUserRole(role);
 }
 
 function normalizeAccountAccessSource(source) {
@@ -46,14 +50,6 @@ function normalizePositiveNumber(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function isAdminRole(role) {
-  return ['super_admin', 'admin', 'developer'].includes(normalizeRole(role));
-}
-
-function isSellerRole(role) {
-  return ['individual_seller', 'dealer', 'pro_dealer'].includes(normalizeRole(role));
-}
-
 function planIdToCapability(planId) {
   if (planId === 'individual_seller') return 'owner_operator';
   if (planId === 'dealer') return 'dealer';
@@ -70,7 +66,7 @@ function roleToCapability(role) {
 
 function resolveBillingLabel(planId, role) {
   if (planId === 'dealer' || planId === 'fleet_dealer' || role === 'dealer' || role === 'pro_dealer') {
-    return 'FES-DealerOS';
+    return 'Forestry Equipment Sales DealerOS';
   }
   if (planId === 'individual_seller' || role === 'individual_seller') {
     return 'Forestry Equipment Sales';
@@ -91,30 +87,27 @@ function buildAccountEntitlementSnapshot(rawState = {}) {
   const currentSubscriptionId = String(rawState.currentSubscriptionId || '').trim() || null;
   const currentPeriodEnd = String(rawState.currentPeriodEnd || '').trim() || null;
 
-  const adminAccess = isAdminRole(role);
-  const adminOverrideAccess = !adminAccess
+  const adminWorkspaceAccess = isOperatorOnlyRole(role);
+  const adminOverrideAccess = !adminWorkspaceAccess
     && isSellerRole(role)
     && accountStatus === 'active'
     && accountAccessSource === 'admin_override';
-  const subscriptionBackedAccess = !adminAccess
+  const subscriptionBackedAccess = !adminWorkspaceAccess
     && accountStatus === 'active'
     && accountAccessSource === 'subscription'
     && !!activeSubscriptionPlanId
     && subscriptionState !== 'past_due'
     && subscriptionState !== 'pending';
 
-  const sellerWorkspaceAccess = adminAccess || adminOverrideAccess || subscriptionBackedAccess;
+  const sellerWorkspaceAccess = adminOverrideAccess || subscriptionBackedAccess;
   const canPostListings = sellerWorkspaceAccess;
-  const dealerOsAccess = adminAccess || (
-    ['dealer', 'pro_dealer'].includes(role) &&
-    sellerWorkspaceAccess
-  );
+  const dealerOsAccess = isDealerSellerRole(role) && sellerWorkspaceAccess;
 
   let publicListingVisibility = 'not_applicable';
   let visibilityReason = 'non_seller_role';
-  if (adminAccess || adminOverrideAccess) {
+  if (adminOverrideAccess) {
     publicListingVisibility = 'admin_override';
-    visibilityReason = adminAccess ? 'admin_role' : 'admin_override';
+    visibilityReason = 'admin_override';
   } else if (subscriptionBackedAccess) {
     publicListingVisibility = 'publicly_eligible';
     visibilityReason = 'active_subscription';
@@ -125,32 +118,29 @@ function buildAccountEntitlementSnapshot(rawState = {}) {
 
   const planCapability = planIdToCapability(activeSubscriptionPlanId);
   const roleCapability = roleToCapability(role);
-  const effectiveSellerCapability = adminAccess
-    ? 'admin'
-    : (subscriptionBackedAccess || adminOverrideAccess)
-      ? (planCapability !== 'none' ? planCapability : roleCapability)
-      : 'none';
+  const effectiveSellerCapability = (subscriptionBackedAccess || adminOverrideAccess)
+    ? (planCapability !== 'none' ? planCapability : roleCapability)
+    : 'none';
 
-  const sellerAccessMode = adminAccess
-    ? 'admin'
-    : adminOverrideAccess
-      ? 'admin_override'
-      : subscriptionBackedAccess
-        ? 'subscription'
-        : 'none';
+  const sellerAccessMode = adminOverrideAccess
+    ? 'admin_override'
+    : subscriptionBackedAccess
+      ? 'subscription'
+      : 'none';
 
   return {
     subscriptionState: subscriptionState || 'none',
     effectiveSellerCapability,
     sellerAccessMode,
     sellerWorkspaceAccess,
+    adminWorkspaceAccess,
     canPostListings,
     dealerOsAccess,
     publicListingVisibility,
     visibilityReason,
     billingLabel: resolveBillingLabel(activeSubscriptionPlanId, role),
-    overrideSource: adminOverrideAccess ? 'admin_override' : (adminAccess ? 'admin_role' : null),
-    role: role || 'buyer',
+    overrideSource: adminOverrideAccess ? 'admin_override' : null,
+    role: role || 'member',
     accountStatus,
     accountAccessSource: accountAccessSource || null,
     activeSubscriptionPlanId: activeSubscriptionPlanId || null,
@@ -180,6 +170,7 @@ function buildCompactAccountState(rawState = {}) {
       effectiveSellerCapability: entitlement.effectiveSellerCapability,
       sellerAccessMode: entitlement.sellerAccessMode,
       sellerWorkspaceAccess: entitlement.sellerWorkspaceAccess,
+      adminWorkspaceAccess: entitlement.adminWorkspaceAccess,
       canPostListings: entitlement.canPostListings,
       dealerOsAccess: entitlement.dealerOsAccess,
       publicListingVisibility: entitlement.publicListingVisibility,

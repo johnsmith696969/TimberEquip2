@@ -113,7 +113,7 @@ export function SubscriptionSuccess() {
             <ul className="space-y-2 text-sm text-muted leading-relaxed">
               <li>Your subscription remains tied to this signed-in account.</li>
               <li>If the subscription lapses or misses payment, listings remain stored but are hidden from the public marketplace until billing is restored.</li>
-              <li>Dealer and Pro Dealer billing records are labeled under FES-DealerOS.</li>
+              <li>Dealer and Pro Dealer billing records are labeled under Forestry Equipment Sales DealerOS.</li>
             </ul>
           </div>
 
