@@ -163,7 +163,8 @@ const TWILIO_ACCOUNT_SID = defineSecret('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = defineSecret('TWILIO_AUTH_TOKEN');
 const TWILIO_API_KEY_SID = defineSecret('TWILIO_API_KEY_SID');
 const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
-const PRIVILEGED_ADMIN_EMAILS_SECRET = defineSecret('PRIVILEGED_ADMIN_EMAILS');
+const PRIVILEGED_ADMIN_EMAILS_ENV = String(process.env.PRIVILEGED_ADMIN_EMAILS || '').trim();
+const PRIVILEGED_ADMIN_EMAILS_SECRET = PRIVILEGED_ADMIN_EMAILS_ENV ? null : defineSecret('PRIVILEGED_ADMIN_EMAILS');
 const API_PROXY_SECRETS = [
   SENDGRID_API_KEY,
   EMAIL_FROM,
@@ -179,7 +180,7 @@ const API_PROXY_SECRETS = [
   TWILIO_API_KEY_SECRET,
 ];
 
-if (!String(process.env.PRIVILEGED_ADMIN_EMAILS || '').trim()) {
+if (PRIVILEGED_ADMIN_EMAILS_SECRET) {
   API_PROXY_SECRETS.push(PRIVILEGED_ADMIN_EMAILS_SECRET);
 }
 
@@ -441,9 +442,11 @@ function getEmailPreferenceRecipientRef(email) {
   return getDb().collection(EMAIL_PREFERENCE_RECIPIENTS_COLLECTION).doc(sha256Hex(normalizedEmail));
 }
 function getPrivilegedAdminEmails() {
-  let raw = '';
-  try { raw = String(PRIVILEGED_ADMIN_EMAILS_SECRET.value() || '').trim(); } catch (_) { /* secret not available in this function context */ }
-  if (!raw) raw = process.env.PRIVILEGED_ADMIN_EMAILS || LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '';
+  let raw = PRIVILEGED_ADMIN_EMAILS_ENV;
+  if (!raw && PRIVILEGED_ADMIN_EMAILS_SECRET) {
+    try { raw = String(PRIVILEGED_ADMIN_EMAILS_SECRET.value() || '').trim(); } catch (_) { /* secret not available in this function context */ }
+  }
+  if (!raw) raw = LEGACY_RUNTIME_CONFIG.app?.privileged_admin_emails || '';
   return new Set(String(raw).split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
 }
 const FEATURED_LISTING_CAPS = Object.freeze({
