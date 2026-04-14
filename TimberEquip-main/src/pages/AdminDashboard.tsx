@@ -8,7 +8,7 @@ import {
   User, CreditCard, LogOut,
   Phone, Activity,
   FileText, Image, Database, FolderTree,
-  Gavel, X, Archive
+  Gavel, X, Archive, Shield
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
@@ -30,6 +30,7 @@ import { AccountsTab } from '../components/admin/AccountsTab';
 import { UsersTab } from '../components/admin/UsersTab';
 import { OverviewTab } from '../components/admin/OverviewTab';
 import { ListingsTab } from '../components/admin/ListingsTab';
+import { SsoTab } from '../components/admin/SsoTab';
 import { Seo } from '../components/Seo';
 import { useAuth } from '../components/AuthContext';
 import { useLocale } from '../components/LocaleContext';
@@ -40,7 +41,7 @@ import { API_BASE } from '../constants/api';
 import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
-type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds' | 'taxonomy' | 'auctions';
+type DashboardTab = 'overview' | 'listings' | 'inquiries' | 'calls' | 'accounts' | 'settings' | 'tracking' | 'users' | 'billing' | 'content' | 'dealer_feeds' | 'taxonomy' | 'auctions' | 'sso';
 type ListingReviewFilter = 'all' | 'pending_approval' | 'paid_not_live' | 'rejected' | 'expired' | 'sold' | 'archived' | 'anomalies';
 
 const LISTINGS_PAGE_SIZE_DEFAULT = 50;
@@ -59,6 +60,7 @@ const DASHBOARD_TAB_IDS = new Set<DashboardTab>([
   'dealer_feeds',
   'taxonomy',
   'auctions',
+  'sso',
 ]);
 
 const CONTENT_ONLY_DASHBOARD_ROLES = new Set(['content_manager', 'editor']);
@@ -1882,6 +1884,7 @@ export function AdminDashboard() {
     : activeTab === 'dealer_feeds' ? 'Dealer Feed Manager'
     : activeTab === 'auctions'  ? 'Auction Management'
     : activeTab === 'taxonomy'  ? 'Taxonomy Manager'
+    : activeTab === 'sso'       ? 'SSO Management'
     : activeTab === 'users'     ? 'Operator Directory'
     : 'Profile Settings';
   const dashboardSeoTitle = `${dashboardHeading} | Forestry Equipment Sales`;
@@ -1902,6 +1905,7 @@ export function AdminDashboard() {
     { id: 'dealer_feeds', label: 'Dealer Feeds', icon: Database },
     { id: 'auctions', label: 'Auctions', icon: Gavel },
     { id: 'taxonomy', label: 'Taxonomy', icon: FolderTree, adminOnly: true },
+    { id: 'sso', label: 'SSO', icon: Shield, adminOnly: true },
     { id: 'users', label: 'Users', icon: Users, adminOnly: true },
     { id: 'settings', label: 'Settings', icon: Settings },
   ] as const;
@@ -2220,6 +2224,7 @@ export function AdminDashboard() {
               {activeTab === 'content'   && <ContentTab normalizedAdminRole={normalizedAdminRole} confirm={confirm} />}
               {activeTab === 'dealer_feeds' && <DealerFeedsTab accounts={accounts} />}
               {activeTab === 'auctions' && <AuctionsTab onFeedback={setUserFeedback} confirm={confirm} formatPrice={formatPrice} />}
+              {activeTab === 'sso' && <SsoTab />}
               {activeTab === 'taxonomy' && (
                 <div className="space-y-4">
                   <TaxonomyManager />
