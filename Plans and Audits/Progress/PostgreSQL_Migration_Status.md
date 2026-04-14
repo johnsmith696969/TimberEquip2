@@ -1,19 +1,38 @@
 # TimberEquip PostgreSQL Migration Status
 
-**Date:** April 8, 2026 (updated April 14 for Tier 3.5 completion)
+**Date:** April 14, 2026 (ALL BACKFILLS COMPLETE)
 **Cloud SQL Instance:** `timberequip-dc` (us-central1)
 **Database:** `timberequip`
 **Data Connect Service:** `timberequip-marketplace`
 **Total Tables:** 23 across 5 migration phases
 **Total Dual-Write Triggers:** 20
-**Backfill Status:** 580 listings migrated (0 errors)
+**Backfill Status:** ALL PHASES COMPLETE — 715 records across all tables (0 errors)
 **DataConnect in firebase.json:** Yes (added Apr 14)
+**Migration Completion:** 100%
 
 ---
 
 ## Executive Summary
 
-TimberEquip is executing a **phased Firestore-to-PostgreSQL migration** using Firebase Data Connect as the bridge layer. The migration follows a dual-write pattern: Firestore remains the source of truth while PostgreSQL is progressively populated for governance, analytics, and operational queries. All 5 phases of SQL migrations are complete, 6 Data Connect connectors are configured with generated SDKs, 20 dual-write Cloud Function triggers are deployed, 580 listings have been backfilled, and DataConnect has been added to `firebase.json` for deployment. The PostgreSQL read layer is live in the Admin Dashboard. Backfill scripts exist for remaining collections but have not yet been run on production.
+TimberEquip has **completed its phased Firestore-to-PostgreSQL migration** using Firebase Data Connect as the bridge layer. The migration follows a dual-write pattern: Firestore remains the source of truth while PostgreSQL is fully populated for governance, analytics, and operational queries. All 5 phases of SQL migrations are complete, 6 Data Connect connectors are configured with generated SDKs, 20 dual-write Cloud Function triggers are deployed, and **all backfills have been executed on production** (April 14, 2026). Total: 715 records across all tables with 0 errors. DataConnect has been added to `firebase.json` for deployment. The PostgreSQL read layer is live in the Admin Dashboard.
+
+**Backfill results (April 14, 2026):**
+| Phase | Collection | Records | Errors |
+|-------|-----------|---------|--------|
+| 1 | Listings (governance) | 580 | 0 |
+| 2 | Users | 13 | 0 |
+| 2 | Storefronts | 6 | 0 |
+| 2 | Subscriptions | 1 | 0 |
+| 2 | Seller Applications | 1 | 0 |
+| 3 | Auctions (all 5 tables) | 0 (none exist) | 0 |
+| 4 | Inquiries | 26 | 0 |
+| 4 | Financing Requests | 6 | 0 |
+| 4 | Call Logs | 5 | 0 |
+| 4 | Contact Requests | 5 | 0 |
+| 5 | Dealer Listings | 4 | 0 |
+| 5 | Dealer Feed Ingest Logs | 34 | 0 |
+| 5 | Dealer Audit Logs | 34 | 0 |
+| **Total** | | **715** | **0** |
 
 ---
 
