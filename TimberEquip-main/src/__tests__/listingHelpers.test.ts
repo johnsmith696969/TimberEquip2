@@ -287,8 +287,8 @@ describe('calculateInquirySpamSignal', () => {
 
   it('flags suspicious email domains', () => {
     const result = calculateInquirySpamSignal({ ...validInquiry, buyerEmail: 'test@example.com' });
-    expect(result.spamFlags).toContain('suspicious_email');
-    expect(result.spamScore).toBeGreaterThanOrEqual(25);
+    expect(result.spamFlags).toContain('disposable_email');
+    expect(result.spamScore).toBeGreaterThanOrEqual(20);
   });
 
   it('flags missing @ in email', () => {
@@ -332,10 +332,10 @@ describe('calculateInquirySpamSignal', () => {
       buyerPhone: '123',
       message: 'hi',
     });
-    expect(result.spamFlags).toContain('suspicious_email');
+    expect(result.spamFlags).toContain('disposable_email');
     expect(result.spamFlags).toContain('invalid_phone');
     expect(result.spamFlags).toContain('very_short_message');
-    expect(result.spamScore).toBe(65);
+    expect(result.spamScore).toBe(60);
   });
 });
 

@@ -1446,19 +1446,24 @@ async function startServer() {
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    permissionsPolicy: {
-      features: {
-        camera: [],
-        microphone: [],
-        geolocation: ['self'],
-        payment: ['self', 'https://js.stripe.com'],
-        usb: [],
-        magnetometer: [],
-        gyroscope: [],
-        accelerometer: [],
-      },
-    },
   }));
+
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Permissions-Policy',
+      [
+        'camera=()',
+        'microphone=()',
+        'geolocation=(self)',
+        'payment=(self "https://js.stripe.com")',
+        'usb=()',
+        'magnetometer=()',
+        'gyroscope=()',
+        'accelerometer=()',
+      ].join(', '),
+    );
+    next();
+  });
 
   // 1b. Domain Migration — 301 redirect from legacy domain to canonical domain
   const CANONICAL_HOST = String(process.env.CANONICAL_HOST || '').trim();

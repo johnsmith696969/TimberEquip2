@@ -17,6 +17,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      FIREBASE_WEB_API_KEY_STAGING: ${{ vars.FIREBASE_WEB_API_KEY_STAGING }}
+      VITE_FIREBASE_API_KEY_STAGING: ${{ vars.FIREBASE_WEB_API_KEY_STAGING }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -41,6 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: staging
+    env:
+      FIREBASE_WEB_API_KEY_STAGING: ${{ vars.FIREBASE_WEB_API_KEY_STAGING }}
+      VITE_FIREBASE_API_KEY_STAGING: ${{ vars.FIREBASE_WEB_API_KEY_STAGING }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4

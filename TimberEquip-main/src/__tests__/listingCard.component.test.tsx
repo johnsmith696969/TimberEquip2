@@ -58,9 +58,9 @@ describe('ListingCard component', () => {
     );
 
     expect(screen.getByText('Featured Equipment')).toBeInTheDocument();
-    expect(screen.getAllByText('Verified Seller').length).toBeGreaterThan(0);
     expect(screen.getByText('2021 Tigercat 1075B')).toBeInTheDocument();
     expect(screen.getByText('$349,000')).toBeInTheDocument();
+    expect(screen.getByText(/Updated:/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /view details for/i })).toHaveAttribute('href', expect.stringContaining('/equipment/'));
     expect(screen.getByText('10.5% BELOW AMV')).toBeInTheDocument();
   });

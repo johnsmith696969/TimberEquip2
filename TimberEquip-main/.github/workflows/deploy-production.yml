@@ -19,6 +19,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      FIREBASE_WEB_API_KEY_PRODUCTION: ${{ vars.FIREBASE_WEB_API_KEY_PRODUCTION }}
+      VITE_FIREBASE_API_KEY_PRODUCTION: ${{ vars.FIREBASE_WEB_API_KEY_PRODUCTION }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -45,6 +48,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: production
+    env:
+      FIREBASE_WEB_API_KEY_PRODUCTION: ${{ vars.FIREBASE_WEB_API_KEY_PRODUCTION }}
+      VITE_FIREBASE_API_KEY_PRODUCTION: ${{ vars.FIREBASE_WEB_API_KEY_PRODUCTION }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4

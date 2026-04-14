@@ -91,7 +91,7 @@ export const createManagedAccountSchema = z.object({
 export const dealerFeedIngestSchema = z.object({
   dealerId: nonEmptyString,
   sourceName: nonEmptyString.max(200),
-  items: z.array(z.record(z.unknown())).min(1).max(5000),
+  items: z.array(z.record(z.string(), z.unknown())).min(1).max(5000),
   dryRun: z.boolean().optional().default(false),
   sourceType: z.enum(['json', 'csv', 'xml', 'api']).optional().default('json'),
 });
@@ -109,7 +109,7 @@ export function validateBody<T extends z.ZodType>(schema: T) {
   return (req: Request, res: Response, next: NextFunction) => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
-      const firstError = result.error.errors[0];
+      const firstError = result.error.issues[0];
       const message = firstError
         ? `${firstError.path.join('.')}: ${firstError.message}`
         : 'Invalid request body';
