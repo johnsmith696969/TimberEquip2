@@ -1,18 +1,18 @@
 # TimberEquip Frontend & UI Features Progress Report
 
-**Date:** April 6, 2026
-**Branch:** master | **Commit:** da73c7f
+**Date:** April 8, 2026 (updated April 14 for Tier 3.5 completion)
+**Branch:** master
 **Stack:** React 19 + TypeScript + Vite 6 + Tailwind CSS 4 | Main Chunk: 269KB (62% reduction via code splitting)
 
 ---
 
 ## Executive Summary
 
-The TimberEquip frontend is a **production-grade React SPA** with 41 pages, 35 shared components, 19 services, 21 utility modules, and 6 constant files. Features include full marketplace search, auction system, dealer portal (DealerOS), 14-tab admin dashboard, i18n (18 languages / 12 currencies), light/dark theme, responsive design, and comprehensive SEO infrastructure. Overall completion: **95%+**.
+The TimberEquip frontend is a **production-grade React SPA** with 45 pages, 38+ shared components, 20 services, 21 utility modules, and 6 constant files. Features include full marketplace search, auction system, dealer portal (DealerOS), 15-tab admin dashboard, SSO login, status page, help center, managed roles, i18n (18 languages / 12 currencies), light/dark theme, responsive design, and comprehensive SEO infrastructure. Overall completion: **97%**.
 
 ---
 
-## 1. Pages (41 Total — 95% Complete)
+## 1. Pages (45 Total — 97% Complete)
 
 ### Marketplace Core
 
@@ -64,7 +64,7 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 
 | Page | File | Status | Key Features |
 |------|------|--------|-------------|
-| Login | `Login.tsx` | COMPLETE | Email/password, Google OAuth, MFA, reCAPTCHA |
+| Login | `Login.tsx` | COMPLETE | Email/password, Google OAuth, SSO (SAML/OIDC), MFA, reCAPTCHA |
 | Register | `Register.tsx` | COMPLETE | Account type selection, plan preview, reCAPTCHA |
 | Profile | `Profile.tsx` | COMPLETE | Account overview, saved searches, listings, billing, MFA settings, tax exemption |
 | ResetPassword | `ResetPassword.tsx` | COMPLETE | Password recovery via email link |
@@ -73,12 +73,12 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 
 | Page | File | Status | Key Features |
 |------|------|--------|-------------|
-| Sell | `Sell.tsx` | COMPLETE | Listing creation, ListingModal, subscription enforcement, bulk import |
+| Sell | `Sell.tsx` | COMPLETE | Listing creation (renamed from "List Equipment"), ListingModal, subscription enforcement, bulk import |
 | DealerOS | `DealerOS.tsx` | COMPLETE | Inventory mgmt, lead mgmt, feed integration (CSV/JSON/XML), API docs |
-| AdminDashboard | `AdminDashboard.tsx` | COMPLETE | 14 tabs (see below), role-based access |
+| AdminDashboard | `AdminDashboard.tsx` | COMPLETE | 15 tabs (see below), role-based access |
 | SellerProfile | `SellerProfile.tsx` | COMPLETE | Public storefront, featured inventory, contact |
 
-### Admin Dashboard — 14 Tabs
+### Admin Dashboard — 15 Tabs
 
 | Tab | Purpose | Status |
 |-----|---------|--------|
@@ -95,6 +95,23 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 | Dealer Feeds | Import management, logs, dry-run | COMPLETE |
 | Taxonomy | Category/subcategory/specs management | COMPLETE |
 | Auctions | Auction + lot CRUD, bidding management | COMPLETE |
+| SSO | SSO provider management (SAML/OIDC CRUD) | COMPLETE (NEW Apr 14) |
+
+### Platform Pages (NEW Apr 14)
+
+| Page | File | Status | Key Features |
+|------|------|--------|-------------|
+| Status | `Status.tsx` | COMPLETE | Live component health checks (Firestore, Stripe), auto-refresh, uptime display |
+| Help Center | `Help.tsx` | COMPLETE | 24 searchable articles across 7 categories |
+| Help Article | `HelpArticle.tsx` | COMPLETE | `/help/:slug` with related articles sidebar |
+
+Routes added to `App.tsx` and `SPA_ROUTES`.
+
+### Dealer Pages (NEW Apr 8)
+
+| Page | File | Status | Key Features |
+|------|------|--------|-------------|
+| Managed Roles | (DealerOS tab) | COMPLETE | Managed roles tab for dealers |
 
 ### Content & Legal Pages
 
@@ -119,7 +136,7 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 
 ---
 
-## 2. Shared Components (35 Total — 95% Complete)
+## 2. Shared Components (38+ Total — 97% Complete)
 
 ### Layout & Navigation
 - **Layout** — App shell, header, mobile menu, theme toggle, locale selector, footer, consent banner
@@ -131,6 +148,7 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 - **AuthContext** — Firebase auth, profile caching, claims, favorites
 - **ProtectedRoute** — Role-based route protection
 - **LoginPromptModal** — Auth prompt for protected actions
+- **SsoLoginButton** — Email domain detection + Firebase SAML/OIDC signInWithPopup (NEW Apr 14)
 
 ### Theme & Localization
 - **ThemeContext** — Light/dark mode with system preference + localStorage
@@ -158,6 +176,7 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 - **AnalyticsDashboard** — System analytics display
 - **AuctionLotManager** — Lot creation/editing
 - **DealerFeedsTab** — Feed import management, logs, dry-run (extracted from AdminDashboard)
+- **SsoTab** — SSO provider management for admin dashboard (NEW Apr 14)
 
 ### Input Components
 - **MultiSelectDropdown** — Multi-select with search
@@ -177,7 +196,7 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 
 ---
 
-## 3. Services (19 Total — 90% Complete)
+## 3. Services (20 Total — 95% Complete)
 
 | Service | Lines | Status | Key Capabilities |
 |---------|-------|--------|-----------------|
@@ -242,9 +261,13 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 | Item | Priority | Effort | Notes |
 |------|----------|--------|-------|
 | ~~Directory page SEO meta (Manufacturers.tsx, States.tsx)~~ | ~~HIGH~~ | ~~2 hrs~~ | COMPLETE — Both pages already have Seo component with title, description, canonicalPath, JSON-LD (CollectionPage schema) |
-| ~~Split AdminDashboard (6,240 lines)~~ | ~~MEDIUM~~ | ~~4 hrs~~ | PARTIAL — DealerFeedsTab extracted (~890 lines), reduced to 5,352 lines. Remaining tabs (Billing, Content, Listings) are tightly coupled to shared state. |
+| ~~Split AdminDashboard (6,240 lines)~~ | ~~MEDIUM~~ | ~~4 hrs~~ | PARTIAL — DealerFeedsTab extracted (~890 lines), SsoTab extracted, reduced to ~5,000 lines. Remaining tabs (Billing, Content, Listings) are tightly coupled to shared state. |
 | Split equipmentService (2,600 lines) | MEDIUM | 3 hrs | Extract search/AMV/market submodules |
 | ~~WebSocket live auction timer~~ | ~~LOW~~ | ~~8 hrs~~ | COMPLETE — `useAuctionSocket` hook, `auctionSocketClient.ts` singleton, server-corrected countdowns, watcher count, optimistic bid/close/extend updates, Firestore fallback retained |
+| ~~Dark theme bugs (H-01/H-02/H-03)~~ | ~~MEDIUM~~ | ~~2 hrs~~ | COMPLETE — All verified resolved Apr 14 |
+| ~~Empty catch blocks (frontend)~~ | ~~MEDIUM~~ | ~~1 hr~~ | COMPLETE — All 5 remaining frontend empty catch blocks fixed (zero remaining) |
+| ~~Listing detail image stretching~~ | ~~LOW~~ | ~~30 min~~ | COMPLETE — object-contain, max-height constraint |
+| ~~Last Updated date display~~ | ~~LOW~~ | ~~30 min~~ | COMPLETE — Shows date + time with proper Firestore Timestamp handling |
 | Mobile app (React Native) | LOW | 40+ hrs | Enhancement |
 
 ---
@@ -253,18 +276,22 @@ All include: JSON-LD schema, BreadcrumbList, dynamic metadata, route quality gat
 
 | Metric | Value |
 |--------|-------|
-| Total Pages | 41 |
-| Shared Components | 35 |
+| Total Pages | 45 |
+| Shared Components | 38+ |
 | Services | 20 |
 | Utility Modules | 21 |
 | Custom Hooks | 1 |
 | Constant Files | 6 |
 | SEO Route Types | 10 |
-| Admin Dashboard Tabs | 14 |
+| Admin Dashboard Tabs | 15 |
 | Languages Supported | 18 |
 | Currencies Supported | 12 |
-| Lines of Code (Frontend) | ~54,000 |
+| Lines of Code (Frontend) | ~56,000 |
 | Main Bundle Size | 269KB |
-| Tests Passing | 408 |
+| Test Files | 51 |
+| Tests Passing | 619 |
+| TypeScript Errors | 0 |
+| Empty Catch Blocks (Frontend) | 0 |
+| Dark Theme Bugs | 0 (all resolved) |
 
-**Frontend Completion: 95%** — All user-facing features are production-ready. Remaining items are optimizations and enhancements.
+**Frontend Completion: 97%** — All user-facing features are production-ready including SSO login, status page, help center, managed roles tab, and SsoTab. Remaining items are optimizations and enhancements.

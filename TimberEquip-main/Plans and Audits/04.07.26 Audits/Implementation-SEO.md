@@ -2,8 +2,8 @@
 
 **Reference Audit:** SEO-Setup.md (Score: 9.2/10)
 **Target Score:** 9.5+/10
-**Date:** April 8, 2026 (Updated)
-**Previous Date:** April 7, 2026
+**Date:** April 14, 2026 (Updated — Tier 3.5 Sprint)
+**Previous Date:** April 8, 2026
 
 ---
 
@@ -192,6 +192,9 @@
 | Manufacturer Landing | 9/10 | 30+ manufacturer descriptions (COMPLETED) | 9/10 |
 | State Landing | 8/10 | Add state market data content | 9/10 |
 | Dealer Profile | 8/10 | Add AggregateRating (when reviews implemented) | 9/10 |
+| Help Center | N/A (new) | 24 articles across 7 categories — added Apr 14 | 8.5/10 |
+| Help Article | N/A (new) | Individual articles at /help/:slug — added Apr 14 | 8.5/10 |
+| Status Page | N/A (new) | /status with live component health — added Apr 14 | 7/10 |
 
 ---
 
@@ -204,6 +207,16 @@
 | SeoLandingPages lazy imports consolidated (single module import) | Done |
 | Alt text fixes for listing images (accessibility + SEO) | Done |
 | CSP header deployed via Firebase Hosting (protects OG/meta integrity) | Done |
+
+### Tier 3.5 Sprint SEO-Relevant Improvements (Apr 14)
+
+| Item | Status |
+|------|--------|
+| Help center at /help — 24 articles, 7 categories (new indexable content) | Done |
+| Individual help article pages at /help/:slug (crawlable deep links) | Done |
+| Status page at /status (publicly accessible) | Done |
+| "Sell Equipment" nav label (clearer user intent matching) | Done |
+| API versioning /api/v1 (cleaner URL structure for any public API links) | Done |
 
 ### Completed (5 items + 3 from hardening sprint)
 

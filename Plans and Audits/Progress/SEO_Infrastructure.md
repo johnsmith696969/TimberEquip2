@@ -1,7 +1,7 @@
 # TimberEquip SEO Infrastructure Report
 
-**Date:** April 6, 2026
-**Branch:** master | **Commit:** da73c7f
+**Date:** April 8, 2026 (updated April 14 for Tier 3.5 completion)
+**Branch:** master
 **Overall SEO Score: 9.1/10**
 
 ---
@@ -210,7 +210,16 @@ Fallback for unlisted manufacturers: "Browse {name} equipment for sale on Timber
 
 ---
 
-## 10. What's Remaining
+## 10. Tier 3.5 SEO-Related Updates (Apr 6-14)
+
+- **3 new routes added to SPA_ROUTES:** `/status`, `/help`, `/help/:slug` — ensures proper SPA fallback handling
+- **"List Equipment" renamed to "Sell Equipment"** in nav — better keyword targeting
+- **"WoW" replaced with "Weekly"** on home page analytics — clearer labeling for users and crawlers
+- **API versioning (`/api/v1`)** does not impact SEO (API routes are not indexed)
+
+---
+
+## 11. What's Remaining
 
 | Item | Priority | Effort | Notes |
 |------|----------|--------|-------|
@@ -219,6 +228,7 @@ Fallback for unlisted manufacturers: "Browse {name} equipment for sale on Timber
 | ~~Canonical URL conflict resolution~~ | ~~MEDIUM~~ | ~~2 hrs~~ | COMPLETE — Admin/Profile canonicals fixed (removed query params), audited 8 potential conflicts, all resolved |
 | Structured data testing | LOW | 2 hrs | Validate all JSON-LD with Google Rich Results Test (requires external tool) |
 | ~~Image alt text audit~~ | ~~LOW~~ | ~~2 hrs~~ | COMPLETE — ListingCard already has descriptive alt text: `alt={listing.title}` which includes year/make/model |
+| Add Seo component to Status, Help, HelpArticle pages | LOW | 1 hr | New pages need meta tags |
 | Internal link audit | LOW | 1 hr | Verify no broken cross-links |
 
 ---

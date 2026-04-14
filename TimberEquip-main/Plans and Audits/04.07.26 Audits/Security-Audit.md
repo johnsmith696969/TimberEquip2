@@ -1,7 +1,7 @@
 # Forestry Equipment Sales — Comprehensive Security Audit
 
-**Audit Date:** April 8, 2026 (Updated)
-**Previous Audit:** April 7, 2026
+**Audit Date:** April 14, 2026 (Updated — Tier 3.5 Sprint)
+**Previous Audit:** April 8, 2026
 **Platform:** Forestry Equipment Sales (https://timberequip.com)
 **Audit Methodology:** OWASP Top 10 + NIST CSF + CIS Controls
 **Prepared By:** FES Security Audit Team
@@ -25,7 +25,7 @@ This security audit evaluates the Forestry Equipment Sales platform across authe
 - **Alt text enforcement** on all remaining images (AdminDashboard, ListingDetail)
 - **Hardcoded test emails** replaced with environment variable fallbacks across 8 files
 
-All 523+ tests pass across 49 test files, production dependencies are pinned to exact versions, and all hardening changes have been deployed to production.
+All 619 tests pass across 51 test files (zero tsc errors), production dependencies are pinned to exact versions, and all hardening changes have been deployed to production.
 
 A subsequent deep re-audit on April 8 identified **6 new findings** not captured in the initial hardening assessment (SEC-06 through SEC-11). **Security Sprint 1** closed all 6 re-audit findings, and **Security Sprint 2** resolved 6 additional findings discovered during remediation (SEC-NEW-02, SEC-NEW-03/04, SEC-NEW-09, SEC-NEW-10, SEC-NEW-12, SEC-NEW-15):
 
@@ -43,10 +43,17 @@ A subsequent deep re-audit on April 8 identified **6 new findings** not captured
 - **SEC-NEW-15:** Unused `express-session` dependency removed — **CLOSED**
 
 Additionally, significant **architecture modularization** was completed:
-- **server.ts** split from 5,015 to 1,861 lines (5 domain-specific route modules: admin.ts, auctions.ts, billing.ts, public.ts, user.ts)
-- **AdminDashboard.tsx** split from 3,896 to ~2,394 lines (8 tab components extracted)
+- **server.ts** split from 5,015 to 1,861 lines (now 7 route modules including sso.ts: admin.ts, auctions.ts, billing.ts, public.ts, user.ts, sso.ts, managedRoles.ts)
+- **AdminDashboard.tsx** split from 3,896 to ~2,394 lines (now 9 tab components including SsoTab)
 
-**Overall Security Score: 9.5 / 10** (restored and improved after all findings resolved)
+The **April 14 Tier 3.5 sprint** added further security-relevant infrastructure:
+- **Pino structured logging** replaced 91+ console calls — improves security event visibility and incident investigation
+- **All 24 empty catch blocks** (19 server + 5 frontend) fixed with proper error logging
+- **SSO endpoints** (sso.ts) implement proper auth verification
+- **Enhanced /api/health** endpoint with component-level health checks
+- **API versioning** (/api/v1) improves endpoint management and deprecation control
+
+**Overall Security Score: 9.5 / 10** (unchanged — no new findings; logging improvements enhance observability)
 **Risk Assessment: LOW (all HIGH/MEDIUM findings resolved)**
 
 ---
@@ -362,7 +369,7 @@ Additionally, significant **architecture modularization** was completed:
 | Helmet + CSP | Enterprise-grade HTTP security headers; unsafe-inline addressed in both Helmet and firebase.json (SEC-11 CLOSED) |
 | Firebase encryption at rest | All data encrypted by default |
 | CI/CD security pipeline | 4 GitHub Actions workflows including automated `npm audit` on PRs |
-| 523+ passing tests | 49 test files covering services (billing, equipment, auction, CMS, SEO, API validation), components, and utilities |
+| 619 passing tests | 51 test files covering services (billing, equipment, auction, CMS, SEO, API validation, admin routes, managed roles), components, and utilities — zero tsc errors |
 | Fail-closed reCAPTCHA | Bot protection with automatic retry on all forms; dealer inquiry reCAPTCHA now mandatory (SEC-06 CLOSED) |
 | Environment-split CORS | Production and development origins isolated |
 | Validated secret config | Stripe secrets wrapped in serverConfig with fail-fast startup check |
@@ -374,13 +381,17 @@ Additionally, significant **architecture modularization** was completed:
 | Dealer inquiry rate limiting | Firestore-based rate limiting: 5 requests per 15 min per IP+dealer |
 | Vulnerability disclosure page | Public vulnerability disclosure policy at /vulnerability-disclosure |
 | Firebase config properly tracked | firebase-applet-config.json in git (public client config, not a secret) |
-| Service-layer error logging | Empty catch blocks replaced with console.warn for debugging (8 blocks across 3 services) |
+| Pino structured logging | 91+ console calls replaced with structured JSON logging via Pino across server.ts + 6 route modules (Apr 14) |
+| Comprehensive error logging | All 24 empty catch blocks (19 server + 5 frontend) fixed with proper error logging (Apr 14) |
 | Token revocation enforcement | `checkRevoked: true` added to all 31 `verifyIdToken()` calls across server.ts and Cloud Functions (SEC-NEW-02) |
 | Query bounds enforcement | Limit clauses added to `getAccounts()` and `subscribeToInquiries()` preventing unbounded reads (SEC-NEW-03/04) |
 | Rate limiter atomicity | TOCTOU race condition in rate limiter fixed with Firestore transaction (SEC-NEW-12) |
 | Minimal dependencies | Unused `express-session` dependency removed, reducing attack surface (SEC-NEW-15) |
-| Server modularization | server.ts split from 5,015 to 1,861 lines with 5 domain-specific route modules (admin.ts, auctions.ts, billing.ts, public.ts, user.ts) |
-| Admin dashboard modularization | AdminDashboard.tsx split from 3,896 lines to ~2,394-line thin shell with 8 extracted tab components |
+| Server modularization | server.ts split from 5,015 to 1,861 lines with 7 domain-specific route modules (admin.ts, auctions.ts, billing.ts, public.ts, user.ts, sso.ts, managedRoles.ts) |
+| Admin dashboard modularization | AdminDashboard.tsx split into thin shell with 9 extracted tab components (including SsoTab) |
+| SSO endpoints | sso.ts with 5 endpoints (CRUD + domain lookup) with proper auth verification (Apr 14) |
+| API versioning | /api/v1 prefix on all 120+ API calls — improves deprecation control and security boundary management (Apr 14) |
+| Enhanced health checks | /api/health with Firestore + Stripe component checks + latency reporting (Apr 14) |
 
 ---
 

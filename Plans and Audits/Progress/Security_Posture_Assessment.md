@@ -1,14 +1,14 @@
 # TimberEquip Security Posture Assessment
 
-**Date:** April 6, 2026
-**Branch:** master | **Commit:** da73c7f
-**Overall Security Score: 9.1/10 — Production-Ready**
+**Date:** April 8, 2026 (updated April 14 for Tier 3.5 completion)
+**Branch:** master
+**Overall Security Score: 9.5/10 — Production-Ready**
 
 ---
 
 ## Executive Summary
 
-TimberEquip has a **strong, production-grade security posture**. The platform implements industry-standard protections across all layers: Helmet.js CSP, CSRF with timing-safe comparison, Stripe webhook signature verification, reCAPTCHA Enterprise, Firebase Auth custom claims, comprehensive Firestore security rules, rate limiting on all endpoints, Zod request body validation on all critical POST endpoints, and environment-variable-based secrets management. The site **is secure enough to run in production today**. All previously identified security findings have been resolved.
+TimberEquip has a **strong, production-grade security posture**. The platform implements industry-standard protections across all layers: Helmet.js CSP, CSRF with timing-safe comparison, Stripe webhook signature verification, reCAPTCHA Enterprise, Firebase Auth custom claims (including SSO via SAML/OIDC), comprehensive Firestore security rules, rate limiting on all endpoints, Zod request body validation on all critical POST endpoints, Pino structured logging (replacing all console.log/error/warn), zero empty catch blocks, content moderation via Google Cloud Vision SafeSearch, and environment-variable-based secrets management. The site **is secure enough to run in production today**. All previously identified security findings have been resolved.
 
 ---
 
@@ -69,15 +69,16 @@ Helmet.js strict CSP configuration:
 
 ### 1.6 Authentication & Authorization
 
-- **Firebase Auth** with email/password + Google OAuth
+- **Firebase Auth** with email/password + Google OAuth + **SSO (SAML/OIDC) via signInWithPopup** (NEW Apr 14)
 - **MFA:** SMS verification codes (Twilio)
 - **Custom claims:** Role, scopes, features set server-side
 - **Admin detection:** Server-side custom claims only — `privilegedAdmin.ts` returns empty array (correct pattern, prevents client-side spoofing)
 - **Firestore rules:** 1,030 lines of comprehensive security rules
 - **Role-based access:** 9 roles with hierarchical permissions
 - **Email verification:** Configurable per environment
+- **SSO provider management:** Admin CRUD for SAML/OIDC providers with domain-based auto-detection
 
-**Score: 9/10**
+**Score: 9.5/10**
 
 ### 1.7 Firestore Security Rules
 
@@ -136,12 +137,24 @@ Only public keys exposed client-side: reCAPTCHA site key, Firebase project ID (b
 
 **Score: 9/10** — Comprehensive Zod schema validation on all critical POST endpoints
 
-### 1.13 Error Handling
+### 1.13 Error Handling & Logging
 
 - Sentry error tracking on both server and Cloud Functions
 - `captureFunctionsException()` wired into all 4 dual-write modules
 - Error messages sanitized before returning to client
 - No stack traces exposed in production responses
+- **Pino structured logging** replaced 91+ `console.log`/`error`/`warn` calls across server.ts and 6 route modules (NEW Apr 14)
+- **All 19 empty catch blocks** in server routes fixed with proper error logging (NEW Apr 14)
+- **All 5 frontend empty catch blocks** fixed (zero remaining across entire codebase) (NEW Apr 14)
+
+**Score: 9.5/10**
+
+### 1.14 Content Moderation (NEW Apr 8)
+
+- **Google Cloud Vision SafeSearch** integration for uploaded images
+- Automatic rejection of explicit/violent content
+- Email notification to user on moderation action
+- Applied during image upload flow
 
 **Score: 9/10**
 
@@ -237,14 +250,15 @@ The platform is secure for production use today. The security implementation exc
 |----------|-------|
 | **Transport** | HSTS (1yr), TLS enforced, strict referrer policy |
 | **Headers** | Helmet.js CSP, X-Content-Type-Options, X-Frame-Options |
-| **Authentication** | Firebase Auth, Google OAuth, SMS MFA, custom claims |
+| **Authentication** | Firebase Auth, Google OAuth, SSO (SAML/OIDC), SMS MFA, custom claims |
 | **Authorization** | 9-role RBAC, Firestore rules (1,030 lines), route protection |
 | **API Security** | CSRF (timing-safe), CORS whitelist, rate limiting (5 tiers), Zod request validation |
 | **Payment** | Stripe webhook sig verification, idempotent processing |
 | **Bot Protection** | reCAPTCHA Enterprise v3 on all forms |
 | **File Security** | MIME whitelist, 5MB limit, ClamAV virus scanning |
 | **Secrets** | Google Cloud Secret Manager, no hardcoded credentials |
-| **Monitoring** | Sentry error tracking (server + functions) |
+| **Monitoring** | Sentry error tracking (server + functions), Pino structured logging |
+| **Content Moderation** | Google Cloud Vision SafeSearch on uploads |
 | **Data Protection** | GDPR consent banner, email preference management, signed unsubscribe tokens |
 | **Audit Trail** | Billing audit logs, account audit logs, listing state transitions |
 
@@ -258,7 +272,7 @@ The platform is secure for production use today. The security implementation exc
 | CORS Config | 9/10 | COMPLETE |
 | Rate Limiting | 9/10 | COMPLETE |
 | CSRF Protection | 9/10 | COMPLETE |
-| Auth/Authorization | 9/10 | COMPLETE |
+| Auth/Authorization (incl. SSO) | 9.5/10 | COMPLETE |
 | Firestore Rules | 9/10 | COMPLETE |
 | Stripe Webhook | 9/10 | COMPLETE |
 | reCAPTCHA | 9/10 | COMPLETE |
@@ -266,9 +280,11 @@ The platform is secure for production use today. The security implementation exc
 | Secrets Management | 9/10 | COMPLETE |
 | SSRF Protection | 9/10 | COMPLETE |
 | Admin Detection | 10/10 | COMPLETE |
-| Error Handling | 9/10 | COMPLETE |
+| Error Handling & Logging | 9.5/10 | COMPLETE |
 | File Upload | 8/10 | COMPLETE |
-| **OVERALL** | **9.1/10** | **Production-Ready** |
+| Content Moderation | 9/10 | COMPLETE |
+| Structured Logging | 10/10 | COMPLETE |
+| **OVERALL** | **9.5/10** | **Production-Ready** |
 
 ---
 
@@ -282,4 +298,4 @@ The platform is secure for production use today. The security implementation exc
 | SOC 2 Type I | Not yet — would require ~$15-25K audit |
 | ISO 27001 | Not yet — enterprise-grade, not typically needed at this stage |
 
-**Bottom line:** TimberEquip's security posture is **above average for a marketplace at this stage** and **safe to operate commercially today**.
+**Bottom line:** TimberEquip's security posture is **above average for a marketplace at this stage** and **safe to operate commercially today**. Tier 3.5 additions (structured logging, zero empty catch blocks, SSO, content moderation) have raised the overall score from 9.1 to 9.5/10.

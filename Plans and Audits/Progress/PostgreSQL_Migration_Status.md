@@ -1,18 +1,19 @@
 # TimberEquip PostgreSQL Migration Status
 
-**Date:** April 6, 2026
+**Date:** April 8, 2026 (updated April 14 for Tier 3.5 completion)
 **Cloud SQL Instance:** `timberequip-dc` (us-central1)
 **Database:** `timberequip`
 **Data Connect Service:** `timberequip-marketplace`
 **Total Tables:** 23 across 5 migration phases
 **Total Dual-Write Triggers:** 20
 **Backfill Status:** 580 listings migrated (0 errors)
+**DataConnect in firebase.json:** Yes (added Apr 14)
 
 ---
 
 ## Executive Summary
 
-TimberEquip is executing a **phased Firestore-to-PostgreSQL migration** using Firebase Data Connect as the bridge layer. The migration follows a dual-write pattern: Firestore remains the source of truth while PostgreSQL is progressively populated for governance, analytics, and operational queries. All 5 phases of SQL migrations are complete, 6 Data Connect connectors are configured with generated SDKs, 20 dual-write Cloud Function triggers are deployed, and 580 listings have been backfilled. The PostgreSQL read layer is live in the Admin Dashboard.
+TimberEquip is executing a **phased Firestore-to-PostgreSQL migration** using Firebase Data Connect as the bridge layer. The migration follows a dual-write pattern: Firestore remains the source of truth while PostgreSQL is progressively populated for governance, analytics, and operational queries. All 5 phases of SQL migrations are complete, 6 Data Connect connectors are configured with generated SDKs, 20 dual-write Cloud Function triggers are deployed, 580 listings have been backfilled, and DataConnect has been added to `firebase.json` for deployment. The PostgreSQL read layer is live in the Admin Dashboard. Backfill scripts exist for remaining collections but have not yet been run on production.
 
 ---
 

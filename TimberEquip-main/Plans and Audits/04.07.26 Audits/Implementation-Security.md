@@ -1,15 +1,15 @@
 # Forestry Equipment Sales — Security Implementation Recommendations
 
-**Reference Audit:** Security-Audit.md (Score: 9.5/10, adjusted after security sprints)
+**Reference Audit:** Security-Audit.md (Score: 9.5/10, unchanged after Tier 3.5 sprint)
 **Target Score:** 9.5+/10
-**Date:** April 8, 2026 (Updated — includes re-audit findings)
-**Previous Date:** April 7, 2026
+**Date:** April 14, 2026 (Updated — Tier 3.5 Sprint)
+**Previous Date:** April 8, 2026
 
 ---
 
 ## Completed Items Summary
 
-All original and re-audit security findings are now resolved. Thirteen original items plus six re-audit findings (SEC-06 through SEC-11) were closed across the Enterprise 3.5 Hardening sprint and two follow-up Security Sprints on April 8. An additional six hardening items (SEC-NEW-02, SEC-NEW-03/04, SEC-NEW-09, SEC-NEW-10, SEC-NEW-12, SEC-NEW-15) were completed in Sprint 2.
+All original and re-audit security findings remain resolved. Thirteen original items plus six re-audit findings (SEC-06 through SEC-11) were closed across the Enterprise 3.5 Hardening sprint and two follow-up Security Sprints on April 8. An additional six hardening items (SEC-NEW-02, SEC-NEW-03/04, SEC-NEW-09, SEC-NEW-10, SEC-NEW-12, SEC-NEW-15) were completed in Sprint 2. The April 14 Tier 3.5 sprint added further infrastructure hardening (Pino structured logging replacing 91+ console calls, all 24 empty catch blocks fixed with proper error logging, SSO endpoints with proper auth checks) but introduced no new security findings. Security score remains 9.5/10.
 
 | ID | Item | Status | Date |
 |----|------|--------|------|
@@ -27,7 +27,7 @@ All original and re-audit security findings are now resolved. Thirteen original 
 | INFRA-03 | Google Maps API key restricted (HTTP referrers + API restrictions) | [COMPLETED] | Apr 8 |
 | — | Vulnerability disclosure page published at /vulnerability-disclosure | [COMPLETED] | Apr 8 |
 
-**Score progression:** 8.2 → 9.2 → 9.5 → 8.8 → **9.5 (Security Sprints 1 & 2)**
+**Score progression:** 8.2 → 9.2 → 9.5 → 8.8 → **9.5 (Security Sprints 1 & 2)** → **9.5 (Apr 14 — unchanged, no new findings)**
 
 ---
 
@@ -138,6 +138,17 @@ All original and re-audit security findings are now resolved. Thirteen original 
 | Hardcoded test emails replaced with env var fallbacks | Done |
 | SeoLandingPages lazy imports consolidated | Done |
 | Empty catch blocks updated with structured logging (8 blocks) | Done |
+
+### Tier 3.5 Sprint Security-Relevant Improvements [Apr 14]
+
+| Task | Status |
+|------|--------|
+| Pino structured logging replaced 91+ console calls (better security event visibility) | Done |
+| All 19 server empty catch blocks fixed with proper error logging | Done |
+| All 5 frontend empty catch blocks fixed with proper error logging | Done |
+| SSO endpoints (sso.ts) use proper auth verification | Done |
+| API versioning (/api/v1) provides cleaner endpoint management | Done |
+| Enhanced /api/health endpoint with component-level checks | Done |
 
 **Remaining (future work):**
 

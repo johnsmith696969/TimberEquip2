@@ -1,6 +1,6 @@
 # TimberEquip Firestore Schema & Rules Report
 
-**Date:** April 6, 2026
+**Date:** April 8, 2026 (updated April 14 for Tier 3.5 completion)
 **Database ID:** `ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c`
 **Project:** `mobile-app-equipment-sales`
 **Rules File:** `firestore.rules` (1,030 lines)
@@ -9,11 +9,11 @@
 
 ## Executive Summary
 
-Firestore serves as the **primary source of truth** for all TimberEquip data. The database contains **48 collections** organized across 6 domains: Marketplace Core, Leads & Inquiries, Billing & Account, Dealer System, Admin & Audit, and SEO Read Models. Comprehensive security rules enforce role-based access control with field-level validation. All collections have corresponding dual-write triggers to PostgreSQL (see PostgreSQL Migration doc).
+Firestore serves as the **primary source of truth** for all TimberEquip data. The database contains **49+ collections** organized across 6 domains: Marketplace Core, Leads & Inquiries, Billing & Account, Dealer System, Admin & Audit, and SEO Read Models. Comprehensive security rules enforce role-based access control with field-level validation. All collections have corresponding dual-write triggers to PostgreSQL (see PostgreSQL Migration doc). SSO provider configurations are stored in Firestore and managed via the admin SSO tab.
 
 ---
 
-## 1. Collection Inventory (48 Collections)
+## 1. Collection Inventory (49+ Collections)
 
 ### 1.1 Marketplace Core (6 collections)
 
@@ -70,7 +70,7 @@ Firestore serves as the **primary source of truth** for all TimberEquip data. Th
 | `dealerMetaConnections` | Meta/Facebook ad connections | Admin write |
 | `dealerMetaValidationLogs` | Meta validation records | Admin read |
 
-### 1.5 Admin & Audit (12 collections)
+### 1.5 Admin & Audit (13+ collections)
 
 | Collection | Purpose | Access |
 |-----------|---------|--------|
@@ -86,6 +86,7 @@ Firestore serves as the **primary source of truth** for all TimberEquip data. Th
 | `listingStateTransitions` | Listing state change log | Admin only |
 | `listingMediaAudit` | Image validation results | Admin only |
 | `listingGovernanceArtifacts` | Denormalized governance data | Admin only |
+| `ssoProviders` | SSO provider configs (SAML/OIDC) | Admin only (NEW Apr 14) |
 
 ### 1.6 SEO Read Models (4 collections)
 
@@ -195,7 +196,16 @@ SEO Read Model Update
 
 ---
 
-## 6. What Needs Attention
+## 6. Tier 3.5 Firestore Changes (Apr 6-14)
+
+- **`ssoProviders` collection added:** Stores SSO provider configurations (SAML/OIDC) managed via admin SSO tab
+- **DataConnect added to `firebase.json`:** Enables PostgreSQL deployment alongside Firestore
+- **Enhanced health endpoint** (`/api/health`) now performs live Firestore connectivity checks with component-level latency reporting
+- **Content moderation metadata:** Image moderation results from Google Cloud Vision SafeSearch stored alongside upload records
+
+---
+
+## 7. What Needs Attention
 
 | Item | Priority | Notes |
 |------|----------|-------|

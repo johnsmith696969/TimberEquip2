@@ -1,9 +1,9 @@
 # Forestry Equipment Sales — Architecture Implementation Recommendations
 
-**Reference Audit:** Architectural-System.md (Score: 9.5/10, updated after security sprints + architecture modularization)
-**Target Score:** 9.5+/10
-**Date:** April 8, 2026 (Updated)
-**Previous Date:** April 7, 2026
+**Reference Audit:** Architectural-System.md (Score: 9.6/10, updated after Tier 3.5 sprint)
+**Target Score:** 9.7+/10
+**Date:** April 14, 2026 (Updated — Tier 3.5 Sprint)
+**Previous Date:** April 8, 2026
 
 ---
 
@@ -142,19 +142,20 @@ No further work required.
 | Set up performance alerts for LCP/FID/CLS regression | 1 hour |
 | **Total** | **5.5 hours** |
 
-### 3.3 Structured Logging
+### 3.3 Structured Logging — COMPLETED (Apr 14)
 
-**Status:** Pending (future work)
-**Current:** Console.log with varying formats
-**Target:** Structured JSON logging with correlation IDs
+**Status:** COMPLETED
+**Outcome:** Pino structured JSON logging implemented. 91+ console calls replaced across server.ts and 6 route modules. New file: `src/server/logger.ts`. All 19 server empty catch blocks and all 5 frontend empty catch blocks fixed with proper error logging.
 
-| Task | Effort |
+| Task | Status |
 |------|--------|
-| Add request ID middleware (correlation ID per request) | 2 hours |
-| Replace console.log with structured logger (pino or winston) | 4 hours |
-| Add log levels (error, warn, info, debug) | 2 hours |
-| Configure Cloud Logging integration | 2 hours |
-| **Total** | **10 hours** |
+| Replace console.log with Pino structured logger | Done |
+| Add log levels (error, warn, info, debug) | Done |
+| Fix all 19 server empty catch blocks | Done |
+| Fix all 5 frontend empty catch blocks | Done |
+| New file: src/server/logger.ts | Done |
+
+No further work required.
 
 ---
 
@@ -162,8 +163,8 @@ No further work required.
 
 ### 4.1 Test Coverage — COMPLETED
 
-**Status:** COMPLETED
-**Outcome:** Test suite expanded to 523+ tests across 49 files, covering billing, equipment services, admin flows, SEO components, email templates, account entitlements, and privileged admin logic. Critical paths have adequate coverage.
+**Status:** COMPLETED (expanded Apr 14)
+**Outcome:** Test suite expanded to 619 tests across 51 files (up from 523/49), covering billing, equipment services, admin flows, SEO components, email templates, account entitlements, privileged admin logic, admin routes (16 tests), and managed roles routes (20 tests). 100% passing, zero tsc errors. Critical paths have adequate coverage.
 
 No further work required.
 
@@ -210,17 +211,18 @@ No further work required.
 
 No further work required.
 
-### 4.4 API Versioning Strategy
+### 4.4 API Versioning Strategy — COMPLETED (Apr 14)
 
-**Status:** Pending (future work)
+**Status:** COMPLETED
+**Outcome:** `/api/v1` prefix applied to all 120+ frontend API calls. New file: `src/constants/api.ts` centralizes all API endpoint URLs. Backend routes serve under /api/v1 prefix.
 
-| Task | Effort |
+| Task | Status |
 |------|--------|
-| Add `/api/v1/` prefix to all routes | 3 hours |
-| Create version routing middleware | 2 hours |
-| Add backward-compatible redirects | 1 hour |
-| Document versioning policy | 1 hour |
-| **Total** | **7 hours** |
+| Add `/api/v1/` prefix to all routes | Done |
+| Centralize API URLs in src/constants/api.ts | Done |
+| Update all 120+ frontend API calls | Done |
+
+No further work required.
 
 ---
 
@@ -251,11 +253,12 @@ The initial audit contained two inaccuracies that have been corrected:
 
 | Phase | Items | Duration | Score Impact |
 |-------|-------|----------|-------------|
-| Sprint 1 | Sentry DSN activation + Firebase Performance Monitoring | 1 week | +0.1 |
-| Sprint 2 | Redis cache + API standardization | 3 weeks | +0.2 |
-| Sprint 3 | ~~Server.ts extraction~~ COMPLETED + API versioning | 1 week | +0.05 |
-| Sprint 4 | Structured logging + Image CDN | 2 weeks | +0.1 |
-| **Total** | | **~7 weeks** | **9.5 (achieved) -> 9.7+** |
+| ~~Sprint 3~~ | ~~API versioning~~ | COMPLETED (Apr 14) | Captured |
+| ~~Sprint 4~~ | ~~Structured logging~~ | COMPLETED (Apr 14) | Captured |
+| Sprint 1 | Sentry DSN activation + Firebase Performance Monitoring | 1 week | +0.05 |
+| Sprint 2 | Redis cache + API standardization | 3 weeks | +0.1 |
+| Sprint 3 | Image CDN migration | 1 week | +0.05 |
+| **Total remaining** | | **~5 weeks** | **9.6 (achieved) -> 9.8+** |
 
 ### Completed Items Summary
 
@@ -264,8 +267,16 @@ The initial audit contained two inaccuracies that have been corrected:
 | 1.1 Automated CI/CD Pipeline | COMPLETED (already existed) | 11.5 hours saved |
 | 1.2 Environment Configuration Hardening | COMPLETED | 8 hours saved |
 | 3.1 Sentry Integration (scaffold) | PARTIALLY COMPLETE | ~1 hour done, ~6 hours remaining |
-| 4.1 Test Coverage (523+ tests, 49 files) | COMPLETED | 20 hours saved |
+| 3.3 Structured Logging (Pino, 91+ calls) | COMPLETED (Apr 14) | 10 hours |
+| 4.1 Test Coverage (619 tests, 51 files) | COMPLETED (expanded Apr 14) | 20 hours saved |
 | 4.2 Security Hardening (CSP, CORS, reCAPTCHA) | COMPLETED | -- |
+| 4.3 Server.ts Route Extraction (7 modules incl. sso.ts) | COMPLETED (expanded Apr 14) | 14 hours saved |
+| 4.4 API Versioning (/api/v1 on 120+ calls) | COMPLETED (Apr 14) | 7 hours |
 | 4.5 Enterprise 3.5 Hardening Sprint (12 items) | COMPLETED | -- |
-| 4.3 Server.ts Route Extraction (5 modules, 3,488 lines) | COMPLETED | 14 hours saved |
-| AdminDashboard Tab Extraction (8 components) | COMPLETED | -- |
+| AdminDashboard Tab Extraction (9 components incl. SsoTab) | COMPLETED (expanded Apr 14) | -- |
+| SSO (SAML/OIDC) server + frontend | COMPLETED (Apr 14) | -- |
+| OpenAPI 3.1 Specification (docs/openapi.yaml) | COMPLETED (Apr 14) | -- |
+| Formal SLA Documentation (docs/SLA.md) | COMPLETED (Apr 14) | -- |
+| Status Page (/status) | COMPLETED (Apr 14) | -- |
+| Help Center (/help, 24 articles) | COMPLETED (Apr 14) | -- |
+| Enhanced Health Endpoints (/api/health, /_status) | COMPLETED (Apr 14) | -- |

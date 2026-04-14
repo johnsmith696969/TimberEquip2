@@ -1,9 +1,9 @@
 # Forestry Equipment Sales — Feature Implementation Recommendations
 
-**Reference Audit:** FES-Overall-Offers.md (Score: 9.2/10)
-**Target Score:** 9.5+/10
-**Date:** April 8, 2026 (Updated)
-**Previous Date:** April 7, 2026
+**Reference Audit:** FES-Overall-Offers.md (Score: 9.5/10)
+**Target Score:** 9.7+/10
+**Date:** April 14, 2026 (Updated — Tier 3.5 Sprint)
+**Previous Date:** April 8, 2026
 
 ---
 
@@ -49,6 +49,29 @@ The following security and infrastructure features were added:
 | SeoLandingPages lazy imports consolidated | Done |
 | Alt text fixes for accessibility | Done |
 | 3 new test files added (49 total, 523+ passing) | Done |
+
+### Tier 3.5 Sprint — COMPLETED (Apr 14)
+
+The following enterprise features were added:
+
+| Feature | Status |
+|---------|--------|
+| SSO (SAML/OIDC): server routes (sso.ts, 5 endpoints), SsoLoginButton, SsoTab admin panel | Done |
+| API versioning: /api/v1 prefix on all 120+ frontend API calls (src/constants/api.ts) | Done |
+| OpenAPI 3.1 specification: docs/openapi.yaml — 33 endpoints, 9 schemas, 7 tag groups | Done |
+| Formal SLA documentation: docs/SLA.md — 99.9% uptime, P1-P4 severity, service credits | Done |
+| Status page: /status with live component health, auto-refresh, uptime | Done |
+| Help center: /help with 24 searchable articles, 7 categories; /help/:slug | Done |
+| Enhanced health endpoint: /api/health with Firestore + Stripe checks + latency | Done |
+| Public status endpoint: /_status | Done |
+| Pino structured logging: 91+ console calls replaced; src/server/logger.ts | Done |
+| All 24 empty catch blocks fixed (19 server + 5 frontend) | Done |
+| 36 new tests (adminRoutes.test.ts: 16, managedRolesRoutes.test.ts: 20) — 619 total, 51 files | Done |
+| DataConnect added to firebase.json | Done |
+| UX: "List Equipment" to "Sell Equipment" in nav | Done |
+| UX: Image gallery stretching fixed | Done |
+| UX: "WoW" to "Weekly" on analytics | Done |
+| UX: Last Updated shows date + time | Done |
 
 ---
 
@@ -153,9 +176,10 @@ The following security and infrastructure features were added:
 
 | Phase | Features | Duration | Score Impact |
 |-------|----------|----------|-------------|
-| **Already Complete** | Related Equipment, Content Depth, Comparison Tool, Enterprise 3.5 Hardening | -- | Reflected in 9.2 baseline |
+| **Already Complete** | Related Equipment, Content Depth, Comparison Tool, Enterprise 3.5 Hardening | -- | Reflected in baseline |
+| **Tier 3.5 Sprint (Apr 14)** | SSO, API versioning, OpenAPI docs, SLA, Status page, Help center, Structured logging, 36 tests, UX fixes | -- | 9.2 → 9.5 |
 | Sprint 1 | Push notifications + Video support | 2 weeks | +0.1 |
 | Sprint 2 | Reviews & Ratings + Inspection reports | 2 weeks | +0.1 |
 | Sprint 3 | Advanced search + Messaging | 3 weeks | +0.1 |
 | Sprint 4 | PWA enhancements + Remaining content | 2 weeks | +0.1 |
-| **Total** | | **9 weeks** | **9.2 → 9.5+** |
+| **Total remaining** | | **9 weeks** | **9.5 → 9.7+** |
