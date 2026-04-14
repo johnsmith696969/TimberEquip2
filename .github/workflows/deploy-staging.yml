@@ -1,0 +1,89 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: TimberEquip-main
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: TimberEquip-main/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security audit
+        run: npm audit --audit-level=high || true
+
+      - name: Verify staging bundle
+        run: npm run verify:staging
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    defaults:
+      run:
+        working-directory: TimberEquip-main
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: TimberEquip-main/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+          project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+
+      - name: Validate staging deploy config
+        run: npm run validate:staging:smoke
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+
+      - name: Deploy staging
+        run: npm run deploy:staging:ci
+        env:
+          FIREBASE_PROJECT_ID_STAGING: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_DEPLOY_SCOPE: ${{ vars.FIREBASE_DEPLOY_SCOPE }}
+
+      - name: Smoke test staging routes
+        run: npm run smoke:routes
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_EXPECT_MODE: noindex
