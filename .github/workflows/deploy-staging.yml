@@ -74,7 +74,7 @@ jobs:
         run: npm run validate:staging:smoke
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_BASE_URL: https://timberequip-staging.web.app
 
       - name: Deploy staging
         run: npm run deploy:staging:ci
@@ -85,5 +85,5 @@ jobs:
       - name: Smoke test staging routes
         run: npm run smoke:routes
         env:
-          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_BASE_URL: https://timberequip-staging.web.app
           SMOKE_EXPECT_MODE: noindex

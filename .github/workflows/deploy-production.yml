@@ -80,7 +80,7 @@ jobs:
         run: npm run validate:production:smoke
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_BASE_URL: https://timberequip.com
 
       - name: Deploy production
         run: npm run deploy:production:ci
@@ -91,5 +91,5 @@ jobs:
       - name: Smoke test production routes
         run: npm run smoke:routes
         env:
-          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_BASE_URL: https://timberequip.com
           SMOKE_EXPECT_MODE: indexable

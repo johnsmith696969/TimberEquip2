@@ -17,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
+    env:
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || 'mobile-app-equipment-sales' }}
+      FIRESTORE_BACKUP_BUCKET: ${{ vars.FIRESTORE_BACKUP_BUCKET || 'mobile-app-equipment-sales-firestore-backups' }}
+      FIRESTORE_DATABASE_ID: ${{ vars.FIRESTORE_DATABASE_ID || '(default)' }}
     defaults:
       run:
         working-directory: TimberEquip-main
@@ -34,48 +38,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check backup configuration
-        id: backup-config
-        shell: bash
-        run: |
-          if [ -z "${FIRESTORE_BACKUP_BUCKET}" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Firestore backup bucket variable is not configured. Skipping backup workflow."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          FIRESTORE_BACKUP_BUCKET: ${{ vars.FIRESTORE_BACKUP_BUCKET }}
-
       - name: Authenticate to Google Cloud
-        if: steps.backup-config.outputs.configured == 'true'
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           create_credentials_file: true
           export_environment_variables: true
-          project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+          project_id: ${{ env.FIREBASE_PROJECT_ID }}
 
       - name: Set up gcloud
-        if: steps.backup-config.outputs.configured == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Apply backup bucket retention policy
-        if: steps.backup-config.outputs.configured == 'true'
         run: npm run ops:firestore:backup:apply-retention
-        env:
-          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIRESTORE_BACKUP_BUCKET: ${{ vars.FIRESTORE_BACKUP_BUCKET }}
-          FIRESTORE_DATABASE_ID: ${{ vars.FIRESTORE_DATABASE_ID }}
 
       - name: Start Firestore export
-        if: steps.backup-config.outputs.configured == 'true'
         run: npm run ops:firestore:backup
-        env:
-          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIRESTORE_BACKUP_BUCKET: ${{ vars.FIRESTORE_BACKUP_BUCKET }}
-          FIRESTORE_DATABASE_ID: ${{ vars.FIRESTORE_DATABASE_ID }}
-
-      - name: Backup workflow skipped
-        if: steps.backup-config.outputs.configured != 'true'
-        run: echo "Firestore backup workflow skipped because FIRESTORE_BACKUP_BUCKET is not configured."
