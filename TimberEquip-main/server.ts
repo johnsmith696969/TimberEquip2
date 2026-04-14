@@ -16,6 +16,7 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import multer from 'multer';
 import { captureServerException, initializeServerSentry } from './sentry.server.js';
+import logger from './src/server/logger.js';
 import { setupAuctionSockets } from './src/server/auctionSocketServer.js';
 import { registerPublicRoutes } from './src/server/routes/public.js';
 import { registerUserRoutes } from './src/server/routes/user.js';
@@ -50,7 +51,7 @@ function apiPaginated<T>(res: express.Response, data: T[], pagination: { total: 
   const recommended = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RECAPTCHA_API_KEY'];
   const missing = recommended.filter((key) => !process.env[key]);
   if (missing.length > 0) {
-    console.warn(`[startup] Missing recommended environment variables: ${missing.join(', ')}`);
+    logger.warn({ missing }, 'Missing recommended environment variables');
   }
 }
 
@@ -58,14 +59,14 @@ process.on('uncaughtException', (error) => {
   captureServerException(error, {
     tags: { process_event: 'uncaughtException' },
   });
-  console.error('Uncaught exception:', error);
+  logger.error({ err: error }, 'Uncaught exception');
 });
 
 process.on('unhandledRejection', (reason) => {
   captureServerException(reason, {
     tags: { process_event: 'unhandledRejection' },
   });
-  console.error('Unhandled rejection:', reason);
+  logger.error({ err: reason }, 'Unhandled rejection');
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -80,7 +81,7 @@ try {
   };
   sharedPublicPagesProxy = typeof publicPagesModule.handlePublicPagesRequest === 'function' ? publicPagesModule.handlePublicPagesRequest : null;
 } catch (error) {
-  console.warn('Unable to load public pages handler for local routes.', error);
+  logger.warn({ err: error }, 'Unable to load public pages handler for local routes');
 }
 
 try {
@@ -89,7 +90,7 @@ try {
   };
   sharedDealerApiProxy = typeof functionsModule.apiProxy === 'function' ? functionsModule.apiProxy : null;
 } catch (error) {
-  console.warn('Unable to load Firebase Functions apiProxy for local dealer feed routes.', error);
+  logger.warn({ err: error }, 'Unable to load Firebase Functions apiProxy for local dealer feed routes');
 }
 
 // Initialize Firebase Admin
@@ -116,7 +117,7 @@ try {
   };
   emailTemplates = emailTemplatesModule.templates || null;
 } catch (emailTemplateError) {
-  console.warn('[email] Unable to load email templates from functions/email-templates:', emailTemplateError);
+  logger.warn({ err: emailTemplateError }, 'Unable to load email templates from functions/email-templates');
 }
 
 try {
@@ -126,10 +127,10 @@ try {
     sgMailModule.setApiKey(sendgridApiKey);
     emailConfigured = true;
   } else {
-    console.warn('[email] SENDGRID_API_KEY not set; email notifications will be skipped.');
+    logger.warn('SENDGRID_API_KEY not set; email notifications will be skipped');
   }
 } catch (sgError) {
-  console.warn('[email] Unable to load @sendgrid/mail from functions/node_modules:', sgError);
+  logger.warn({ err: sgError }, 'Unable to load @sendgrid/mail from functions/node_modules');
 }
 
 const EMAIL_FROM_ADDRESS = String(process.env.EMAIL_FROM || 'noreply@forestryequipmentsales.com').trim();
@@ -137,7 +138,7 @@ const APP_BASE_URL = String(process.env.APP_URL || 'https://timberequip.com').re
 
 async function sendServerEmail({ to, cc, subject, html }: { to: string; cc?: string | string[]; subject: string; html: string }): Promise<void> {
   if (!emailConfigured || !sgMailModule) {
-    console.warn(`[email] Skipping email to ${to}: email not configured.`);
+    logger.warn({ to }, 'Skipping email: email not configured');
     return;
   }
   const recipients = (Array.isArray(to) ? to : [to]).map((r: string) => String(r || '').trim()).filter(Boolean);
@@ -156,7 +157,7 @@ async function sendServerEmail({ to, cc, subject, html }: { to: string; cc?: str
     if (ccList.length > 0) msg.cc = ccList;
     await sgMailModule.send(msg);
   }
-  console.log(`[email] Sent "${subject}" to ${recipients.join(', ')}`);
+  logger.info({ subject, recipients }, 'Email sent');
 }
 
 type MarketplaceStatsPayload = {
@@ -434,7 +435,7 @@ async function getPublicNewsFeedPayload(): Promise<Record<string, unknown>[]> {
     if (legacyNewsResult.status === 'rejected' && cmsPostsResult.status === 'rejected') {
       const firstError = legacyNewsResult.reason || cmsPostsResult.reason;
       if (publicNewsCache) {
-        console.warn('Using cached public news feed because live reads failed:', firstError);
+        logger.warn({ err: firstError }, 'Using cached public news feed because live reads failed');
         return publicNewsCache.value;
       }
       throw (firstError instanceof Error ? firstError : new Error('Unable to load public news feed.'));
@@ -454,7 +455,7 @@ async function getPublicNewsFeedPayload(): Promise<Record<string, unknown>[]> {
     return merged;
   } catch (error) {
     if (publicNewsCache) {
-      console.warn('Falling back to cached public news feed after live read failure:', error);
+      logger.warn({ err: error }, 'Falling back to cached public news feed after live read failure');
       return publicNewsCache.value;
     }
 
@@ -946,14 +947,14 @@ const upload = multer({
 async function scanFileForViruses(buffer: Buffer): Promise<boolean> {
   // In a real production environment, you would integrate with a service like ClamAV or a cloud-based scanner (e.g., VirusTotal API)
   // For this implementation, we'll perform a basic check for known malicious signatures (simulated)
-  console.log('Scanning file for viruses...');
+  logger.info('Scanning file for viruses');
   await new Promise(resolve => setTimeout(resolve, 500)); // Simulate scan time
   
   // Basic check for common malicious patterns (very rudimentary)
   const maliciousPatterns = [Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')];
   for (const pattern of maliciousPatterns) {
     if (buffer.includes(pattern)) {
-      console.warn('Virus detected in file!');
+      logger.warn('Virus detected in uploaded file');
       return false;
     }
   }
@@ -1523,13 +1524,13 @@ async function startServer() {
   app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application/csp-report', 'application/json'] }), (req, res) => {
     const report = req.body?.['csp-report'] || req.body;
     if (report) {
-      console.warn('[CSP Violation]', JSON.stringify({
+      logger.warn({
         blockedUri: report['blocked-uri'],
         violatedDirective: report['violated-directive'],
         documentUri: report['document-uri'],
         sourceFile: report['source-file'],
         lineNumber: report['line-number'],
-      }));
+      }, 'CSP Violation');
       captureServerException(new Error(`CSP Violation: ${report['violated-directive']} blocked ${report['blocked-uri']}`));
     }
     res.status(204).end();
@@ -1788,12 +1789,12 @@ async function startServer() {
   timerManager.loadActiveAuctions(db, async (auctionId: string, lotId: string) => {
     await closeLotByTimer(db, auctionId, lotId, socketIO);
   }).catch((err) => {
-    console.error('[startup] Failed to load auction timers:', err);
+    logger.error({ err }, 'Failed to load auction timers on startup');
     captureServerException(err, { tags: { handler: 'timer-load' } });
   });
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT} (WebSocket enabled at /ws)`);
+    logger.info({ port: PORT }, 'Server running (WebSocket enabled at /ws)');
   });
 }
 
@@ -1801,7 +1802,7 @@ startServer().catch((error) => {
   captureServerException(error, {
     tags: { process_event: 'startServer' },
   });
-  console.error(error);
+  logger.fatal({ err: error }, 'Server startup failed');
 });
 
 // ─── Daily Inventory Snapshot Job ────────────────────────────────────────────
@@ -1814,7 +1815,7 @@ async function takeInventorySnapshot(): Promise<void> {
     const snapshotRef = db.collection('inventorySnapshots').doc(today);
     const existing = await snapshotRef.get();
     if (existing.exists) {
-      console.log(`[InventorySnapshot] Snapshot for ${today} already exists — skipping.`);
+      logger.info({ date: today }, 'Inventory snapshot already exists — skipping');
       return;
     }
 
@@ -1854,11 +1855,9 @@ async function takeInventorySnapshot(): Promise<void> {
       categories: categoryCounts,
     });
 
-    console.log(
-      `[InventorySnapshot] Snapshot written for ${today}: ${globalActiveCount} active listings across ${Object.keys(categoryCounts).length} categories.`
-    );
+    logger.info({ date: today, activeCount: globalActiveCount, categoryCount: Object.keys(categoryCounts).length }, 'Inventory snapshot written');
   } catch (err) {
-    console.error('[InventorySnapshot] Failed to write snapshot:', err);
+    logger.error({ err }, 'Failed to write inventory snapshot');
   }
 }
 
@@ -1873,5 +1872,5 @@ if (canRunInventorySnapshotJob()) {
   takeInventorySnapshot();
   setInterval(takeInventorySnapshot, 24 * 60 * 60 * 1000);
 } else {
-  console.log('[InventorySnapshot] Skipping snapshot job in local development because Google Cloud credentials are not configured.');
+  logger.info('Skipping inventory snapshot job: Google Cloud credentials not configured');
 }

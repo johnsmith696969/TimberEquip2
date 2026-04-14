@@ -1,6 +1,7 @@
 import express from 'express';
 import admin from 'firebase-admin';
 import multer from 'multer';
+import logger from '../logger.js';
 
 export interface UserRouteDeps {
   db: admin.firestore.Firestore;
@@ -56,7 +57,7 @@ export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
 
       apiSuccess(res, { deleted: true });
     } catch (error: any) {
-      console.error('Error deleting user account:', error);
+      logger.error({ err: error }, 'Error deleting user account');
       apiError(res, 500, 'DELETE_FAILED', 'An internal error occurred.');
     }
   });
@@ -68,7 +69,8 @@ export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
 
     try {
       await auth.verifyIdToken(idToken, true);
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -105,8 +107,8 @@ export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
               });
             }
           }
-        } catch {
-          // Vision API unavailable — allow upload but log warning
+        } catch (err) {
+          logger.warn({ err }, 'Vision API content moderation unavailable');
         }
       }
 
@@ -121,7 +123,7 @@ export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
         }
       });
     } catch (error: any) {
-      console.error('Upload error:', error);
+      logger.error({ err: error }, 'Upload error');
       res.status(500).json({ error: 'Internal server error during upload.' });
     }
   });

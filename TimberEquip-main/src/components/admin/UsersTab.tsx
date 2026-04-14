@@ -4,6 +4,7 @@ import {
   Shield, ShieldAlert, Trash2, CheckCircle2, Users, X,
 } from 'lucide-react';
 import { auth } from '../../firebase';
+import { API_BASE } from '../../constants/api';
 import type { Account, UserRole } from '../../types';
 
 interface UsersTabProps {
@@ -224,7 +225,7 @@ export function UsersTab({
                           try {
                             const idToken = await auth.currentUser?.getIdToken();
                             if (!idToken) return;
-                            const resp = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}/${action}`, {
+                            const resp = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(user.id)}/${action}`, {
                               method: 'POST',
                               headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                               body: '{}',

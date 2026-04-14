@@ -1,5 +1,6 @@
 import express from 'express';
 import admin from 'firebase-admin';
+import logger from '../logger.js';
 
 export interface ManagedRolesRouteDeps {
   db: admin.firestore.Firestore;
@@ -101,7 +102,7 @@ export function registerManagedRolesRoutes(app: express.Express, deps: ManagedRo
 
       return res.json({ users });
     } catch (error: any) {
-      console.error('List managed roles error:', error);
+      logger.error({ err: error }, 'List managed roles error');
       return res.status(500).json({ error: 'Failed to load team members.' });
     }
   });
@@ -127,7 +128,7 @@ export function registerManagedRolesRoutes(app: express.Express, deps: ManagedRo
 
       return res.json({ success: true, role: newRole });
     } catch (error: any) {
-      console.error('Update role error:', error);
+      logger.error({ err: error }, 'Update role error');
       return res.status(500).json({ error: 'Failed to update role.' });
     }
   });
@@ -156,12 +157,12 @@ export function registerManagedRolesRoutes(app: express.Express, deps: ManagedRo
               userName: ctx.targetData.displayName || 'User',
             }),
           });
-        } catch { /* non-critical */ }
+        } catch (err) { logger.warn({ err }, 'Non-critical: failed to send account-locked email'); }
       }
 
       return res.json({ success: true, status: 'locked' });
     } catch (error: any) {
-      console.error('Lock account error:', error);
+      logger.error({ err: error }, 'Lock account error');
       return res.status(500).json({ error: 'Failed to lock account.' });
     }
   });
@@ -189,12 +190,12 @@ export function registerManagedRolesRoutes(app: express.Express, deps: ManagedRo
               userName: ctx.targetData.displayName || 'User',
             }),
           });
-        } catch { /* non-critical */ }
+        } catch (err) { logger.warn({ err }, 'Non-critical: failed to send account-unlocked email'); }
       }
 
       return res.json({ success: true, status: 'active' });
     } catch (error: any) {
-      console.error('Unlock account error:', error);
+      logger.error({ err: error }, 'Unlock account error');
       return res.status(500).json({ error: 'Failed to unlock account.' });
     }
   });
@@ -217,7 +218,7 @@ export function registerManagedRolesRoutes(app: express.Express, deps: ManagedRo
 
       return res.json({ success: true });
     } catch (error: any) {
-      console.error('Remove managed account error:', error);
+      logger.error({ err: error }, 'Remove managed account error');
       return res.status(500).json({ error: 'Failed to remove team member.' });
     }
   });
@@ -247,12 +248,12 @@ export function registerManagedRolesRoutes(app: express.Express, deps: ManagedRo
               resetUrl,
             }),
           });
-        } catch { /* non-critical */ }
+        } catch (err) { logger.warn({ err }, 'Non-critical: failed to send password-reset email'); }
       }
 
       return res.json({ success: true });
     } catch (error: any) {
-      console.error('Reset password error:', error);
+      logger.error({ err: error }, 'Reset password error');
       return res.status(500).json({ error: 'Failed to send password reset.' });
     }
   });

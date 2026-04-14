@@ -21,6 +21,7 @@ import { PaymentCalculatorModal } from '../components/PaymentCalculatorModal';
 import { useLocale } from '../components/LocaleContext';
 import { useTheme } from '../components/ThemeContext';
 import { auth } from '../firebase';
+import { API_BASE } from '../constants/api';
 import { getRecaptchaToken, assessRecaptcha } from '../services/recaptchaService';
 import { Seo } from '../components/Seo';
 import { GooglePlacesInput } from '../components/GooglePlacesInput';
@@ -1933,7 +1934,7 @@ export function ListingDetail() {
                         try {
                           const idToken = await auth.currentUser?.getIdToken();
                           if (!idToken) return;
-                          const resp = await fetch(`/api/admin/users/${encodeURIComponent(seller.id)}/${action}`, {
+                          const resp = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(seller.id)}/${action}`, {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                             body: '{}',

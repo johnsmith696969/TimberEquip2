@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { db, auth } from '../firebase';
 import {
   collection,
@@ -159,13 +160,13 @@ export const equipmentService = {
       if (isOwnSellerInventory) {
         const params = buildListingFilterSearchParams(filters);
         const queryString = params.toString();
-        const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
+        const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`${API_BASE}/account/listings${queryString ? `?${queryString}` : ''}`);
         listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
       } else if (!includeUnapproved) {
         const params = buildListingFilterSearchParams(filters);
         const queryString = params.toString();
         try {
-          const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings${queryString ? `?${queryString}` : ''}`);
+          const payload = await getPublicJson<{ listings?: Listing[] }>(`${API_BASE}/public/listings${queryString ? `?${queryString}` : ''}`);
           listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
 
           if (isCacheablePublicListingsRequest(filters) && listings.length > 0) {
@@ -392,7 +393,7 @@ export const equipmentService = {
     const queryString = params.toString();
     const cacheScope = `account-listings:${queryString || 'all'}`;
     try {
-      const payload = await getAuthorizedJson<{ listings?: Listing[] } & QuotaLimitedAccountPayload>(`/api/account/listings${queryString ? `?${queryString}` : ''}`);
+      const payload = await getAuthorizedJson<{ listings?: Listing[] } & QuotaLimitedAccountPayload>(`${API_BASE}/account/listings${queryString ? `?${queryString}` : ''}`);
       const listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
       if (isQuotaLimitedAccountPayload(payload)) {
         const cached = readPrivateBrowserCache<Listing[]>(cacheScope);
@@ -419,7 +420,7 @@ export const equipmentService = {
   async getMyStorefront(): Promise<Seller | undefined> {
     const cacheScope = 'account-storefront';
     try {
-      const payload = await getAuthorizedJson<{ seller?: Seller | null } & QuotaLimitedAccountPayload>('/api/account/storefront');
+      const payload = await getAuthorizedJson<{ seller?: Seller | null } & QuotaLimitedAccountPayload>(`${API_BASE}/account/storefront`);
       const resolvedSeller = payload.seller;
       if (isQuotaLimitedAccountPayload(payload)) {
         const cached = readPrivateBrowserCache<Seller | null>(cacheScope);
@@ -450,7 +451,7 @@ export const equipmentService = {
     const path = 'account/inquiries';
     const cacheScope = 'account-inquiries:mine';
     try {
-      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] } & QuotaLimitedAccountPayload>('/api/account/inquiries');
+      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] } & QuotaLimitedAccountPayload>(`${API_BASE}/account/inquiries`);
       const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
       if (isQuotaLimitedAccountPayload(payload)) {
         const cached = readPrivateBrowserCache<Inquiry[]>(cacheScope);
@@ -476,7 +477,7 @@ export const equipmentService = {
 
   async getHomeMarketplaceData(): Promise<HomeMarketplaceData> {
     try {
-      const payload = await getPublicJson<HomeMarketplaceData>('/api/public/home-data');
+      const payload = await getPublicJson<HomeMarketplaceData>(`${API_BASE}/public/home-data`);
       const normalized = normalizeHomeMarketplacePayload(payload);
       const hasMeaningfulData =
         normalized.featuredListings.length > 0 ||
@@ -521,7 +522,7 @@ export const equipmentService = {
         listings?: Listing[];
         nextCursor?: string | null;
         hasMore?: boolean;
-      }>(`/api/admin/listings?${params.toString()}`);
+      }>(`${API_BASE}/admin/listings?${params.toString()}`);
 
       return {
         listings: Array.isArray(payload.listings)
@@ -586,7 +587,7 @@ export const equipmentService = {
     if (!ids || ids.length === 0) return [];
     try {
       const params = new URLSearchParams({ ids: ids.join(',') });
-      const payload = await getPublicJson<{ listings?: Listing[] }>(`/api/public/listings/by-id?${params.toString()}`);
+      const payload = await getPublicJson<{ listings?: Listing[] }>(`${API_BASE}/public/listings/by-id?${params.toString()}`);
       const listings = Array.isArray(payload.listings) ? payload.listings.map((listing) => normalizeListingImages(listing as Listing)) : [];
       return listings;
     } catch (error) {
@@ -650,7 +651,7 @@ export const equipmentService = {
           params.set('inStockOnly', 'false');
         }
 
-        const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`/api/account/listings?${params.toString()}`);
+        const payload = await getAuthorizedJson<{ listings?: Listing[] }>(`${API_BASE}/account/listings?${params.toString()}`);
         return Array.isArray(payload.listings)
           ? payload.listings.map((listing) => normalizeListingImages(listing as Listing))
           : [];
@@ -717,7 +718,7 @@ export const equipmentService = {
 
     try {
       const payload = await getPublicJson<{ recorded?: boolean; warning?: string }>(
-        `/api/public/listings/${encodeURIComponent(normalizedListingId)}/view`,
+        `${API_BASE}/public/listings/${encodeURIComponent(normalizedListingId)}/view`,
         { method: 'POST' }
       );
       if (payload?.warning) {
@@ -771,7 +772,7 @@ export const equipmentService = {
       const nextPaymentStatus: Listing['paymentStatus'] = requestedPaymentStatus === 'paid' ? 'paid' : 'pending';
 
       if (auth.currentUser) {
-        const payload = await getAuthorizedJson<{ listing?: Listing }>(`/api/account/listings`, {
+        const payload = await getAuthorizedJson<{ listing?: Listing }>(`${API_BASE}/account/listings`, {
           method: 'POST',
           body: JSON.stringify({
             listing: {
@@ -845,7 +846,7 @@ export const equipmentService = {
           ...updates,
           ...(sellerScopeUid ? { sellerUid: sellerScopeUid, sellerId: sellerScopeUid } : {}),
         };
-        await getAuthorizedJson(`/api/account/listings/${encodeURIComponent(id)}`, {
+        await getAuthorizedJson(`${API_BASE}/account/listings/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body: JSON.stringify(requestUpdates),
         });
@@ -870,7 +871,7 @@ export const equipmentService = {
     const path = `listings/${id}`;
     try {
       if (auth.currentUser) {
-        await getAuthorizedJson(`/api/account/listings/${encodeURIComponent(id)}`, {
+        await getAuthorizedJson(`${API_BASE}/account/listings/${encodeURIComponent(id)}`, {
           method: 'DELETE',
         });
         invalidateListingRelatedCaches(id);
@@ -891,7 +892,7 @@ export const equipmentService = {
   ): Promise<Partial<Listing> & { id: string }> {
     const payload = await getAuthorizedJson<{
       listing?: Partial<Listing> & { id: string };
-    }>(`/api/listings/${encodeURIComponent(id)}/lifecycle`, {
+    }>(`${API_BASE}/listings/${encodeURIComponent(id)}/lifecycle`, {
       method: 'POST',
       body: JSON.stringify({
         action,
@@ -912,7 +913,7 @@ export const equipmentService = {
     const cacheScope = `listing-lifecycle-audit:${id}`;
     try {
       const payload = await getAuthorizedJson<ListingLifecycleAuditView>(
-        `/api/admin/listings/${encodeURIComponent(id)}/lifecycle-audit`,
+        `${API_BASE}/admin/listings/${encodeURIComponent(id)}/lifecycle-audit`,
         {
           method: 'GET',
           headers: {
@@ -959,7 +960,7 @@ export const equipmentService = {
 
     try {
       const payload = await getAuthorizedJson<{ summaries?: ListingReviewSummary[] }>(
-        `/api/admin/listings/review-summaries?${params.toString()}`,
+        `${API_BASE}/admin/listings/review-summaries?${params.toString()}`,
         {
           method: 'GET',
           headers: {
@@ -1009,7 +1010,7 @@ export const equipmentService = {
     try {
       if (normalizedSellerUid) {
         const params = new URLSearchParams({ sellerUid: normalizedSellerUid });
-        const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] } & QuotaLimitedAccountPayload>(`/api/account/inquiries?${params.toString()}`);
+        const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] } & QuotaLimitedAccountPayload>(`${API_BASE}/account/inquiries?${params.toString()}`);
         const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
         if (isQuotaLimitedAccountPayload(payload)) {
           const cached = readPrivateBrowserCache<Inquiry[]>(cacheScope);
@@ -1024,7 +1025,7 @@ export const equipmentService = {
         return inquiries;
       }
 
-      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>('/api/admin/inquiries');
+      const payload = await getAuthorizedJson<{ inquiries?: Inquiry[] }>(`${API_BASE}/admin/inquiries`);
       const inquiries = Array.isArray(payload.inquiries) ? payload.inquiries : [];
       writePrivateBrowserCache(cacheScope, inquiries);
       return inquiries;
@@ -1070,7 +1071,7 @@ export const equipmentService = {
     const path = 'account/calls';
     const cacheScope = 'account-calls:mine';
     try {
-      const payload = await getAuthorizedJson<{ calls?: CallLog[] } & QuotaLimitedAccountPayload>('/api/account/calls');
+      const payload = await getAuthorizedJson<{ calls?: CallLog[] } & QuotaLimitedAccountPayload>(`${API_BASE}/account/calls`);
       const calls = Array.isArray(payload.calls) ? payload.calls : [];
       if (isQuotaLimitedAccountPayload(payload)) {
         const cached = readPrivateBrowserCache<CallLog[]>(cacheScope);
@@ -1102,7 +1103,7 @@ export const equipmentService = {
     try {
       if (normalizedSellerUid) {
         const params = new URLSearchParams({ sellerUid: normalizedSellerUid });
-        const payload = await getAuthorizedJson<{ calls?: CallLog[] } & QuotaLimitedAccountPayload>(`/api/account/calls?${params.toString()}`);
+        const payload = await getAuthorizedJson<{ calls?: CallLog[] } & QuotaLimitedAccountPayload>(`${API_BASE}/account/calls?${params.toString()}`);
         const calls = Array.isArray(payload.calls) ? payload.calls : [];
         if (isQuotaLimitedAccountPayload(payload)) {
           const cached = readPrivateBrowserCache<CallLog[]>(cacheScope);
@@ -1117,7 +1118,7 @@ export const equipmentService = {
         return calls;
       }
 
-      const payload = await getAuthorizedJson<{ calls?: CallLog[] }>('/api/admin/calls');
+      const payload = await getAuthorizedJson<{ calls?: CallLog[] }>(`${API_BASE}/admin/calls`);
       const calls = Array.isArray(payload.calls) ? payload.calls : [];
       writePrivateBrowserCache(cacheScope, calls);
       return calls;
@@ -1214,19 +1215,19 @@ export const equipmentService = {
   },
 
   async archiveInquiry(id: string): Promise<void> {
-    await getAuthorizedJson(`/api/admin/inquiries/${encodeURIComponent(id)}/archive`, { method: 'PATCH' });
+    await getAuthorizedJson(`${API_BASE}/admin/inquiries/${encodeURIComponent(id)}/archive`, { method: 'PATCH' });
   },
 
   async unarchiveInquiry(id: string): Promise<void> {
-    await getAuthorizedJson(`/api/admin/inquiries/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' });
+    await getAuthorizedJson(`${API_BASE}/admin/inquiries/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' });
   },
 
   async archiveCall(id: string): Promise<void> {
-    await getAuthorizedJson(`/api/admin/calls/${encodeURIComponent(id)}/archive`, { method: 'PATCH' });
+    await getAuthorizedJson(`${API_BASE}/admin/calls/${encodeURIComponent(id)}/archive`, { method: 'PATCH' });
   },
 
   async unarchiveCall(id: string): Promise<void> {
-    await getAuthorizedJson(`/api/admin/calls/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' });
+    await getAuthorizedJson(`${API_BASE}/admin/calls/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH' });
   },
 
   async getInquiryHistoryByListing(listingId: string): Promise<Inquiry[]> {
@@ -1256,7 +1257,7 @@ export const equipmentService = {
     }
 
     try {
-      const payload = await getPublicJson<{ seller?: Seller | null }>(`/api/public/sellers/${encodeURIComponent(normalizedId)}`);
+      const payload = await getPublicJson<{ seller?: Seller | null }>(`${API_BASE}/public/sellers/${encodeURIComponent(normalizedId)}`);
       if (payload?.seller) {
         return payload.seller;
       }
@@ -1389,7 +1390,7 @@ export const equipmentService = {
 
   async getPublicDealerDirectory(): Promise<Seller[]> {
     try {
-      const payload = await getPublicJson<{ dealers?: Seller[] }>('/api/public/dealers');
+      const payload = await getPublicJson<{ dealers?: Seller[] }>(`${API_BASE}/public/dealers`);
       return Array.isArray(payload.dealers) ? payload.dealers : [];
     } catch (error) {
       console.warn('Public dealer directory unavailable:', error);
@@ -1412,7 +1413,7 @@ export const equipmentService = {
     const path = 'news|blogPosts';
     try {
       try {
-        const payload = await getPublicJson<{ posts?: NewsPost[] }>('/api/public/news');
+        const payload = await getPublicJson<{ posts?: NewsPost[] }>(`${API_BASE}/public/news`);
         const posts = Array.isArray(payload.posts) ? payload.posts : [];
         if (posts.length > 0) {
           writeBrowserCache(PUBLIC_NEWS_CACHE_KEY, posts);
@@ -1486,7 +1487,7 @@ export const equipmentService = {
       if (!normalizedId) return null;
 
       try {
-        const payload = await getPublicJson<{ post?: NewsPost | null }>(`/api/public/news/${encodeURIComponent(normalizedId)}`);
+        const payload = await getPublicJson<{ post?: NewsPost | null }>(`${API_BASE}/public/news/${encodeURIComponent(normalizedId)}`);
         if (payload.post) {
           const cachedFeed = readBrowserCache<NewsPost[]>(PUBLIC_NEWS_CACHE_KEY) || [];
           const mergedFeed = [payload.post, ...cachedFeed.filter((entry) => entry.id !== payload.post?.id)];
@@ -1608,7 +1609,7 @@ export const equipmentService = {
   },
 
   async getCategoryInventoryMetrics(): Promise<CategoryInventoryMetric[]> {
-    const payload = await getPublicJson<{ metrics?: CategoryInventoryMetric[] }>('/api/public/category-metrics');
+    const payload = await getPublicJson<{ metrics?: CategoryInventoryMetric[] }>(`${API_BASE}/public/category-metrics`);
     return Array.isArray(payload.metrics) ? payload.metrics : [];
   },
 
@@ -1655,7 +1656,7 @@ export const equipmentService = {
       const params = new URLSearchParams();
       if (userUid) params.set('userUid', userUid);
       if (role) params.set('role', role);
-      const payload = await getAuthorizedJson<{ financingRequests?: FinancingRequest[] } & QuotaLimitedAccountPayload>(`/api/account/financing-requests?${params.toString()}`);
+      const payload = await getAuthorizedJson<{ financingRequests?: FinancingRequest[] } & QuotaLimitedAccountPayload>(`${API_BASE}/account/financing-requests?${params.toString()}`);
       const financingRequests = Array.isArray(payload.financingRequests) ? payload.financingRequests : [];
       if (isQuotaLimitedAccountPayload(payload)) {
         const cached = readPrivateBrowserCache<FinancingRequest[]>(cacheScope);

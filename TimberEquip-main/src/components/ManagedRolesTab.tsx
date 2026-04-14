@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Lock, Mail, Plus, Shield, Trash2, Unlock, UserPlus, Users } from 'lucide-react';
 import { auth } from '../firebase';
@@ -71,7 +72,7 @@ export function ManagedRolesTab({ ownerUid, isAdmin, seatLimit }: ManagedRolesTa
     setError('');
     try {
       const data = await apiFetch<{ users: ManagedUser[] }>(
-        `/api/managed-roles?ownerUid=${encodeURIComponent(ownerUid)}`,
+        `${API_BASE}/managed-roles?ownerUid=${encodeURIComponent(ownerUid)}`,
       );
       setUsers(data.users);
     } catch (err) {
@@ -95,7 +96,7 @@ export function ManagedRolesTab({ ownerUid, isAdmin, seatLimit }: ManagedRolesTa
     setError('');
     setNotice('');
     try {
-      await apiFetch('/api/admin/users/create-managed-account', {
+      await apiFetch(`${API_BASE}/admin/users/create-managed-account`, {
         method: 'POST',
         body: JSON.stringify({
           displayName: inviteForm.displayName.trim(),
@@ -118,7 +119,7 @@ export function ManagedRolesTab({ ownerUid, isAdmin, seatLimit }: ManagedRolesTa
     setError('');
     setNotice('');
     try {
-      await apiFetch(`/api/managed-roles/${uid}/role`, {
+      await apiFetch(`${API_BASE}/managed-roles/${uid}/role`, {
         method: 'PATCH',
         body: JSON.stringify({ role: newRole }),
       });
@@ -134,7 +135,7 @@ export function ManagedRolesTab({ ownerUid, isAdmin, seatLimit }: ManagedRolesTa
     setError('');
     setNotice('');
     try {
-      await apiFetch(`/api/managed-roles/${uid}/${action}`, { method: 'POST' });
+      await apiFetch(`${API_BASE}/managed-roles/${uid}/${action}`, { method: 'POST' });
       setNotice(`Account ${action === 'lock' ? 'locked' : 'unlocked'}.`);
       await loadUsers();
     } catch (err) {
@@ -147,7 +148,7 @@ export function ManagedRolesTab({ ownerUid, isAdmin, seatLimit }: ManagedRolesTa
     setError('');
     setNotice('');
     try {
-      await apiFetch(`/api/managed-roles/${uid}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/managed-roles/${uid}`, { method: 'DELETE' });
       setNotice('Team member removed.');
       await loadUsers();
     } catch (err) {
@@ -160,7 +161,7 @@ export function ManagedRolesTab({ ownerUid, isAdmin, seatLimit }: ManagedRolesTa
     setError('');
     setNotice('');
     try {
-      await apiFetch(`/api/managed-roles/${uid}/reset-password`, { method: 'POST' });
+      await apiFetch(`${API_BASE}/managed-roles/${uid}/reset-password`, { method: 'POST' });
       setNotice(`Password reset email sent to ${email}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send reset email.');

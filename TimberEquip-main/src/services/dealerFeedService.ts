@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { auth } from '../firebase';
 
 const DEALER_FEED_CACHE_PREFIX = 'te-dealer-feed-cache-v1';
@@ -303,7 +304,7 @@ export const dealerFeedService = {
 
     try {
       const payload = await requestDealerFeedApi<{ feeds?: DealerFeedProfile[] }>(
-        `/api/admin/dealer-feeds?sellerUid=${encodeURIComponent(normalizedSellerUid)}`
+        `${API_BASE}/admin/dealer-feeds?sellerUid=${encodeURIComponent(normalizedSellerUid)}`
       );
 
       const feeds = Array.isArray(payload.feeds)
@@ -351,7 +352,7 @@ export const dealerFeedService = {
 
     if (profile.id) {
       const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
-        `/api/admin/dealer-feeds/${encodeURIComponent(profile.id)}`,
+        `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(profile.id)}`,
         {
           method: 'PATCH',
           body: payload as unknown as BodyInit,
@@ -364,7 +365,7 @@ export const dealerFeedService = {
     }
 
     const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
-      '/api/admin/dealer-feeds/register',
+      `${API_BASE}/admin/dealer-feeds/register`,
       {
         method: 'POST',
         body: payload as unknown as BodyInit,
@@ -392,7 +393,7 @@ export const dealerFeedService = {
     }
 
     const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}`,
+      `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}`,
       {
         method: 'PATCH',
         body: changes as unknown as BodyInit,
@@ -417,7 +418,7 @@ export const dealerFeedService = {
 
     try {
       const response = await requestDealerFeedApi<{ feed: DealerFeedProfile }>(
-        `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+        `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
       );
 
       const normalized = normalizeDealerFeedProfile(response.feed);
@@ -443,7 +444,7 @@ export const dealerFeedService = {
     if (!normalizedProfileId) return;
 
     await requestDealerFeedApi<{ ok: boolean }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}`,
+      `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}`,
       {
         method: 'DELETE',
       }
@@ -458,7 +459,7 @@ export const dealerFeedService = {
     }
 
     const response = await requestDealerFeedApi<{ result: DealerFeedIngestResult }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}/sync`,
+      `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}/sync`,
       {
         method: 'POST',
         body: options as unknown as BodyInit,
@@ -475,7 +476,7 @@ export const dealerFeedService = {
 
     try {
       const response = await requestDealerFeedApi<{ audit?: DealerFeedAuditLog[] }>(
-        `/api/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}/audit?limit=${encodeURIComponent(String(limitCount))}`
+        `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedProfileId)}/audit?limit=${encodeURIComponent(String(limitCount))}`
       );
 
       const audit = Array.isArray(response.audit) ? response.audit : [];
@@ -505,7 +506,7 @@ export const dealerFeedService = {
     fieldMapping?: DealerFeedFieldMapping[];
   }): Promise<DealerFeedResolveResult> {
     return requestDealerFeedApi<DealerFeedResolveResult>(
-      '/api/admin/dealer-feeds/resolve',
+      `${API_BASE}/admin/dealer-feeds/resolve`,
       {
         method: 'POST',
         body: params as unknown as BodyInit,
@@ -522,7 +523,7 @@ export const dealerFeedService = {
     items: DealerFeedItem[];
   }): Promise<DealerFeedIngestResult> {
     return requestDealerFeedApi<DealerFeedIngestResult>(
-      '/api/admin/dealer-feeds/ingest',
+      `${API_BASE}/admin/dealer-feeds/ingest`,
       {
         method: 'POST',
         body: params as unknown as BodyInit,
@@ -541,7 +542,7 @@ export const dealerFeedService = {
 
     try {
       const response = await requestDealerFeedApi<{ logs?: DealerFeedLog[] }>(
-        `/api/admin/dealer-feeds/logs?${searchParams.toString()}`
+        `${API_BASE}/admin/dealer-feeds/logs?${searchParams.toString()}`
       );
 
       const logs = Array.isArray(response.logs)
@@ -584,7 +585,7 @@ export const dealerFeedService = {
     const normalizedDealerId = String(dealerId || '').trim();
     if (!normalizedDealerId) return {};
     return requestDealerFeedApi<{ config: Record<string, unknown> }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedDealerId)}/widget-config`
+      `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedDealerId)}/widget-config`
     ).then((res) => res.config || {});
   },
 
@@ -605,7 +606,7 @@ export const dealerFeedService = {
     const normalizedDealerId = String(dealerId || '').trim();
     if (!normalizedDealerId) throw new Error('Dealer ID is required.');
     return requestDealerFeedApi<{ config: Record<string, unknown> }>(
-      `/api/admin/dealer-feeds/${encodeURIComponent(normalizedDealerId)}/widget-config`,
+      `${API_BASE}/admin/dealer-feeds/${encodeURIComponent(normalizedDealerId)}/widget-config`,
       { method: 'PATCH', body: config as unknown as BodyInit }
     ).then((res) => res.config || {});
   },
@@ -624,7 +625,7 @@ export const dealerFeedService = {
     const normalizedUid = String(sellerUid || '').trim();
     if (!normalizedUid) return [];
     return requestDealerFeedApi<{ webhooks: Array<Record<string, unknown>> }>(
-      `/api/admin/dealer-feeds/webhooks?sellerUid=${encodeURIComponent(normalizedUid)}`
+      `${API_BASE}/admin/dealer-feeds/webhooks?sellerUid=${encodeURIComponent(normalizedUid)}`
     ).then((res) =>
       (res.webhooks || []).map((w) => ({
         id: String(w.id || ''),
@@ -645,28 +646,28 @@ export const dealerFeedService = {
     events?: string[];
   }): Promise<{ id: string; secret: string; callbackUrl: string; events: string[]; active: boolean }> {
     return requestDealerFeedApi<{ id: string; secret: string; callbackUrl: string; events: string[]; active: boolean }>(
-      '/api/admin/dealer-feeds/webhooks',
+      `${API_BASE}/admin/dealer-feeds/webhooks`,
       { method: 'POST', body: params as unknown as BodyInit }
     );
   },
 
   async deleteWebhook(webhookId: string): Promise<void> {
     await requestDealerFeedApi<{ ok: boolean }>(
-      `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}`,
+      `${API_BASE}/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}`,
       { method: 'DELETE' }
     );
   },
 
   async testWebhook(webhookId: string): Promise<{ ok: boolean; statusCode?: number; error?: string }> {
     return requestDealerFeedApi<{ ok: boolean; statusCode?: number; error?: string }>(
-      `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/test`,
+      `${API_BASE}/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/test`,
       { method: 'POST' }
     );
   },
 
   async revealWebhookSecret(webhookId: string): Promise<string> {
     return requestDealerFeedApi<{ secret: string }>(
-      `/api/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/secret`
+      `${API_BASE}/admin/dealer-feeds/webhooks/${encodeURIComponent(webhookId)}/secret`
     ).then((res) => res.secret || '');
   },
 
@@ -683,7 +684,7 @@ export const dealerFeedService = {
     const normalizedUid = String(sellerUid || '').trim();
     if (!normalizedUid) return [];
     return requestDealerFeedApi<{ logs: Array<Record<string, unknown>> }>(
-      `/api/admin/dealer-feeds/webhook-logs?sellerUid=${encodeURIComponent(normalizedUid)}&limit=${limit}`
+      `${API_BASE}/admin/dealer-feeds/webhook-logs?sellerUid=${encodeURIComponent(normalizedUid)}&limit=${limit}`
     ).then((res) =>
       (res.logs || []).map((l) => ({
         id: String(l.id || ''),

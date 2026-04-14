@@ -5,6 +5,7 @@ import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { auth } from '../firebase';
+import { API_BASE } from '../constants/api';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 
 function normalizeContinuePath(input: string | null): string {
@@ -45,7 +46,7 @@ async function notifyPasswordResetSuccess(email: string) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) return;
 
-  const response = await fetch('/api/auth/password-reset-success', {
+  const response = await fetch(`${API_BASE}/auth/password-reset-success`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

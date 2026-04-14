@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   onIdTokenChanged,
@@ -344,7 +345,7 @@ async function bootstrapPrivilegedAdminProfile(firebaseUser: FirebaseUser | null
 
   try {
     const token = await currentUser.getIdToken(true);
-    const response = await fetch('/api/auth/bootstrap-profile-role', {
+    const response = await fetch(`${API_BASE}/auth/bootstrap-profile-role`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -694,7 +695,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const token = await currentUser.getIdToken();
-      const response = await fetch('/api/auth/send-verification-email', {
+      const response = await fetch(`${API_BASE}/auth/send-verification-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -830,7 +831,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const sendPasswordReset = async (email: string) => {
     const normalizedEmail = email.trim().toLowerCase();
-    const response = await fetch('/api/auth/password-reset', {
+    const response = await fetch(`${API_BASE}/auth/password-reset`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

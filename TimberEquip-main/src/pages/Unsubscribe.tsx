@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, LoaderCircle, MailX, ShieldCheck } from 'luc
 import { Seo } from '../components/Seo';
 import { NOINDEX_ROBOTS } from '../utils/listingPath';
 import { useTheme } from '../components/ThemeContext';
+import { API_BASE } from '../constants/api';
 
 type UnsubscribeState = {
   email: string;
@@ -45,7 +46,7 @@ export function Unsubscribe() {
 
       try {
         const query = new URLSearchParams(requestPayload);
-        const response = await fetch(`/api/email-preferences/unsubscribe?${query.toString()}`);
+        const response = await fetch(`${API_BASE}/email-preferences/unsubscribe?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
@@ -81,7 +82,7 @@ export function Unsubscribe() {
     setSubmitting(true);
     setError('');
     try {
-      const response = await fetch('/api/email-preferences/unsubscribe', {
+      const response = await fetch(`${API_BASE}/email-preferences/unsubscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

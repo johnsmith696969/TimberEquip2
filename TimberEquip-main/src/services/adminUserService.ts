@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { auth } from '../firebase';
 import { Account, CallLog, Inquiry, Listing, UserRole } from '../types';
 
@@ -163,7 +164,7 @@ export interface PgAnalyticsResponse {
 
 function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
-  if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
+  if (typeof window === 'undefined' || !rawInput.startsWith(API_BASE)) {
     return [rawInput];
   }
 
@@ -247,7 +248,7 @@ export const adminUserService = {
         params.set('includeOverview', '1');
       }
 
-      const payload = await getAuthorizedJson<AdminOperationsBootstrapResponse>(`/api/admin/bootstrap${params.toString() ? `?${params.toString()}` : ''}`, {
+      const payload = await getAuthorizedJson<AdminOperationsBootstrapResponse>(`${API_BASE}/admin/bootstrap${params.toString() ? `?${params.toString()}` : ''}`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -346,7 +347,7 @@ export const adminUserService = {
   },
 
   async updateUser(uid: string, input: AdminUserUpdateInput): Promise<AdminUserMutationResult> {
-    const payload = await getAuthorizedJson<AdminUserMutationResult>(`/api/admin/users/${encodeURIComponent(uid)}`, {
+    const payload = await getAuthorizedJson<AdminUserMutationResult>(`${API_BASE}/admin/users/${encodeURIComponent(uid)}`, {
       method: 'PATCH',
       body: JSON.stringify(input),
     });
@@ -355,37 +356,37 @@ export const adminUserService = {
   },
 
   async sendPasswordReset(uid: string): Promise<void> {
-    await getAuthorizedJson(`/api/admin/users/${encodeURIComponent(uid)}/reset-password`, {
+    await getAuthorizedJson(`${API_BASE}/admin/users/${encodeURIComponent(uid)}/reset-password`, {
       method: 'POST',
     });
   },
 
   async lockUser(uid: string): Promise<AdminUserMutationResult> {
-    return getAuthorizedJson<AdminUserMutationResult>(`/api/admin/users/${encodeURIComponent(uid)}/lock`, {
+    return getAuthorizedJson<AdminUserMutationResult>(`${API_BASE}/admin/users/${encodeURIComponent(uid)}/lock`, {
       method: 'POST',
     });
   },
 
   async unlockUser(uid: string): Promise<AdminUserMutationResult> {
-    return getAuthorizedJson<AdminUserMutationResult>(`/api/admin/users/${encodeURIComponent(uid)}/unlock`, {
+    return getAuthorizedJson<AdminUserMutationResult>(`${API_BASE}/admin/users/${encodeURIComponent(uid)}/unlock`, {
       method: 'POST',
     });
   },
 
   async deleteUser(uid: string): Promise<void> {
-    await getAuthorizedJson(`/api/admin/users/${encodeURIComponent(uid)}`, {
+    await getAuthorizedJson(`${API_BASE}/admin/users/${encodeURIComponent(uid)}`, {
       method: 'DELETE',
     });
   },
 
   async getPgAnalytics(): Promise<PgAnalyticsResponse> {
-    return getAuthorizedJson<PgAnalyticsResponse>('/api/admin/pg-analytics', {
+    return getAuthorizedJson<PgAnalyticsResponse>(`${API_BASE}/admin/pg-analytics`, {
       method: 'GET',
     });
   },
 
   async sendTestPlatformReport(options: { recipients: string[]; days?: number }): Promise<{ sent: boolean; recipients: string[]; periodLabel?: string }> {
-    return getAuthorizedJson('/api/admin/reports/platform-report/send', {
+    return getAuthorizedJson(`${API_BASE}/admin/reports/platform-report/send`, {
       method: 'POST',
       body: JSON.stringify({ recipients: options.recipients, days: options.days ?? 30 }),
     });

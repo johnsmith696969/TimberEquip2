@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { db, auth } from '../firebase';
 import {
   doc,
@@ -483,7 +484,7 @@ export const userService = {
         seoKeywords,
       });
 
-      await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+      await getAuthorizedJson<CurrentProfileResponse>(`${API_BASE}/account/profile`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       });
@@ -658,7 +659,7 @@ export const userService = {
       try {
         const token = await currentUser.getIdToken();
         const params = new URLSearchParams({ ownerUid: normalizedOwnerUid });
-        const response = await fetch(`/api/account/seat-context?${params.toString()}`, {
+        const response = await fetch(`${API_BASE}/account/seat-context?${params.toString()}`, {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -744,7 +745,7 @@ export const userService = {
   async getAccountBootstrap(): Promise<AccountBootstrapResponse> {
     const path = 'account/bootstrap';
     try {
-      return await getAuthorizedJson<AccountBootstrapResponse>('/api/account/bootstrap', {
+      return await getAuthorizedJson<AccountBootstrapResponse>(`${API_BASE}/account/bootstrap`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -774,7 +775,7 @@ export const userService = {
       const currentUser = auth.currentUser;
 
       if (currentUser && currentUser.uid === profile.uid) {
-        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile/bootstrap', {
+        await getAuthorizedJson<CurrentProfileResponse>(`${API_BASE}/account/profile/bootstrap`, {
           method: 'POST',
           body: JSON.stringify(sanitizedProfile),
         });
@@ -815,7 +816,7 @@ export const userService = {
       const currentUser = auth.currentUser;
 
       if (currentUser && currentUser.uid === uid) {
-        await getAuthorizedJson<CurrentProfileResponse>('/api/account/profile', {
+        await getAuthorizedJson<CurrentProfileResponse>(`${API_BASE}/account/profile`, {
           method: 'PATCH',
           body: JSON.stringify(sanitizedUpdates),
         });
@@ -974,7 +975,7 @@ export const userService = {
 
     try {
       const idToken = await currentUser.getIdToken();
-      const response = await fetch('/api/admin/users/create-managed-account', {
+      const response = await fetch(`${API_BASE}/admin/users/create-managed-account`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,
@@ -1014,7 +1015,7 @@ export const userService = {
 
     const path = 'savedSearches';
     try {
-      const payload = await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>('/api/account/saved-searches', {
+      const payload = await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>(`${API_BASE}/account/saved-searches`, {
         method: 'POST',
         body: JSON.stringify(input),
       });
@@ -1038,7 +1039,7 @@ export const userService = {
     const path = 'savedSearches';
     try {
       if (currentUser && currentUser.uid === userUid) {
-        const payload = await getAuthorizedJson<{ savedSearches?: SavedSearch[] }>('/api/account/saved-searches', {
+        const payload = await getAuthorizedJson<{ savedSearches?: SavedSearch[] }>(`${API_BASE}/account/saved-searches`, {
           method: 'GET',
           headers: {
             Accept: 'application/json',
@@ -1077,7 +1078,7 @@ export const userService = {
     const path = `savedSearches/${id}`;
     try {
       if (auth.currentUser) {
-        const payload = await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
+        const payload = await getAuthorizedJson<{ savedSearch?: SavedSearch | null }>(`${API_BASE}/account/saved-searches/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body: JSON.stringify(updates),
         });
@@ -1102,7 +1103,7 @@ export const userService = {
     const path = `savedSearches/${id}`;
     try {
       if (auth.currentUser) {
-        await getAuthorizedJson<{ deleted?: boolean }>(`/api/account/saved-searches/${encodeURIComponent(id)}`, {
+        await getAuthorizedJson<{ deleted?: boolean }>(`${API_BASE}/account/saved-searches/${encodeURIComponent(id)}`, {
           method: 'DELETE',
         });
         if (auth.currentUser?.uid) {

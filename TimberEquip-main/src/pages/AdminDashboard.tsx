@@ -36,6 +36,7 @@ import { useLocale } from '../components/LocaleContext';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { auth } from '../firebase';
+import { API_BASE } from '../constants/api';
 import { getAssignableUserRoleOptions, getUserRoleDisplayLabel, normalizeEditableUserRole } from '../utils/userRoles';
 import type { ListingLifecycleAction, ListingLifecycleAuditView } from '../types';
 
@@ -1497,7 +1498,7 @@ export function AdminDashboard() {
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Not authenticated');
-      const resp = await fetch('/api/admin/invite-user', {
+      const resp = await fetch(`${API_BASE}/admin/invite-user`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

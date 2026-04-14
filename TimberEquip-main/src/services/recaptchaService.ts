@@ -1,3 +1,5 @@
+import { API_BASE } from '../constants/api';
+
 const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
 const SCRIPT_SRC = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(SITE_KEY)}`;
 const PRODUCTION_RECAPTCHA_HOSTS = new Set([
@@ -110,7 +112,7 @@ export async function assessRecaptcha(token: string, action: string): Promise<bo
   }
 
   try {
-    const res = await fetch('/api/recaptcha-assess', {
+    const res = await fetch(`${API_BASE}/recaptcha-assess`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, action }),

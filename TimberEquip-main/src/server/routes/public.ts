@@ -1,6 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { validateBody, recaptchaAssessSchema } from '../../utils/apiValidation.js';
+import logger from '../logger.js';
 
 export interface PublicRouteDeps {
   db: FirebaseFirestore.Firestore;
@@ -31,7 +32,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
       res.set('Cache-Control', 'public, max-age=600');
       res.json(payload);
     } catch (error: any) {
-      console.error('Failed to compute marketplace stats:', error);
+      logger.error({ err: error }, 'Failed to compute marketplace stats');
       res.status(500).json({ error: 'Failed to load marketplace stats.' });
     }
   });
@@ -79,7 +80,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
 
       return res.json({ seller: null });
     } catch (error: any) {
-      console.error('Failed to resolve public seller:', error);
+      logger.error({ err: error }, 'Failed to resolve public seller');
       return res.status(500).json({ error: 'Failed to load seller.' });
     }
   });
@@ -110,7 +111,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
       res.set('Cache-Control', 'public, max-age=300');
       return res.json({ dealers });
     } catch (error: any) {
-      console.error('Failed to load public dealer directory:', error);
+      logger.error({ err: error }, 'Failed to load public dealer directory');
       return res.status(500).json({ error: 'Failed to load dealers.' });
     }
   });
@@ -124,7 +125,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
         fetchedAt: new Date().toISOString(),
       });
     } catch (error: any) {
-      console.error('Failed to load public news feed:', error);
+      logger.error({ err: error }, 'Failed to load public news feed');
       return res.status(500).json({ error: 'Failed to load equipment news.' });
     }
   });
@@ -135,7 +136,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
       res.set('Cache-Control', 'public, max-age=300');
       return res.json({ post });
     } catch (error: any) {
-      console.error('Failed to load public news article:', error);
+      logger.error({ err: error }, 'Failed to load public news article');
       return res.status(500).json({ error: 'Failed to load the equipment news article.' });
     }
   });
@@ -166,7 +167,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
         }
       );
       if (!response.ok) {
-        console.error('reCAPTCHA API error:', response.status);
+        logger.error({ statusCode: response.status }, 'reCAPTCHA API error');
         return res.json({ pass: false, score: null });
       }
       const data: any = await response.json();
@@ -175,7 +176,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
       const pass = valid && (score === null || score >= 0.5);
       return res.json({ pass, score });
     } catch (err) {
-      console.error('reCAPTCHA assessment error:', err);
+      logger.error({ err }, 'reCAPTCHA assessment error');
       return res.json({ pass: false, score: null });
     }
   });

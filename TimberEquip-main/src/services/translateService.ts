@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { Language } from '../types';
 
 interface TranslateBatchResponse {
@@ -37,7 +38,7 @@ export const translateService = {
     const target = TARGET_LANG_MAP[language] || 'en';
 
     try {
-      const response = await fetch('/api/translate', {
+      const response = await fetch(`${API_BASE}/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

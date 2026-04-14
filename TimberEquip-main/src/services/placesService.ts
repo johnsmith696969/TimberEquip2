@@ -1,3 +1,5 @@
+import { API_BASE } from '../constants/api';
+
 export type GooglePlacesMode = 'city' | 'address';
 
 export interface GooglePlacePrediction {
@@ -23,7 +25,7 @@ export interface GooglePlaceSelection {
 const BROWSER_GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
 
 function buildApiPath(path: string) {
-  return path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`;
+  return path.startsWith(`${API_BASE}/`) ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function getAddressComponent(

@@ -2,6 +2,7 @@ import express from 'express';
 import admin from 'firebase-admin';
 import type Stripe from 'stripe';
 import { validateBody, createManagedAccountSchema, dealerFeedIngestSchema } from '../../utils/apiValidation.js';
+import logger from '../logger.js';
 
 // ── Standardized API Response Helpers (mirrored from server.ts) ─────────────
 function apiSuccess<T>(res: express.Response, data: T, meta?: Record<string, unknown>) {
@@ -153,7 +154,7 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
         seatLimit: actorIsDealer ? DEALER_MANAGED_ACCOUNT_LIMIT : null,
       });
     } catch (error: any) {
-      console.error('Managed account creation failed:', error);
+      logger.error({ err: error }, 'Managed account creation failed');
       return res.status(500).json({ error: 'Unable to create managed account.' });
     }
   });
@@ -183,7 +184,7 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
 
       return apiSuccess(res, { listingsUpdated: listingsSnap.size });
     } catch (error: any) {
-      console.error('Verify user failed:', error);
+      logger.error({ err: error }, 'Verify user failed');
       return apiError(res, 500, 'VERIFY_FAILED', 'Unable to verify user.');
     }
   });
@@ -218,7 +219,7 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
 
       return apiSuccess(res, { unverified: true });
     } catch (error: any) {
-      console.error('Unverify user failed:', error);
+      logger.error({ err: error }, 'Unverify user failed');
       return apiError(res, 500, 'UNVERIFY_FAILED', 'Unable to unverify user.');
     }
   });
@@ -333,7 +334,7 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
         ...logPayload,
       });
     } catch (error: any) {
-      console.error('Dealer feed ingest failed:', error);
+      logger.error({ err: error }, 'Dealer feed ingest failed');
       return res.status(500).json({ error: 'Dealer feed ingest failed.' });
     }
   });
@@ -521,7 +522,7 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
       const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(posts);
     } catch (error: any) {
-      console.error('Failed to fetch blog posts:', error);
+      logger.error({ err: error }, 'Failed to fetch blog posts');
       res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
@@ -547,17 +548,17 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
       try {
         const postsSnap = await db.collection('blogPosts').orderBy('updatedAt', 'desc').get();
         posts = postsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { console.error('Content bootstrap: posts fetch failed:', e); errors.posts = 'Failed to load posts.'; }
+      } catch (e: any) { logger.error({ err: e }, 'Content bootstrap: posts fetch failed'); errors.posts = 'Failed to load posts.'; }
 
       try {
         const mediaSnap = await db.collection('media').orderBy('uploadedAt', 'desc').get();
         media = mediaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { console.error('Content bootstrap: media fetch failed:', e); errors.media = 'Failed to load media.'; }
+      } catch (e: any) { logger.error({ err: e }, 'Content bootstrap: media fetch failed'); errors.media = 'Failed to load media.'; }
 
       try {
         const blocksSnap = await db.collection('contentBlocks').get();
         contentBlocks = blocksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e: any) { console.error('Content bootstrap: blocks fetch failed:', e); errors.contentBlocks = 'Failed to load content blocks.'; }
+      } catch (e: any) { logger.error({ err: e }, 'Content bootstrap: blocks fetch failed'); errors.contentBlocks = 'Failed to load content blocks.'; }
 
       res.json({
         posts,
@@ -570,7 +571,7 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
         fetchedAt: new Date().toISOString(),
       });
     } catch (error: any) {
-      console.error('Failed to fetch content bootstrap:', error);
+      logger.error({ err: error }, 'Failed to fetch content bootstrap');
       res.status(500).json({ error: 'An internal error occurred.' });
     }
   });

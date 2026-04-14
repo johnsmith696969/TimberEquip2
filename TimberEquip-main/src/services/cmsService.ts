@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { db, auth } from '../firebase';
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
@@ -61,7 +62,7 @@ function writeCmsCache<T>(scope: string, data: T): void {
 
 function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
-  if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
+  if (typeof window === 'undefined' || !rawInput.startsWith(API_BASE)) {
     return [rawInput];
   }
 
@@ -141,7 +142,7 @@ export const cmsService = {
 
   async getBlogPosts(): Promise<BlogPost[]> {
     try {
-      const posts = await getAuthorizedJson<BlogPost[]>('/api/admin/content/blog-posts', {
+      const posts = await getAuthorizedJson<BlogPost[]>(`${API_BASE}/admin/content/blog-posts`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -259,7 +260,7 @@ export const cmsService = {
 
   async getMedia(): Promise<MediaItem[]> {
     try {
-      const media = await getAuthorizedJson<MediaItem[]>('/api/admin/content/media', {
+      const media = await getAuthorizedJson<MediaItem[]>(`${API_BASE}/admin/content/media`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -305,7 +306,7 @@ export const cmsService = {
 
   async getContentBlocks(): Promise<ContentBlock[]> {
     try {
-      const blocks = await getAuthorizedJson<ContentBlock[]>('/api/admin/content/blocks', {
+      const blocks = await getAuthorizedJson<ContentBlock[]>(`${API_BASE}/admin/content/blocks`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -331,7 +332,7 @@ export const cmsService = {
 
   async getAdminContentBootstrap(): Promise<AdminContentBootstrapResponse> {
     try {
-      const payload = await getAuthorizedJson<AdminContentBootstrapResponse>('/api/admin/content/bootstrap', {
+      const payload = await getAuthorizedJson<AdminContentBootstrapResponse>(`${API_BASE}/admin/content/bootstrap`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',

@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { db, auth } from '../firebase';
 import { 
   collection, 
@@ -102,7 +103,7 @@ export const adminService = {
     if (!auth.currentUser) return;
     try {
       const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/lifecycle`, {
+      const response = await fetch(`${API_BASE}/listings/${encodeURIComponent(listingId)}/lifecycle`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,
@@ -131,7 +132,7 @@ export const adminService = {
     if (!auth.currentUser) return;
     try {
       const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/lifecycle`, {
+      const response = await fetch(`${API_BASE}/listings/${encodeURIComponent(listingId)}/lifecycle`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,

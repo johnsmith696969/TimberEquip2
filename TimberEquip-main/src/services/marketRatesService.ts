@@ -1,3 +1,5 @@
+import { API_BASE } from '../constants/api';
+
 export interface RatePoint {
   value: number;
   asOf: string;
@@ -48,7 +50,7 @@ export const marketRatesService = {
     }
 
     try {
-      const response = await fetch('/api/market-rates', {
+      const response = await fetch(`${API_BASE}/market-rates`, {
         headers: { Accept: 'application/json' },
       });
 

@@ -8,6 +8,7 @@ import {
   cancelSubscriptionSchema,
   accountCheckoutSessionSchema,
 } from '../../utils/apiValidation.js';
+import logger from '../logger.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
       if (!sig || !webhookSecret) throw new Error('Missing signature or secret');
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err: any) {
-      console.error('Stripe webhook signature verification failed:', err);
+      logger.error({ err }, 'Stripe webhook signature verification failed');
       return res.status(400).json({ error: 'Invalid webhook signature.' });
     }
 
@@ -118,11 +119,11 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
         });
       });
     } catch (txErr) {
-      console.error('Webhook dedup transaction failed:', txErr);
+      logger.error({ err: txErr }, 'Webhook dedup transaction failed');
       return res.status(500).json({ error: 'Internal error' });
     }
     if (isDuplicate) {
-      console.log(`Webhook event ${event.id} already processed.`);
+      logger.info({ eventId: event.id }, 'Webhook event already processed');
       return res.json({ received: true, duplicate: true });
     }
 
@@ -177,8 +178,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
                       ? `card ending ${pm.card?.last4 || '****'}`
                       : pm.type || 'stripe_invoice';
                   }
-                } catch {
-                  // Fall back to generic description
+                } catch (err) {
+                  logger.warn({ err }, 'Non-critical: failed to retrieve payment method details, using generic description');
                 }
               }
 
@@ -190,9 +191,9 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
                 updatedAt: new Date().toISOString(),
               });
 
-              console.log(`[webhook/invoice.paid] Auction invoice ${auctionInvoiceId} marked as paid (Stripe invoice ${invoice.id}).`);
+              logger.info({ auctionInvoiceId, stripeInvoiceId: invoice.id }, 'Auction invoice marked as paid via webhook');
             } else {
-              console.warn(`[webhook/invoice.paid] Auction invoice ${auctionInvoiceId} not found in Firestore.`);
+              logger.warn({ auctionInvoiceId }, 'Auction invoice not found in Firestore during invoice.paid webhook');
             }
           }
           break;
@@ -228,9 +229,9 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
                 updatedAt: new Date().toISOString(),
               });
 
-              console.log(`[webhook/invoice.payment_failed] Auction invoice ${failedAuctionInvoiceId} marked as payment_failed (Stripe invoice ${invoice.id}).`);
+              logger.info({ auctionInvoiceId: failedAuctionInvoiceId, stripeInvoiceId: invoice.id }, 'Auction invoice marked as payment_failed via webhook');
             } else {
-              console.warn(`[webhook/invoice.payment_failed] Auction invoice ${failedAuctionInvoiceId} not found in Firestore.`);
+              logger.warn({ auctionInvoiceId: failedAuctionInvoiceId }, 'Auction invoice not found in Firestore during invoice.payment_failed webhook');
             }
           }
           break;
@@ -412,10 +413,10 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
                   });
                 }
 
-                console.log(`Charge refund processed: subscription ${subId} canceled, listings hidden.`);
+                logger.info({ subscriptionId: subId }, 'Charge refund processed: subscription canceled, listings hidden');
               }
             } catch (refundErr: any) {
-              console.error(`Failed to process charge refund enforcement: ${refundErr.message}`);
+              logger.error({ err: refundErr }, 'Failed to process charge refund enforcement');
             }
           }
           break;
@@ -459,10 +460,10 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
           break;
         }
         default:
-          console.log(`Unhandled event type ${event.type}`);
+          logger.info({ eventType: event.type }, 'Unhandled Stripe webhook event type');
       }
     } catch (dbErr) {
-      console.error('Error updating database from webhook:', dbErr);
+      logger.error({ err: dbErr }, 'Error updating database from webhook');
       return res.status(500).json({ error: 'Webhook processing failed.' });
     }
 
@@ -494,7 +495,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
           url: `${baseUrl}/sell?checkout=success&session_id=${encodeURIComponent(sessionId)}&listingId=${encodeURIComponent(listingId)}&localBillingStub=1`,
           localBillingStub: true,
         });
-      } catch {
+      } catch (err) {
+        logger.warn({ err }, 'Auth token verification failed');
         return res.status(401).json({ error: 'Invalid token' });
       }
     }
@@ -596,7 +598,7 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
         url: session.url,
       });
     } catch (error: any) {
-      console.error('Failed to create Stripe checkout session:', error);
+      logger.error({ err: error }, 'Failed to create Stripe checkout session');
       return res.status(500).json({ error: 'Failed to create checkout session.' });
     }
   });
@@ -623,7 +625,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
           scope: stubSession.scope,
           localBillingStub: true,
         });
-      } catch {
+      } catch (err) {
+        logger.warn({ err }, 'Auth token verification failed');
         return res.status(401).json({ error: 'Invalid token' });
       }
     }
@@ -661,7 +664,7 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
         planId: finalized.planId,
       });
     } catch (error: any) {
-      console.error('Failed to confirm Stripe checkout session:', error);
+      logger.error({ err: error }, 'Failed to confirm Stripe checkout session');
       return res.status(500).json({ error: 'Failed to confirm checkout session.' });
     }
   });
@@ -682,7 +685,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
           url: `${baseUrl}${returnPath}${separator}billingPortal=local-stub`,
           localBillingStub: true,
         });
-      } catch {
+      } catch (err) {
+        logger.warn({ err }, 'Auth token verification failed');
         return res.status(401).json({ error: 'Invalid token' });
       }
     }
@@ -724,7 +728,7 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
         stripeCustomerId: customerId,
       });
     } catch (error: any) {
-      console.error('Failed to create billing portal session:', error);
+      logger.error({ err: error }, 'Failed to create billing portal session');
       return res.status(500).json({ error: 'Failed to create billing portal session.' });
     }
   });
@@ -742,7 +746,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
           message: 'Local billing stub: subscription cancellation simulated.',
           localBillingStub: true,
         });
-      } catch {
+      } catch (err) {
+        logger.warn({ err }, 'Auth token verification failed');
         return res.status(401).json({ error: 'Invalid token' });
       }
     }
@@ -770,7 +775,7 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
 
       return apiSuccess(res, { message: 'Subscription will be canceled at the end of the current billing period.' });
     } catch (error: any) {
-      console.error('Failed to cancel subscription:', error);
+      logger.error({ err: error }, 'Failed to cancel subscription');
       return apiError(res, 500, 'CANCEL_FAILED', 'Failed to cancel subscription.');
     }
   });
@@ -799,7 +804,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
           url: `${baseUrl}${returnPath}${separator}accountCheckout=success&session_id=${encodeURIComponent(sessionId)}&localBillingStub=1`,
           localBillingStub: true,
         });
-      } catch {
+      } catch (err) {
+        logger.warn({ err }, 'Auth token verification failed');
         return res.status(401).json({ error: 'Invalid token' });
       }
     }
@@ -818,7 +824,8 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
       try {
         const decodedToken = await auth.verifyIdToken(idToken, true);
         return res.json(buildLocalBillingStubSummary(decodedToken));
-      } catch {
+      } catch (err) {
+        logger.warn({ err }, 'Auth token verification failed');
         return res.status(401).json({ error: 'Invalid token' });
       }
     }

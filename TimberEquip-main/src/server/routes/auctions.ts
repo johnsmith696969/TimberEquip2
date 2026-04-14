@@ -8,6 +8,7 @@ import type { AuctionTimerManager } from '../auctionTimerManager.js';
 import { emitBidPlaced, emitLotExtended, emitLotClosed } from '../auctionSocketServer.js';
 import { validateBody, placeBidSchema, retractBidSchema, closeLotSchema, activateAuctionSchema, preauthHoldSchema, confirmPreauthSchema, sellerPayoutSchema } from '../../utils/apiValidation.js';
 import { captureServerException } from '../../../sentry.server.js';
+import logger from '../logger.js';
 
 export interface AuctionRouteDeps {
   db: admin.firestore.Firestore;
@@ -153,7 +154,7 @@ export function registerAuctionRoutes(
           await sendServerEmail({ to: buyerEmail, subject, html });
         }
       } catch (buyerEmailError) {
-        console.error('[sendLotSoldEmailNotifications] Failed to send buyer invoice email:', buyerEmailError);
+        logger.error({ err: buyerEmailError }, 'Failed to send buyer invoice email');
       }
     }
 
@@ -179,7 +180,7 @@ export function registerAuctionRoutes(
           await sendServerEmail({ to: sellerEmail, subject, html });
         }
       } catch (sellerEmailError) {
-        console.error('[sendLotSoldEmailNotifications] Failed to send seller lot-sold email:', sellerEmailError);
+        logger.error({ err: sellerEmailError }, 'Failed to send seller lot-sold email');
       }
     }
   }
@@ -224,11 +225,11 @@ export function registerAuctionRoutes(
             isTaxExempt = true;
             salesTaxRate = 0;
             taxExemptCertificateId = profileCertUrl;
-            console.log(`[generateAuctionInvoice] Tax exemption applied for buyer ${buyerId} in ${salesTaxState}`);
+            logger.info({ buyerId, salesTaxState }, 'Tax exemption applied for auction invoice');
           }
         }
       } catch (taxExemptError) {
-        console.error('[generateAuctionInvoice] Error checking tax exemption, continuing with standard rate:', taxExemptError);
+        logger.error({ err: taxExemptError }, 'Error checking tax exemption, continuing with standard rate');
       }
     }
 
@@ -353,14 +354,14 @@ export function registerAuctionRoutes(
             updatedAt: new Date().toISOString(),
           });
 
-          console.log(`[generateAuctionInvoice] Stripe invoice ${stripeInvoice.id} created and sent for auction invoice ${invoiceRef.id}`);
+          logger.info({ stripeInvoiceId: stripeInvoice.id, auctionInvoiceId: invoiceRef.id }, 'Stripe invoice created and sent for auction invoice');
         } else {
-          console.warn(`[generateAuctionInvoice] No email found for buyer ${buyerId}, skipping Stripe invoice creation.`);
+          logger.warn({ buyerId }, 'No email found for buyer, skipping Stripe invoice creation');
         }
       } catch (stripeErr: any) {
         // Log the error but do not fail the entire invoice creation —
         // the Firestore invoice is still valid, Stripe can be retried.
-        console.error(`[generateAuctionInvoice] Failed to create Stripe invoice for auction invoice ${invoiceRef.id}:`, stripeErr);
+        logger.error({ err: stripeErr, auctionInvoiceId: invoiceRef.id }, 'Failed to create Stripe invoice for auction invoice');
         captureServerException(stripeErr, {
           tags: { endpoint: 'generateAuctionInvoice', phase: 'stripe_invoice_creation' },
         });
@@ -424,7 +425,8 @@ export function registerAuctionRoutes(
     try {
       const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -757,7 +759,7 @@ export function registerAuctionRoutes(
           }
         } catch (proxyError) {
           // Log but don't fail the original bid — proxy resolution is best-effort
-          console.error('[auction/place-bid] Proxy bid resolution error:', proxyError);
+          logger.error({ err: proxyError }, 'Proxy bid resolution error');
           captureServerException(proxyError, { tags: { endpoint: 'place-bid-proxy' } });
         }
       }
@@ -788,7 +790,7 @@ export function registerAuctionRoutes(
                 }
               }
             } catch (outbidErr) {
-              console.error('[auction/place-bid] Failed to send outbid email:', outbidErr);
+              logger.error({ err: outbidErr }, 'Failed to send outbid email');
             }
           })();
         }
@@ -834,7 +836,7 @@ export function registerAuctionRoutes(
 
       return res.status(result.status).json(result.body);
     } catch (error: any) {
-      console.error('[auction/place-bid] Transaction error:', error);
+      logger.error({ err: error }, 'Place bid transaction error');
       captureServerException(error, { tags: { endpoint: 'place-bid' } });
       return res.status(500).json({ error: 'An internal error occurred while placing the bid.' });
     }
@@ -861,7 +863,8 @@ export function registerAuctionRoutes(
     try {
       const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -955,14 +958,14 @@ export function registerAuctionRoutes(
             });
           }
         } catch (fallbackError) {
-          console.error('[auction/retract-bid] Fallback lot update error:', fallbackError);
+          logger.error({ err: fallbackError }, 'Retract bid fallback lot update error');
           captureServerException(fallbackError, { tags: { endpoint: 'retract-bid-fallback' } });
         }
       }
 
       return res.status(result.status).json(result.body);
     } catch (error: any) {
-      console.error('[auction/retract-bid] Transaction error:', error);
+      logger.error({ err: error }, 'Retract bid transaction error');
       captureServerException(error, { tags: { endpoint: 'retract-bid' } });
       return res.status(500).json({ error: 'An internal error occurred while retracting the bid.' });
     }
@@ -1001,7 +1004,7 @@ export function registerAuctionRoutes(
 
       return res.json({ bids });
     } catch (error: any) {
-      console.error('[auction/bids] Error fetching bids:', error);
+      logger.error({ err: error }, 'Error fetching auction bids');
       captureServerException(error, { tags: { endpoint: 'get-bids' } });
       return res.status(500).json({ error: 'An internal error occurred while loading bids.' });
     }
@@ -1137,12 +1140,12 @@ export function registerAuctionRoutes(
 
             // Send email notifications to buyer and seller (fire and forget)
             sendLotSoldEmailNotifications(ctx.lotData, ctx.auctionData, invoiceData).catch((emailError) => {
-              console.error('[auction/close-lot] Email notification error:', emailError);
+              logger.error({ err: emailError }, 'Close lot email notification error');
               captureServerException(emailError, { tags: { endpoint: 'close-lot-email' } });
             });
           }
         } catch (postError) {
-          console.error('[auction/close-lot] Post-transaction processing error:', postError);
+          logger.error({ err: postError }, 'Close lot post-transaction processing error');
           captureServerException(postError, { tags: { endpoint: 'close-lot-post' } });
         }
       }
@@ -1168,7 +1171,7 @@ export function registerAuctionRoutes(
 
       return res.status(result.status).json(result.body);
     } catch (error: any) {
-      console.error('[auction/close-lot] Error:', error);
+      logger.error({ err: error }, 'Close lot error');
       captureServerException(error, { tags: { endpoint: 'close-lot' } });
       return res.status(500).json({ error: 'An internal error occurred while closing the lot.' });
     }
@@ -1273,12 +1276,12 @@ export function registerAuctionRoutes(
 
               // Send email notifications to buyer and seller (fire and forget)
               sendLotSoldEmailNotifications(lotWithId, auctionData, invoiceData).catch((emailError) => {
-                console.error(`[auction/close-expired-lots] Email notification error for lot ${lotId}:`, emailError);
+                logger.error({ err: emailError, lotId }, 'Close expired lots email notification error');
                 captureServerException(emailError, { tags: { endpoint: 'close-expired-lots-email' } });
               });
             }
           } catch (bidError) {
-            console.error(`[auction/close-expired-lots] Error processing bids for lot ${lotId}:`, bidError);
+            logger.error({ err: bidError, lotId }, 'Close expired lots error processing bids');
             captureServerException(bidError, { tags: { endpoint: 'close-expired-lots-bids' } });
           }
 
@@ -1305,7 +1308,7 @@ export function registerAuctionRoutes(
 
       return res.json({ closed: closedCount, results });
     } catch (error: any) {
-      console.error('[auction/close-expired-lots] Error:', error);
+      logger.error({ err: error }, 'Close expired lots error');
       captureServerException(error, { tags: { endpoint: 'close-expired-lots' } });
       return res.status(500).json({ error: 'An internal error occurred while closing expired lots.' });
     }
@@ -1403,12 +1406,12 @@ export function registerAuctionRoutes(
             await closeLotByTimer(db, aid, lid, io);
           });
         }
-        console.log(`[auction/activate] Scheduled ${lotsSnap.size} lot closure timers for auction ${auctionId}`);
+        logger.info({ auctionId, lotCount: lotsSnap.size }, 'Scheduled lot closure timers for auction activation');
       }
 
       return apiSuccess(res, { lotCount });
     } catch (error: any) {
-      console.error('[auction/activate] Error:', error);
+      logger.error({ err: error }, 'Auction activate error');
       captureServerException(error, { tags: { endpoint: 'auction-activate' } });
       return apiError(res, 500, 'ACTIVATE_FAILED', 'An internal error occurred while activating the auction.');
     }
@@ -1429,7 +1432,8 @@ export function registerAuctionRoutes(
       const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
       decodedEmail = String(decodedToken.email || '').trim();
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -1475,7 +1479,7 @@ export function registerAuctionRoutes(
 
       return res.json({ clientSecret: paymentIntent.client_secret });
     } catch (error: any) {
-      console.error('[auction/create-preauth-hold] Error:', error);
+      logger.error({ err: error }, 'Create pre-auth hold error');
       captureServerException(error, { tags: { endpoint: 'create-preauth-hold' } });
       return res.status(500).json({ error: 'An internal error occurred while creating the pre-authorization hold.' });
     }
@@ -1494,7 +1498,8 @@ export function registerAuctionRoutes(
     try {
       const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -1526,7 +1531,7 @@ export function registerAuctionRoutes(
 
       return apiSuccess(res, { status: 'held' });
     } catch (error: any) {
-      console.error('[auction/confirm-preauth] Error:', error);
+      logger.error({ err: error }, 'Confirm pre-auth error');
       captureServerException(error, { tags: { endpoint: 'confirm-preauth' } });
       return apiError(res, 500, 'CONFIRM_PREAUTH_FAILED', 'An internal error occurred while confirming pre-authorization.');
     }
@@ -1545,7 +1550,8 @@ export function registerAuctionRoutes(
     try {
       const decodedToken = await auth.verifyIdToken(idToken, true);
       uid = decodedToken.uid;
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -1565,8 +1571,8 @@ export function registerAuctionRoutes(
           if (existingSession.status === 'requires_input' && existingSession.client_secret) {
             return res.json({ clientSecret: existingSession.client_secret });
           }
-        } catch {
-          // Session no longer valid, create a new one
+        } catch (err) {
+          logger.warn({ err }, 'Non-critical: existing Stripe verification session no longer valid, creating new one');
         }
       }
 
@@ -1594,7 +1600,7 @@ export function registerAuctionRoutes(
 
       return res.json({ clientSecret: session.client_secret });
     } catch (error: any) {
-      console.error('[auction/create-identity-session] Error:', error);
+      logger.error({ err: error }, 'Create identity session error');
       captureServerException(error, { tags: { endpoint: 'create-identity-session' } });
       return res.status(500).json({ error: 'An internal error occurred while creating the identity verification session.' });
     }
@@ -1620,7 +1626,8 @@ export function registerAuctionRoutes(
           return res.status(403).json({ error: 'Forbidden. Admin access required.' });
         }
       }
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, 'Auth token verification failed');
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
@@ -1695,7 +1702,7 @@ export function registerAuctionRoutes(
         updatedAt: new Date().toISOString(),
       });
 
-      console.log(`[process-seller-payout] Transfer ${transfer.id} created for seller ${sellerId}, amount $${sellerPayoutAmount}`);
+      logger.info({ transferId: transfer.id, sellerId, amount: sellerPayoutAmount }, 'Seller payout transfer created');
 
       return res.json({
         success: true,
@@ -1704,7 +1711,7 @@ export function registerAuctionRoutes(
         sellerId,
       });
     } catch (error: any) {
-      console.error('[auction/process-seller-payout] Error:', error);
+      logger.error({ err: error }, 'Process seller payout error');
       captureServerException(error, { tags: { endpoint: 'process-seller-payout' } });
       return res.status(500).json({ error: 'An internal error occurred while processing the seller payout.' });
     }
@@ -1775,18 +1782,18 @@ export function registerAuctionRoutes(
             const mergedLotData = { ...lotData, ...lotUpdate, id: lotId };
             const { invoiceData } = await generateAuctionInvoice(auctionId, mergedLotData, auctionSnap.data()!);
             sendLotSoldEmailNotifications(mergedLotData, auctionSnap.data()!, invoiceData).catch((emailErr) => {
-              console.error('[timer/close-lot] Email error:', emailErr);
+              logger.error({ err: emailErr, auctionId, lotId }, 'Timer close lot email error');
             });
           } catch (invoiceErr) {
-            console.error('[timer/close-lot] Invoice generation error:', invoiceErr);
+            logger.error({ err: invoiceErr, auctionId, lotId }, 'Timer close lot invoice generation error');
             captureServerException(invoiceErr, { tags: { handler: 'timer-close-invoice' } });
           }
         }
       }
 
-      console.log(`[timer/close-lot] Lot ${auctionId}/${lotId} closed as ${finalStatus}`);
+      logger.info({ auctionId, lotId, finalStatus }, 'Timer closed lot');
     } catch (err) {
-      console.error(`[timer/close-lot] Error closing ${auctionId}/${lotId}:`, err);
+      logger.error({ err, auctionId, lotId }, 'Timer close lot error');
       captureServerException(err, { tags: { handler: 'timer-close-lot' } });
     }
   }

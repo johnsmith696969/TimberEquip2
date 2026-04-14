@@ -1,3 +1,4 @@
+import { API_BASE } from '../constants/api';
 import { auth } from '../firebase';
 import { withPerformanceTrace } from './performance';
 import type { AccountEntitlement } from '../types';
@@ -365,7 +366,7 @@ export const billingService = {
       if (!user) throw new Error('Unauthorized');
 
       const token = await user.getIdToken();
-      const response = await fetch('/api/billing/create-account-checkout-session', {
+      const response = await fetch(`${API_BASE}/billing/create-account-checkout-session`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -396,7 +397,7 @@ export const billingService = {
 
     const token = await user.getIdToken(true);
     const response = await fetchBillingApi(
-      '/api/billing/create-portal-session',
+      `${API_BASE}/billing/create-portal-session`,
       {
         method: 'POST',
         headers: {
@@ -428,7 +429,7 @@ export const billingService = {
       if (!listingId) throw new Error('Missing listing id');
 
       const token = await user.getIdToken();
-      const response = await fetch('/api/billing/create-checkout-session', {
+      const response = await fetch(`${API_BASE}/billing/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -468,7 +469,7 @@ export const billingService = {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(`/api/billing/checkout-session/${encodeURIComponent(sessionId)}`, {
+    const response = await fetch(`${API_BASE}/billing/checkout-session/${encodeURIComponent(sessionId)}`, {
       headers,
     });
 
@@ -503,7 +504,7 @@ export const billingService = {
     if (!user) throw new Error('Unauthorized');
 
     const token = await user.getIdToken(true);
-    const response = await fetchBillingApi('/api/billing/cancel-subscription', {
+    const response = await fetchBillingApi(`${API_BASE}/billing/cancel-subscription`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -526,7 +527,7 @@ export const billingService = {
     try {
       const token = await user.getIdToken(true);
       const response = await fetchBillingApi(
-        '/api/billing/refresh-account-access',
+        `${API_BASE}/billing/refresh-account-access`,
         {
           method: 'POST',
           headers: {
@@ -563,7 +564,7 @@ export const billingService = {
     if (!user) throw new Error('Unauthorized');
     const token = await user.getIdToken();
 
-    const response = await fetch('/api/admin/billing/invoices', {
+    const response = await fetch(`${API_BASE}/admin/billing/invoices`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -595,7 +596,7 @@ export const billingService = {
     const token = await user.getIdToken();
 
     const response = await fetchBillingApi(
-      '/api/admin/billing/bootstrap',
+      `${API_BASE}/admin/billing/bootstrap`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -669,7 +670,7 @@ export const billingService = {
     if (!user) throw new Error('Unauthorized');
     const token = await user.getIdToken();
 
-    const response = await fetch('/api/admin/billing/subscriptions', {
+    const response = await fetch(`${API_BASE}/admin/billing/subscriptions`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -700,7 +701,7 @@ export const billingService = {
     if (!user) throw new Error('Unauthorized');
     const token = await user.getIdToken();
 
-    const response = await fetch('/api/admin/billing/audit-logs', {
+    const response = await fetch(`${API_BASE}/admin/billing/audit-logs`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -733,7 +734,7 @@ export const billingService = {
     const normalizedDays = Math.max(1, Math.min(Number(days) || 30, 365));
 
     const response = await fetchBillingApi(
-      `/api/admin/reports/dealer-performance?days=${normalizedDays}`,
+      `${API_BASE}/admin/reports/dealer-performance?days=${normalizedDays}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -769,7 +770,7 @@ export const billingService = {
     if (!user) throw new Error('Unauthorized');
     const token = await user.getIdToken();
 
-    const response = await fetch('/api/user/delete', {
+    const response = await fetch(`${API_BASE}/user/delete`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`

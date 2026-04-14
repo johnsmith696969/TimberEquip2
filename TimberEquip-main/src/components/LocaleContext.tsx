@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Currency, Language } from '../types';
 import { translateService } from '../services/translateService';
+import { API_BASE } from '../constants/api';
 
 interface LocaleContextValue {
   language: Language;
@@ -337,7 +338,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
     const loadRates = async () => {
       try {
-        const response = await fetch('/api/currency-rates?base=USD', {
+        const response = await fetch(`${API_BASE}/currency-rates?base=USD`, {
           headers: { Accept: 'application/json' },
         });
         if (!response.ok) {

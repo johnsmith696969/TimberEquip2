@@ -1,3 +1,4 @@
+import { API_BASE } from '../../constants/api';
 import { auth } from '../../firebase';
 import { onAuthStateChanged, signInAnonymously, type User as FirebaseAuthUser } from 'firebase/auth';
 
@@ -24,7 +25,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 export function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
-  if (typeof window === 'undefined' || !rawInput.startsWith('/api/')) {
+  if (typeof window === 'undefined' || !rawInput.startsWith(API_BASE)) {
     return [rawInput];
   }
 

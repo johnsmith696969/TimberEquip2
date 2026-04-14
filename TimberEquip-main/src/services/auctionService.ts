@@ -14,6 +14,7 @@ import {
   writeBatch,
   increment,
 } from 'firebase/firestore';
+import { API_BASE } from '../constants/api';
 import { auth, db } from '../firebase';
 import type { Auction, AuctionBid, AuctionInvoice, AuctionLot, AuctionLotStatus, AuctionStatus, BidderProfile, Listing } from '../types';
 
@@ -346,16 +347,16 @@ export const auctionService = {
   async getBidderStatus(auctionSlug?: string | null): Promise<AuctionBidderStatusResponse> {
     const normalizedAuctionSlug = String(auctionSlug || '').trim();
     const path = normalizedAuctionSlug
-      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/bidder-status`
-      : '/api/auctions/bidder-status';
+      ? `${API_BASE}/auctions/${encodeURIComponent(normalizedAuctionSlug)}/bidder-status`
+      : `${API_BASE}/auctions/bidder-status`;
     return getAuthorizedJson<AuctionBidderStatusResponse>(path);
   },
 
   async saveBidderProfileForAuction(auctionSlug: string | null | undefined, data: Partial<BidderProfile>): Promise<AuctionBidderStatusResponse> {
     const normalizedAuctionSlug = String(auctionSlug || '').trim();
     const path = normalizedAuctionSlug
-      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/bidder-profile`
-      : '/api/auctions/bidder-profile';
+      ? `${API_BASE}/auctions/${encodeURIComponent(normalizedAuctionSlug)}/bidder-profile`
+      : `${API_BASE}/auctions/bidder-profile`;
     return getAuthorizedJson<AuctionBidderStatusResponse>(path, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -365,8 +366,8 @@ export const auctionService = {
   async createBidderIdentitySession(auctionSlug?: string | null): Promise<{ url: string; sessionId: string }> {
     const normalizedAuctionSlug = String(auctionSlug || '').trim();
     const path = normalizedAuctionSlug
-      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/identity-session`
-      : '/api/auctions/bidder-identity-session';
+      ? `${API_BASE}/auctions/${encodeURIComponent(normalizedAuctionSlug)}/identity-session`
+      : `${API_BASE}/auctions/bidder-identity-session`;
     return getAuthorizedJson<{ url: string; sessionId: string }>(path, {
       method: 'POST',
       body: JSON.stringify({}),
@@ -376,8 +377,8 @@ export const auctionService = {
   async createBidderPaymentSetupSession(auctionSlug?: string | null): Promise<{ url: string; sessionId: string }> {
     const normalizedAuctionSlug = String(auctionSlug || '').trim();
     const path = normalizedAuctionSlug
-      ? `/api/auctions/${encodeURIComponent(normalizedAuctionSlug)}/payment-setup-session`
-      : '/api/auctions/bidder-payment-setup-session';
+      ? `${API_BASE}/auctions/${encodeURIComponent(normalizedAuctionSlug)}/payment-setup-session`
+      : `${API_BASE}/auctions/bidder-payment-setup-session`;
     return getAuthorizedJson<{ url: string; sessionId: string }>(path, {
       method: 'POST',
       body: JSON.stringify({}),
@@ -390,7 +391,7 @@ export const auctionService = {
       params.set('auctionSlug', auctionSlug.trim());
     }
     const suffix = params.toString() ? `?${params.toString()}` : '';
-    return getAuthorizedJson<AuctionBidderStatusResponse>(`/api/auctions/bidder-setup-session/${encodeURIComponent(sessionId)}${suffix}`);
+    return getAuthorizedJson<AuctionBidderStatusResponse>(`${API_BASE}/auctions/bidder-setup-session/${encodeURIComponent(sessionId)}${suffix}`);
   },
 
   async getAssignableListings(auctionId: string, searchQuery = ''): Promise<AuctionAssignableListingsResponse> {
@@ -398,53 +399,53 @@ export const auctionService = {
     if (searchQuery.trim()) {
       params.set('q', searchQuery.trim());
     }
-    return getAuthorizedJson<AuctionAssignableListingsResponse>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/assignable-listings?${params.toString()}`);
+    return getAuthorizedJson<AuctionAssignableListingsResponse>(`${API_BASE}/admin/auctions/${encodeURIComponent(auctionId)}/assignable-listings?${params.toString()}`);
   },
 
   async createAdminAuctionLot(auctionId: string, payload: CreateAuctionLotInput): Promise<{ lot: AuctionLot }> {
-    return getAuthorizedJson<{ lot: AuctionLot }>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/lots`, {
+    return getAuthorizedJson<{ lot: AuctionLot }>(`${API_BASE}/admin/auctions/${encodeURIComponent(auctionId)}/lots`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
   async updateAdminAuctionLot(auctionId: string, lotId: string, payload: Partial<CreateAuctionLotInput>): Promise<{ lot: AuctionLot }> {
-    return getAuthorizedJson<{ lot: AuctionLot }>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/lots/${encodeURIComponent(lotId)}`, {
+    return getAuthorizedJson<{ lot: AuctionLot }>(`${API_BASE}/admin/auctions/${encodeURIComponent(auctionId)}/lots/${encodeURIComponent(lotId)}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
   },
 
   async removeAdminAuctionLot(auctionId: string, lotId: string): Promise<{ success: true }> {
-    return getAuthorizedJson<{ success: true }>(`/api/admin/auctions/${encodeURIComponent(auctionId)}/lots/${encodeURIComponent(lotId)}`, {
+    return getAuthorizedJson<{ success: true }>(`${API_BASE}/admin/auctions/${encodeURIComponent(auctionId)}/lots/${encodeURIComponent(lotId)}`, {
       method: 'DELETE',
     });
   },
 
   async placeBid(auctionSlug: string, lotNumber: string, payload: PlaceAuctionBidInput): Promise<{ lot: AuctionLot; bid: AuctionBid }> {
-    return getAuthorizedJson<{ lot: AuctionLot; bid: AuctionBid }>(`/api/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/bids`, {
+    return getAuthorizedJson<{ lot: AuctionLot; bid: AuctionBid }>(`${API_BASE}/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/bids`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
   async getLotInvoice(auctionSlug: string, lotNumber: string): Promise<AuctionLotInvoiceResponse> {
-    return getAuthorizedJson(`/api/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/invoice`);
+    return getAuthorizedJson(`${API_BASE}/auctions/${encodeURIComponent(auctionSlug)}/lots/${encodeURIComponent(lotNumber)}/invoice`);
   },
 
   async getAuctionInvoice(invoiceId: string): Promise<{ invoice: AuctionInvoice; cardEligible: boolean; paymentMethodOptions: Array<'wire' | 'card'> }> {
-    return getAuthorizedJson(`/api/auctions/invoices/${encodeURIComponent(invoiceId)}`);
+    return getAuthorizedJson(`${API_BASE}/auctions/invoices/${encodeURIComponent(invoiceId)}`);
   },
 
   async createAuctionInvoicePaymentSession(invoiceId: string, paymentMethod: 'wire' | 'card'): Promise<AuctionInvoicePaymentSessionResponse> {
-    return getAuthorizedJson<AuctionInvoicePaymentSessionResponse>(`/api/auctions/invoices/${encodeURIComponent(invoiceId)}/payment-session`, {
+    return getAuthorizedJson<AuctionInvoicePaymentSessionResponse>(`${API_BASE}/auctions/invoices/${encodeURIComponent(invoiceId)}/payment-session`, {
       method: 'POST',
       body: JSON.stringify({ paymentMethod }),
     });
   },
 
   async adminSettleAuctionInvoice(invoiceId: string): Promise<AuctionInvoiceSettlementResponse> {
-    return getAuthorizedJson<AuctionInvoiceSettlementResponse>(`/api/admin/auctions/invoices/${encodeURIComponent(invoiceId)}/settlement`, {
+    return getAuthorizedJson<AuctionInvoiceSettlementResponse>(`${API_BASE}/admin/auctions/invoices/${encodeURIComponent(invoiceId)}/settlement`, {
       method: 'POST',
       body: JSON.stringify({}),
     });
