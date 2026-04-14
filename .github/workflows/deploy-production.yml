@@ -93,6 +93,8 @@ jobs:
         env:
           FIREBASE_PROJECT_ID_PRODUCTION: ${{ vars.FIREBASE_PROJECT_ID }}
           FIREBASE_DEPLOY_SCOPE: ${{ vars.FIREBASE_DEPLOY_SCOPE }}
+          RECAPTCHA_SITE_KEY: 6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0
+          RECAPTCHA_PROJECT_ID: mobile-app-equipment-sales
 
       - name: Smoke test production routes
         run: npm run smoke:routes
