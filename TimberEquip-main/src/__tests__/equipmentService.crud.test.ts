@@ -201,7 +201,7 @@ describe('equipmentService CRUD and query coverage', () => {
       sortBy: 'price_asc',
     });
 
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/public/listings?');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/public/listings?');
     expect(listings.map((listing) => listing.id)).toEqual(['featured', 'match']);
   });
 
@@ -239,7 +239,7 @@ describe('equipmentService CRUD and query coverage', () => {
     });
 
     expect(createdId).toBe('created-listing-1');
-    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/account/listings');
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/account/listings');
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       method: 'POST',
       headers: expect.objectContaining({
@@ -294,9 +294,9 @@ describe('equipmentService CRUD and query coverage', () => {
     await equipmentService.updateListing('listing-77', { price: 355000 });
     await equipmentService.deleteListing('listing-77');
 
-    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/account/listings/listing-77');
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/account/listings/listing-77');
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'PATCH' });
-    expect(String(fetchMock.mock.calls[1][0])).toBe('/api/account/listings/listing-77');
+    expect(String(fetchMock.mock.calls[1][0])).toBe('/api/v1/account/listings/listing-77');
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE' });
   });
 });

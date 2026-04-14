@@ -150,7 +150,7 @@ describe('userService saved-search cache coverage', () => {
     });
 
     expect(createdId).toBe('search-new');
-    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/account/saved-searches');
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/account/saved-searches');
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       method: 'POST',
       headers: expect.objectContaining({

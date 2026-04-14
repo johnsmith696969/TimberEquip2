@@ -103,6 +103,6 @@ describe('Unsubscribe page', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][0]).toBe('/api/email-preferences/unsubscribe');
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/email-preferences/unsubscribe');
   });
 });
