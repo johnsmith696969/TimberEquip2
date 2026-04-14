@@ -14746,6 +14746,47 @@ exports.apiProxy = onRequest(
         }
       }
 
+      if (req.method === 'GET' && path === '/public/reverse-geocode') {
+        const latitude = Number(req.query.lat);
+        const longitude = Number(req.query.lng);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          return res.status(400).json({ location: null });
+        }
+
+        const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
+        if (!apiKey) return res.status(200).json({ location: null });
+
+        try {
+          const geocodeResponse = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(`${latitude},${longitude}`)}&result_type=${encodeURIComponent('locality|administrative_area_level_1|country')}&key=${encodeURIComponent(apiKey)}`
+          );
+          if (!geocodeResponse.ok) {
+            return res.status(200).json({ location: null });
+          }
+
+          const geocodePayload = await geocodeResponse.json();
+          const geocodeResult = Array.isArray(geocodePayload?.results) ? geocodePayload.results[0] : null;
+          if (geocodePayload?.status !== 'OK' || !geocodeResult) {
+            return res.status(200).json({ location: null });
+          }
+
+          const components = Array.isArray(geocodeResult.address_components) ? geocodeResult.address_components : [];
+          const city = getGoogleAddressComponent(components, ['locality'])
+            || getGoogleAddressComponent(components, ['postal_town'])
+            || getGoogleAddressComponent(components, ['administrative_area_level_3']);
+          const state = getGoogleAddressComponent(components, ['administrative_area_level_1'], 'short_name');
+          const country = getGoogleAddressComponent(components, ['country']);
+          const formattedLocation = [city, state, country].filter(Boolean).join(', ')
+            || normalizeNonEmptyString(geocodeResult.formatted_address)
+            || null;
+
+          res.set('Cache-Control', 'public, max-age=300');
+          return res.status(200).json({ location: formattedLocation });
+        } catch {
+          return res.status(200).json({ location: null });
+        }
+      }
+
       if (req.method === 'POST' && path === '/account/listings') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {

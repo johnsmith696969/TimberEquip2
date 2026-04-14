@@ -944,23 +944,75 @@ const upload = multer({
   },
 });
 
-// Mock Virus Scanning Function
+// ── File Virus Scanning ─────────────────────────────────────────────────
+// Uses VirusTotal API when VIRUSTOTAL_API_KEY is set, falls back to
+// signature-based detection for known test patterns (EICAR).
+
 async function scanFileForViruses(buffer: Buffer): Promise<boolean> {
-  // In a real production environment, you would integrate with a service like ClamAV or a cloud-based scanner (e.g., VirusTotal API)
-  // For this implementation, we'll perform a basic check for known malicious signatures (simulated)
-  logger.info('Scanning file for viruses');
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate scan time
-  
-  // Basic check for common malicious patterns (very rudimentary)
-  const maliciousPatterns = [Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')];
-  for (const pattern of maliciousPatterns) {
-    if (buffer.includes(pattern)) {
-      logger.warn('Virus detected in uploaded file');
-      return false;
-    }
+  // 1. Quick signature check for known malicious patterns (EICAR test string)
+  const EICAR = Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*');
+  if (buffer.includes(EICAR)) {
+    logger.warn('Virus detected: EICAR test signature found');
+    return false;
   }
-  
-  return true; // File is clean
+
+  // 2. VirusTotal API scan (if configured)
+  const vtApiKey = process.env.VIRUSTOTAL_API_KEY;
+  if (!vtApiKey) {
+    logger.info('Skipping VirusTotal scan: VIRUSTOTAL_API_KEY not configured');
+    return true;
+  }
+
+  try {
+    const crypto = await import('crypto');
+    const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    // Check if the file hash is already known to VirusTotal
+    const reportRes = await fetch(`https://www.virustotal.com/api/v3/files/${fileHash}`, {
+      headers: { 'x-apikey': vtApiKey },
+    });
+
+    if (reportRes.ok) {
+      const report = await reportRes.json() as any;
+      const stats = report?.data?.attributes?.last_analysis_stats;
+      if (stats) {
+        const malicious = (stats.malicious || 0) + (stats.suspicious || 0);
+        if (malicious > 0) {
+          logger.warn({ fileHash, malicious, stats }, 'VirusTotal: file flagged as malicious');
+          return false;
+        }
+        logger.info({ fileHash }, 'VirusTotal: file hash clean');
+        return true;
+      }
+    }
+
+    // File not in VT database — upload for scanning (files up to 32MB)
+    if (buffer.length <= 32 * 1024 * 1024) {
+      const FormData = (await import('node:buffer')).Blob ? globalThis.FormData : null;
+      if (FormData) {
+        const form = new FormData();
+        form.append('file', new Blob([buffer]), 'upload');
+        const uploadRes = await fetch('https://www.virustotal.com/api/v3/files', {
+          method: 'POST',
+          headers: { 'x-apikey': vtApiKey },
+          body: form,
+        });
+        if (uploadRes.ok) {
+          logger.info({ fileHash }, 'VirusTotal: file submitted for async scanning');
+          // File submitted — allow upload, VT will scan asynchronously
+          // A webhook or polling job can check results later
+          return true;
+        }
+      }
+    }
+
+    // VT API unavailable or rate-limited — allow upload as fallback
+    logger.warn('VirusTotal API unavailable, allowing upload as fallback');
+    return true;
+  } catch (err) {
+    logger.error({ err }, 'VirusTotal scan failed, allowing upload as fallback');
+    return true;
+  }
 }
 
 // --- Validated server config (fail-fast on missing secrets) ---

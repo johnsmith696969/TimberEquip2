@@ -7,7 +7,7 @@ export const DEFAULT_FIRESTORE_DATABASE_ID = 'ai-studio-206e8e62-feaa-4921-875f-
 const FIREBASE_CLIENT_CONFIGS = Object.freeze({
   production: Object.freeze({
     projectId: 'mobile-app-equipment-sales',
-    apiKey: 'AIzaSyChC_87Qt3KNzsiV9v4Nkz2kIXd9QZ60XQ',
+    apiKey: '',
     appId: '1:547811102681:web:3065d1745c6b8dac4993c8',
     authDomain: 'mobile-app-equipment-sales.firebaseapp.com',
     firestoreDatabaseId: DEFAULT_FIRESTORE_DATABASE_ID,
@@ -17,7 +17,7 @@ const FIREBASE_CLIENT_CONFIGS = Object.freeze({
   }),
   staging: Object.freeze({
     projectId: 'timberequip-staging',
-    apiKey: 'AIzaSyAu1Z-j4HA7BOgqGQjP3Moka-Dws_ilymw',
+    apiKey: '',
     appId: '1:252674789146:web:7ef151827eb55ef90aa6a3',
     authDomain: 'timberequip-staging.firebaseapp.com',
     firestoreDatabaseId: '(default)',
@@ -122,14 +122,6 @@ export function resolveFirebaseWebApiKey(environment, rootDir) {
     return {
       apiKey: localValue,
       source: `.firebase-web-config.local.json:${normalizedEnvironment}`,
-    };
-  }
-
-  const bundledConfigApiKey = String(FIREBASE_CLIENT_CONFIGS?.[normalizedEnvironment]?.apiKey || '').trim();
-  if (bundledConfigApiKey) {
-    return {
-      apiKey: bundledConfigApiKey,
-      source: `bundled:${normalizedEnvironment}`,
     };
   }
 

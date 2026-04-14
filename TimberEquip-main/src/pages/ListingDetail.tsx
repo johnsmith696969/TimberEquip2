@@ -129,6 +129,8 @@ export function ListingDetail() {
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
+  const [isActiveGalleryImageLoaded, setIsActiveGalleryImageLoaded] = useState(false);
+  const [isFullscreenGalleryImageLoaded, setIsFullscreenGalleryImageLoaded] = useState(false);
   const fullscreenSwipeRef = React.useRef<{ startX: number; startY: number; time: number } | null>(null);
   const [auctionLot, setAuctionLot] = useState<import('../types').AuctionLot | null>(null);
   const [auctionBids, setAuctionBids] = useState<import('../types').AuctionBid[]>([]);
@@ -487,6 +489,11 @@ export function ListingDetail() {
     const unsub = auctionService.onBidsChange(listing.auctionId, auctionLot.id, setAuctionBids);
     return unsub;
   }, [listing?.auctionId, auctionLot?.id]);
+
+  useEffect(() => {
+    setIsActiveGalleryImageLoaded(false);
+    setIsFullscreenGalleryImageLoaded(false);
+  }, [activeImage, listing?.id]);
 
   const machineLatitude = toFiniteNumber(listing?.latitude);
   const machineLongitude = toFiniteNumber(listing?.longitude);
@@ -904,6 +911,7 @@ export function ListingDetail() {
     const rawTitle = Array.isArray(listing.imageTitles) ? listing.imageTitles[index] : '';
     return String(rawTitle || '').trim();
   });
+  const activeGalleryImageSrc = galleryImages[activeImage] || LISTING_IMAGE_PLACEHOLDER;
   const activeImageTitle = galleryImageTitles[activeImage] || '';
   const hasGallery = detailImages.length > 0;
   const listingVideos = Array.isArray(listing.videoUrls)
@@ -1238,23 +1246,38 @@ export function ListingDetail() {
 
             {/* Gallery */}
             <div className="flex flex-col space-y-4">
-              <div className="bg-black/90 border border-line overflow-hidden relative group flex items-center justify-center" style={{ minHeight: '320px', maxHeight: '70vh' }}>
+              <div className="bg-black/90 border border-line overflow-hidden relative group min-h-[320px] max-h-[70vh] aspect-[16/10] md:aspect-[16/9]">
+                <div
+                  className={`absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(255,255,255,0)_45%),linear-gradient(135deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] transition-opacity duration-200 ${
+                    isActiveGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
+                  }`}
+                />
                 <AnimatePresence mode="wait">
-                  <motion.img
-                    key={activeImage}
+                  <motion.div
+                    key={activeGalleryImageSrc}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.18 }}
-                    src={galleryImages[activeImage]}
-                    alt={activeImageTitle || listing.title}
-                    className="max-w-full max-h-[70vh] w-auto h-auto object-contain cursor-zoom-in"
-                    onClick={hasGallery ? openFullscreenImage : undefined}
-                    referrerPolicy="no-referrer"
-                    fetchPriority={activeImage === 0 ? 'high' : undefined}
-                  />
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <img
+                      src={activeGalleryImageSrc}
+                      alt={activeImageTitle || listing.title}
+                      className={`max-h-full max-w-full h-auto w-auto object-contain cursor-zoom-in transition-opacity duration-200 ${
+                        isActiveGalleryImageLoaded ? 'opacity-100' : 'opacity-0'
+                      }`}
+                      onClick={hasGallery ? openFullscreenImage : undefined}
+                      onLoad={() => setIsActiveGalleryImageLoaded(true)}
+                      referrerPolicy="no-referrer"
+                      fetchPriority={activeImage === 0 ? 'high' : undefined}
+                      decoding={activeImage === 0 ? 'sync' : 'async'}
+                    />
+                  </motion.div>
                 </AnimatePresence>
-                <WatermarkOverlay index={activeImage} />
+                <div className={isActiveGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}>
+                  <WatermarkOverlay index={activeImage} />
+                </div>
 
                 {/* Navigation Arrows */}
                 <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2052,21 +2075,32 @@ export function ListingDetail() {
                     >
                       <AnimatePresence mode="wait" initial={false}>
                         <motion.div
-                          key={activeImage}
+                          key={activeGalleryImageSrc}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.18 }}
                           onAnimationStart={() => resetTransform()}
-                          className="relative inline-block"
+                          className="relative inline-flex h-[min(84vh,calc(100dvh-8rem))] w-[min(94vw,1600px)] items-center justify-center"
                         >
-                          <img
-                            src={galleryImages[activeImage]}
-                            alt={activeImageTitle || listing.title}
-                            className="max-w-[94vw] max-h-[84vh] w-auto h-auto object-contain select-none"
-                            referrerPolicy="no-referrer"
+                          <div
+                            className={`absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(255,255,255,0)_45%),linear-gradient(135deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] transition-opacity duration-200 ${
+                              isFullscreenGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
+                            }`}
                           />
-                          <WatermarkOverlay index={activeImage} />
+                          <img
+                            src={activeGalleryImageSrc}
+                            alt={activeImageTitle || listing.title}
+                            className={`max-h-full max-w-full h-auto w-auto object-contain select-none transition-opacity duration-200 ${
+                              isFullscreenGalleryImageLoaded ? 'opacity-100' : 'opacity-0'
+                            }`}
+                            onLoad={() => setIsFullscreenGalleryImageLoaded(true)}
+                            referrerPolicy="no-referrer"
+                            decoding="async"
+                          />
+                          <div className={isFullscreenGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}>
+                            <WatermarkOverlay index={activeImage} />
+                          </div>
                         </motion.div>
                       </AnimatePresence>
                     </TransformComponent>

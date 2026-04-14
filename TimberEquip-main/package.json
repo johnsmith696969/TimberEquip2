@@ -74,6 +74,7 @@
     "firebase": "12.11.0",
     "firebase-admin": "13.7.0",
     "framer-motion": "12.38.0",
+    "fuse.js": "^7.3.0",
     "helmet": "8.1.0",
     "helmet-csp": "4.0.0",
     "leaflet": "1.9.4",

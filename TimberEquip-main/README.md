@@ -12,7 +12,7 @@ Prerequisites: Node.js
 3. Set environment values in `.env.local`:
    `VITE_FIREBASE_API_KEY=your_firebase_web_api_key`
    `GEMINI_API_KEY=your_gemini_api_key` (only if Gemini features are enabled)
-   Optional alternative: add `.firebase-web-config.local.json` with environment-specific web API keys (this file is gitignored).
+   Optional alternative: add `.firebase-web-config.local.json` with environment-specific web API keys (this file is gitignored and preferred for local-only client keys).
    Optional for staging-local testing:
    `FIREBASE_ENVIRONMENT=staging`
    Optional for local billing when Stripe secrets are not configured:
@@ -53,7 +53,7 @@ Notes:
 
 - `npm run deploy:firebase` now requires an explicit `--env` argument and is meant for scripted use.
 - `preview` and `staging` builds now inject the staging Firebase web app config automatically so the browser app does not talk to production services.
-- Firebase web API keys should never be committed. Keep them in environment variables or `.firebase-web-config.local.json`.
+- Firebase web API keys should never be committed. Keep them in environment variables or `.firebase-web-config.local.json`; the tracked repo config intentionally leaves `apiKey` blank.
 - See `DEPLOYMENT_ENVIRONMENTS.md` for GitHub Environments, preview channels, and staging/production setup.
 - See `LISTING_GOVERNANCE_BACKFILL_RUNBOOK.md` for the one-time governance artifact backfill process.
 - Firestore deploys must target the named database configured in `firebase.json`.

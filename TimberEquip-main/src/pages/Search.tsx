@@ -33,6 +33,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { buildListingPath } from '../utils/listingPath';
 import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
 import { clearPendingFavoriteIntent, setPendingFavoriteIntent } from '../utils/pendingFavorite';
+import { createSearchIndex, fuzzySearchWithRanks } from '../utils/searchEngine';
 import { expandRegionName, getListingStateName, normalizeRegionName, normalizeSeoSlug } from '../utils/seoRoutes';
 import { AlertMessage } from '../components/AlertMessage';
 import { buildSiteUrl } from '../utils/siteUrl';
@@ -659,6 +660,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     };
   }, [allListings, fullTaxonomy]);
 
+  // Fuse.js fuzzy search index — rebuilt only when the listing set changes
+  const fuseIndex = useMemo(() => createSearchIndex(allListings), [allListings]);
+
+  // Fuzzy search result: IDs for membership check + ranks for relevance sort.
+  // null when the query is empty, signalling "no text filter active".
+  const fuzzyResult = useMemo(
+    () => fuzzySearchWithRanks(fuseIndex, filters.q),
+    [fuseIndex, filters.q]
+  );
+
   const categoryOptions = useMemo(
     () => {
       const inventoryCategories = uniqueSorted(
@@ -787,17 +798,8 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       const resolvedEquipment = resolvedListingEquipment.get(listing);
       if ((listing.status || 'active') === 'sold') return false;
 
-      if (excludeKey !== 'q' && filters.q) {
-        const q = normalize(filters.q);
-        const matchesKeyword =
-          normalize(listing.id).includes(q) ||
-          normalize(listing.title).includes(q) ||
-          normalize(listing.make || listing.manufacturer || listing.brand).includes(q) ||
-          normalize(listing.model).includes(q) ||
-          normalize(listing.description).includes(q) ||
-          normalize(listing.stockNumber).includes(q) ||
-          normalize(listing.serialNumber).includes(q);
-        if (!matchesKeyword) return false;
+      if (excludeKey !== 'q' && fuzzyResult !== null) {
+        if (!fuzzyResult.ids.has(listing.id)) return false;
       }
 
       if (excludeKey !== 'category' && filters.category) {
@@ -877,7 +879,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
       return true;
     };
-  }, [filters, resolvedListingEquipment]);
+  }, [filters, resolvedListingEquipment, fuzzyResult]);
 
   // Faceted counts: for each multi-select field, count matches excluding that field
   const facetedCounts = useMemo(() => {
@@ -984,7 +986,15 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     } else if (filters.sortBy === 'popular') {
       results = [...results].sort((a, b) => featuredFirst(a, b) || (b.views + b.leads * 3 - (a.views + a.leads * 3)));
     } else if (filters.sortBy === 'relevance') {
-      results = [...results].sort((a, b) => featuredFirst(a, b) || (getRelevanceScore(b, filters.q) - getRelevanceScore(a, filters.q)));
+      const ranks = fuzzyResult?.ranks;
+      results = [...results].sort((a, b) => {
+        const fd = featuredFirst(a, b);
+        if (fd !== 0) return fd;
+        // Lower rank = better Fuse.js relevance; unranked listings sort to the end
+        const aRank = ranks?.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+        const bRank = ranks?.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+        return aRank - bRank;
+      });
     } else if (filters.sortBy === 'nearest' && userCoords) {
       results = [...results].sort((a, b) => {
         const fd = featuredFirst(a, b);
@@ -1010,7 +1020,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     }
 
     return results;
-  }, [allListings, matchesFilters, filters.sortBy, filters.q, userCoords, auctionOnly]);
+  }, [allListings, matchesFilters, filters.sortBy, fuzzyResult, userCoords, auctionOnly]);
 
   // Reset pagination whenever the result set changes (new filters applied)
   useEffect(() => {
