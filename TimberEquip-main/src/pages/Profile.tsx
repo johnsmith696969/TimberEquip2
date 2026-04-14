@@ -19,6 +19,7 @@ import { ListingModal } from '../components/admin/ListingModal';
 import { equipmentService } from '../services/equipmentService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
+import { ManagedRolesTab } from '../components/ManagedRolesTab';
 import { useLocale } from '../components/LocaleContext';
 import { CallLog, Currency, FinancingRequest, Inquiry, Language, Listing, SavedSearch, Seller, UserProfile } from '../types';
 import { auth } from '../firebase';
@@ -40,7 +41,6 @@ import {
   getTaxonomySubcategoryOptions,
 } from '../utils/equipmentTaxonomy';
 import {
-  SERVICE_AREA_REGION_OPTIONS,
   SERVICE_AREA_SCOPE_OPTIONS,
   STOREFRONT_COUNTRY_OPTIONS,
   matchesRegionQuery,
@@ -160,6 +160,7 @@ export function Profile() {
     if (canViewSellerCalls) tabs.push('Calls');
     if (canViewBuyerFinancing) tabs.push('Financing');
     if (hasStorefrontAccess) tabs.push(storefrontTabLabel);
+    if (hasDealerWorkspaceAccess || hasAdminProfileScope) tabs.push('Managed Roles');
     tabs.push('Privacy & Data', 'Account Settings');
     return tabs;
   }, [
@@ -169,6 +170,8 @@ export function Profile() {
     canViewSearchAlerts,
     canViewSellerCalls,
     canViewSellerInquiries,
+    hasAdminProfileScope,
+    hasDealerWorkspaceAccess,
     hasStorefrontAccess,
     storefrontTabLabel,
   ]);
@@ -185,6 +188,9 @@ export function Profile() {
     }
     if (hasDealerWorkspaceAccess) {
       items.push({ label: 'DealerOS', icon: Database, href: '/dealer-os' });
+    }
+    if (hasDealerWorkspaceAccess || hasAdminProfileScope) {
+      items.push({ label: 'Managed Roles', icon: Users });
     }
     items.push(
       { label: 'Privacy & Data', icon: Shield },
@@ -624,18 +630,20 @@ export function Profile() {
     []
   );
 
-  const storefrontServiceAreaRegionOptions = useMemo(
-    () => SERVICE_AREA_REGION_OPTIONS.map((value) => ({ value, count: 0 })),
-    []
+  const BROAD_SCOPES = new Set(['USA', 'Canada', 'Global']);
+  const selectedStatesFromScope = useMemo(
+    () => storefrontForm.serviceAreaScopes.filter((s) => !BROAD_SCOPES.has(s)),
+    [storefrontForm.serviceAreaScopes]
   );
 
   const countySuggestions = useMemo(() => {
-    const stateCounties = getCountiesForStates(storefrontForm.serviceAreaStates);
+    const allStates = [...new Set([...selectedStatesFromScope, ...storefrontForm.serviceAreaStates])];
+    const stateCounties = getCountiesForStates(allStates);
     const suggestions = new Set<string>(stateCounties);
     if (storefrontForm.county.trim()) suggestions.add(storefrontForm.county.trim());
     storefrontForm.serviceAreaCounties.forEach((county) => suggestions.add(county));
     return Array.from(suggestions).sort((left, right) => left.localeCompare(right));
-  }, [storefrontForm.county, storefrontForm.serviceAreaCounties, storefrontForm.serviceAreaStates]);
+  }, [storefrontForm.county, storefrontForm.serviceAreaCounties, selectedStatesFromScope, storefrontForm.serviceAreaStates]);
   const hasStorefrontGeoCoordinates =
     typeof storefrontForm.latitude === 'number' &&
     typeof storefrontForm.longitude === 'number' &&
@@ -2641,28 +2649,19 @@ export function Profile() {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="label-micro">Service Area Coverage</label>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <MultiSelectDropdown
-                  label="Service Area Scope"
-                  placeholder="Select state, USA, Canada, or global"
-                  options={storefrontServiceAreaScopeOptions}
-                  selected={storefrontForm.serviceAreaScopes}
-                  onChange={(values) => handleStorefrontArrayChange('serviceAreaScopes', values)}
-                />
-                <MultiSelectDropdown
-                  label="Service Area States"
-                  placeholder="Search by name or abbreviation (e.g. MN)"
-                  options={storefrontServiceAreaRegionOptions}
-                  selected={storefrontForm.serviceAreaStates}
-                  onChange={(values) => handleStorefrontArrayChange('serviceAreaStates', values)}
-                  searchable
-                  matchFn={matchesRegionQuery}
-                />
-              </div>
+              <MultiSelectDropdown
+                label="Service Area Scope"
+                placeholder="Select USA, Canada, Global, or individual states"
+                options={storefrontServiceAreaScopeOptions}
+                selected={storefrontForm.serviceAreaScopes}
+                onChange={(values) => handleStorefrontArrayChange('serviceAreaScopes', values)}
+                searchable
+                matchFn={matchesRegionQuery}
+              />
               <div className="mt-4">
                 <TagSelectorModal
                   label="Service Area Counties"
-                  placeholder={storefrontForm.serviceAreaStates.length ? 'Search counties in your selected states' : 'Select states first to see counties'}
+                  placeholder={selectedStatesFromScope.length || storefrontForm.serviceAreaStates.length ? 'Search counties in your selected states' : 'Select states first to see counties'}
                   selected={storefrontForm.serviceAreaCounties}
                   onChange={(values) => handleStorefrontArrayChange('serviceAreaCounties', values)}
                   suggestions={countySuggestions}
@@ -2701,16 +2700,16 @@ export function Profile() {
               <input id="profile-storefront-cover" type="text" className="input-industrial w-full" value={storefrontForm.coverPhotoUrl} onChange={(e) => handleStorefrontInputChange('coverPhotoUrl', e.target.value)} placeholder="Leave blank to reuse account cover image" />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label htmlFor="profile-storefront-seo-title" className="label-micro">SEO Title</label>
-              <input id="profile-storefront-seo-title" type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} />
+              <label htmlFor="profile-storefront-seo-title" className="label-micro">SEO Title {!hasAdminProfileScope && <span className="text-muted text-[9px]">(Admin Only)</span>}</label>
+              <input id="profile-storefront-seo-title" type="text" className="input-industrial w-full" value={storefrontForm.seoTitle} onChange={(e) => handleStorefrontInputChange('seoTitle', e.target.value)} readOnly={!hasAdminProfileScope} disabled={!hasAdminProfileScope} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label htmlFor="profile-storefront-seo-description" className="label-micro">SEO Description</label>
-              <textarea id="profile-storefront-seo-description" rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} />
+              <label htmlFor="profile-storefront-seo-description" className="label-micro">SEO Description {!hasAdminProfileScope && <span className="text-muted text-[9px]">(Admin Only)</span>}</label>
+              <textarea id="profile-storefront-seo-description" rows={4} className="input-industrial w-full" value={storefrontForm.seoDescription} onChange={(e) => handleStorefrontInputChange('seoDescription', e.target.value)} readOnly={!hasAdminProfileScope} disabled={!hasAdminProfileScope} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label htmlFor="profile-storefront-seo-keywords" className="label-micro">SEO Keywords</label>
-              <input id="profile-storefront-seo-keywords" type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" />
+              <label htmlFor="profile-storefront-seo-keywords" className="label-micro">SEO Keywords {!hasAdminProfileScope && <span className="text-muted text-[9px]">(Admin Only)</span>}</label>
+              <input id="profile-storefront-seo-keywords" type="text" className="input-industrial w-full" value={storefrontForm.seoKeywordsCsv} onChange={(e) => handleStorefrontInputChange('seoKeywordsCsv', e.target.value)} placeholder="logging equipment, skidders, owner-operator" readOnly={!hasAdminProfileScope} disabled={!hasAdminProfileScope} />
             </div>
           </div>
 
@@ -3386,6 +3385,13 @@ export function Profile() {
               {activeTab === 'Calls' && renderCalls()}
               {activeTab === 'Financing' && renderFinancing()}
               {activeTab === storefrontTabLabel && hasStorefrontAccess && renderStorefront()}
+              {activeTab === 'Managed Roles' && user && (
+                <ManagedRolesTab
+                  ownerUid={user.parentAccountUid || user.uid}
+                  isAdmin={hasAdminProfileScope}
+                  seatLimit={typeof user.managedAccountCap === 'number' ? user.managedAccountCap : 3}
+                />
+              )}
               {activeTab === 'Account Settings' && renderSettings()}
               {activeTab === 'Privacy & Data' && (
                 <div className="space-y-12">

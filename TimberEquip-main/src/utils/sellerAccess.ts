@@ -103,13 +103,9 @@ export function canAccessDealerOs(user: UserProfile | null | undefined): boolean
   return hasActiveSellerSubscription(user) || hasManagedSellerAccess(user);
 }
 
-export function getDefaultAccountWorkspacePath(user: UserProfile | null | undefined): '/admin' | '/dealer-os' | '/profile' {
+export function getDefaultAccountWorkspacePath(user: UserProfile | null | undefined): '/admin' | '/profile' {
   if (user && isOperatorOnlyRole(user.role)) {
     return '/admin';
-  }
-
-  if (canAccessDealerOs(user)) {
-    return '/dealer-os';
   }
 
   return '/profile';

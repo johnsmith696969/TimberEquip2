@@ -1117,6 +1117,53 @@ const templates = {
     `);
     return { subject, html };
   },
+
+  managedAccountRoleChanged({ userName, oldRole, newRole, changedByName }) {
+    const formatRole = (r) => String(r || 'member').split('_').filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    const subject = `Your role has been updated to ${formatRole(newRole)}`;
+    const html = baseLayout(subject, 'Role Updated', `
+      <p class="label">Team Role Change</p>
+      <h2>Your team role has been updated</h2>
+      <p>Hi <strong>${userName}</strong>,</p>
+      <p><strong>${changedByName || 'Your account administrator'}</strong> has updated your role on Forestry Equipment Sales.</p>
+      <div style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:2px; padding:20px; margin:20px 0;">
+        <div class="info-row"><span class="info-label">Previous Role</span><span class="info-value">${formatRole(oldRole)}</span></div>
+        <div class="info-row"><span class="info-label">New Role</span><span class="info-value">${formatRole(newRole)}</span></div>
+      </div>
+      <p>Your permissions have been adjusted accordingly. If you have questions about this change, please contact your account administrator.</p>
+    `);
+    return { subject, html };
+  },
+
+  managedAccountRemoved({ userName, removedByName, company }) {
+    const subject = 'Your team account has been removed';
+    const html = baseLayout(subject, 'Account Removed', `
+      <p class="label">Team Account Update</p>
+      <h2>Your team account access has been revoked</h2>
+      <p>Hi <strong>${userName}</strong>,</p>
+      <p><strong>${removedByName || 'Your account administrator'}</strong> has removed your team access${company ? ` from <strong>${company}</strong>` : ''} on Forestry Equipment Sales.</p>
+      <p>You will no longer be able to manage listings or access the dealer workspace under this team. Your personal account and any saved data remain intact.</p>
+      <hr class="divider" />
+      <p style="font-size:12px; color:#666;">If you believe this was done in error, please contact the account owner directly.</p>
+    `);
+    return { subject, html };
+  },
+
+  contentModerationAlert({ listingId, reason, filePath, sellerUid }) {
+    const subject = `Content Moderation Alert: Listing ${listingId}`;
+    const html = baseLayout(subject, 'Content Flagged', `
+      <p class="label">Automated Content Review</p>
+      <h2>An uploaded image was blocked by content moderation</h2>
+      <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:2px; padding:20px; margin:20px 0;">
+        <div class="info-row"><span class="info-label">Listing ID</span><span class="info-value">${listingId || 'N/A'}</span></div>
+        <div class="info-row"><span class="info-label">Seller UID</span><span class="info-value">${sellerUid || 'N/A'}</span></div>
+        <div class="info-row"><span class="info-label">File</span><span class="info-value">${filePath || 'N/A'}</span></div>
+        <div class="info-row"><span class="info-label">Reason</span><span class="info-value">${reason || 'Policy violation detected'}</span></div>
+      </div>
+      <p>The image has been automatically deleted and the listing has been flagged for admin review. Please check the listing in the admin dashboard.</p>
+    `);
+    return { subject, html };
+  },
 };
 
 module.exports = {

@@ -423,9 +423,6 @@ export const userService = {
     const storefrontSnapshot = await getDoc(storefrontRef);
     const existingStorefront = storefrontSnapshot.exists() ? storefrontSnapshot.data() || {} : {};
     const preferredSlug = String(input.preferredSlug || '').trim();
-    const requestedSlug = preferredSlug || String(existingStorefront.storefrontSlug || '').trim() || storefrontName;
-    const storefrontSlug = await this.generateUniqueStorefrontSlug(requestedSlug, normalizedUid);
-    const canonicalPath = `/dealers/${storefrontSlug}`;
     const seoKeywords = Array.isArray(input.seoKeywords)
       ? input.seoKeywords.map((keyword) => String(keyword || '').trim()).filter(Boolean).slice(0, 30)
       : [];
@@ -434,6 +431,14 @@ export const userService = {
     const street2 = String(input.street2 || '').trim();
     const city = String(input.city || '').trim();
     const state = String(input.state || '').trim();
+
+    const isDealerRole = role === 'dealer' || role === 'pro_dealer';
+    const baseName = preferredSlug || String(existingStorefront.storefrontSlug || '').trim() || storefrontName;
+    const requestedSlug = isDealerRole && city && state && !baseName.toLowerCase().includes(city.toLowerCase())
+      ? `${baseName}-${city}-${state}`
+      : baseName;
+    const storefrontSlug = await this.generateUniqueStorefrontSlug(requestedSlug, normalizedUid);
+    const canonicalPath = `/dealers/${storefrontSlug}`;
     const county = String(input.county || '').trim();
     const postalCode = String(input.postalCode || '').trim();
     const country = String(input.country || '').trim();

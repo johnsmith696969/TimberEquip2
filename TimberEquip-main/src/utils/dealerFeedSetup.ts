@@ -68,7 +68,7 @@ const DEALER_FEED_SAMPLE_ITEMS = [
     stockNumber: 'TE-620E-21',
     description: 'Clean sample dealer feed unit for onboarding and QA checks.',
     imageUrls: [
-      'https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=1400&q=80',
+      'https://firebasestorage.googleapis.com/v0/b/mobile-app-equipment-sales.firebasestorage.app/o/listings%2Fq8MuucM96sgUfJTKSRNZ%2Fimages%2Fdetail%2F01_media_2019_tigercat_620e.avif?alt=media&token=558ec52d-a3c9-4443-ae29-db434900cca5',
     ],
   },
   {
@@ -85,7 +85,7 @@ const DEALER_FEED_SAMPLE_ITEMS = [
     stockNumber: 'TE-1110G-19',
     description: 'Sample forwarder record used to validate CSV, JSON, and API imports.',
     imageUrls: [
-      'https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=1400&q=80',
+      'https://firebasestorage.googleapis.com/v0/b/mobile-app-equipment-sales.firebasestorage.app/o/listings%2FR4Z1IDZBI2hsO05F5LAY%2Fimages%2Fdetail%2F01_media_2019_john_deere_1110g.avif?alt=media&token=7a3efca7-6422-4c80-a73c-32ef72bed3c7',
     ],
   },
 ] as const;
@@ -94,8 +94,8 @@ export const DEALER_FEED_SAMPLE_JSON = `${JSON.stringify(DEALER_FEED_SAMPLE_ITEM
 
 export const DEALER_FEED_SAMPLE_CSV = [
   'externalId,title,price,year,manufacturer,make,model,category,location,hours,stockNumber,description,imageUrls',
-  '"te-sample-skidder-620e","2021 Tigercat 620E Skidder","189500","2021","Tigercat","Tigercat","620E","Skidders","Roseburg, OR","3240","TE-620E-21","Clean sample dealer feed unit for onboarding and QA checks.","https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=1400&q=80"',
-  '"te-sample-forwarder-1110g","2019 John Deere 1110G Forwarder","254000","2019","John Deere","John Deere","1110G","Forwarders","Bemidji, MN","4180","TE-1110G-19","Sample forwarder record used to validate CSV, JSON, and API imports.","https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=1400&q=80"',
+  '"te-sample-skidder-620e","2021 Tigercat 620E Skidder","189500","2021","Tigercat","Tigercat","620E","Skidders","Roseburg, OR","3240","TE-620E-21","Clean sample dealer feed unit for onboarding and QA checks.","https://firebasestorage.googleapis.com/v0/b/mobile-app-equipment-sales.firebasestorage.app/o/listings%2Fq8MuucM96sgUfJTKSRNZ%2Fimages%2Fdetail%2F01_media_2019_tigercat_620e.avif?alt=media&token=558ec52d-a3c9-4443-ae29-db434900cca5"',
+  '"te-sample-forwarder-1110g","2019 John Deere 1110G Forwarder","254000","2019","John Deere","John Deere","1110G","Forwarders","Bemidji, MN","4180","TE-1110G-19","Sample forwarder record used to validate CSV, JSON, and API imports.","https://firebasestorage.googleapis.com/v0/b/mobile-app-equipment-sales.firebasestorage.app/o/listings%2FR4Z1IDZBI2hsO05F5LAY%2Fimages%2Fdetail%2F01_media_2019_john_deere_1110g.avif?alt=media&token=7a3efca7-6422-4c80-a73c-32ef72bed3c7"',
 ].join('\n');
 
 export function getDealerFeedSamplePayload(mode: DealerFeedSetupMode): string {

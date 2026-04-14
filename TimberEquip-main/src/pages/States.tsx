@@ -173,7 +173,7 @@ export function States() {
               <span className="label-micro text-accent mb-3 block">Regional Market Directory</span>
               <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight text-ink">Start With The State You Need</h2>
               <p className="mt-4 max-w-3xl text-sm font-medium leading-relaxed text-muted">
-                Open any state market to see what is actually available there right now, then narrow into the categories, makes, and listings that fit your job. This page is meant to help buyers get to live inventory faster, not send them through filler content.
+                Open any state market to see what is actually available there right now, then narrow into the categories, makes, and listings that fit your job.
               </p>
             </div>
             <Link to="/search" className="btn-industrial btn-accent py-4 px-6 w-full md:w-auto text-center">

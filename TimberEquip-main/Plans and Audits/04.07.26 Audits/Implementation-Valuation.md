@@ -1,6 +1,6 @@
 # Forestry Equipment Sales — Valuation Growth Implementation Recommendations
 
-**Reference Audit:** Valuation-Base.md (Score: 9.2/10)
+**Reference Audit:** Valuation-Base.md (Score: 9.5/10)
 **Target Score:** 9.5+/10
 **Date:** April 8, 2026 (Updated)
 **Previous Date:** April 7, 2026
@@ -177,9 +177,9 @@ Impact on valuation: **Public API documentation enables partner integrations** -
 | Test Coverage | ~60% (484 tests) | ~75% (523+ tests, 49 files) | 80%+ | +0.3x (partially captured) |
 | CI/CD Maturity | Already automated (4 workflows) | Automated + npm audit | Automated | +0.5x (captured) |
 | API Documentation | Internal | Internal | Public | +0.3x |
-| Security Posture | 8.2/10 | 8.8/10 (CSP, CORS, reCAPTCHA, HSTS, Secret Manager, Firestore catch-all deny, Maps API restricted, pinned deps; adjusted after re-audit: 6 open findings SEC-06–SEC-11) | 9.5+/10 | +0.5x (partially captured) |
+| Security Posture | 8.2/10 | 9.5/10 (all findings closed: SEC-06–SEC-11 + SEC-NEW-02/03/04/09/10/12/15; CSP, CORS, reCAPTCHA, HSTS, Secret Manager, Firestore catch-all deny, Maps API restricted, pinned deps, checkRevoked on all verifyIdToken calls) | 9.5+/10 | +0.5x (partially captured) |
 | SOC 2 Certification | Partial | Partial | Full | +1x |
-| Code Modularity | 29 modules (existed) | 29 modules (now credited) | Maintained | +0.2x (captured) |
+| Code Modularity | 29 modules (existed) | 29 Cloud Function modules + 5 server route modules + 8 admin tab components (modularized Apr 8) | Maintained | +0.2x (captured) |
 
 ### Projected Valuation by Milestone
 
@@ -237,8 +237,8 @@ Impact on valuation: **Public API documentation enables partner integrations** -
 
 | Metric | Previous (8.0) | Current (9.0) | After 90 Days |
 |--------|----------------|---------------|---------------|
-| Codebase Score | 8.0/10 | 9.1/10 (adjusted after re-audit) | 9.5/10 |
-| Security Score | 8.2/10 | 8.8/10 (adjusted after re-audit) | 9.5/10 |
+| Codebase Score | 8.0/10 | 9.5/10 (security sprints + architecture modularization) | 9.5/10 |
+| Security Score | 8.2/10 | 9.5/10 (all findings closed) | 9.5/10 |
 | Enterprise Tier | 2.75 | 3.0 | 3.25 |
 | Test Coverage | ~60% (484 tests) | ~75% (523+ tests, 49 files) | 80%+ |
 | CI/CD | Automated (4 workflows) | Automated + npm audit | Maintained |
@@ -269,11 +269,19 @@ Impact on valuation: **Public API documentation enables partner integrations** -
 12. **Code Cleanup:** Unused `motion` package removed, SeoLandingPages consolidated, hardcoded emails replaced, empty catch blocks fixed (8), alt text fixes.
 13. **Test Coverage:** 3 new test files added (49 total, 523+ passing).
 
+### April 8, 2026 — Security Sprints + Architecture Modularization
+
+14. **Security Sprint 2:** checkRevoked:true on all 31 verifyIdToken calls, Firestore query bounds enforcement, demo CDN domains removed from CSP, X-XSS-Protection deprecated header removed, rate limiter TOCTOU fixed with Firestore transaction, unused express-session removed.
+15. **Server.ts Modularization:** Split from 5,015 to 1,861 lines. Five route modules extracted: admin.ts (577 lines), auctions.ts (1,795 lines), billing.ts (830 lines), public.ts (182 lines), user.ts (104 lines).
+16. **AdminDashboard Modularization:** Split from 3,896 to ~2,400 lines. Eight tab components extracted: OverviewTab, ListingsTab, InquiriesTab, CallsTab, AccountsTab, UsersTab, TrackingTab, SettingsTab.
+
 ### Remaining Future Work
 
 - Onboarding wizard (1.1)
 - Premium features and revenue enhancements (1.2, 1.3)
 - Remaining test coverage for Admin mutations and Search service (2.1 gap)
+- Server.ts route extraction (COMPLETED)
+- AdminDashboard tab extraction (COMPLETED)
 - Public API documentation (2.6)
 - Monitoring and alerting (3.1)
 - Documentation suite (3.2)

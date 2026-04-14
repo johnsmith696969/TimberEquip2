@@ -70,7 +70,7 @@ export function Compare() {
           </div>
           <div className="text-right">
             <span className="label-micro text-accent mb-1 block">Comparison Tool</span>
-            <span className="text-sm font-black uppercase tracking-widest">{formatNumber(listings.length)} Equipment Loaded</span>
+            <span className="text-sm font-black uppercase tracking-widest">{formatNumber(listings.length)} {listings.length === 1 ? 'Machine' : 'Machines'} Loaded</span>
           </div>
         </div>
       </div>

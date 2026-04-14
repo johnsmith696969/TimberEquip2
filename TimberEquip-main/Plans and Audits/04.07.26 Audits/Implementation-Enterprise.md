@@ -1,6 +1,6 @@
 # Forestry Equipment Sales — Enterprise Tier Implementation Recommendations
 
-**Reference Audit:** Enterprise-Tier.md (Score: 9.2/10, Tier 3.0)
+**Reference Audit:** Enterprise-Tier.md (Score: 9.4/10, Tier 3.0+)
 **Target Score:** 9.5+/10 (Tier 3.25+)
 **Date:** April 8, 2026 (Updated)
 **Previous Date:** April 7, 2026
@@ -9,9 +9,12 @@
 
 ## Current Status
 
-Following two focused sprints, the platform has advanced from Tier 2.75 (7.8/10) to
-**Tier 3.0 (9.2/10)**. All Phase 1 quick-wins are complete, the Enterprise 3.5 Hardening
-sprint is done, and several items originally flagged as gaps were found to already exist.
+Following multiple focused sprints, the platform has advanced from Tier 2.75 (7.8/10) to
+**Tier 3.0+ (9.4/10)**. All Phase 1 quick-wins are complete, the Enterprise 3.5 Hardening
+sprint is done, Security Sprints 1 & 2 closed all 6 open findings (SEC-06–SEC-11) plus 6
+additional hardening items (SEC-NEW-02/03/04/09/10/12/15), and architecture modularization
+is complete (server.ts split from 5,015→1,861 lines with 5 route modules; AdminDashboard
+split from 3,896→~2,400 lines with 8 tab components).
 
 ### Completed Work Summary
 
@@ -25,6 +28,8 @@ sprint is done, and several items originally flagged as gaps were found to alrea
 | Test Coverage | COMPLETED | 523+ tests across 49 test files |
 | Blog / CMS | COMPLETED | Fully functional with drafts, scheduling, revisions, and media library (already existed) |
 | Content Depth (Manufacturers / Subcategories) | COMPLETED | Manufacturer and subcategory landing pages with rich content (already existed) |
+| Security Sprint 2 Hardening | COMPLETED | checkRevoked on all 31 verifyIdToken calls, query bounds, CDN domains removed from CSP, rate limiter TOCTOU fixed, express-session removed |
+| Architecture Modularization | COMPLETED | server.ts split into 5 route modules (3,488 lines extracted); AdminDashboard split into 8 tab components |
 
 ---
 
@@ -282,6 +287,7 @@ content (buying guides, specs, comparisons).
 | **Pre-Sprint** | March 2026 | 2.75 | 7.8 |
 | **Phase 1 complete** | April 7, 2026 | **3.0** | **9.0** |
 | **Enterprise 3.5 Hardening** | April 8, 2026 | **3.0** | **9.2** |
+| **Security Sprints + Modularization** | April 8, 2026 | **3.0+** | **9.4** |
 | Phase 2 complete | +2 months | 3.15 | 9.3 |
 | Phase 3 complete | +4 months | 3.5 | 9.6 |
 
@@ -293,7 +299,7 @@ content (buying guides, specs, comparisons).
 |-----------|------------|----------------------|---------------|---------------|
 | Multi-Tenancy | 8.0 | 8.5 | 8.5 | 9.5 |
 | Billing | 8.5 | 8.5 | 8.5 | 9.0 |
-| Security | 8.2 | 8.8 (adjusted after re-audit) | 9.5 | 9.7 |
+| Security | 8.2 | 9.5 (all findings closed) | 9.5 | 9.7 |
 | Data Architecture | 7.5 | 7.5 | 7.5 | 8.5 |
 | API & Integration | 7.0 | 7.5 | 8.5 | 8.5 |
 | Real-Time & Perf | 8.5 | 8.5 | 9.0 | 9.5 |
@@ -302,4 +308,4 @@ content (buying guides, specs, comparisons).
 | DevOps | 7.0 | 9.0 | 9.0 | 9.0 |
 | Documentation | 6.5 | 7.5 | 8.5 | 9.0 |
 | Testing & QA | 7.0 | 9.0 | 9.0 | 9.0 |
-| **Weighted Avg** | **7.8** | **9.1** (adjusted) | **9.4** | **9.6** |
+| **Weighted Avg** | **7.8** | **9.4** (security + architecture) | **9.5** | **9.6** |

@@ -12,6 +12,7 @@ const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const { getDb, resolveStorageBucketName, buildFirebaseDownloadUrl } = require('./shared.js');
+const { moderateImage } = require('./content-moderation.js');
 
 // ── Image compression constants ──────────────────────────────────────────────
 
@@ -171,6 +172,30 @@ exports.generateListingImageVariants = onObjectFinalized(
     logger.info(`Generating variants for ${filePath}`);
 
     const [sourceBuffer] = await sourceFile.download();
+
+    // ── Content moderation gate ───────────────────────────────────────────────
+    const moderation = await moderateImage(sourceBuffer);
+    if (!moderation.safe) {
+      logger.warn(`Content moderation BLOCKED listing image: ${filePath} — ${moderation.reason}`);
+      // Delete the offending source image
+      try { await sourceFile.delete(); } catch (delErr) {
+        logger.error(`Failed to delete blocked image ${filePath}:`, delErr.message);
+      }
+      // Flag the listing in Firestore for admin review
+      const listingRef = getDb().collection('listings').doc(listingId);
+      await listingRef.set(
+        {
+          contentModerationFlag: {
+            flaggedAt: admin.firestore.FieldValue.serverTimestamp(),
+            reason: moderation.reason,
+            annotations: moderation.annotations,
+            filePath,
+          },
+        },
+        { merge: true },
+      );
+      return; // Do not generate variants for blocked images
+    }
 
     const [detailBuffer, thumbBuffer] = await Promise.all([
       compressToAvifTarget(sourceBuffer, DETAIL_MAX_WIDTH, DETAIL_MAX_BYTES),

@@ -17,6 +17,7 @@
     "@dataconnect/admin-generated-timberequip-listing-governance": "file:generated/dataconnect/listing-governance",
     "@dataconnect/admin-generated-timberequip-marketplace": "file:generated/dataconnect/marketplace",
     "@google-cloud/recaptcha-enterprise": "^6.4.0",
+    "@google-cloud/vision": "^4.3.2",
     "@sendgrid/mail": "^8.1.5",
     "@sentry/node": "^10.46.0",
     "fast-xml-parser": "^5.5.8",

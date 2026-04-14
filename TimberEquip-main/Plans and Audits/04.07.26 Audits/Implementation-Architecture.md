@@ -1,6 +1,6 @@
 # Forestry Equipment Sales — Architecture Implementation Recommendations
 
-**Reference Audit:** Architectural-System.md (Score: 9.2/10, adjusted after security re-audit)
+**Reference Audit:** Architectural-System.md (Score: 9.5/10, updated after security sprints + architecture modularization)
 **Target Score:** 9.5+/10
 **Date:** April 8, 2026 (Updated)
 **Previous Date:** April 7, 2026
@@ -194,20 +194,21 @@ No further work required.
 | Empty catch blocks updated with structured logging (8 blocks) | Done |
 | Alt text fixes for accessibility | Done |
 
-### 4.3 Extract Server.ts Middleware
+### 4.3 Extract Server.ts Route Modules — COMPLETED (Apr 8)
 
-**Status:** Pending (future work)
-**Current:** Large server.ts with inline middleware
-**Target:** Modular middleware files
+**Status:** COMPLETED
+**Outcome:** server.ts split from 5,015 lines to 1,861 lines (63% reduction). Five domain-specific route modules extracted using dependency injection pattern:
 
-| Task | Effort |
-|------|--------|
-| Extract auth middleware to `middleware/auth.ts` | 2 hours |
-| Extract rate limiting config to `middleware/rateLimiting.ts` | 2 hours |
-| Extract CORS config to `middleware/cors.ts` | 1 hour |
-| Extract CSP/Helmet config to `middleware/security.ts` | 1 hour |
-| Extract route handlers to `routes/*.ts` files | 8 hours |
-| **Total** | **14 hours** |
+| Module | Lines | Routes |
+|--------|-------|--------|
+| `src/server/routes/admin.ts` | 577 | 10 admin endpoints |
+| `src/server/routes/auctions.ts` | 1,795 | 10 auction endpoints + helpers |
+| `src/server/routes/billing.ts` | 830 | 7 billing endpoints + Stripe webhook |
+| `src/server/routes/public.ts` | 182 | 6 public/search endpoints |
+| `src/server/routes/user.ts` | 104 | 2 user endpoints |
+| **Total extracted** | **3,488** | **35 route handlers** |
+
+No further work required.
 
 ### 4.4 API Versioning Strategy
 
@@ -252,9 +253,9 @@ The initial audit contained two inaccuracies that have been corrected:
 |-------|-------|----------|-------------|
 | Sprint 1 | Sentry DSN activation + Firebase Performance Monitoring | 1 week | +0.1 |
 | Sprint 2 | Redis cache + API standardization | 3 weeks | +0.2 |
-| Sprint 3 | Server.ts extraction + API versioning | 2 weeks | +0.1 |
+| Sprint 3 | ~~Server.ts extraction~~ COMPLETED + API versioning | 1 week | +0.05 |
 | Sprint 4 | Structured logging + Image CDN | 2 weeks | +0.1 |
-| **Total** | | **~8 weeks** | **9.2 -> 9.5+** |
+| **Total** | | **~7 weeks** | **9.5 (achieved) -> 9.7+** |
 
 ### Completed Items Summary
 
@@ -266,3 +267,5 @@ The initial audit contained two inaccuracies that have been corrected:
 | 4.1 Test Coverage (523+ tests, 49 files) | COMPLETED | 20 hours saved |
 | 4.2 Security Hardening (CSP, CORS, reCAPTCHA) | COMPLETED | -- |
 | 4.5 Enterprise 3.5 Hardening Sprint (12 items) | COMPLETED | -- |
+| 4.3 Server.ts Route Extraction (5 modules, 3,488 lines) | COMPLETED | 14 hours saved |
+| AdminDashboard Tab Extraction (8 components) | COMPLETED | -- |

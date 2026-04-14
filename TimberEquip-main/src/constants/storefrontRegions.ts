@@ -1,6 +1,33 @@
 export const STOREFRONT_COUNTRY_OPTIONS = ['United States', 'Canada'] as const;
 
-export const SERVICE_AREA_SCOPE_OPTIONS = ['State', 'USA', 'Canada', 'Global'] as const;
+/** Broad scope options displayed at the top of the Service Area selector. */
+const BROAD_SCOPE_OPTIONS = ['USA', 'Canada', 'Global'] as const;
+
+/** All US states, listed alphabetically. */
+const US_STATE_OPTIONS = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
+  'Colorado', 'Connecticut', 'Delaware', 'District of Columbia', 'Florida',
+  'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana',
+  'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine',
+  'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
+  'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire',
+  'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota',
+  'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+  'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah',
+  'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin',
+  'Wyoming',
+] as const;
+
+/**
+ * Combined service area scope options: broad scopes first (USA, Canada, Global),
+ * then all 50 US states + DC. Replaces the old separate "State" option and
+ * eliminates the duplicate "Service Area States" selector.
+ */
+export const SERVICE_AREA_SCOPE_OPTIONS = [
+  ...BROAD_SCOPE_OPTIONS,
+  ...US_STATE_OPTIONS,
+] as const;
+
 const SERVICE_AREA_SCOPE_LOOKUP = new Map(
   SERVICE_AREA_SCOPE_OPTIONS.map((value) => [value.toLowerCase(), value] as const)
 );
@@ -11,8 +38,16 @@ export function sanitizeServiceAreaScopes(value: unknown, maxItems = 8): string[
   const normalized = value
     .map((entry) => String(entry || '').trim())
     .filter(Boolean)
-    .map((entry) => SERVICE_AREA_SCOPE_LOOKUP.get(entry.toLowerCase()) || null)
-    .filter((entry): entry is (typeof SERVICE_AREA_SCOPE_OPTIONS)[number] => Boolean(entry));
+    .map((entry) => {
+      // Direct match
+      const direct = SERVICE_AREA_SCOPE_LOOKUP.get(entry.toLowerCase());
+      if (direct) return direct;
+      // Try abbreviation lookup (e.g. "MN" → "Minnesota")
+      const fromAbbr = REGION_ABBREVIATIONS[entry.toUpperCase()];
+      if (fromAbbr) return SERVICE_AREA_SCOPE_LOOKUP.get(fromAbbr.toLowerCase()) ?? null;
+      return null;
+    })
+    .filter(Boolean) as string[];
 
   return Array.from(new Set(normalized)).slice(0, maxItems);
 }
@@ -36,7 +71,7 @@ export const REGION_ABBREVIATIONS: Record<string, string> = {
   SK: 'Saskatchewan', YT: 'Yukon',
 };
 
-/** Returns true if the region name matches the query (by name or abbreviation). */
+/** Returns true if the scope/region name matches the query (by name or abbreviation). */
 export function matchesRegionQuery(regionName: string, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -45,6 +80,10 @@ export function matchesRegionQuery(regionName: string, query: string): boolean {
   return matchedName?.toLowerCase() === regionName.toLowerCase();
 }
 
+/**
+ * @deprecated Use SERVICE_AREA_SCOPE_OPTIONS instead — states are now included in the scope selector.
+ * Kept for backward compatibility with existing Firestore data that references serviceAreaStates.
+ */
 export const SERVICE_AREA_REGION_OPTIONS = [
   'Alabama',
   'Alaska',
