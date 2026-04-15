@@ -203,15 +203,41 @@ main#main:focus {
   min-height: 32px;
 }
 
+.btn-surface {
+  background-color: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.btn-surface:hover {
+  background-color: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
 /* Inputs */
 .input-industrial {
-  @apply bg-surface border px-3 py-2.5 text-[10px] font-bold text-ink outline-none transition-all rounded-sm placeholder:text-muted/50;
+  @apply bg-surface border px-4 py-2.5 text-[10px] font-bold text-ink outline-none transition-all rounded-sm;
   border-color: transparent;
   box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
 }
 
+.input-industrial::placeholder {
+  color: var(--muted);
+  opacity: 0.45;
+  font-size: 10px;
+  transition: all 0.2s ease;
+}
+
+.input-industrial:focus::placeholder {
+  opacity: 0.25;
+  font-size: 8px;
+  transform: translateY(-2px);
+  letter-spacing: 0.05em;
+}
+
 .select-industrial {
-  @apply bg-surface border px-3 py-2.5 pr-8 text-[10px] font-bold text-ink outline-none transition-all rounded-sm appearance-none cursor-pointer;
+  @apply bg-surface border px-4 py-2.5 pr-8 text-[10px] font-bold text-ink outline-none transition-all rounded-sm appearance-none cursor-pointer;
   border-color: transparent;
   box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
 }

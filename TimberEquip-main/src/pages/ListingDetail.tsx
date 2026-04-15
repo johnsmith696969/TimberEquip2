@@ -1547,12 +1547,12 @@ export function ListingDetail() {
                 { label: t('listingDetail.model', 'Model'), value: safeModel, icon: Info },
                 ...(listing.updatedAt && toMillis(listing.updatedAt) ? [{ label: t('listingDetail.lastUpdated', 'Last Updated'), value: new Date(toMillis(listing.updatedAt)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }), icon: RefreshCw }] : [])
               ].map((spec, i) => (
-                <div key={i} className="bg-bg p-6 flex flex-col">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <spec.icon className="text-accent" size={14} />
+                <div key={i} className="bg-bg px-4 py-3 flex flex-col">
+                  <div className="flex items-center space-x-1.5 mb-1">
+                    <spec.icon className="text-accent" size={12} />
                     <span className="label-micro">{spec.label}</span>
                   </div>
-                  <span className="text-xl font-black tracking-tighter uppercase">{spec.value}</span>
+                  <span className="text-base font-black tracking-tighter uppercase">{spec.value}</span>
                 </div>
               ))}
             </div>
@@ -1974,10 +1974,10 @@ export function ListingDetail() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 mb-8">
-                  <div className="bg-bg border border-line p-4 flex flex-col items-center text-center">
-                    <span className="text-lg font-black tracking-tighter">{sellerListingCount ?? safeSellerTotalListings}</span>
-                    <span className="label-micro">{(sellerListingCount ?? safeSellerTotalListings) === 1 ? 'Machine' : 'Machines'}</span>
+                <div className="mb-6">
+                  <div className="bg-bg border border-line px-3 py-2 inline-flex items-center gap-2">
+                    <span className="text-sm font-black tracking-tighter">{sellerListingCount ?? safeSellerTotalListings}</span>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted">{(sellerListingCount ?? safeSellerTotalListings) === 1 ? 'Machine' : 'Machines'}</span>
                   </div>
                 </div>
 
