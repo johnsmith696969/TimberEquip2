@@ -1,4 +1,4 @@
-import Fuse from 'fuse.js';
+import Fuse, { type IFuseOptions } from 'fuse.js';
 import type { Listing } from '../types';
 
 /**
@@ -9,7 +9,7 @@ import type { Listing } from '../types';
  *   - category and subcategory help broad intent queries
  *   - description and sellerName are low-signal but still useful
  */
-const FUSE_OPTIONS: Fuse.IFuseOptions<Listing> = {
+const FUSE_OPTIONS: IFuseOptions<Listing> = {
   keys: [
     { name: 'title', weight: 3 },
     { name: 'manufacturer', weight: 2 },
