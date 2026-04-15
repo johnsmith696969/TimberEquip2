@@ -1245,8 +1245,8 @@ export function ListingDetail() {
             )}
 
             {/* Gallery */}
-            <div className="flex flex-col space-y-4">
-              <div className="bg-black/90 border border-line overflow-hidden relative group min-h-[320px] max-h-[70vh] aspect-[16/10] md:aspect-[16/9]">
+            <div className="flex w-full max-w-full flex-col space-y-4 overflow-hidden">
+              <div className="bg-black/90 border border-line overflow-hidden relative group min-h-[320px] max-h-[70vh] aspect-[16/10] md:aspect-[16/9] w-full max-w-full">
                 <div
                   className={`absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(255,255,255,0)_45%),linear-gradient(135deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] transition-opacity duration-200 ${
                     isActiveGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
@@ -1259,12 +1259,12 @@ export function ListingDetail() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15, ease: 'easeOut' }}
-                    className="absolute inset-0 flex items-center justify-center"
+                    className="absolute inset-0 flex min-w-0 items-center justify-center overflow-hidden"
                   >
                     <img
                       src={activeGalleryImageSrc}
                       alt={activeImageTitle || listing.title}
-                      className="max-h-full max-w-full h-auto w-auto object-contain cursor-zoom-in"
+                      className="block h-full w-full max-h-full max-w-full object-contain cursor-zoom-in"
                       onClick={hasGallery ? openFullscreenImage : undefined}
                       onLoad={() => setIsActiveGalleryImageLoaded(true)}
                       referrerPolicy="no-referrer"
@@ -1278,18 +1278,18 @@ export function ListingDetail() {
                 </div>
 
                 {/* Navigation Arrows */}
-                <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
                     onClick={showPrevImage}
                     aria-label="Previous image"
-                    className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
+                    className="pointer-events-auto p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronLeft size={24} />
                   </button>
                   <button
                     onClick={showNextImage}
                     aria-label="Next image"
-                    className="p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
+                    className="pointer-events-auto p-2 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
                   >
                     <ChevronRight size={24} />
                   </button>
@@ -1308,7 +1308,7 @@ export function ListingDetail() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
+              <div className="grid w-full max-w-full grid-cols-4 gap-4 md:grid-cols-6">
                 {galleryImages.map((img, i) => (
                   <button
                     key={i}
@@ -2091,7 +2091,7 @@ export function ListingDetail() {
                           <img
                             src={activeGalleryImageSrc}
                             alt={activeImageTitle || listing.title}
-                            className={`max-h-full max-w-full h-auto w-auto object-contain select-none transition-opacity duration-200 ${
+                            className={`block h-full w-full max-h-full max-w-full object-contain select-none transition-opacity duration-200 ${
                               isFullscreenGalleryImageLoaded ? 'opacity-100' : 'opacity-0'
                             }`}
                             onLoad={() => setIsFullscreenGalleryImageLoaded(true)}
