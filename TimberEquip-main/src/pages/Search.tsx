@@ -48,6 +48,7 @@ import {
   resolveListingTaxonomySelection,
   type ResolvedEquipmentTaxonomySelection,
 } from '../utils/equipmentTaxonomy';
+import { buildSearchPageCopy } from '../utils/searchPageCopy';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
 type SearchViewMode = 'grid' | 'list';
@@ -67,6 +68,8 @@ export interface CategoryRouteInfo {
   categoryName: string;
   slug: string;
   isTopLevel: boolean;
+  parentCategoryName?: string;
+  subcategoryName?: string;
 }
 
 interface SearchFilters {
@@ -369,8 +372,9 @@ const applyDependentFilterResets = (
   return next;
 };
 
-const countActiveFilters = (filters: SearchFilters): number =>
+const countActiveFilters = (filters: SearchFilters, hiddenKeys = new Set<keyof SearchFilters>()): number =>
   Object.entries(filters).reduce((count, [key, value]) => {
+    if (hiddenKeys.has(key as keyof SearchFilters)) return count;
     if (key === 'sortBy' || key === 'locationCenterLat' || key === 'locationCenterLng' || !value) return count;
     if (MULTI_SELECT_KEYS.has(key)) return count + parseMultiValue(value).length;
     return count + 1;
@@ -435,6 +439,40 @@ function FilterSectionPanel({ open, children, allowOverflow = false }: { open: b
 const PAGE_SIZE = 21;
 const getInitialCachedListings = () => equipmentService.getCachedPublicListings();
 
+const getCategoryRouteFilters = (
+  categoryRoute?: CategoryRouteInfo
+): Pick<SearchFilters, 'category' | 'subcategory'> => {
+  if (!categoryRoute) return { category: '', subcategory: '' };
+  if (categoryRoute.isTopLevel) {
+    return { category: categoryRoute.categoryName, subcategory: '' };
+  }
+  return {
+    category: categoryRoute.parentCategoryName || '',
+    subcategory: categoryRoute.subcategoryName || categoryRoute.categoryName,
+  };
+};
+
+const applyCategoryRouteDefaults = (
+  filters: SearchFilters,
+  categoryRoute?: CategoryRouteInfo
+): SearchFilters => {
+  if (!categoryRoute) return filters;
+  const routeFilters = getCategoryRouteFilters(categoryRoute);
+  return {
+    ...filters,
+    category: routeFilters.category || filters.category,
+    subcategory: routeFilters.subcategory || filters.subcategory,
+  };
+};
+
+const getRouteHiddenFilterKeys = (categoryRoute?: CategoryRouteInfo): Set<keyof SearchFilters> => {
+  const hiddenKeys = new Set<keyof SearchFilters>();
+  if (!categoryRoute) return hiddenKeys;
+  hiddenKeys.add('category');
+  if (!categoryRoute.isTopLevel) hiddenKeys.add('subcategory');
+  return hiddenKeys;
+};
+
 export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } = {}) {
   const { user, toggleFavorite, isAuthenticated } = useAuth();
   const { t, formatNumber, formatPrice } = useLocale();
@@ -464,26 +502,10 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const [showFilters, setShowFilters] = useState(true);
   const [compareList, setCompareList] = useState<string[]>([]);
   const [filters, setFilters] = useState<SearchFilters>(() => {
-    const initial = getInitialFilters(searchParams);
-    if (categoryRoute) {
-      if (categoryRoute.isTopLevel) {
-        initial.category = initial.category || categoryRoute.categoryName;
-      } else {
-        initial.subcategory = initial.subcategory || categoryRoute.categoryName;
-      }
-    }
-    return initial;
+    return applyCategoryRouteDefaults(getInitialFilters(searchParams), categoryRoute);
   });
   const [draftFilters, setDraftFilters] = useState<SearchFilters>(() => {
-    const initial = getInitialFilters(searchParams);
-    if (categoryRoute) {
-      if (categoryRoute.isTopLevel) {
-        initial.category = initial.category || categoryRoute.categoryName;
-      } else {
-        initial.subcategory = initial.subcategory || categoryRoute.categoryName;
-      }
-    }
-    return initial;
+    return applyCategoryRouteDefaults(getInitialFilters(searchParams), categoryRoute);
   });
   const [openSections, setOpenSections] = useState<Record<FilterSectionKey, boolean>>({
     equipment: true,
@@ -604,27 +626,20 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   }, [filters]);
 
   useEffect(() => {
-    const parsed = getInitialFilters(searchParams);
-    if (categoryRoute) {
-      if (categoryRoute.isTopLevel) {
-        parsed.category = categoryRoute.categoryName;
-      } else {
-        parsed.subcategory = categoryRoute.categoryName;
-      }
-    }
+    const parsed = applyCategoryRouteDefaults(getInitialFilters(searchParams), categoryRoute);
     if (!areFiltersEqual(parsed, filters)) {
       setFilters(parsed);
       setDraftFilters(parsed);
     }
-  }, [searchParams]);
+  }, [categoryRoute, searchParams]);
 
   useEffect(() => {
     const params = serializeFiltersToParams(filters);
-    if (categoryRoute) {
-      params.delete(categoryRoute.isTopLevel ? 'category' : 'subcategory');
+    for (const key of getRouteHiddenFilterKeys(categoryRoute)) {
+      params.delete(key);
     }
     setSearchParams(params, { replace: true, preventScrollReset: true });
-  }, [filters, setSearchParams]);
+  }, [categoryRoute, filters, setSearchParams]);
 
   const equipmentDraftFilters = useMemo(
     () => ({
@@ -660,13 +675,17 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     };
   }, [allListings, fullTaxonomy]);
 
-  // Fuse.js fuzzy search index — rebuilt only when the listing set changes
-  const fuseIndex = useMemo(() => createSearchIndex(allListings), [allListings]);
+  // Fuse.js is only built for text search so filter-only browsing stays cheap.
+  const hasTextQuery = filters.q.trim().length > 0;
+  const fuseIndex = useMemo(
+    () => (hasTextQuery ? createSearchIndex(allListings) : null),
+    [allListings, hasTextQuery]
+  );
 
   // Fuzzy search result: IDs for membership check + ranks for relevance sort.
   // null when the query is empty, signalling "no text filter active".
   const fuzzyResult = useMemo(
-    () => fuzzySearchWithRanks(fuseIndex, filters.q),
+    () => (fuseIndex ? fuzzySearchWithRanks(fuseIndex, filters.q) : null),
     [fuseIndex, filters.q]
   );
 
@@ -1102,14 +1121,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   };
 
   const resetFilters = () => {
-    const base = { ...DEFAULT_FILTERS };
-    if (categoryRoute) {
-      if (categoryRoute.isTopLevel) {
-        base.category = categoryRoute.categoryName;
-      } else {
-        base.subcategory = categoryRoute.categoryName;
-      }
-    }
+    const base = applyCategoryRouteDefaults({ ...DEFAULT_FILTERS }, categoryRoute);
     setFilters(base);
     setDraftFilters(base);
   };
@@ -1180,19 +1192,24 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   };
 
   const isCategoryPage = !!categoryRoute;
-  const categoryLabel = categoryRoute?.categoryName || '';
+  const routeHiddenFilterKeys = useMemo(() => getRouteHiddenFilterKeys(categoryRoute), [categoryRoute]);
+  const routeParentCategory = categoryRoute?.parentCategoryName || (categoryRoute?.isTopLevel ? categoryRoute.categoryName : '');
+  const routeSubcategory = categoryRoute?.subcategoryName || (!categoryRoute?.isTopLevel ? categoryRoute?.categoryName || '' : '');
+  const categoryLabel = categoryRoute?.isTopLevel
+    ? categoryRoute.categoryName
+    : [routeParentCategory, routeSubcategory].filter(Boolean).join(' ');
   const categorySlugPath = categoryRoute ? `/categories/${categoryRoute.slug}` : '/search';
-  const visibleActiveFilterCount = countActiveFilters(filters) - (isCategoryPage ? 1 : 0);
+  const visibleActiveFilterCount = countActiveFilters(filters, routeHiddenFilterKeys);
+  const inventoryCopy = buildSearchPageCopy({
+    filters,
+    categoryRoute,
+    resultCount: filteredListings.length,
+    taxonomy: fullTaxonomy,
+  });
 
-  const seoTitle = isCategoryPage
-    ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | Forestry Equipment Sales`
-    : filters.q
-      ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
-      : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
+  const seoTitle = inventoryCopy.seoTitle;
 
-  const seoDescription = isCategoryPage
-    ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on Forestry Equipment Sales.`
-    : 'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
+  const seoDescription = inventoryCopy.seoDescription;
 
   const seoRobots = isCategoryPage ? undefined : 'noindex, follow';
   const seoCanonical = categorySlugPath;
@@ -1203,7 +1220,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         '@graph': [
           {
             '@type': 'CollectionPage',
-            name: `${categoryLabel} for Sale`,
+            name: inventoryCopy.title,
             description: seoDescription,
             url: buildSiteUrl(categorySlugPath),
           },
@@ -1212,12 +1229,22 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             itemListElement: [
               { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
               { '@type': 'ListItem', position: 2, name: 'Categories', item: buildSiteUrl('/categories') },
-              { '@type': 'ListItem', position: 3, name: categoryLabel, item: buildSiteUrl(categorySlugPath) },
+              ...(categoryRoute?.parentCategoryName && !categoryRoute.isTopLevel
+                ? [
+                    {
+                      '@type': 'ListItem',
+                      position: 3,
+                      name: categoryRoute.parentCategoryName,
+                      item: buildSiteUrl(`/categories/${normalizeSeoSlug(categoryRoute.parentCategoryName)}`),
+                    },
+                    { '@type': 'ListItem', position: 4, name: routeSubcategory, item: buildSiteUrl(categorySlugPath) },
+                  ]
+                : [{ '@type': 'ListItem', position: 3, name: categoryLabel, item: buildSiteUrl(categorySlugPath) }]),
             ],
           },
           {
             '@type': 'ItemList',
-            name: `${categoryLabel} inventory`,
+            name: `${inventoryCopy.subject} inventory`,
             itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
               '@type': 'ListItem',
               position: index + 1,
@@ -1244,7 +1271,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
     : {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
-        name: 'In-Stock Logging Equipment Listings',
+        name: inventoryCopy.title,
         itemListElement: filteredListings.slice(0, 24).map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
@@ -1273,22 +1300,33 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       <Breadcrumbs items={isCategoryPage ? [
         { label: 'Home', path: '/' },
         { label: 'Categories', path: '/categories' },
-        { label: categoryLabel, path: categorySlugPath },
+        ...(categoryRoute?.parentCategoryName && !categoryRoute.isTopLevel
+          ? [
+              { label: categoryRoute.parentCategoryName, path: `/categories/${normalizeSeoSlug(categoryRoute.parentCategoryName)}` },
+              { label: routeSubcategory, path: categorySlugPath },
+            ]
+          : [{ label: categoryLabel, path: categorySlugPath }]),
       ] : undefined} />
 
-      {/* Category page header */}
-      {isCategoryPage && (
-        <div className="bg-surface border-b border-line px-4 md:px-8 py-10">
-          <div className="max-w-[1600px] mx-auto">
-            <span className="label-micro text-accent mb-3 block">Equipment Category</span>
-            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">{categoryLabel} <span className="text-muted">For Sale</span></h2>
-            <p className="text-xs text-muted font-medium max-w-2xl">
-              Browse {filteredListings.length.toLocaleString()} new and used {categoryLabel.toLowerCase()} listings from dealers and private sellers.
-              {' '}Filter by manufacturer, price, condition, and more.
-            </p>
+      {/* Inventory heading */}
+      <div className="bg-surface border-b border-line px-4 md:px-8 py-10">
+        <div className="max-w-[1600px] mx-auto">
+          <span className="label-micro text-accent mb-3 block">{inventoryCopy.eyebrow}</span>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">
+                {inventoryCopy.subject} <span className="text-muted">For Sale</span>
+              </h1>
+              <p className="text-xs text-muted font-medium max-w-2xl">
+                {inventoryCopy.description}
+              </p>
+            </div>
+            <div className="inline-flex w-fit items-center border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-accent">
+              {inventoryCopy.countLabel}
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Active filter pills bar */}
       {visibleActiveFilterCount > 0 && (
@@ -1298,8 +1336,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             {(Object.entries(filters) as [keyof SearchFilters, string][])
               .filter(([key, value]) => {
                 if (key === 'sortBy' || key === 'locationCenterLat' || key === 'locationCenterLng' || !value) return false;
-                if (categoryRoute?.isTopLevel && key === 'category') return false;
-                if (!categoryRoute?.isTopLevel && categoryRoute && key === 'subcategory') return false;
+                if (routeHiddenFilterKeys.has(key)) return false;
                 return true;
               })
               .flatMap(([key, value]) => {

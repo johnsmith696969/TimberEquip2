@@ -49,6 +49,42 @@ function hasOwnValue(record: Record<string, unknown>, candidate: string): boolea
   return Object.keys(record).some((key) => key.trim().toLowerCase() === normalizedCandidate);
 }
 
+function findMatchingKey<T>(record: Record<string, T> | undefined, candidate: string): string {
+  const normalizedCandidate = candidate.trim().toLowerCase();
+  if (!record || !normalizedCandidate) return '';
+  return Object.keys(record).find((key) => key.trim().toLowerCase() === normalizedCandidate) || '';
+}
+
+function cloneRemovals(removals: TaxonomyRemovals): TaxonomyRemovals {
+  const manufacturers: TaxonomyRemovals['manufacturers'] = {};
+  Object.entries(removals.manufacturers).forEach(([category, subcategoryMap]) => {
+    manufacturers[category] = {};
+    Object.entries(subcategoryMap).forEach(([subcategory, makes]) => {
+      manufacturers[category][subcategory] = [...makes];
+    });
+  });
+
+  const models: TaxonomyRemovals['models'] = {};
+  Object.entries(removals.models).forEach(([category, subcategoryMap]) => {
+    models[category] = {};
+    Object.entries(subcategoryMap).forEach(([subcategory, makeMap]) => {
+      models[category][subcategory] = {};
+      Object.entries(makeMap).forEach(([manufacturer, modelList]) => {
+        models[category][subcategory][manufacturer] = [...modelList];
+      });
+    });
+  });
+
+  return {
+    categories: [...removals.categories],
+    subcategories: Object.fromEntries(
+      Object.entries(removals.subcategories).map(([category, subcategories]) => [category, [...subcategories]])
+    ),
+    manufacturers,
+    models,
+  };
+}
+
 function cloneBundledTaxonomy(): EquipmentTaxonomy {
   const cloned: EquipmentTaxonomy = {};
 
@@ -349,11 +385,7 @@ async function updateRuntimeTaxonomy(
   };
 
   if (removalsMutator) {
-    const nextRemovals = { ...runtimeDoc.removals };
-    nextRemovals.categories = [...runtimeDoc.removals.categories];
-    nextRemovals.subcategories = { ...runtimeDoc.removals.subcategories };
-    nextRemovals.manufacturers = { ...runtimeDoc.removals.manufacturers };
-    nextRemovals.models = { ...runtimeDoc.removals.models };
+    const nextRemovals = cloneRemovals(runtimeDoc.removals);
     removalsMutator(nextRemovals);
     updatePayload.removals = nextRemovals;
   }
@@ -395,9 +427,14 @@ export const taxonomyService = {
       throw new Error('That category already exists.');
     }
 
-    return updateRuntimeTaxonomy((overrides) => {
-      overrides[category] = overrides[category] || {};
-    });
+    return updateRuntimeTaxonomy(
+      (overrides) => {
+        overrides[category] = overrides[category] || {};
+      },
+      (removals) => {
+        removals.categories = removals.categories.filter((entry) => entry !== category.toLowerCase());
+      }
+    );
   },
 
   async addSubcategory(categoryLabel: string, subcategoryLabel: string): Promise<FullEquipmentTaxonomy> {
@@ -409,18 +446,29 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    const categoryMap = taxonomy[category];
-    if (!categoryMap) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    const categoryMap = taxonomy[categoryKey];
+    if (!categoryKey || !categoryMap) {
       throw new Error('Choose an existing category before adding a subcategory.');
     }
     if (hasOwnValue(categoryMap as Record<string, unknown>, subcategory)) {
       throw new Error('That subcategory already exists in this category.');
     }
 
-    return updateRuntimeTaxonomy((overrides) => {
-      overrides[category] = overrides[category] || {};
-      overrides[category][subcategory] = overrides[category][subcategory] || {};
-    });
+    return updateRuntimeTaxonomy(
+      (overrides) => {
+        overrides[categoryKey] = overrides[categoryKey] || {};
+        overrides[categoryKey][subcategory] = overrides[categoryKey][subcategory] || {};
+      },
+      (removals) => {
+        const catKey = categoryKey.toLowerCase();
+        const removalKey = subcategory.toLowerCase();
+        removals.subcategories[catKey] = (removals.subcategories[catKey] || []).filter((entry) => entry !== removalKey);
+        if (removals.subcategories[catKey].length === 0) {
+          delete removals.subcategories[catKey];
+        }
+      }
+    );
   },
 
   async addManufacturer(categoryLabel: string, subcategoryLabel: string, manufacturerLabel: string): Promise<FullEquipmentTaxonomy> {
@@ -433,19 +481,36 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    const subcategoryMap = taxonomy[category]?.[subcategory];
-    if (!subcategoryMap) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    const subcategoryKey = findMatchingKey(taxonomy[categoryKey], subcategory);
+    const subcategoryMap = taxonomy[categoryKey]?.[subcategoryKey];
+    if (!categoryKey || !subcategoryKey || !subcategoryMap) {
       throw new Error('Choose an existing category and subcategory before adding a manufacturer.');
     }
     if (hasOwnValue(subcategoryMap as Record<string, unknown>, manufacturer)) {
       throw new Error('That manufacturer already exists in this subcategory.');
     }
 
-    return updateRuntimeTaxonomy((overrides) => {
-      overrides[category] = overrides[category] || {};
-      overrides[category][subcategory] = overrides[category][subcategory] || {};
-      overrides[category][subcategory][manufacturer] = overrides[category][subcategory][manufacturer] || [];
-    });
+    return updateRuntimeTaxonomy(
+      (overrides) => {
+        overrides[categoryKey] = overrides[categoryKey] || {};
+        overrides[categoryKey][subcategoryKey] = overrides[categoryKey][subcategoryKey] || {};
+        overrides[categoryKey][subcategoryKey][manufacturer] = overrides[categoryKey][subcategoryKey][manufacturer] || [];
+      },
+      (removals) => {
+        const catKey = categoryKey.toLowerCase();
+        const subKey = subcategoryKey.toLowerCase();
+        const removalKey = manufacturer.toLowerCase();
+        removals.manufacturers[catKey] = removals.manufacturers[catKey] || {};
+        removals.manufacturers[catKey][subKey] = (removals.manufacturers[catKey][subKey] || []).filter((entry) => entry !== removalKey);
+        if (removals.manufacturers[catKey][subKey].length === 0) {
+          delete removals.manufacturers[catKey][subKey];
+        }
+        if (Object.keys(removals.manufacturers[catKey]).length === 0) {
+          delete removals.manufacturers[catKey];
+        }
+      }
+    );
   },
 
   async addModel(
@@ -464,20 +529,43 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    const modelList = taxonomy[category]?.[subcategory]?.[manufacturer];
-    if (!modelList) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    const subcategoryKey = findMatchingKey(taxonomy[categoryKey], subcategory);
+    const manufacturerKey = findMatchingKey(taxonomy[categoryKey]?.[subcategoryKey], manufacturer);
+    const modelList = taxonomy[categoryKey]?.[subcategoryKey]?.[manufacturerKey];
+    if (!categoryKey || !subcategoryKey || !manufacturerKey || !modelList) {
       throw new Error('Choose an existing category, subcategory, and manufacturer before adding a model.');
     }
     if (modelList.some((existingModel) => existingModel.trim().toLowerCase() === model.toLowerCase())) {
       throw new Error('That model already exists for this manufacturer.');
     }
 
-    return updateRuntimeTaxonomy((overrides) => {
-      overrides[category] = overrides[category] || {};
-      overrides[category][subcategory] = overrides[category][subcategory] || {};
-      overrides[category][subcategory][manufacturer] = overrides[category][subcategory][manufacturer] || [];
-      overrides[category][subcategory][manufacturer].push(model);
-    });
+    return updateRuntimeTaxonomy(
+      (overrides) => {
+        overrides[categoryKey] = overrides[categoryKey] || {};
+        overrides[categoryKey][subcategoryKey] = overrides[categoryKey][subcategoryKey] || {};
+        overrides[categoryKey][subcategoryKey][manufacturerKey] = overrides[categoryKey][subcategoryKey][manufacturerKey] || [];
+        overrides[categoryKey][subcategoryKey][manufacturerKey].push(model);
+      },
+      (removals) => {
+        const catKey = categoryKey.toLowerCase();
+        const subKey = subcategoryKey.toLowerCase();
+        const makeKey = manufacturerKey.toLowerCase();
+        const removalKey = model.toLowerCase();
+        removals.models[catKey] = removals.models[catKey] || {};
+        removals.models[catKey][subKey] = removals.models[catKey][subKey] || {};
+        removals.models[catKey][subKey][makeKey] = (removals.models[catKey][subKey][makeKey] || []).filter((entry) => entry !== removalKey);
+        if (removals.models[catKey][subKey][makeKey].length === 0) {
+          delete removals.models[catKey][subKey][makeKey];
+        }
+        if (Object.keys(removals.models[catKey][subKey]).length === 0) {
+          delete removals.models[catKey][subKey];
+        }
+        if (Object.keys(removals.models[catKey]).length === 0) {
+          delete removals.models[catKey];
+        }
+      }
+    );
   },
 
   async removeCategory(categoryLabel: string): Promise<FullEquipmentTaxonomy> {
@@ -487,21 +575,23 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    if (!hasOwnValue(taxonomy as Record<string, unknown>, category)) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    if (!categoryKey) {
       throw new Error('That category does not exist.');
     }
 
     return updateRuntimeTaxonomy(
       (overrides) => {
         for (const key of Object.keys(overrides)) {
-          if (key.trim().toLowerCase() === category.toLowerCase()) {
+          if (key.trim().toLowerCase() === categoryKey.toLowerCase()) {
             delete overrides[key];
           }
         }
       },
       (removals) => {
-        if (!removals.categories.includes(category.toLowerCase())) {
-          removals.categories.push(category.toLowerCase());
+        const removalKey = categoryKey.toLowerCase();
+        if (!removals.categories.includes(removalKey)) {
+          removals.categories.push(removalKey);
         }
       }
     );
@@ -515,23 +605,28 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    if (!taxonomy[category]?.[subcategory]) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    const subcategoryKey = findMatchingKey(taxonomy[categoryKey], subcategory);
+    if (!categoryKey || !subcategoryKey) {
       throw new Error('That subcategory does not exist in this category.');
     }
 
     return updateRuntimeTaxonomy(
       (overrides) => {
-        if (overrides[category]) {
-          delete overrides[category][subcategory];
+        const overrideCategoryKey = findMatchingKey(overrides, categoryKey);
+        const overrideSubcategoryKey = findMatchingKey(overrides[overrideCategoryKey], subcategoryKey);
+        if (overrideCategoryKey && overrideSubcategoryKey) {
+          delete overrides[overrideCategoryKey][overrideSubcategoryKey];
         }
       },
       (removals) => {
-        const key = category.toLowerCase();
+        const key = categoryKey.toLowerCase();
+        const removalKey = subcategoryKey.toLowerCase();
         if (!removals.subcategories[key]) {
           removals.subcategories[key] = [];
         }
-        if (!removals.subcategories[key].includes(subcategory.toLowerCase())) {
-          removals.subcategories[key].push(subcategory.toLowerCase());
+        if (!removals.subcategories[key].includes(removalKey)) {
+          removals.subcategories[key].push(removalKey);
         }
       }
     );
@@ -550,27 +645,34 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    if (!taxonomy[category]?.[subcategory]?.[manufacturer]) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    const subcategoryKey = findMatchingKey(taxonomy[categoryKey], subcategory);
+    const manufacturerKey = findMatchingKey(taxonomy[categoryKey]?.[subcategoryKey], manufacturer);
+    if (!categoryKey || !subcategoryKey || !manufacturerKey) {
       throw new Error('That manufacturer does not exist in this subcategory.');
     }
 
     return updateRuntimeTaxonomy(
       (overrides) => {
-        if (overrides[category]?.[subcategory]) {
-          delete overrides[category][subcategory][manufacturer];
+        const overrideCategoryKey = findMatchingKey(overrides, categoryKey);
+        const overrideSubcategoryKey = findMatchingKey(overrides[overrideCategoryKey], subcategoryKey);
+        const overrideManufacturerKey = findMatchingKey(overrides[overrideCategoryKey]?.[overrideSubcategoryKey], manufacturerKey);
+        if (overrideCategoryKey && overrideSubcategoryKey && overrideManufacturerKey) {
+          delete overrides[overrideCategoryKey][overrideSubcategoryKey][overrideManufacturerKey];
         }
       },
       (removals) => {
-        const catKey = category.toLowerCase();
-        const subKey = subcategory.toLowerCase();
+        const catKey = categoryKey.toLowerCase();
+        const subKey = subcategoryKey.toLowerCase();
+        const removalKey = manufacturerKey.toLowerCase();
         if (!removals.manufacturers[catKey]) {
           removals.manufacturers[catKey] = {};
         }
         if (!removals.manufacturers[catKey][subKey]) {
           removals.manufacturers[catKey][subKey] = [];
         }
-        if (!removals.manufacturers[catKey][subKey].includes(manufacturer.toLowerCase())) {
-          removals.manufacturers[catKey][subKey].push(manufacturer.toLowerCase());
+        if (!removals.manufacturers[catKey][subKey].includes(removalKey)) {
+          removals.manufacturers[catKey][subKey].push(removalKey);
         }
       }
     );
@@ -591,28 +693,36 @@ export const taxonomyService = {
     }
 
     const taxonomy = await this.getFullTaxonomy();
-    const modelList = taxonomy[category]?.[subcategory]?.[manufacturer];
-    if (!modelList || !modelList.some((m) => m.trim().toLowerCase() === model.toLowerCase())) {
+    const categoryKey = findMatchingKey(taxonomy, category);
+    const subcategoryKey = findMatchingKey(taxonomy[categoryKey], subcategory);
+    const manufacturerKey = findMatchingKey(taxonomy[categoryKey]?.[subcategoryKey], manufacturer);
+    const modelList = taxonomy[categoryKey]?.[subcategoryKey]?.[manufacturerKey];
+    const modelKey = modelList?.find((m) => m.trim().toLowerCase() === model.toLowerCase()) || '';
+    if (!modelList || !modelKey) {
       throw new Error('That model does not exist for this manufacturer.');
     }
 
     return updateRuntimeTaxonomy(
       (overrides) => {
-        if (overrides[category]?.[subcategory]?.[manufacturer]) {
-          overrides[category][subcategory][manufacturer] = overrides[category][subcategory][manufacturer].filter(
-            (m) => m.trim().toLowerCase() !== model.toLowerCase()
+        const overrideCategoryKey = findMatchingKey(overrides, categoryKey);
+        const overrideSubcategoryKey = findMatchingKey(overrides[overrideCategoryKey], subcategoryKey);
+        const overrideManufacturerKey = findMatchingKey(overrides[overrideCategoryKey]?.[overrideSubcategoryKey], manufacturerKey);
+        if (overrideCategoryKey && overrideSubcategoryKey && overrideManufacturerKey) {
+          overrides[overrideCategoryKey][overrideSubcategoryKey][overrideManufacturerKey] = overrides[overrideCategoryKey][overrideSubcategoryKey][overrideManufacturerKey].filter(
+            (m) => m.trim().toLowerCase() !== modelKey.toLowerCase()
           );
         }
       },
       (removals) => {
-        const catKey = category.toLowerCase();
-        const subKey = subcategory.toLowerCase();
-        const makeKey = manufacturer.toLowerCase();
+        const catKey = categoryKey.toLowerCase();
+        const subKey = subcategoryKey.toLowerCase();
+        const makeKey = manufacturerKey.toLowerCase();
+        const removalKey = modelKey.toLowerCase();
         if (!removals.models[catKey]) removals.models[catKey] = {};
         if (!removals.models[catKey][subKey]) removals.models[catKey][subKey] = {};
         if (!removals.models[catKey][subKey][makeKey]) removals.models[catKey][subKey][makeKey] = [];
-        if (!removals.models[catKey][subKey][makeKey].includes(model.toLowerCase())) {
-          removals.models[catKey][subKey][makeKey].push(model.toLowerCase());
+        if (!removals.models[catKey][subKey][makeKey].includes(removalKey)) {
+          removals.models[catKey][subKey][makeKey].push(removalKey);
         }
       }
     );
@@ -632,18 +742,26 @@ export const taxonomyService = {
     if (!category || !subcategory || !manufacturer) return;
 
     const taxonomy = await this.getFullTaxonomy();
-    const existingModels = taxonomy[category]?.[subcategory]?.[manufacturer];
+    const categoryKey = findMatchingKey(taxonomy, category);
+    if (!categoryKey) {
+      console.warn(`Skipped taxonomy auto-add for unknown top-level category: ${category}`);
+      return;
+    }
+
+    const subcategoryKey = findMatchingKey(taxonomy[categoryKey], subcategory) || subcategory;
+    const manufacturerKey = findMatchingKey(taxonomy[categoryKey]?.[subcategoryKey], manufacturer) || manufacturer;
+    const existingModels = taxonomy[categoryKey]?.[subcategoryKey]?.[manufacturerKey];
     const manufacturerExists = existingModels !== undefined;
     const modelExists = model && existingModels?.some((m) => m.trim().toLowerCase() === model.toLowerCase());
 
     if (manufacturerExists && (!model || modelExists)) return;
 
     await updateRuntimeTaxonomy((overrides) => {
-      overrides[category] = overrides[category] || {};
-      overrides[category][subcategory] = overrides[category][subcategory] || {};
-      overrides[category][subcategory][manufacturer] = overrides[category][subcategory][manufacturer] || [];
-      if (model && !overrides[category][subcategory][manufacturer].some((m) => m.trim().toLowerCase() === model.toLowerCase())) {
-        overrides[category][subcategory][manufacturer].push(model);
+      overrides[categoryKey] = overrides[categoryKey] || {};
+      overrides[categoryKey][subcategoryKey] = overrides[categoryKey][subcategoryKey] || {};
+      overrides[categoryKey][subcategoryKey][manufacturerKey] = overrides[categoryKey][subcategoryKey][manufacturerKey] || [];
+      if (model && !overrides[categoryKey][subcategoryKey][manufacturerKey].some((m) => m.trim().toLowerCase() === model.toLowerCase())) {
+        overrides[categoryKey][subcategoryKey][manufacturerKey].push(model);
       }
     });
   },

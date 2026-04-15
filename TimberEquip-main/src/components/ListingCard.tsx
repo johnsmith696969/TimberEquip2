@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Clock, MapPin, TrendingUp, TrendingDown,
+  Hourglass, MapPin, TrendingUp, TrendingDown,
   Bookmark, Phone,
   Square, CheckSquare, Gavel, Eye, MessageSquare
 } from 'lucide-react';
@@ -207,7 +207,7 @@ export const ListingCard = React.memo(function ListingCard({
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] font-bold uppercase tracking-widest text-muted">
                   <span className="flex items-center">
-                    <Clock size={11} className="mr-1" />
+                    <Hourglass size={11} className="mr-1" />
                     {formatNumber(safeHours)} {t('listingCard.hoursShort', 'HRS')}
                   </span>
                   <span className="flex min-w-0 items-center">
@@ -425,7 +425,7 @@ export const ListingCard = React.memo(function ListingCard({
         <div className="flex justify-between items-start mb-2">
           <span className="label-micro">{displayMake}</span>
           <div className="flex items-center text-muted">
-            <Clock size={12} className="mr-1" />
+            <Hourglass size={12} className="mr-1" />
             <span className="text-[10px] font-bold uppercase">{formatNumber(safeHours)} {t('listingCard.hoursShort', 'HRS')}</span>
           </div>
         </div>

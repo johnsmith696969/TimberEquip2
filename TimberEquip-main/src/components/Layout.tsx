@@ -24,6 +24,7 @@ const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=${BRA
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
 const HEADER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
 const FOOTER_LOGO_FALLBACK = `/Forestry_Equipment_Sales_Logo.png?v=${BRAND_ASSET_VERSION}`;
+const QUICK_SEARCH_STICKY_THRESHOLD_PX = 350;
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: '$',
@@ -93,6 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const handleListEquipmentClick = () => rememberSellerReturnTo(currentReturnPath);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showStickyQuickSearch, setShowStickyQuickSearch] = useState(false);
 
   const defaultAccountWorkspacePath = getDefaultAccountWorkspacePath(user);
   const accountRoute = isAuthenticated ? defaultAccountWorkspacePath : '/login';
@@ -110,6 +112,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [location.pathname, location.search]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let animationFrame = 0;
+    const updateStickyQuickSearch = () => {
+      animationFrame = 0;
+      setShowStickyQuickSearch(window.scrollY >= QUICK_SEARCH_STICKY_THRESHOLD_PX);
+    };
+    const onScroll = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(updateStickyQuickSearch);
+    };
+
+    updateStickyQuickSearch();
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
     setHeaderLogoSrc(headerLogo);
   }, [headerLogo]);
 
@@ -123,15 +147,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
     WebkitTapHighlightColor: 'transparent',
   };
 
-  const renderQuickSearchBar = () => (
-    <div className="py-2 px-4 md:px-8 bg-bg border-b border-line" style={quickSearchTapStyle}>
+  const renderQuickSearchBar = (placement: 'inline' | 'sticky' = 'inline') => (
+    <div
+      className={`py-2 px-4 md:px-8 border-b border-line ${
+        placement === 'sticky'
+          ? 'bg-bg/95 shadow-[0_18px_40px_rgba(28,25,23,0.10)] backdrop-blur-xl'
+          : 'bg-bg'
+      }`}
+      style={quickSearchTapStyle}
+    >
       <div className="max-w-[900px] mx-auto flex items-center">
         <form
           onSubmit={handleSearch}
-          className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-none focus-within:border-line focus-within:outline-none focus-within:ring-0"
+          className="flex-1 flex items-center bg-surface border border-line rounded-sm outline-none ring-0 transition-all duration-200 focus-within:border-accent/50 focus-within:shadow-[0_0_24px_rgba(22,163,74,0.12)] focus-within:outline-none focus-within:ring-0"
           style={{
             ...quickSearchTapStyle,
-            boxShadow: 'none',
           }}
         >
           <input
@@ -385,6 +415,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Persistent Quick Search Bar */}
       {renderQuickSearchBar()}
+
+      <AnimatePresence>
+        {showStickyQuickSearch && !isMenuOpen && (
+          <motion.div
+            key="sticky-quick-search"
+            initial={{ opacity: 0, y: -18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -18 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="fixed left-0 right-0 top-0 z-[45]"
+            aria-label="Sticky quick search"
+          >
+            {renderQuickSearchBar('sticky')}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Mobile Menu */}
       <AnimatePresence>

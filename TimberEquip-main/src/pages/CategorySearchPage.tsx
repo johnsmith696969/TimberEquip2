@@ -34,13 +34,19 @@ export function CategorySearchPage() {
           return;
         }
 
-        // Then check subcategories (e.g. "Skidders", "Feller Bunchers")
-        const allSubcategories = Object.values(taxonomy).flatMap((subMap) => Object.keys(subMap));
-        const subMatch = allSubcategories.find(
-          (sub) => normalizeSeoSlug(sub) === categorySlug
-        );
+        // Then check subcategories (e.g. "Skidders", "Feller Bunchers") and retain the parent
+        // category so the search page can apply both filters and build natural SEO copy.
+        const subMatch = Object.entries(taxonomy).flatMap(([parentCategory, subMap]) =>
+          Object.keys(subMap).map((subcategory) => ({ parentCategory, subcategory }))
+        ).find(({ subcategory }) => normalizeSeoSlug(subcategory) === categorySlug);
         if (subMatch) {
-          setCategoryRoute({ categoryName: subMatch, slug: categorySlug, isTopLevel: false });
+          setCategoryRoute({
+            categoryName: subMatch.subcategory,
+            subcategoryName: subMatch.subcategory,
+            parentCategoryName: subMatch.parentCategory,
+            slug: categorySlug,
+            isTopLevel: false,
+          });
           return;
         }
 

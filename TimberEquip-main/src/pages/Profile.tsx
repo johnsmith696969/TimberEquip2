@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   User, Settings, Bookmark, 
-  Clock, CheckCircle2, Eye,
+  Clock, CheckCircle2, Eye, Hourglass,
   ArrowRight, LayoutDashboard,
   LogOut, Bell, Package,
   CreditCard, Edit, Trash2, Plus,
@@ -2011,7 +2011,7 @@ export function Profile() {
                  </div>
                </div>
               <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-muted uppercase tracking-widest">
-                <span className="flex items-center"><Clock size={12} className="mr-1" /> {listing.hours} HRS</span>
+                <span className="flex items-center"><Hourglass size={12} className="mr-1" /> {listing.hours} HRS</span>
                 <span className="flex items-center"><MapPin size={12} className="mr-1" /> {listing.location}</span>
                 <span className="flex items-center"><Eye size={12} className="mr-1" /> {listing.views || 0} VIEWS</span>
                 <span className="flex items-center"><MessageSquare size={12} className="mr-1" /> {listing.leads || 0} LEADS</span>

@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Check, X, Info,
-  TrendingUp, TrendingDown, Clock,
-  Activity, ShieldCheck, MapPin
+  TrendingUp, TrendingDown,
+  CalendarDays, Hourglass, ShieldCheck, MapPin
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { equipmentService } from '../services/equipmentService';
@@ -129,24 +129,30 @@ export function Compare() {
 
               {/* Core Specs */}
               {[
-                { label: 'Year', key: 'year' },
-                { label: 'Hours', key: 'hours' },
-                { label: 'Condition', key: 'condition' },
-                { label: 'Location', key: 'location' }
-              ].map(row => (
-                <tr key={row.key}>
-                  <td className="p-6 border border-line bg-surface/10">
-                    <span className="label-micro">{row.label}</span>
-                  </td>
-                  {listings.map(listing => (
-                    <td key={listing.id} className="p-6 border border-line">
-                      <span className="text-xs font-bold uppercase tracking-wider">
-                        {row.key === 'hours' ? `${formatNumber(listing.hours)} HRS` : (listing as any)[row.key]}
+                { label: 'Year', key: 'year', icon: CalendarDays },
+                { label: 'Hours', key: 'hours', icon: Hourglass },
+                { label: 'Condition', key: 'condition', icon: ShieldCheck },
+                { label: 'Location', key: 'location', icon: MapPin }
+              ].map(row => {
+                const Icon = row.icon;
+                return (
+                  <tr key={row.key}>
+                    <td className="p-6 border border-line bg-surface/10">
+                      <span className="label-micro inline-flex items-center gap-2">
+                        <Icon size={13} className="text-accent" />
+                        {row.label}
                       </span>
                     </td>
-                  ))}
-                </tr>
-              ))}
+                    {listings.map(listing => (
+                      <td key={listing.id} className="p-6 border border-line">
+                        <span className="text-xs font-bold uppercase tracking-wider">
+                          {row.key === 'hours' ? `${formatNumber(listing.hours)} HRS` : (listing as any)[row.key]}
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
 
               {/* Technical Specs */}
               {specKeys.map(key => (

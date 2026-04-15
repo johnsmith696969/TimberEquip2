@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, Navigate, useLocation } from 'react-router-dom';
 import {
-  MapPin, Activity, X, Truck, ChevronLeft,
-  ArrowLeft, Share2, Bookmark, ChevronRight, Clock,
+  MapPin, X, Truck, ChevronLeft,
+  ArrowLeft, Share2, Bookmark, ChevronRight, Hourglass, CalendarDays,
   ShieldCheck, TrendingUp, Info, CheckCircle2,
   Phone, Calculator, AlertCircle, Landmark, RefreshCw, Gavel
 } from 'lucide-react';
@@ -52,6 +52,7 @@ import {
 const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
 const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
 const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
+const GALLERY_PRELOAD_WINDOW = 1;
 
 function getVideoEmbedDescriptor(rawUrl: string): { kind: 'embed' | 'video' | 'link'; src: string } {
   const normalizedUrl = String(rawUrl || '').trim();
@@ -129,8 +130,7 @@ export function ListingDetail() {
   const [loadingMarketMatches, setLoadingMarketMatches] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMapFrameLoading, setIsMapFrameLoading] = useState(false);
-  const [isActiveGalleryImageLoaded, setIsActiveGalleryImageLoaded] = useState(false);
-  const [isFullscreenGalleryImageLoaded, setIsFullscreenGalleryImageLoaded] = useState(false);
+  const [loadedGalleryImageSrcs, setLoadedGalleryImageSrcs] = useState<Set<string>>(() => new Set());
   const fullscreenSwipeRef = React.useRef<{ startX: number; startY: number; time: number } | null>(null);
   const [auctionLot, setAuctionLot] = useState<import('../types').AuctionLot | null>(null);
   const [auctionBids, setAuctionBids] = useState<import('../types').AuctionBid[]>([]);
@@ -490,11 +490,6 @@ export function ListingDetail() {
     return unsub;
   }, [listing?.auctionId, auctionLot?.id]);
 
-  useEffect(() => {
-    setIsActiveGalleryImageLoaded(false);
-    setIsFullscreenGalleryImageLoaded(false);
-  }, [activeImage, listing?.id]);
-
   const machineLatitude = toFiniteNumber(listing?.latitude);
   const machineLongitude = toFiniteNumber(listing?.longitude);
   const machineMapQuery = [
@@ -733,17 +728,67 @@ export function ListingDetail() {
     window.location.href = `tel:${dialablePhone}`;
   };
 
+  const detailImageSources = React.useMemo(() => (
+    listing?.imageVariants?.length
+      ? listing.imageVariants.map((variant) => variant.detailUrl).filter(Boolean)
+      : Array.isArray(listing?.images)
+        ? listing.images.filter(Boolean)
+        : []
+  ), [listing]);
+
+  const galleryImageSources = React.useMemo(
+    () => (detailImageSources.length ? detailImageSources : [LISTING_IMAGE_PLACEHOLDER]),
+    [detailImageSources],
+  );
+
+  const activeGalleryImageSource = galleryImageSources[activeImage] || LISTING_IMAGE_PLACEHOLDER;
+
+  const markGalleryImageLoaded = React.useCallback((src: string) => {
+    const normalizedSrc = String(src || '').trim();
+    if (!normalizedSrc) return;
+
+    setLoadedGalleryImageSrcs((previous) => {
+      if (previous.has(normalizedSrc)) return previous;
+      const next = new Set(previous);
+      next.add(normalizedSrc);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
-    const detailImages =
-      listing?.imageVariants?.length
-        ? listing.imageVariants.map((variant) => variant.detailUrl)
-        : Array.isArray(listing?.images)
-          ? listing.images.filter(Boolean)
-          : [];
-    const galleryLength = detailImages.length ? detailImages.length : 1;
-    if (activeImage < galleryLength) return;
+    setLoadedGalleryImageSrcs(new Set());
+  }, [listing?.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const imageIndexes = new Set<number>();
+    for (let offset = -GALLERY_PRELOAD_WINDOW; offset <= GALLERY_PRELOAD_WINDOW; offset += 1) {
+      const imageIndex = activeImage + offset;
+      if (imageIndex >= 0 && imageIndex < galleryImageSources.length) {
+        imageIndexes.add(imageIndex);
+      }
+    }
+
+    imageIndexes.forEach((imageIndex) => {
+      const src = galleryImageSources[imageIndex];
+      if (!src || loadedGalleryImageSrcs.has(src)) return;
+
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = () => markGalleryImageLoaded(src);
+      image.src = src;
+
+      if (image.complete) {
+        markGalleryImageLoaded(src);
+      }
+    });
+  }, [activeImage, galleryImageSources, loadedGalleryImageSrcs, markGalleryImageLoaded]);
+
+  useEffect(() => {
+    if (activeImage < galleryImageSources.length) return;
     setActiveImage(0);
-  }, [activeImage, listing]);
+  }, [activeImage, galleryImageSources.length]);
 
   const submitFinanceRequestFromCalculator = async (payload: {
     buyerName: string;
@@ -887,7 +932,6 @@ export function ListingDetail() {
   const safeMarketValueEstimate = toFiniteNumber(listing.marketValueEstimate);
   const safeSellerName = formatSpecValue(seller?.name) || formatSpecValue(listing.sellerName) || 'Unknown Seller';
   const safeSellerLocation = formatSpecValue(seller?.location) || formatSpecValue(listing.location) || 'Location Not Available';
-  const safeSellerType = formatSpecValue(seller?.type) || 'Seller';
   const safeSellerLogo = typeof seller?.logo === 'string' ? seller.logo : '';
   const safeSellerId = formatSpecValue(seller?.id) || '';
   const safeSellerTotalListings = toFiniteNumber(seller?.totalListings) ?? 0;
@@ -900,19 +944,15 @@ export function ListingDetail() {
   const hasAmv = typeof safeMarketValueEstimate === 'number' && safeMarketValueEstimate > 0;
   const amvDiff = hasAmv ? safePrice - safeMarketValueEstimate : 0;
   const isBelowAmv = hasAmv ? amvDiff < 0 : false;
-  const detailImages =
-    listing.imageVariants?.length
-      ? listing.imageVariants.map((variant) => variant.detailUrl)
-      : Array.isArray(listing.images)
-        ? listing.images.filter(Boolean)
-        : [];
-  const galleryImages = detailImages.length ? detailImages : [LISTING_IMAGE_PLACEHOLDER];
+  const detailImages = detailImageSources;
+  const galleryImages = galleryImageSources;
   const galleryImageTitles = galleryImages.map((_, index) => {
     const rawTitle = Array.isArray(listing.imageTitles) ? listing.imageTitles[index] : '';
     return String(rawTitle || '').trim();
   });
-  const activeGalleryImageSrc = galleryImages[activeImage] || LISTING_IMAGE_PLACEHOLDER;
+  const activeGalleryImageSrc = activeGalleryImageSource;
   const activeImageTitle = galleryImageTitles[activeImage] || '';
+  const isActiveGalleryImageLoaded = loadedGalleryImageSrcs.has(activeGalleryImageSrc);
   const hasGallery = detailImages.length > 0;
   const listingVideos = Array.isArray(listing.videoUrls)
     ? listing.videoUrls.map((entry) => String(entry || '').trim()).filter(Boolean)
@@ -920,8 +960,6 @@ export function ListingDetail() {
   const listingSpecs = listing.specs && typeof listing.specs === 'object' ? listing.specs : {};
   const listingPath = buildListingPath(listing);
   const safeListingId = String(listing.id || 'pending').trim() || 'pending';
-  const sellerMemberSinceYear = seller?.memberSince ? new Date(seller.memberSince).getFullYear() : null;
-  const hasSellerMemberSinceYear = Number.isFinite(sellerMemberSinceYear);
   const routeCategory = getListingCategoryLabel(listing) || safeCategory;
   const routeManufacturer = getListingManufacturer(listing) || safeMake;
   const routeModel = formatSpecValue(listing.model).trim();
@@ -1139,8 +1177,8 @@ export function ListingDetail() {
       {/* Breadcrumbs & Actions */}
       <div className="bg-surface border-b border-line py-4 px-4 md:px-8">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
-          <Link to="/search" className="flex items-center text-xs font-bold uppercase tracking-widest text-muted hover:text-ink">
-            <ArrowLeft size={14} className="mr-2" />
+          <Link to="/search" className="group inline-flex items-center rounded-sm px-2 py-1 text-xs font-bold uppercase tracking-widest text-muted transition-all duration-200 hover:text-accent hover:shadow-[0_0_24px_rgba(22,163,74,0.14)]">
+            <ArrowLeft size={14} className="mr-2 transition-transform duration-200 group-hover:-translate-x-1" />
             {t('listingDetail.backToInventory', 'Back to Inventory')}
           </Link>
           <div className="flex items-center space-x-4">
@@ -1160,10 +1198,10 @@ export function ListingDetail() {
                   }).catch(() => {});
                 }
               }}
-              className="p-2 text-muted hover:text-ink relative"
+              className="group relative rounded-full p-2 text-muted transition-all duration-200 hover:bg-accent/10 hover:text-accent hover:shadow-[0_0_22px_rgba(22,163,74,0.18)]"
               aria-label="Share listing"
             >
-              {shareCopied ? <CheckCircle2 size={18} className="text-accent" /> : <Share2 size={18} />}
+              {shareCopied ? <CheckCircle2 size={18} className="text-accent" /> : <Share2 size={18} className="transition-transform duration-200 group-hover:scale-110" />}
             </button>
             <button
               onClick={handleToggleFavorite}
@@ -1210,7 +1248,7 @@ export function ListingDetail() {
                     )}
                 </div>
                 <div className="flex items-center space-x-1.5">
-                  <Clock size={14} className="text-accent" />
+                  <Hourglass size={14} className="text-accent" />
                   <span className="text-xs font-bold uppercase tracking-widest">{formatNumber(safeHours)} {t('listingDetail.hours', 'Hours')}</span>
                 </div>
               </div>
@@ -1266,7 +1304,7 @@ export function ListingDetail() {
                       alt={activeImageTitle || listing.title}
                       className="block h-full w-full max-h-full max-w-full object-contain cursor-zoom-in"
                       onClick={hasGallery ? openFullscreenImage : undefined}
-                      onLoad={() => setIsActiveGalleryImageLoaded(true)}
+                      onLoad={() => markGalleryImageLoaded(activeGalleryImageSrc)}
                       referrerPolicy="no-referrer"
                       fetchPriority={activeImage === 0 ? 'high' : undefined}
                       decoding="async"
@@ -1499,8 +1537,8 @@ export function ListingDetail() {
             {/* Core Specs Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-1 bg-line border border-line">
               {[
-                { label: t('listingDetail.year', 'Year'), value: safeYear, icon: Clock },
-                { label: t('listingDetail.hours', 'Hours'), value: formatNumber(safeHours), icon: Activity },
+                { label: t('listingDetail.year', 'Year'), value: safeYear, icon: CalendarDays },
+                { label: t('listingDetail.hours', 'Hours'), value: formatNumber(safeHours), icon: Hourglass },
                 { label: t('listingDetail.condition', 'Condition'), value: safeCondition, icon: ShieldCheck },
                 { label: t('listingDetail.location', 'Location'), value: safeLocation, icon: MapPin },
                 { label: t('listingDetail.make', 'Make'), value: safeMake, icon: Info },
@@ -1909,9 +1947,7 @@ export function ListingDetail() {
               <div className="bg-surface border border-line p-8">
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex flex-col">
-                    <span className="label-micro mb-2">
-                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.sellerVerificationPending', 'Seller (Verification Pending)')}
-                    </span>
+                    <span className="label-micro mb-2">{t('listingDetail.seller', 'Seller')}</span>
                     <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
                     <a 
                       href={`https://maps.apple.com/?q=${encodeURIComponent(safeSellerLocation)}`}
@@ -1973,13 +2009,6 @@ export function ListingDetail() {
                       {seller.manuallyVerified ? 'Remove Manual Verification' : 'Manually Verify Seller'}
                     </button>
                   )}
-                  <div className="flex items-center space-x-3 text-xs font-bold text-muted">
-                    <Clock size={16} />
-                    <span className="uppercase tracking-widest">
-                      {safeSellerType}
-                      {hasSellerMemberSinceYear ? ` • Member Since ${sellerMemberSinceYear}` : ''}
-                    </span>
-                  </div>
                 </div>
 
                 <Link to={dealerPath || `/dealers/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
@@ -2085,20 +2114,18 @@ export function ListingDetail() {
                         >
                           <div
                             className={`absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(255,255,255,0)_45%),linear-gradient(135deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] transition-opacity duration-200 ${
-                              isFullscreenGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
+                              isActiveGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
                             }`}
                           />
                           <img
                             src={activeGalleryImageSrc}
                             alt={activeImageTitle || listing.title}
-                            className={`block h-full w-full max-h-full max-w-full object-contain select-none transition-opacity duration-200 ${
-                              isFullscreenGalleryImageLoaded ? 'opacity-100' : 'opacity-0'
-                            }`}
-                            onLoad={() => setIsFullscreenGalleryImageLoaded(true)}
+                            className="block h-full w-full max-h-full max-w-full object-contain select-none"
+                            onLoad={() => markGalleryImageLoaded(activeGalleryImageSrc)}
                             referrerPolicy="no-referrer"
                             decoding="async"
                           />
-                          <div className={`absolute inset-0 pointer-events-none ${isFullscreenGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}`}>
+                          <div className={`absolute inset-0 pointer-events-none ${isActiveGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}`}>
                             <WatermarkOverlay index={activeImage} />
                           </div>
                         </motion.div>
