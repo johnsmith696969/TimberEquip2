@@ -7,8 +7,7 @@ coverage/
 *.log
 .env*
 !.env.example
-!functions/.env
-!functions/.env.timberequip-staging
+!functions/.env.example
 .firebase-web-config.local.json
 test-results/
 playwright-report/

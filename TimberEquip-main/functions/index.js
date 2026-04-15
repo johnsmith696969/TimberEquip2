@@ -83,7 +83,7 @@ const LEGACY_RUNTIME_CONFIG = (() => {
   }
 })();
 
-const RECAPTCHA_SITE_KEY = defineString('RECAPTCHA_SITE_KEY', { default: '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0' });
+const RECAPTCHA_SITE_KEY = defineString('RECAPTCHA_SITE_KEY', { default: '' });
 const RECAPTCHA_PROJECT_ID = defineString('RECAPTCHA_PROJECT_ID', { default: 'mobile-app-equipment-sales' });
 
 if (!admin.apps.length) {
@@ -7564,11 +7564,16 @@ async function getMarketplaceStatsPayload() {
 }
 
 async function assessRecaptchaToken(token, action) {
+  const siteKey = RECAPTCHA_SITE_KEY.value();
+  if (!siteKey) {
+    logger.error('reCAPTCHA site key is not configured.');
+    return { valid: false, score: 0 };
+  }
   const client = new RecaptchaEnterpriseServiceClient();
   const projectPath = client.projectPath(RECAPTCHA_PROJECT_ID.value());
   const request = {
     assessment: {
-      event: { token, siteKey: RECAPTCHA_SITE_KEY.value() },
+      event: { token, siteKey },
     },
     parent: projectPath,
   };

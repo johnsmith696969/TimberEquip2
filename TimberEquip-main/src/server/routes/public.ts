@@ -156,6 +156,11 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
       // Dev mode without key: pass everything through
       return res.json({ pass: true, score: null });
     }
+    const siteKey = process.env.RECAPTCHA_SITE_KEY;
+    if (!siteKey) {
+      logger.error('reCAPTCHA site key is not configured');
+      return res.json({ pass: false, score: null });
+    }
 
     try {
       const response = await fetch(
@@ -163,7 +168,7 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: { token, siteKey: process.env.RECAPTCHA_SITE_KEY || '6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0', expectedAction: action } }),
+          body: JSON.stringify({ event: { token, siteKey, expectedAction: action } }),
         }
       );
       if (!response.ok) {
