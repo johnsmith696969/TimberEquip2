@@ -46,6 +46,17 @@ jobs:
 
       - name: Verify production bundle
         run: npm run verify:production
+        env:
+          VITE_FIREBASE_API_KEY: AIzaSyChC_87Qt3KNzsiV9v4Nkz2kIXd9QZ60XQ
+          VITE_FIREBASE_PROJECT_ID: mobile-app-equipment-sales
+          VITE_FIREBASE_APP_ID: 1:547811102681:web:3065d1745c6b8dac4993c8
+          VITE_FIREBASE_AUTH_DOMAIN: mobile-app-equipment-sales.firebaseapp.com
+          VITE_FIREBASE_STORAGE_BUCKET: mobile-app-equipment-sales.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: 547811102681
+          VITE_FIREBASE_FIRESTORE_DATABASE_ID: ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyDYp5RXU0OLpYpmUKmmE29J4Q-SeaxeQjY
+          VITE_RECAPTCHA_SITE_KEY: 6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0
+          VITE_ALLOW_INDEXING: true
 
   deploy:
     needs: verify
@@ -95,6 +106,16 @@ jobs:
           FIREBASE_DEPLOY_SCOPE: ${{ vars.FIREBASE_DEPLOY_SCOPE }}
           RECAPTCHA_SITE_KEY: 6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0
           RECAPTCHA_PROJECT_ID: mobile-app-equipment-sales
+          VITE_FIREBASE_API_KEY: AIzaSyChC_87Qt3KNzsiV9v4Nkz2kIXd9QZ60XQ
+          VITE_FIREBASE_PROJECT_ID: mobile-app-equipment-sales
+          VITE_FIREBASE_APP_ID: 1:547811102681:web:3065d1745c6b8dac4993c8
+          VITE_FIREBASE_AUTH_DOMAIN: mobile-app-equipment-sales.firebaseapp.com
+          VITE_FIREBASE_STORAGE_BUCKET: mobile-app-equipment-sales.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: 547811102681
+          VITE_FIREBASE_FIRESTORE_DATABASE_ID: ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyDYp5RXU0OLpYpmUKmmE29J4Q-SeaxeQjY
+          VITE_RECAPTCHA_SITE_KEY: 6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0
+          VITE_ALLOW_INDEXING: true
 
       - name: Smoke test production routes
         run: npm run smoke:routes
