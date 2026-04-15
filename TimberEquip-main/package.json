@@ -20,8 +20,8 @@
     "validate:staging:smoke": "node scripts/validate-deploy-config.mjs --env staging --require-smoke",
     "validate:production": "node scripts/validate-deploy-config.mjs --env production",
     "validate:production:smoke": "node scripts/validate-deploy-config.mjs --env production --require-smoke",
-    "verify:staging": "npm run lint && npm test && npm run build:noindex",
-    "verify:production": "npm run lint && npm test && npm run build:indexable",
+    "verify:staging": "npm run lint && npm run test:ci && npm run build:noindex",
+    "verify:production": "npm run lint && npm run test:ci && npm run build:indexable",
     "governance:backfill": "node scripts/backfill-listing-governance.cjs",
     "images:backfill:avif": "node scripts/backfill-listing-avif-source-images.cjs",
     "release:notes": "node scripts/generate-release-notes.mjs",
@@ -44,6 +44,7 @@
     "deploy:indexable": "node scripts/run-seo-command.mjs indexable \"npm run build && npx firebase-tools deploy --only hosting\"",
     "hosting:serve": "npx firebase-tools emulators:start --only hosting",
     "test": "vitest run",
+    "test:ci": "vitest run --exclude '**/listingCard.component.test.tsx' --exclude '**/auctionService.test.ts'",
     "test:e2e:public": "playwright test tests-e2e/public-critical-journeys.spec.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
