@@ -266,7 +266,7 @@ export function DealerOS() {
     () => inquiries.find((inquiry) => inquiry.id === selectedInquiryId) || null,
     [inquiries, selectedInquiryId]
   );
-  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://forestryequipmentsales.com';
   const publicDealerId = storefrontProfile?.storefrontSlug || ownerUid;
   const publicDealerPageUrl = publicDealerId ? `${appOrigin}/dealers/${encodeURIComponent(publicDealerId)}` : '';
   const publicDealerFeedUrl = publicDealerId ? `${appOrigin}/api/public/dealers/${encodeURIComponent(publicDealerId)}/feed.json` : '';

@@ -57,7 +57,7 @@ export function DealerFeedsTab({ accounts }: DealerFeedsTabProps) {
     [accounts]
   );
 
-  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://timberequip.com';
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://forestryequipmentsales.com';
   const currentDfCurlSnippet = dfActiveProfile?.ingestUrl
     ? buildDealerFeedApiCurlSnippet({
         ingestUrl: dfActiveProfile.ingestUrl,

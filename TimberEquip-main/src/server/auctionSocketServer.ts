@@ -20,6 +20,8 @@ import { AuctionTimerManager } from './auctionTimerManager.js';
 // ── Allowed origins (must match server.ts CORS config) ──────────────────
 
 const ALLOWED_ORIGINS: string[] = [
+  'https://forestryequipmentsales.com',
+  'https://www.forestryequipmentsales.com',
   'https://timberequip.com',
   'https://www.timberequip.com',
   'https://mobile-app-equipment-sales.web.app',

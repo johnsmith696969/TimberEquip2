@@ -307,7 +307,9 @@ function getBillingApiBaseUrls(): string[] {
     bases.push(origin);
   }
 
-  if (hostname === 'www.timberequip.com') {
+  if (hostname === 'www.forestryequipmentsales.com') {
+    bases.push('https://forestryequipmentsales.com');
+  } else if (hostname === 'www.timberequip.com') {
     bases.push('https://timberequip.com');
   }
 

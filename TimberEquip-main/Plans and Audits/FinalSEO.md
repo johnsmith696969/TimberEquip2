@@ -1,4 +1,4 @@
-# TimberEquip — Full SEO Audit
+# Forestry Equipment Sales — Full SEO Audit
 Generated: 2026-04-04
 
 Source of truth: `src/components/Seo.tsx`, `src/App.tsx` (routes), and every page file in `src/pages/*.tsx`.
@@ -20,16 +20,16 @@ interface SeoProps {
   robots?: string;            // defaults to DEFAULT_ROBOTS (env-gated)
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
   ogType?: 'website' | 'article' | 'product';  // defaults to 'website'
-  imagePath?: string;         // defaults to '/TimberEquip-Logo.png?v=20260405c'
+  imagePath?: string;         // defaults to '/Forestry Equipment Sales-Logo.png?v=20260405c'
   preloadImage?: string;      // optional LCP hero preload
 }
 ```
 
 - **Default title:** N/A — `title` is a required prop, there is no fallback. Any page that fails to render its Seo component will leave the title from `index.html` in place.
-- **Base URL:** `const BASE_URL = 'https://timberequip.com';`
-- **Default OG image:** `'/TimberEquip-Logo.png?v=20260405c'` (resolved against BASE_URL if not absolute).
+- **Base URL:** `const BASE_URL = 'https://forestryequipmentsales.com';`
+- **Default OG image:** `'/Forestry Equipment Sales-Logo.png?v=20260405c'` (resolved against BASE_URL if not absolute).
 - **Default OG type:** `'website'`.
-- **OG site name:** hardcoded as `'TimberEquip'`.
+- **OG site name:** hardcoded as `'Forestry Equipment Sales'`.
 
 #### Default robots directive (env-gated)
 
@@ -80,16 +80,16 @@ Behavior:
 ### `index.html` (pre-hydration meta)
 
 ```html
-<title>TimberEquip | New &amp; Used Logging Equipment For Sale</title>
-<meta name="description" content="TimberEquip marketplace for in-stock new and used logging equipment. Filter by category, manufacturer, model, price, hours, condition, and location." />
+<title>Forestry Equipment Sales | New &amp; Used Logging Equipment For Sale</title>
+<meta name="description" content="Forestry Equipment Sales marketplace for in-stock new and used logging equipment. Filter by category, manufacturer, model, price, hours, condition, and location." />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-<meta property="og:site_name" content="TimberEquip" />
+<meta property="og:site_name" content="Forestry Equipment Sales" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="TimberEquip | New &amp; Used Logging Equipment For Sale" />
-<meta property="og:description" content="TimberEquip marketplace for in-stock new and used logging equipment. Filter by category, manufacturer, model, price, hours, condition, and location." />
-<meta property="og:url" content="https://timberequip.com/" />
-<meta property="og:image" content="https://timberequip.com/TimberEquip-Brand-Logo-Header-Email.png?v=20260405c" />
-<link rel="canonical" href="https://timberequip.com/" />
+<meta property="og:title" content="Forestry Equipment Sales | New &amp; Used Logging Equipment For Sale" />
+<meta property="og:description" content="Forestry Equipment Sales marketplace for in-stock new and used logging equipment. Filter by category, manufacturer, model, price, hours, condition, and location." />
+<meta property="og:url" content="https://forestryequipmentsales.com/" />
+<meta property="og:image" content="https://forestryequipmentsales.com/Forestry Equipment Sales-Brand-Logo-Header-Email.png?v=20260405c" />
+<link rel="canonical" href="https://forestryequipmentsales.com/" />
 ```
 
 **Note:** the pre-hydration `<meta name="robots">` in `index.html` is hardcoded to `index, follow, …` regardless of `VITE_ALLOW_INDEXING`. This is only the first-paint value; React's `<Seo>` component overwrites it on hydration with the env-gated `DEFAULT_ROBOTS` (or the explicit prop). Crawlers that execute JS will see the final React-written value; crawlers that do not (or snapshot before hydration) see the `index, follow` default.
@@ -102,7 +102,7 @@ Behavior:
 User-agent: *
 Allow: /
 
-Sitemap: https://www.timberequip.com/sitemap.xml
+Sitemap: https://www.forestryequipmentsales.com/sitemap.xml
 ```
 
 This file is **fully permissive** — nothing is disallowed. All gating happens via per-page `<meta name="robots">`.
@@ -115,40 +115,40 @@ All routes below are mounted in `src/App.tsx`. "default" in the Robots column me
 
 | Route | Component | Tab Title | Meta Description | Canonical | Robots | JSON-LD |
 |-------|-----------|-----------|------------------|-----------|--------|---------|
-| `/` | `Home` | `Logging Equipment For Sale \| TimberEquip` | `Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment at timberequip.com` | `/` | default | `@graph`: `Organization`, `WebSite`, `CollectionPage`, `ItemList` |
-| `/about` and `/about-us` | `About` | `About Us \| TimberEquip` | `Learn why TimberEquip was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster.` | `/about` | default | `AboutPage` + `Organization` + `BreadcrumbList` |
-| `/ad-programs` | `AdPrograms` | `Seller Ad Programs \| List Equipment \| TimberEquip` | `Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the TimberEquip marketplace.` | `/ad-programs` | default | `Service` + `BreadcrumbList` |
-| `/admin` (+ `?tab=*`) | `AdminDashboard` | `${dashboardHeading} \| TimberEquip` (dashboardHeading = Account Overview / Machine Inventory / Lead Monitoring / Call Logs / Performance Tracking / Account Directory / Billing Account / Content Studio / Dealer Feed Manager / Auction Management / Taxonomy Manager / Operator Directory / Profile Settings) | When `activeTab==='overview'`: `Review live TimberEquip marketplace operations, inventory, leads, and account activity.`; else: `Manage ${dashboardHeading.toLowerCase()} in the TimberEquip admin workspace.` | `/admin` when `activeTab==='overview'`, else `` /admin?tab=${activeTab} `` | **`noindex, nofollow`** (hardcoded) | none |
-| `/auctions` | `Auctions` | `Equipment Auctions \| TimberEquip` | `Browse active and upcoming forestry equipment auctions, review bidder requirements and auction terms, and bid on logging machines, land clearing equipment, trucks, and trailers.` | `/auctions` | default | `CollectionPage` |
-| `/auctions/:auctionSlug/register` | `BidderRegistration` | `` `${auction ? `${auction.title} \| ` : ''}Register to Bid \| TimberEquip` `` | `Complete bidder registration, identity verification, and payment setup for the auction.` | *(not set — missing)* | default | none |
-| `/blog` | `Blog` | `Equipment News \| Market Reports & Industry Updates \| TimberEquip` | `Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from TimberEquip.` | `/blog` | default | `@graph`: `Blog`, `BreadcrumbList` |
-| `/bookmarks` | `Bookmarks` | `Saved Equipment \| TimberEquip` | `Your bookmarked forestry equipment listings on TimberEquip.` | `/bookmarks` | default | none |
-| `/calculator` | `Calculator` | `Equipment Financing Calculator \| TimberEquip` | `Estimate monthly payments on forestry and logging equipment. Adjust price, down payment, term, and interest rate to plan your next purchase.` | `/calculator` | default | none |
-| `/categories` | `Categories` | `Equipment Categories \| Browse Marketplace Equipment Families \| TimberEquip` | `Browse TimberEquip inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.` | `/categories` | default | `CollectionPage` with `hasPart` array of `Collection` |
-| `/compare` | `Compare` | `Compare Equipment \| TimberEquip` | `Compare forestry equipment listings side by side. Review specs, pricing, hours, and condition to find the right machine.` | `/compare` | default | none |
-| `/contact` | `Contact` | `Contact TimberEquip \| Sales, Support, and Dealer Help` | `Contact TimberEquip for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination.` | `/contact` | default | `@graph`: `ContactPage`, `Organization` (with `ContactPoint`), `BreadcrumbList` |
-| `/cookies` | `Cookies` | `Cookie Policy \| TimberEquip` | `Learn how TimberEquip uses cookies, localStorage, and tracking technologies. Manage your preferences and understand your choices.` | `/cookies` | default | none (just `ogType: 'website'` explicit) |
-| `/dealer-os` | `DealerOS` | `DealerOS \| TimberEquip` | `Manage your dealer inventory, leads, feed imports, and storefront settings.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
-| `/dealers` | `Dealers` | `Find Forestry Equipment Dealers & Manufacturers \| TimberEquip` | `Search forestry equipment dealers and manufacturers by name, state, country, and category. Sort by nearest location. Browse dealer and pro dealer storefronts.` | `/dealers` | default | `@graph`: `CollectionPage`, `BreadcrumbList`, `ItemList` of `Organization` |
-| `/dmca` | `Dmca` | `DMCA Policy \| TimberEquip` | `Digital Millennium Copyright Act (DMCA) policy for TimberEquip. Takedown procedures, counter-notifications, designated agent, and repeat infringer policy.` | `/dmca` | default | none |
-| `/faq` | `Faq` | `Logging Equipment Marketplace FAQ \| Buyers, Sellers, and Dealers` | `Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on TimberEquip.` | `/faq` | default | `@graph`: `FAQPage` (`Question`/`Answer`), `BreadcrumbList` |
-| `/financing` | `Financing` | `Equipment Financing \| Apply for Credit \| TimberEquip` | `Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through TimberEquip.` | `/financing` | default | `@graph`: `Service`, `BreadcrumbList` |
-| `/logistics` | `Logistics` | `Global Logistics \| Trucking Request Form \| TimberEquip` | `Request trucking and heavy-haul coordination for forestry equipment with the TimberEquip logistics team.` | `/logistics` | default | `@graph`: `Service`, `Place`, `BreadcrumbList` |
-| `/login` | `Login` | `Sign In \| TimberEquip` | `Sign in to your TimberEquip account to manage listings, view saved equipment, and access dealer tools.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
-| `/manufacturers` | `Manufacturers` | `Equipment Manufacturers \| TimberEquip` | `Browse equipment manufacturers with direct paths into live marketplace inventory, top machine categories, and regional availability.` | `/manufacturers` | default | `CollectionPage` with `ListItem` entries |
-| `/404` and `*` (catch-all) | `NotFound` | `Page Not Found \| TimberEquip` | `The page you requested could not be found. Browse live equipment inventory, categories, dealers, or return to the TimberEquip homepage.` | `/404` | **`noindex, nofollow, noarchive, nosnippet, noimageindex`** (hardcoded) | none |
-| `/our-team` and `/about/our-team` | `OurTeam` | `Our Team \| TimberEquip` | `Meet the TimberEquip team behind the marketplace, logistics coordination, customer support, and platform development.` | `/our-team` | default | `@graph`: `AboutPage`, `Organization` with `Person[]`, `BreadcrumbList` |
-| `/privacy` | `Privacy` | `Privacy Policy \| TimberEquip` | `Learn how TimberEquip collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant. Data encryption, third-party processors, and your rights explained.` | `/privacy` | default | `@graph`: `WebPage`, `BreadcrumbList` |
-| `/profile` (+ `?tab=*`) | `Profile` | `` `${activeTab} \| TimberEquip` `` | Overview: `Manage your TimberEquip account, listings, saved equipment, and subscription settings.`; else: `` `Manage ${activeTab.toLowerCase()} from your TimberEquip account workspace.` `` | `/profile` for overview, else `` `/profile?tab=${encodeURIComponent(activeTab)}` `` | **`noindex, nofollow`** (hardcoded) | none |
-| `/register` | `Register` | `Create Account \| TimberEquip` | `Register for a free account to browse, bookmark, and inquire on forestry equipment. Sellers can subscribe to list machines.` | `/register` | **`noindex, nofollow`** (hardcoded) | none |
-| `/reset-password` | `ResetPassword` | `Reset Password \| TimberEquip` | `Securely reset your TimberEquip account password.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
+| `/` | `Home` | `Logging Equipment For Sale \| Forestry Equipment Sales` | `Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse reliable forestry equipment at forestryequipmentsales.com` | `/` | default | `@graph`: `Organization`, `WebSite`, `CollectionPage`, `ItemList` |
+| `/about` and `/about-us` | `About` | `About Us \| Forestry Equipment Sales` | `Learn why Forestry Equipment Sales was built, who we serve, and how our marketplace helps contractors, dealers, and buyers move equipment faster.` | `/about` | default | `AboutPage` + `Organization` + `BreadcrumbList` |
+| `/ad-programs` | `AdPrograms` | `Seller Ad Programs \| List Equipment \| Forestry Equipment Sales` | `Choose an Owner-Operator, Dealer, or Pro Dealer subscription to list forestry equipment on the Forestry Equipment Sales marketplace.` | `/ad-programs` | default | `Service` + `BreadcrumbList` |
+| `/admin` (+ `?tab=*`) | `AdminDashboard` | `${dashboardHeading} \| Forestry Equipment Sales` (dashboardHeading = Account Overview / Machine Inventory / Lead Monitoring / Call Logs / Performance Tracking / Account Directory / Billing Account / Content Studio / Dealer Feed Manager / Auction Management / Taxonomy Manager / Operator Directory / Profile Settings) | When `activeTab==='overview'`: `Review live Forestry Equipment Sales marketplace operations, inventory, leads, and account activity.`; else: `Manage ${dashboardHeading.toLowerCase()} in the Forestry Equipment Sales admin workspace.` | `/admin` when `activeTab==='overview'`, else `` /admin?tab=${activeTab} `` | **`noindex, nofollow`** (hardcoded) | none |
+| `/auctions` | `Auctions` | `Equipment Auctions \| Forestry Equipment Sales` | `Browse active and upcoming forestry equipment auctions, review bidder requirements and auction terms, and bid on logging machines, land clearing equipment, trucks, and trailers.` | `/auctions` | default | `CollectionPage` |
+| `/auctions/:auctionSlug/register` | `BidderRegistration` | `` `${auction ? `${auction.title} \| ` : ''}Register to Bid \| Forestry Equipment Sales` `` | `Complete bidder registration, identity verification, and payment setup for the auction.` | *(not set — missing)* | default | none |
+| `/blog` | `Blog` | `Equipment News \| Market Reports & Industry Updates \| Forestry Equipment Sales` | `Stay up to date with forestry equipment market reports, industry news, price trends, and inventory analysis from Forestry Equipment Sales.` | `/blog` | default | `@graph`: `Blog`, `BreadcrumbList` |
+| `/bookmarks` | `Bookmarks` | `Saved Equipment \| Forestry Equipment Sales` | `Your bookmarked forestry equipment listings on Forestry Equipment Sales.` | `/bookmarks` | default | none |
+| `/calculator` | `Calculator` | `Equipment Financing Calculator \| Forestry Equipment Sales` | `Estimate monthly payments on forestry and logging equipment. Adjust price, down payment, term, and interest rate to plan your next purchase.` | `/calculator` | default | none |
+| `/categories` | `Categories` | `Equipment Categories \| Browse Marketplace Equipment Families \| Forestry Equipment Sales` | `Browse Forestry Equipment Sales inventory by major equipment family including logging equipment, land clearing equipment, firewood equipment, trucks, trailers, and more.` | `/categories` | default | `CollectionPage` with `hasPart` array of `Collection` |
+| `/compare` | `Compare` | `Compare Equipment \| Forestry Equipment Sales` | `Compare forestry equipment listings side by side. Review specs, pricing, hours, and condition to find the right machine.` | `/compare` | default | none |
+| `/contact` | `Contact` | `Contact Forestry Equipment Sales \| Sales, Support, and Dealer Help` | `Contact Forestry Equipment Sales for buying help, seller support, dealer storefront questions, financing requests, and logistics coordination.` | `/contact` | default | `@graph`: `ContactPage`, `Organization` (with `ContactPoint`), `BreadcrumbList` |
+| `/cookies` | `Cookies` | `Cookie Policy \| Forestry Equipment Sales` | `Learn how Forestry Equipment Sales uses cookies, localStorage, and tracking technologies. Manage your preferences and understand your choices.` | `/cookies` | default | none (just `ogType: 'website'` explicit) |
+| `/dealer-os` | `DealerOS` | `DealerOS \| Forestry Equipment Sales` | `Manage your dealer inventory, leads, feed imports, and storefront settings.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
+| `/dealers` | `Dealers` | `Find Forestry Equipment Dealers & Manufacturers \| Forestry Equipment Sales` | `Search forestry equipment dealers and manufacturers by name, state, country, and category. Sort by nearest location. Browse dealer and pro dealer storefronts.` | `/dealers` | default | `@graph`: `CollectionPage`, `BreadcrumbList`, `ItemList` of `Organization` |
+| `/dmca` | `Dmca` | `DMCA Policy \| Forestry Equipment Sales` | `Digital Millennium Copyright Act (DMCA) policy for Forestry Equipment Sales. Takedown procedures, counter-notifications, designated agent, and repeat infringer policy.` | `/dmca` | default | none |
+| `/faq` | `Faq` | `Logging Equipment Marketplace FAQ \| Buyers, Sellers, and Dealers` | `Find answers about buying, selling, financing, shipping, dealer storefronts, approvals, and equipment listings on Forestry Equipment Sales.` | `/faq` | default | `@graph`: `FAQPage` (`Question`/`Answer`), `BreadcrumbList` |
+| `/financing` | `Financing` | `Equipment Financing \| Apply for Credit \| Forestry Equipment Sales` | `Apply for flexible forestry equipment financing with fast approvals, competitive rates, and terms up to 84 months through Forestry Equipment Sales.` | `/financing` | default | `@graph`: `Service`, `BreadcrumbList` |
+| `/logistics` | `Logistics` | `Global Logistics \| Trucking Request Form \| Forestry Equipment Sales` | `Request trucking and heavy-haul coordination for forestry equipment with the Forestry Equipment Sales logistics team.` | `/logistics` | default | `@graph`: `Service`, `Place`, `BreadcrumbList` |
+| `/login` | `Login` | `Sign In \| Forestry Equipment Sales` | `Sign in to your Forestry Equipment Sales account to manage listings, view saved equipment, and access dealer tools.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
+| `/manufacturers` | `Manufacturers` | `Equipment Manufacturers \| Forestry Equipment Sales` | `Browse equipment manufacturers with direct paths into live marketplace inventory, top machine categories, and regional availability.` | `/manufacturers` | default | `CollectionPage` with `ListItem` entries |
+| `/404` and `*` (catch-all) | `NotFound` | `Page Not Found \| Forestry Equipment Sales` | `The page you requested could not be found. Browse live equipment inventory, categories, dealers, or return to the Forestry Equipment Sales homepage.` | `/404` | **`noindex, nofollow, noarchive, nosnippet, noimageindex`** (hardcoded) | none |
+| `/our-team` and `/about/our-team` | `OurTeam` | `Our Team \| Forestry Equipment Sales` | `Meet the Forestry Equipment Sales team behind the marketplace, logistics coordination, customer support, and platform development.` | `/our-team` | default | `@graph`: `AboutPage`, `Organization` with `Person[]`, `BreadcrumbList` |
+| `/privacy` | `Privacy` | `Privacy Policy \| Forestry Equipment Sales` | `Learn how Forestry Equipment Sales collects, uses, and protects your data. GDPR, CCPA, and COPPA compliant. Data encryption, third-party processors, and your rights explained.` | `/privacy` | default | `@graph`: `WebPage`, `BreadcrumbList` |
+| `/profile` (+ `?tab=*`) | `Profile` | `` `${activeTab} \| Forestry Equipment Sales` `` | Overview: `Manage your Forestry Equipment Sales account, listings, saved equipment, and subscription settings.`; else: `` `Manage ${activeTab.toLowerCase()} from your Forestry Equipment Sales account workspace.` `` | `/profile` for overview, else `` `/profile?tab=${encodeURIComponent(activeTab)}` `` | **`noindex, nofollow`** (hardcoded) | none |
+| `/register` | `Register` | `Create Account \| Forestry Equipment Sales` | `Register for a free account to browse, bookmark, and inquire on forestry equipment. Sellers can subscribe to list machines.` | `/register` | **`noindex, nofollow`** (hardcoded) | none |
+| `/reset-password` | `ResetPassword` | `Reset Password \| Forestry Equipment Sales` | `Securely reset your Forestry Equipment Sales account password.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
 | `/sell` | `Sell` (via `SellWorkspaceRoute` wrapper) | `Sell Equipment \| List Your Machine Fast` | `List your equipment with category specs, photos, optional video, and a quick condition checklist.` | `/sell` | default | none |
-| `/states` | `States` | `Equipment Markets By State \| TimberEquip` | `Browse state-level market pages for forestry and logging equipment, with direct paths into live public inventory.` | `/states` | default | `CollectionPage` with `ListItem` entries |
-| `/subscription-success` | `SubscriptionSuccess` | `Subscription Success \| TimberEquip` | `Confirm your TimberEquip seller subscription and continue into your account.` | `/subscription-success` | default | none |
-| `/terms` | `Terms` | `Terms of Service \| TimberEquip` | `Terms of service governing the use of the TimberEquip marketplace, including listing rules, auction bidding terms, billing, dispute resolution, and governing law.` | `/terms` | default | `@graph`: `WebPage`, `BreadcrumbList` |
-| `/unsubscribe` | `Unsubscribe` | `Unsubscribe \| TimberEquip` | `Manage your email notification preferences for TimberEquip.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
-| `/forestry-equipment-for-sale` | `ForestryHubPage` (templated — see §4) | `Forestry Equipment for Sale \| New & Used Machines \| TimberEquip` | static string (see §4) | `/forestry-equipment-for-sale` | default | CollectionPage + BreadcrumbList + ItemList |
-| `/logging-equipment-for-sale` | `LoggingHubPage` (templated — see §4) | `Logging Equipment For Sale \| TimberEquip` | static string (see §4) | `/logging-equipment-for-sale` | default | CollectionPage + BreadcrumbList + ItemList |
+| `/states` | `States` | `Equipment Markets By State \| Forestry Equipment Sales` | `Browse state-level market pages for forestry and logging equipment, with direct paths into live public inventory.` | `/states` | default | `CollectionPage` with `ListItem` entries |
+| `/subscription-success` | `SubscriptionSuccess` | `Subscription Success \| Forestry Equipment Sales` | `Confirm your Forestry Equipment Sales seller subscription and continue into your account.` | `/subscription-success` | default | none |
+| `/terms` | `Terms` | `Terms of Service \| Forestry Equipment Sales` | `Terms of service governing the use of the Forestry Equipment Sales marketplace, including listing rules, auction bidding terms, billing, dispute resolution, and governing law.` | `/terms` | default | `@graph`: `WebPage`, `BreadcrumbList` |
+| `/unsubscribe` | `Unsubscribe` | `Unsubscribe \| Forestry Equipment Sales` | `Manage your email notification preferences for Forestry Equipment Sales.` | *(not set — missing)* | **`NOINDEX_ROBOTS`** | none |
+| `/forestry-equipment-for-sale` | `ForestryHubPage` (templated — see §4) | `Forestry Equipment for Sale \| New & Used Machines \| Forestry Equipment Sales` | static string (see §4) | `/forestry-equipment-for-sale` | default | CollectionPage + BreadcrumbList + ItemList |
+| `/logging-equipment-for-sale` | `LoggingHubPage` (templated — see §4) | `Logging Equipment For Sale \| Forestry Equipment Sales` | static string (see §4) | `/logging-equipment-for-sale` | default | CollectionPage + BreadcrumbList + ItemList |
 
 Notes:
 - `/search` and `/categories/:categorySlug` are driven by `Search.tsx` / `CategorySearchPage.tsx` and have dynamic robots — see §3.
@@ -167,8 +167,8 @@ const detailSeoHeadline = `${safeYear || ''} ${safeMake || ''} ${safeModel || ''
   .replace(/\s+/g, ' ').trim() || listing.title || 'Equipment Detail';
 
 const detailSeoTitle = safeCityState
-  ? `${detailSeoHeadline} for Sale in ${safeCityState} | TimberEquip`
-  : `${detailSeoHeadline} for Sale | TimberEquip`;
+  ? `${detailSeoHeadline} for Sale in ${safeCityState} | Forestry Equipment Sales`
+  : `${detailSeoHeadline} for Sale | Forestry Equipment Sales`;
 ```
 
 **Description template**
@@ -177,7 +177,7 @@ const detailSeoDescription = [
   `Used ${detailSeoHeadline} ${routeCategory ? `${routeCategory.toLowerCase()} ` : ''}for sale${safeCityState ? ` in ${safeCityState}` : ''}`
     .replace(/\s+/g, ' ').trim(),
   safeHours > 0 ? `with ${formatNumber(safeHours)} hours.` : 'View photos, specs, and pricing details.',
-  'Request pricing, financing, and logistics support from TimberEquip.',
+  'Request pricing, financing, and logistics support from Forestry Equipment Sales.',
 ].join(' ');
 ```
 
@@ -219,11 +219,11 @@ const detailRobots = !isLiveApprovedListing || isQaOrTestListing ? NOINDEX_ROBOT
 
 ### 3.2 `AuctionDetail` — `/auctions/:auctionSlug`
 
-**Tab title**: `` `${auction.title} | Auction Catalog | TimberEquip` ``
+**Tab title**: `` `${auction.title} | Auction Catalog | Forestry Equipment Sales` ``
 **Description**: `` auction.description || `Browse lots and bid on ${auction.title}. Forestry equipment auction.` ``
 **Canonical**: `` `/auctions/${auction.slug}` ``
 **Robots**: not set → default (env-gated).
-**JSON-LD**: `{ '@type': 'Event', name, description, startDate, endDate, url, image, organizer: {@type: 'Organization', name: 'TimberEquip'} }`
+**JSON-LD**: `{ '@type': 'Event', name, description, startDate, endDate, url, image, organizer: {@type: 'Organization', name: 'Forestry Equipment Sales'} }`
 
 **Notes**: the entire `<Seo>` is only rendered when `auction` has loaded (`{auction && <Seo ... />}`), so a failed load leaves the `index.html` defaults in place.
 
@@ -233,12 +233,12 @@ const detailRobots = !isLiveApprovedListing || isQaOrTestListing ? NOINDEX_ROBOT
 
 **Tab title template**:
 ```ts
-title={`Lot #${lot.lotNumber} – ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title} | TimberEquip`}
+title={`Lot #${lot.lotNumber} – ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title} | Forestry Equipment Sales`}
 ```
 
 **Description template**:
 ```ts
-description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lot.model}. ${lot.pickupLocation ? `Pickup: ${lot.pickupLocation}.` : ''} Auction by TimberEquip.`}
+description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lot.model}. ${lot.pickupLocation ? `Pickup: ${lot.pickupLocation}.` : ''} Auction by Forestry Equipment Sales.`}
 ```
 
 **Canonical**: `` `/auctions/${auction.slug}/lots/${lot.lotNumber}` ``
@@ -257,7 +257,7 @@ description={`Bid on Lot #${lot.lotNumber}: ${lot.year} ${lot.manufacturer} ${lo
 ```ts
 title={`Lot ${lot.lotNumber} | ${lot.year} ${lot.manufacturer} ${lot.model} | ${auction.title}`}
 ```
-(no `| TimberEquip` suffix)
+(no `| Forestry Equipment Sales` suffix)
 
 **Description template**:
 ```ts
@@ -275,21 +275,21 @@ description={`${lot.year} ${lot.manufacturer} ${lot.model} in ${auction.title}. 
 
 **Tab title (memoized)**
 ```ts
-if (!seller) return 'Dealer Storefront | TimberEquip';
+if (!seller) return 'Dealer Storefront | Forestry Equipment Sales';
 const headline = seller.storefrontName || seller.name;
-if (isDealerRoute && categorySlug) return `${headline} ${titleCaseSlug(categorySlug)} Inventory | TimberEquip`;
-if (isDealerRoute && isInventoryRoute) return `${headline} Inventory | TimberEquip`;
-return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | TimberEquip`;
+if (isDealerRoute && categorySlug) return `${headline} ${titleCaseSlug(categorySlug)} Inventory | Forestry Equipment Sales`;
+if (isDealerRoute && isInventoryRoute) return `${headline} Inventory | Forestry Equipment Sales`;
+return seller.seoTitle || `${headline} | ${roleLabel(seller.role)} | Forestry Equipment Sales`;
 ```
 
 **Description (memoized)**
 ```ts
-if (!seller) return 'Browse seller storefront inventory on TimberEquip.';
+if (!seller) return 'Browse seller storefront inventory on Forestry Equipment Sales.';
 const headline = seller.storefrontName || seller.name;
-if (isDealerRoute && categorySlug) return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on TimberEquip.`;
-if (isDealerRoute && isInventoryRoute) return `Browse live inventory from ${headline} on TimberEquip.`;
+if (isDealerRoute && categorySlug) return `Browse ${titleCaseSlug(categorySlug).toLowerCase()} inventory from ${headline} on Forestry Equipment Sales.`;
+if (isDealerRoute && isInventoryRoute) return `Browse live inventory from ${headline} on Forestry Equipment Sales.`;
 return seller.seoDescription || seller.storefrontDescription ||
-  `${headline} storefront on TimberEquip. Browse inventory, contact details, and active listings.`;
+  `${headline} storefront on Forestry Equipment Sales. Browse inventory, contact details, and active listings.`;
 ```
 
 **Canonical (conditional)**
@@ -337,7 +337,7 @@ robots={dealerRouteQuality?.robots}
 
 ### 3.6 `BlogPostDetail` — `/blog/:id`, `/blog/:id/:slug`
 
-**Tab title**: `` `${post.seoTitle || post.title} | TimberEquip` ``
+**Tab title**: `` `${post.seoTitle || post.title} | Forestry Equipment Sales` ``
 **Description**: `post.seoDescription || post.summary`
 **Canonical**: `getNewsPostCanonicalPath(post)` where
 ```ts
@@ -368,16 +368,16 @@ The same `Search` component is rendered at both `/search` and `/categories/:cate
 **Tab title**
 ```ts
 const seoTitle = isCategoryPage
-  ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | TimberEquip`
+  ? `${categoryLabel} for Sale | New & Used ${categoryLabel} | Forestry Equipment Sales`
   : filters.q
-    ? `TimberEquip | ${filters.q} Listings (${filteredListings.length})`
-    : 'TimberEquip | New & Used Logging Equipment For Sale';
+    ? `Forestry Equipment Sales | ${filters.q} Listings (${filteredListings.length})`
+    : 'Forestry Equipment Sales | New & Used Logging Equipment For Sale';
 ```
 
 **Description**
 ```ts
 const seoDescription = isCategoryPage
-  ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on TimberEquip.`
+  ? `Browse ${filteredListings.length.toLocaleString()} new and used ${categoryLabel.toLowerCase()} listings for sale. Compare prices, specs, and photos from dealers and private sellers on Forestry Equipment Sales.`
   : 'Search in-stock new and used logging equipment with advanced filters for category, manufacturer, model, price, year, hours, condition, location, attachments, and features.';
 ```
 
@@ -404,10 +404,10 @@ const seoRobots = isCategoryPage ? undefined : 'noindex, follow';
 All of the components below share the `SeoInventoryTemplate` wrapper which renders the `<Seo>` like this:
 
 ```tsx
-<Seo title={`${title} | TimberEquip`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
+<Seo title={`${title} | Forestry Equipment Sales`} description={description} canonicalPath={canonicalPath} robots={robots} jsonLd={jsonLd} />
 ```
 
-So the final browser title is always `${templateTitle} | TimberEquip`. The `jsonLd` is built by `buildCollectionJsonLd(title, description, canonicalPath, listings, breadcrumbs)` which returns:
+So the final browser title is always `${templateTitle} | Forestry Equipment Sales`. The `jsonLd` is built by `buildCollectionJsonLd(title, description, canonicalPath, listings, breadcrumbs)` which returns:
 
 ```
 @graph: [
@@ -426,11 +426,11 @@ So the final browser title is always `${templateTitle} | TimberEquip`. The `json
 
 ### 4.1 `ForestryHubPage` — `/forestry-equipment-for-sale`
 
-- **Tab title**: `Forestry Equipment for Sale | New & Used Machines | TimberEquip`
+- **Tab title**: `Forestry Equipment for Sale | New & Used Machines | Forestry Equipment Sales`
 - **Description**: `Browse new and used forestry equipment for sale including logging, land clearing, firewood, sawmill, truck, trailer, and attachment inventory from dealers and owners.`
 - **Canonical**: `` `/${MARKET_ROUTE_LABELS.forestry}` `` → `/forestry-equipment-for-sale`
 - **Eyebrow**: `Equipment Marketplace`
-- **Intro**: `Browse the full TimberEquip marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers.`
+- **Intro**: `Browse the full Forestry Equipment Sales marketplace. Shop live inventory across logging, land clearing, firewood, sawmill, tree service, truck, trailer, and parts categories from dealers and private sellers.`
 - **Breadcrumbs**: `Home` → `Forestry Equipment For Sale`
 - **Robots**: **not passed** → default (env-gated). The hub page does **not** call `evaluateRouteQuality` — it is always default-indexable.
 - **JSON-LD**: CollectionPage + BreadcrumbList + ItemList.
@@ -439,7 +439,7 @@ So the final browser title is always `${templateTitle} | TimberEquip`. The `json
 
 ### 4.2 `LoggingHubPage` — `/logging-equipment-for-sale`
 
-- **Tab title**: `Logging Equipment For Sale | TimberEquip`
+- **Tab title**: `Logging Equipment For Sale | Forestry Equipment Sales`
 - **Description**: `Shop new and used logging equipment for sale including skidders, forwarders, feller bunchers, log loaders, delimbers, and more from dealers and owners.`
 - **Canonical**: `` `/${MARKET_ROUTE_LABELS.logging}` `` → `/logging-equipment-for-sale`
 - **Eyebrow**: `Logging Equipment`
@@ -460,11 +460,11 @@ The component is exported and lazy-imported in `App.tsx` line 43, but there is *
   const displayTitle = parentCategory
     ? `${parentCategory} - ${resolvedCategory} For Sale`
     : `${resolvedCategory} For Sale`;
-  // final: `${displayTitle} | TimberEquip`
+  // final: `${displayTitle} | Forestry Equipment Sales`
   ```
 - **Description template**:
   ```ts
-  `Browse ${resolvedCategory.toLowerCase()} for sale on TimberEquip. ${parentCategory ? `Shop ${parentCategory.toLowerCase()} inventory` : 'Shop live inventory'} from dealers and private sellers across North America.`
+  `Browse ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. ${parentCategory ? `Shop ${parentCategory.toLowerCase()} inventory` : 'Shop live inventory'} from dealers and private sellers across North America.`
   ```
 - **Canonical template**: `buildCategoryPath(resolvedCategory)` (forms `/categories/<slug>-for-sale` or similar per `seoRoutes.ts`).
 - **Intro**: `` `Shop ${resolvedCategory.toLowerCase()} from trusted dealers and private sellers. Browse live inventory, compare prices, and connect directly with sellers to move fast on the equipment you need.` ``
@@ -475,8 +475,8 @@ The component is exported and lazy-imported in `App.tsx` line 43, but there is *
 
 ### 4.4 `ManufacturerLandingPage` — `/manufacturers/:manufacturerSlug`
 
-- **Tab title template**: `` `${resolvedManufacturer} Equipment For Sale | TimberEquip` ``
-- **Description template**: `` `Browse ${resolvedManufacturer} equipment for sale by make on TimberEquip. Shop live ${resolvedManufacturer} inventory from dealers and private sellers across North America.` ``
+- **Tab title template**: `` `${resolvedManufacturer} Equipment For Sale | Forestry Equipment Sales` ``
+- **Description template**: `` `Browse ${resolvedManufacturer} equipment for sale by make on Forestry Equipment Sales. Shop live ${resolvedManufacturer} inventory from dealers and private sellers across North America.` ``
 - **Canonical template**: `buildManufacturerPath(resolvedManufacturer)`
 - **Intro**: `mfgContent.description` (from `constants/manufacturerContent`)
 - **Breadcrumbs**: `Home` → `Manufacturers` → resolved manufacturer
@@ -487,8 +487,8 @@ The component is exported and lazy-imported in `App.tsx` line 43, but there is *
 
 ### 4.5 `ManufacturerModelLandingPage` — `/manufacturers/:manufacturerSlug/models/:modelSlug`
 
-- **Tab title template**: `` `${resolvedManufacturer} ${resolvedModel} For Sale | TimberEquip` ``
-- **Description template**: `` `Browse ${resolvedManufacturer} ${resolvedModel} for sale on TimberEquip. Shop live inventory from dealers and private sellers.` ``
+- **Tab title template**: `` `${resolvedManufacturer} ${resolvedModel} For Sale | Forestry Equipment Sales` ``
+- **Description template**: `` `Browse ${resolvedManufacturer} ${resolvedModel} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.` ``
 - **Canonical template**: `buildManufacturerModelPath(resolvedManufacturer, resolvedModel)`
 - **Intro**: `` `Find ${resolvedManufacturer} ${resolvedModel} machines for sale from dealers and private sellers. Compare pricing, hours, and condition across available inventory.` ``
 - **Breadcrumbs**: `Home` → `Manufacturers` → manufacturer → model
@@ -499,8 +499,8 @@ The component is exported and lazy-imported in `App.tsx` line 43, but there is *
 
 ### 4.6 `ManufacturerCategoryLandingPage` — `/manufacturers/:manufacturerSlug/:categorySaleSlug`
 
-- **Tab title template**: `` `${resolvedManufacturer} ${resolvedCategory} For Sale | TimberEquip` ``
-- **Description template**: `` `Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} for sale on TimberEquip. Shop live inventory from dealers and private sellers.` ``
+- **Tab title template**: `` `${resolvedManufacturer} ${resolvedCategory} For Sale | Forestry Equipment Sales` ``
+- **Description template**: `` `Browse ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.` ``
 - **Canonical template**: `buildManufacturerCategoryPath(resolvedManufacturer, resolvedCategory)`
 - **Intro**: `` `Shop ${resolvedManufacturer} ${resolvedCategory.toLowerCase()} from dealers and private sellers. Compare available machines, pricing, and hours across live marketplace inventory.` ``
 - **Breadcrumbs**: `Home` → manufacturer → `${resolvedCategory}`
@@ -513,8 +513,8 @@ Note: `categorySaleSlug` is expected to end in `-for-sale` and is parsed with `p
 
 ### 4.7 `ManufacturerModelCategoryLandingPage` — `/manufacturers/:manufacturerSlug/models/:modelSlug/:categorySaleSlug`
 
-- **Tab title template**: `` `${resolvedManufacturer} ${resolvedModel} ${resolvedCategory} For Sale | TimberEquip` ``
-- **Description template**: `` `Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale on TimberEquip. Shop live inventory from dealers and private sellers.` ``
+- **Tab title template**: `` `${resolvedManufacturer} ${resolvedModel} ${resolvedCategory} For Sale | Forestry Equipment Sales` ``
+- **Description template**: `` `Browse ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale on Forestry Equipment Sales. Shop live inventory from dealers and private sellers.` ``
 - **Canonical template**: `buildManufacturerModelCategoryPath(resolvedManufacturer, resolvedModel, resolvedCategory)`
 - **Intro**: `` `Find ${resolvedManufacturer} ${resolvedModel} ${resolvedCategory.toLowerCase()} for sale from dealers and private sellers. Browse pricing, hours, and condition on available inventory.` ``
 - **Breadcrumbs**: `Home` → `Manufacturers` → manufacturer → model → category
@@ -530,9 +530,9 @@ Note: `categorySaleSlug` is expected to end in `-for-sale` and is parsed with `p
 - **Tab title template**:
   ```ts
   const marketTitle = marketKey === 'forestry' ? 'Forestry Equipment For Sale' : 'Logging Equipment For Sale';
-  // title: `${marketTitle} In ${resolvedState} | TimberEquip`
+  // title: `${marketTitle} In ${resolvedState} | Forestry Equipment Sales`
   ```
-- **Description template**: `` `Browse ${marketTitle.toLowerCase()} in ${resolvedState} on TimberEquip. Shop live inventory from local dealers and private sellers.` ``
+- **Description template**: `` `Browse ${marketTitle.toLowerCase()} in ${resolvedState} on Forestry Equipment Sales. Shop live inventory from local dealers and private sellers.` ``
 - **Canonical template**: `buildStateMarketPath(resolvedState, marketKey)`
 - **Intro**: `` `Shop ${marketTitle.toLowerCase()} located in ${resolvedState}. Browse inventory from local dealers and private sellers, compare prices, and connect directly with sellers near you.` ``
 - **Breadcrumbs**: `Home` → `States` → resolvedState
@@ -543,8 +543,8 @@ Note: `categorySaleSlug` is expected to end in `-for-sale` and is parsed with `p
 
 ### 4.9 `StateCategoryLandingPage` — `/states/:stateSlug/:categorySaleSlug`
 
-- **Tab title template**: `` `${resolvedCategory} For Sale In ${resolvedState} | TimberEquip` ``
-- **Description template**: `` `Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} on TimberEquip. Shop live inventory from local dealers and private sellers.` ``
+- **Tab title template**: `` `${resolvedCategory} For Sale In ${resolvedState} | Forestry Equipment Sales` ``
+- **Description template**: `` `Browse ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} on Forestry Equipment Sales. Shop live inventory from local dealers and private sellers.` ``
 - **Canonical template**: `buildStateCategoryPath(resolvedState, resolvedCategory)`
 - **Intro**: `` `Find ${resolvedCategory.toLowerCase()} for sale in ${resolvedState} from dealers and private sellers. Browse available inventory, compare pricing, and reach out to sellers directly.` ``
 - **Breadcrumbs**: `Home` → state (→ forestry market path) → category
@@ -559,8 +559,8 @@ Note: the two market slugs (`logging-equipment-for-sale`, `forestry-equipment-fo
 
 This component exists and is exported, but **no route in `App.tsx` renders it**. The `/dealers` route is bound to the `Dealers` page (from `src/pages/Dealers.tsx`) instead. It appears to be legacy/scaffold code.
 
-- **Tab title**: `Logging Equipment Dealers | TimberEquip`
-- **Description**: `Browse active dealer storefronts on TimberEquip. Find trusted dealers selling new and used logging and forestry equipment.`
+- **Tab title**: `Logging Equipment Dealers | Forestry Equipment Sales`
+- **Description**: `Browse active dealer storefronts on Forestry Equipment Sales. Find trusted dealers selling new and used logging and forestry equipment.`
 - **Canonical**: `/dealers`
 - **Intro**: `Browse active dealer storefronts and find trusted sellers of new and used logging and forestry equipment. Open any storefront to view their full inventory.`
 - **Robots**: not set → default.
@@ -621,17 +621,17 @@ When the env var is not the literal string `'true'`, every page that does NOT pa
 
 ### HIGH
 
-4. **Missing `canonicalPath` on several noindex'd pages.** `Login`, `ResetPassword`, `Unsubscribe`, `DealerOS`, `BidderRegistration`. The `<Seo>` component tolerates this (falls back to `BASE_URL`), but every page should set its own canonical to avoid a self-referential root `og:url`. This is especially important for `Unsubscribe` and `ResetPassword` where the URL carries token query params — without a canonical, the `og:url` posts back as `https://timberequip.com` which is fine, but still a minor hygiene fix.
+4. **Missing `canonicalPath` on several noindex'd pages.** `Login`, `ResetPassword`, `Unsubscribe`, `DealerOS`, `BidderRegistration`. The `<Seo>` component tolerates this (falls back to `BASE_URL`), but every page should set its own canonical to avoid a self-referential root `og:url`. This is especially important for `Unsubscribe` and `ResetPassword` where the URL carries token query params — without a canonical, the `og:url` posts back as `https://forestryequipmentsales.com` which is fine, but still a minor hygiene fix.
 
-5. **Brand inconsistency in the codebase.** File names and asset names are a mix of `Forestry_Equipment_Sales_*` (older brand) and `TimberEquip-*` (current brand). The `<Seo>` component emits `og:site_name: 'TimberEquip'` and `index.html` emits the same, but git shows many `Forestry_Equipment_Sales_*.png`/`.svg` files currently modified. Titles/descriptions are consistent on "TimberEquip" — the exposure is only asset references (not SEO copy).
+5. **Brand inconsistency in the codebase.** File names and asset names are a mix of `Forestry_Equipment_Sales_*` (older brand) and `Forestry Equipment Sales-*` (current brand). The `<Seo>` component emits `og:site_name: 'Forestry Equipment Sales'` and `index.html` emits the same, but git shows many `Forestry_Equipment_Sales_*.png`/`.svg` files currently modified. Titles/descriptions are consistent on "Forestry Equipment Sales" — the exposure is only asset references (not SEO copy).
 
 6. **`Categories.tsx` wraps `Seo` on a single line (~161 chars)** — functional but inconsistent with every other page which uses multiline JSX. Cosmetic only.
 
-7. **`Home` page title does not include "TimberEquip" at the start.** `Logging Equipment For Sale | TimberEquip` vs the OG default from `index.html` which is `TimberEquip | New & Used Logging Equipment For Sale`. Keep one canonical form on the homepage. The mismatch produces a minor discrepancy between pre-hydration and post-hydration titles.
+7. **`Home` page title does not include "Forestry Equipment Sales" at the start.** `Logging Equipment For Sale | Forestry Equipment Sales` vs the OG default from `index.html` which is `Forestry Equipment Sales | New & Used Logging Equipment For Sale`. Keep one canonical form on the homepage. The mismatch produces a minor discrepancy between pre-hydration and post-hydration titles.
 
 ### MEDIUM
 
-8. **Duplicate tab title for `/dealers`.** `Dealers.tsx` renders title `Find Forestry Equipment Dealers & Manufacturers | TimberEquip` — but `SeoLandingPages.DealerDirectoryPage` (unmounted but still compiled) uses `Logging Equipment Dealers | TimberEquip`. Not a runtime collision today because the second component is unmounted.
+8. **Duplicate tab title for `/dealers`.** `Dealers.tsx` renders title `Find Forestry Equipment Dealers & Manufacturers | Forestry Equipment Sales` — but `SeoLandingPages.DealerDirectoryPage` (unmounted but still compiled) uses `Logging Equipment Dealers | Forestry Equipment Sales`. Not a runtime collision today because the second component is unmounted.
 
 9. **Canonicals for `/about` and `/our-team` collapse duplicate routes.** Both `/about` and `/about-us` render the `About` component which emits `canonicalPath="/about"`. Both `/our-team` and `/about/our-team` render `OurTeam` which emits `canonicalPath="/our-team"`. This is correct deduplication — noting for completeness.
 
@@ -641,15 +641,15 @@ When the env var is not the literal string `'true'`, every page that does NOT pa
 
 12. **`index.html` robots is `index, follow, …` but `Seo.tsx` default is gated on `VITE_ALLOW_INDEXING`.** Result: crawlers running JS get the gated value; crawlers snapshotting the raw HTML see `index, follow`. If the project is deploying an un-indexable preview build to public hosting, the raw HTML will mislead crawlers. Either update `index.html` to `noindex, nofollow, noarchive, nosnippet, noimageindex` by default and let the Seo component opt-in to `index` when `VITE_ALLOW_INDEXING` is true, OR accept the behavior if production will always ship with `VITE_ALLOW_INDEXING=true`.
 
-13. **`public/robots.txt` points to `https://www.timberequip.com/sitemap.xml` but the canonical `BASE_URL` in `Seo.tsx` is `https://timberequip.com` (no www).** Inconsistent host — pick one. If `www` is the intended canonical, update `Seo.tsx`; if not, update `robots.txt`.
+13. **`public/robots.txt` points to `https://www.forestryequipmentsales.com/sitemap.xml` but the canonical `BASE_URL` in `Seo.tsx` is `https://forestryequipmentsales.com` (no www).** Inconsistent host — pick one. If `www` is the intended canonical, update `Seo.tsx`; if not, update `robots.txt`.
 
 ### LOW
 
 14. **`BidderRegistration` has no canonical.** Minor — the page is behind auction approval flow and not targeted for indexing; default robots currently noindex it anyway.
 
-15. **Inconsistent use of `| TimberEquip` suffix inside the title.** Most pages use `| TimberEquip` suffix. `ListingDetail` includes it. `AuctionLotDetail` omits it (`Lot ${n} | ${auction.title}` with no trailing suffix). `AuctionDetail` includes it. `LotDetail` includes it. The `SeoInventoryTemplate` appends `| TimberEquip` itself, so landing pages are consistent.
+15. **Inconsistent use of `| Forestry Equipment Sales` suffix inside the title.** Most pages use `| Forestry Equipment Sales` suffix. `ListingDetail` includes it. `AuctionLotDetail` omits it (`Lot ${n} | ${auction.title}` with no trailing suffix). `AuctionDetail` includes it. `LotDetail` includes it. The `SeoInventoryTemplate` appends `| Forestry Equipment Sales` itself, so landing pages are consistent.
 
-16. **`Profile` tab title starts with the activeTab label (lowercase/formatted enum)** which may produce awkward titles like `Billing | TimberEquip` or the raw tab alias. Acceptable because it's noindex.
+16. **`Profile` tab title starts with the activeTab label (lowercase/formatted enum)** which may produce awkward titles like `Billing | Forestry Equipment Sales` or the raw tab alias. Acceptable because it's noindex.
 
 ### Pages without a `<Seo>` component at all
 Every user-facing page file in `src/pages/*.tsx` imports and renders `<Seo>`. Two exceptions worth noting:
@@ -661,7 +661,7 @@ Every user-facing page file in `src/pages/*.tsx` imports and renders `<Seo>`. Tw
 
 ### Duplicate / near-duplicate titles to watch
 - `LotDetail` and `AuctionLotDetail` both bind to the same route with near-identical (but subtly different) title templates — see finding #2.
-- `Categories` (`Equipment Categories | Browse Marketplace Equipment Families | TimberEquip`) and the various category landing titles that include `Equipment Categories` in breadcrumbs — not a runtime collision but worth watching as taxonomy grows.
+- `Categories` (`Equipment Categories | Browse Marketplace Equipment Families | Forestry Equipment Sales`) and the various category landing titles that include `Equipment Categories` in breadcrumbs — not a runtime collision but worth watching as taxonomy grows.
 
 ---
 
@@ -705,7 +705,7 @@ grep -r "max-image-preview:large" dist/assets/
 Fix the critical bugs first:
 1. `BlogPostDetail.getNewsPostCanonicalPath` backslash bug (see finding #1) — otherwise every blog post with a `seoSlug` emits a broken canonical URL.
 2. Resolve the duplicate `/auctions/:auctionSlug/lots/:lotNumber` route (see finding #2).
-3. Reconcile `robots.txt` host (`www.timberequip.com`) with `Seo.tsx` `BASE_URL` (`timberequip.com`). Pick the canonical host, update the other.
+3. Reconcile `robots.txt` host (`www.forestryequipmentsales.com`) with `Seo.tsx` `BASE_URL` (`forestryequipmentsales.com`). Pick the canonical host, update the other.
 4. Consider updating `index.html`'s hardcoded `robots` so the pre-hydration value matches the JS-written post-hydration value for whichever mode production actually deploys in.
 5. (Optional) Decide whether to mount or delete the unused `CategoryLandingPage` and `DealerDirectoryPage` exports.
 
