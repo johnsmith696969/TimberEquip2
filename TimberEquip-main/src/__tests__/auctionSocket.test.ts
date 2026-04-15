@@ -301,6 +301,17 @@ describe('AuctionTimerManager', () => {
 // ── formatTimeRemainingWithOffset tests ─────────────────────────────────────
 
 describe('formatTimeRemainingWithOffset', () => {
+  const fixedNow = new Date('2026-04-15T12:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function formatTimeRemainingWithOffset(endTime: string, offset: number): string {
     const remaining = new Date(endTime).getTime() - (Date.now() + offset);
     if (remaining <= 0) return 'Ended';
