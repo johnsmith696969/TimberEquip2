@@ -1275,7 +1275,7 @@ export function ListingDetail() {
                     />
                   </motion.div>
                 </AnimatePresence>
-                <div className={isActiveGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}>
+                <div className={`absolute inset-0 pointer-events-none ${isActiveGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}`}>
                   <WatermarkOverlay index={activeImage} />
                 </div>
 
@@ -2098,7 +2098,7 @@ export function ListingDetail() {
                             referrerPolicy="no-referrer"
                             decoding="async"
                           />
-                          <div className={isFullscreenGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}>
+                          <div className={`absolute inset-0 pointer-events-none ${isFullscreenGalleryImageLoaded ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}`}>
                             <WatermarkOverlay index={activeImage} />
                           </div>
                         </motion.div>
