@@ -1180,7 +1180,7 @@ export function ListingDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
           {/* Main Content (Left) */}
-          <div className="lg:col-span-8 flex flex-col space-y-12">
+          <div className="lg:col-span-8 flex flex-col space-y-12 min-w-0">
             {/* Equipment Title */}
             <div className="flex flex-col space-y-2">
               <div className="flex items-center space-x-3">
@@ -1258,7 +1258,7 @@ export function ListingDetail() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
                     className="absolute inset-0 flex items-center justify-center"
                   >
                     <img
@@ -2079,7 +2079,7 @@ export function ListingDetail() {
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          transition={{ duration: 0.3, ease: 'easeInOut' }}
+                          transition={{ duration: 0.15, ease: 'easeOut' }}
                           onAnimationStart={() => resetTransform()}
                           className="relative inline-flex h-[min(84vh,calc(100dvh-8rem))] w-[min(94vw,1600px)] items-center justify-center"
                         >
