@@ -162,6 +162,16 @@
         }
       ]
     }
+    ,{
+      "collectionGroup": "bidderProfile",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "taxExempt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
   ],
   "fieldOverrides": []
 }

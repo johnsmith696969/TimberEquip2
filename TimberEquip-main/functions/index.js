@@ -3868,7 +3868,8 @@ async function processDealerListing({
   }
 
   if (!listingRef) {
-    listingRef = getDb().collection('listings').doc();
+    const sequentialListingId = await reserveNextSequentialListingId();
+    listingRef = getDb().collection('listings').doc(sequentialListingId);
   }
 
   const writePayload = {
@@ -13139,20 +13140,27 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        const profileSnap = await getAuctionDb()
-          .collectionGroup('bidderProfile')
-          .where('taxExempt', '==', true)
-          .limit(100)
-          .get();
+        let certificates = [];
+        try {
+          const profileSnap = await getAuctionDb()
+            .collectionGroup('bidderProfile')
+            .where('taxExempt', '==', true)
+            .limit(100)
+            .get();
 
-        const certificates = profileSnap.docs
-          .map(buildAuctionTaxExemptCertificateSummary)
-          .filter((entry) => entry.taxExemptCertificateUrl)
-          .sort((a, b) => {
-            const left = new Date(a.taxExemptCertificateUploadedAt || a.termsAcceptedAt || 0).getTime();
-            const right = new Date(b.taxExemptCertificateUploadedAt || b.termsAcceptedAt || 0).getTime();
-            return right - left;
-          });
+          certificates = profileSnap.docs
+            .map(buildAuctionTaxExemptCertificateSummary)
+            .filter((entry) => entry.taxExemptCertificateUrl)
+            .sort((a, b) => {
+              const left = new Date(a.taxExemptCertificateUploadedAt || a.termsAcceptedAt || 0).getTime();
+              const right = new Date(b.taxExemptCertificateUploadedAt || b.termsAcceptedAt || 0).getTime();
+              return right - left;
+            });
+        } catch (certQueryError) {
+          // collectionGroup query may fail with FAILED_PRECONDITION if no bidder profiles exist yet
+          // or if the collection group index hasn't been created. Return empty list gracefully.
+          logger.warn({ err: certQueryError?.message || certQueryError }, 'Tax-exempt certificate query failed (likely no bidder profiles exist yet)');
+        }
 
         return res.status(200).json({
           certificates,
