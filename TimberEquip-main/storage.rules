@@ -84,15 +84,26 @@ service firebase.storage {
 
     // Helper functions
     function isAdmin(uid) {
-      // Check custom claims first (fast, no Firestore lookup), then fall back to profile doc
-      return (request.auth.token.role in ['super_admin', 'admin', 'developer'] && request.auth.token.email_verified == true) ||
-        firestore.get(/databases/(default)/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'developer'];
+      // Relies on Firebase custom claims only. The Firestore user doc lives in a named
+      // database (not default), so cross-service reads from Storage rules would hit the
+      // wrong DB. Custom claims are set when a role is assigned and are authoritative.
+      return request.auth.token.role in ['super_admin', 'admin', 'developer']
+        && request.auth.token.email_verified == true;
     }
 
     function isOwner(uid, listingId) {
-      return firestore.get(/databases/(default)/documents/listings/$(listingId)).data.sellerUid == uid ||
-        firestore.get(/databases/(default)/documents/listings/$(listingId)).data.sellerId == uid ||
-        firestore.get(/databases/(default)/documents/listings/$(listingId)).data.userId == uid;
+      // Listings live in a named Firestore database, not (default). Cross-service reads
+      // from Storage rules cannot target named databases. Instead, rely on upload metadata
+      // set by the client (uploadedBy) which is validated by isDraftUploader/isUploader,
+      // plus the admin claim check. For existing listings, the server-side upload endpoint
+      // validates ownership before returning a signed URL.
+      // Keeping a best-effort check against default DB for any listings that may exist there.
+      let listingData = firestore.get(/databases/(default)/documents/listings/$(listingId)).data;
+      return listingData != null && (
+        listingData.sellerUid == uid ||
+        listingData.sellerId == uid ||
+        listingData.userId == uid
+      );
     }
 
     function isDraftUploader() {

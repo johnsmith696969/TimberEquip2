@@ -48,7 +48,7 @@ function apiPaginated<T>(res: express.Response, data: T[], pagination: { total: 
 
 // Startup env var validation — warn on missing recommended vars
 {
-  const recommended = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RECAPTCHA_API_KEY'];
+  const recommended = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RECAPTCHA_API_KEY', 'PRIVILEGED_ADMIN_EMAILS', 'SENDGRID_API_KEY'];
   const missing = recommended.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     logger.warn({ missing }, 'Missing recommended environment variables');
@@ -566,6 +566,7 @@ function serializeSellerPayloadFromStorefront(snapshotId: string, data: Record<s
 function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string, unknown> = {}): Record<string, unknown> {
   const rawRole = normalizeNonEmptyString(data.role, 'member').toLowerCase();
   const isDealerRole = ['dealer', 'pro_dealer', 'dealer_manager', 'dealer_staff', 'admin', 'super_admin', 'developer'].includes(rawRole);
+  const isStorefrontPublic = Boolean(data.storefrontEnabled);
   return {
     id: snapshotId,
     uid: snapshotId,
@@ -574,8 +575,8 @@ function serializeSellerPayloadFromUser(snapshotId: string, data: Record<string,
     role: normalizeNonEmptyString(data.role, 'member'),
     storefrontSlug: normalizeNonEmptyString(data.storefrontSlug),
     location: normalizeNonEmptyString(data.location, 'Unknown'),
-    phone: normalizeNonEmptyString(data.phoneNumber),
-    email: normalizeNonEmptyString(data.email),
+    phone: isStorefrontPublic ? normalizeNonEmptyString(data.phoneNumber) : undefined,
+    email: isStorefrontPublic ? normalizeNonEmptyString(data.email) : undefined,
     website: normalizeNonEmptyString(data.website),
     logo: normalizeNonEmptyString(data.photoURL || data.profileImage),
     coverPhotoUrl: normalizeNonEmptyString(data.coverPhotoUrl),

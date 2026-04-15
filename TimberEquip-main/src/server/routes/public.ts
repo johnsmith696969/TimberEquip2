@@ -153,7 +153,10 @@ export function registerPublicRoutes(app: express.Express, deps: PublicRouteDeps
 
     const apiKey = process.env.RECAPTCHA_API_KEY;
     if (!apiKey) {
-      // Dev mode without key: pass everything through
+      if (process.env.NODE_ENV === 'production') {
+        logger.error('RECAPTCHA_API_KEY missing in production — blocking request');
+        return res.json({ pass: false, score: 0 });
+      }
       return res.json({ pass: true, score: null });
     }
     const siteKey = process.env.RECAPTCHA_SITE_KEY;

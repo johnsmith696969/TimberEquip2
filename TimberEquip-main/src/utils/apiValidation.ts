@@ -91,7 +91,12 @@ export const createManagedAccountSchema = z.object({
 export const dealerFeedIngestSchema = z.object({
   dealerId: nonEmptyString,
   sourceName: nonEmptyString.max(200),
-  items: z.array(z.record(z.string(), z.unknown())).min(1).max(5000),
+  items: z.array(
+    z.record(z.string(), z.unknown()).refine(
+      (obj) => JSON.stringify(obj).length < 50_000,
+      { message: 'Individual feed item exceeds 50KB size limit' },
+    ),
+  ).min(1).max(1000),
   dryRun: z.boolean().optional().default(false),
   sourceType: z.enum(['json', 'csv', 'xml', 'api']).optional().default('json'),
 });
