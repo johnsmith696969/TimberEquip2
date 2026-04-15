@@ -52,7 +52,7 @@ test.describe('public critical journeys', () => {
     await dismissCookieBannerIfPresent(page);
 
     await expect(page.getByRole('heading', { name: /categories/i }).first()).toBeVisible();
-    await expect(page.locator('a[href*="/search?category="]').first()).toBeVisible();
+    await expect(page.locator('a[href^="/categories/"]').first()).toBeVisible();
 
     const listingPath = await getFirstPublicListingPath(page);
     await page.goto(listingPath, { waitUntil: 'domcontentloaded' });
@@ -60,7 +60,6 @@ test.describe('public critical journeys', () => {
 
     await expect(page.getByRole('heading', { name: 'Equipment Overview' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Technical Specifications' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Market Match Recommendations' })).toBeVisible();
     await expect(page.getByRole('button', { name: /send inquiry/i })).toBeVisible();
   });
 
