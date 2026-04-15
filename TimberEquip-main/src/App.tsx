@@ -113,7 +113,7 @@ function App() {
       <LocaleProvider>
         <ThemeProvider>
           <ErrorBoundary>
-            <MotionConfig reducedMotion="user" transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.25 }}>
+            <MotionConfig reducedMotion="user" transition={{ ease: [0.4, 0, 0.2, 1], duration: 0.2 }}>
             <Router>
               <ScrollToTop />
               <Layout>

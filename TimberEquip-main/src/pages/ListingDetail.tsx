@@ -1252,26 +1252,24 @@ export function ListingDetail() {
                     isActiveGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
                   }`}
                 />
-                <AnimatePresence mode="wait">
+                <AnimatePresence mode="popLayout" initial={false}>
                   <motion.div
                     key={activeGalleryImageSrc}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.18 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
                     className="absolute inset-0 flex items-center justify-center"
                   >
                     <img
                       src={activeGalleryImageSrc}
                       alt={activeImageTitle || listing.title}
-                      className={`max-h-full max-w-full h-auto w-auto object-contain cursor-zoom-in transition-opacity duration-200 ${
-                        isActiveGalleryImageLoaded ? 'opacity-100' : 'opacity-0'
-                      }`}
+                      className="max-h-full max-w-full h-auto w-auto object-contain cursor-zoom-in"
                       onClick={hasGallery ? openFullscreenImage : undefined}
                       onLoad={() => setIsActiveGalleryImageLoaded(true)}
                       referrerPolicy="no-referrer"
                       fetchPriority={activeImage === 0 ? 'high' : undefined}
-                      decoding={activeImage === 0 ? 'sync' : 'async'}
+                      decoding="async"
                     />
                   </motion.div>
                 </AnimatePresence>
@@ -2014,13 +2012,15 @@ export function ListingDetail() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
               className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
             />
 
             <motion.div
-              initial={{ scale: 0.97, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.97, opacity: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
               className="relative z-10 w-full h-full max-w-[95vw] max-h-[95vh] flex items-center justify-center"
               onClick={(e) => e.stopPropagation()}
             >
@@ -2073,13 +2073,13 @@ export function ListingDetail() {
                         },
                       }}
                     >
-                      <AnimatePresence mode="wait" initial={false}>
+                      <AnimatePresence mode="popLayout" initial={false}>
                         <motion.div
                           key={activeGalleryImageSrc}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          transition={{ duration: 0.18 }}
+                          transition={{ duration: 0.3, ease: 'easeInOut' }}
                           onAnimationStart={() => resetTransform()}
                           className="relative inline-flex h-[min(84vh,calc(100dvh-8rem))] w-[min(94vw,1600px)] items-center justify-center"
                         >
