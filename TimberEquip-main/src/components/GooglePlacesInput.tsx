@@ -49,12 +49,14 @@ export function GooglePlacesInput({
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [hasFocus, setHasFocus] = useState(false);
   const requestIdRef = useRef(0);
+  const selectedValueRef = useRef('');
   const normalizedValue = String(value || '').trim();
-  const shouldShowDropdown = open && !disabled && normalizedValue.length >= 3;
+  const shouldShowDropdown = open && hasFocus && !disabled && normalizedValue.length >= 3;
 
   useEffect(() => {
-    if (disabled) {
+    if (disabled || !hasFocus || normalizedValue === selectedValueRef.current) {
       setPredictions([]);
       setOpen(false);
       setIsLoading(false);
@@ -79,17 +81,18 @@ export function GooglePlacesInput({
       }
 
       setPredictions(nextPredictions);
-      setOpen(true);
+      setOpen(hasFocus);
       setIsLoading(false);
     }, 250);
 
     return () => window.clearTimeout(timeoutId);
-  }, [disabled, mode, value]);
+  }, [disabled, hasFocus, mode, normalizedValue]);
 
   const handleSelect = async (prediction: GooglePlacePrediction) => {
     setIsSelecting(true);
     const details = await getPlaceDetails(prediction.placeId);
     const resolvedLabel = details?.formattedAddress || prediction.description;
+    selectedValueRef.current = String(resolvedLabel || '').trim();
 
     onChange(resolvedLabel);
     if (details && onSelect) {
@@ -119,14 +122,21 @@ export function GooglePlacesInput({
             disabled={disabled}
             required={required}
             autoComplete="off"
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              selectedValueRef.current = '';
+              onChange(event.target.value);
+            }}
             onFocus={() => {
+              setHasFocus(true);
               if (normalizedValue.length >= 3) {
                 setOpen(true);
               }
             }}
             onBlur={() => {
-              window.setTimeout(() => setOpen(false), 160);
+              window.setTimeout(() => {
+                setHasFocus(false);
+                setOpen(false);
+              }, 160);
             }}
             placeholder={placeholder || (mode === 'address' ? 'Search address, city, or ZIP' : 'Search city, state, or province')}
             className={`input-industrial w-full py-3 pl-4 pr-12 placeholder:normal-case placeholder:tracking-normal ${inputClassName}`.trim()}
@@ -135,6 +145,7 @@ export function GooglePlacesInput({
             <button
               type="button"
               onClick={() => {
+                selectedValueRef.current = '';
                 onChange('');
                 setPredictions([]);
                 setOpen(false);

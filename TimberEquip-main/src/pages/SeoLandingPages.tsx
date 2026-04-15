@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ArrowRight, Building2 } from 'lucide-react';
 import { BreadcrumbItem, Breadcrumbs } from '../components/Breadcrumbs';
 import { ListingCard } from '../components/ListingCard';
@@ -32,6 +32,10 @@ import { buildListingPath } from '../utils/listingPath';
 import { buildSiteUrl } from '../utils/siteUrl';
 import { getManufacturerContent } from '../constants/manufacturerContent';
 import { getSubcategoryContent, getParentCategory } from '../constants/subcategoryContent';
+import { LoginPromptModal } from '../components/LoginPromptModal';
+import { useAuth } from '../components/AuthContext';
+import { normalizeListingId, normalizeListingIdList } from '../utils/listingIdentity';
+import { setPendingFavoriteIntent } from '../utils/pendingFavorite';
 
 type CountLink = {
   label: string;
@@ -199,6 +203,7 @@ type SeoTemplateProps = {
   featuredDealers?: SellerSummary[];
   aboutContent?: AboutContent;
   subcategoryExplainer?: SubcategoryExplainerContent;
+  showHeroStats?: boolean;
   searchPath?: string;
   emptyMessage: string;
 };
@@ -219,16 +224,41 @@ function SeoInventoryTemplate({
   featuredDealers = [],
   aboutContent,
   subcategoryExplainer,
+  showHeroStats = true,
   searchPath,
   emptyMessage,
 }: SeoTemplateProps) {
+  const location = useLocation();
+  const { user, isAuthenticated, toggleFavorite } = useAuth();
   const [explainerExpanded, setExplainerExpanded] = useState(false);
   const [selectedListingForInquiry, setSelectedListingForInquiry] = useState<Listing | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [compareList, setCompareList] = useState<string[]>([]);
   const jsonLd = useMemo(
     () => buildCollectionJsonLd(title, description, canonicalPath, listings, breadcrumbs),
     [title, description, canonicalPath, listings, breadcrumbs]
   );
   const featuredListings = listings.slice(0, 12);
+  const favoriteIds = normalizeListingIdList(user?.favorites);
+
+  const handleToggleFavorite = (listingId: string) => {
+    const normalizedId = normalizeListingId(listingId);
+    if (!normalizedId) return;
+
+    if (!isAuthenticated) {
+      setPendingFavoriteIntent(normalizedId, `${location.pathname}${location.search}${location.hash}`);
+      setShowLoginModal(true);
+      return;
+    }
+
+    void toggleFavorite(normalizedId);
+  };
+
+  const handleToggleCompare = (listingId: string) => {
+    const normalizedId = normalizeListingId(listingId);
+    if (!normalizedId) return;
+    setCompareList((prev) => (prev.includes(normalizedId) ? prev.filter((id) => id !== normalizedId) : [...prev, normalizedId]));
+  };
 
   return (
     <div className="min-h-screen bg-bg">
@@ -242,20 +272,22 @@ function SeoInventoryTemplate({
             <h1 className="text-4xl font-black uppercase tracking-tighter md:text-6xl">{title}</h1>
             <p className="mt-6 max-w-3xl text-sm font-medium leading-relaxed text-muted md:text-base">{intro}</p>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <div className="border border-line bg-bg p-5">
-              <div className="label-micro mb-2">Active Listings</div>
-              <div className="text-3xl font-black tracking-tight text-ink">{listings.length}</div>
+          {showHeroStats && (
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <div className="border border-line bg-bg p-5">
+                <div className="label-micro mb-2">Active Listings</div>
+                <div className="text-3xl font-black tracking-tight text-ink">{listings.length}</div>
+              </div>
+              <div className="border border-line bg-bg p-5">
+                <div className="label-micro mb-2">Top Category</div>
+                <div className="text-xl font-black uppercase tracking-tight text-ink">{topCategories[0]?.label || 'Pending'}</div>
+              </div>
+              <div className="border border-line bg-bg p-5">
+                <div className="label-micro mb-2">Top Manufacturer</div>
+                <div className="text-xl font-black uppercase tracking-tight text-ink">{topManufacturers[0]?.label || 'Pending'}</div>
+              </div>
             </div>
-            <div className="border border-line bg-bg p-5">
-              <div className="label-micro mb-2">Top Category</div>
-              <div className="text-xl font-black uppercase tracking-tight text-ink">{topCategories[0]?.label || 'Pending'}</div>
-            </div>
-            <div className="border border-line bg-bg p-5">
-              <div className="label-micro mb-2">Top Manufacturer</div>
-              <div className="text-xl font-black uppercase tracking-tight text-ink">{topManufacturers[0]?.label || 'Pending'}</div>
-            </div>
-          </div>
+          )}
         </div>
       </section>
 
@@ -334,6 +366,10 @@ function SeoInventoryTemplate({
                 <ListingCard
                   key={listing.id}
                   listing={listing}
+                  isFavorite={favoriteIds.includes(normalizeListingId(listing.id))}
+                  isComparing={compareList.includes(normalizeListingId(listing.id))}
+                  onToggleFavorite={handleToggleFavorite}
+                  onToggleCompare={handleToggleCompare}
                   onInquire={(selected) => setSelectedListingForInquiry(selected)}
                 />
               ))}
@@ -351,6 +387,27 @@ function SeoInventoryTemplate({
           listing={selectedListingForInquiry}
         />
       )}
+
+      {compareList.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-sm bg-ink px-6 py-3 text-bg shadow-2xl">
+          <span className="text-[10px] font-black uppercase tracking-widest">{compareList.length} selected</span>
+          <Link
+            to={`/compare?ids=${compareList.join(',')}`}
+            className="btn-industrial btn-accent px-4 py-2 text-[10px]"
+          >
+            Compare
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCompareList([])}
+            className="text-[10px] font-black uppercase tracking-widest text-muted hover:text-bg"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <LoginPromptModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 }
@@ -603,6 +660,7 @@ export function ManufacturerLandingPage() {
       topModels={filterLinksByRouteThreshold(buildCountLinks(mfgListings.map((listing) => String(listing.model || '').trim()), (model) => buildManufacturerModelPath(resolvedManufacturer, model)), 'manufacturerModel')}
       topStates={filterLinksByRouteThreshold(buildCountLinks(mfgListings.map(getListingStateName), (state) => buildStateMarketPath(state, CANONICAL_MARKET_ROUTE_KEY)), 'stateMarket')}
       featuredDealers={featuredDealers}
+      showHeroStats={false}
       searchPath={`/search?manufacturer=${encodeURIComponent(resolvedManufacturer)}`}
       emptyMessage={`No active ${resolvedManufacturer} listings are available right now.`}
     />

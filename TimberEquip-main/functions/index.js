@@ -14698,7 +14698,7 @@ exports.apiProxy = onRequest(
             secondaryText: normalizeNonEmptyString(p?.structured_formatting?.secondary_text),
           }));
 
-          if (!predictions.length && mode === 'address') {
+          if (!predictions.length) {
             const geocodeResponse = await fetch(
               `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(input)}&key=${encodeURIComponent(apiKey)}`
             );
