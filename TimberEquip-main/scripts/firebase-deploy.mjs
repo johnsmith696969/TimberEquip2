@@ -72,7 +72,7 @@ const scope = String(
   args.scope ||
   process.env.FIREBASE_DEPLOY_SCOPE ||
   process.env.npm_config_scope ||
-  'hosting,functions,firestore:rules',
+  'hosting,functions,firestore:rules,storage',
 ).trim();
 const requestedSeoMode = String(
   args['seo-mode'] ||

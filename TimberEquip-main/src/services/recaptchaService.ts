@@ -7,6 +7,8 @@ const PRODUCTION_RECAPTCHA_HOSTS = new Set([
   'www.timberequip.com',
   'forestryequipmentsales.com',
   'www.forestryequipmentsales.com',
+  'timberequip-staging.web.app',
+  'timberequip-staging.firebaseapp.com',
   'mobile-app-equipment-sales.web.app',
   'mobile-app-equipment-sales.firebaseapp.com',
 ]);
@@ -85,6 +87,11 @@ export async function getRecaptchaToken(action: string): Promise<string | null> 
     return null;
   }
 
+  if (!SITE_KEY) {
+    console.warn('[reCAPTCHA] Site key is not configured; token generation is disabled.');
+    return null;
+  }
+
   try {
     await loadEnterpriseRecaptchaScript();
     if (!window.grecaptcha?.enterprise) return null;
@@ -132,8 +139,8 @@ export async function verifyRecaptchaAction(action: string): Promise<boolean> {
   }
 
   if (!SITE_KEY) {
-    console.warn('[reCAPTCHA] Site key is not configured — skipping verification.');
-    return true;
+    console.warn('[reCAPTCHA] Site key is not configured; blocking protected request.');
+    return false;
   }
 
   // Attempt token generation with one retry on failure
@@ -143,8 +150,8 @@ export async function verifyRecaptchaAction(action: string): Promise<boolean> {
   }
   if (!token) {
     // Token generation failed after retry (script blocked, network error, wrong key).
-    // Fail closed — reject the request to prevent bot bypass.
-    console.warn(`[reCAPTCHA] Token generation failed for action "${action}" — blocking request.`);
+    // Fail closed: reject the request to prevent bot bypass.
+    console.warn(`[reCAPTCHA] Token generation failed for action "${action}"; blocking request.`);
     return false;
   }
 

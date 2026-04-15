@@ -10,6 +10,8 @@ interface SeoProps {
   ogType?: 'website' | 'article' | 'product';
   imagePath?: string;
   preloadImage?: string;
+  preloadImageSrcSet?: string;
+  preloadImageSizes?: string;
 }
 
 const BASE_URL = PUBLIC_SITE_URL;
@@ -41,6 +43,8 @@ export function Seo({
   ogType = 'website',
   imagePath = '/Forestry_Equipment_Sales_Logo.png?v=20260405d',
   preloadImage,
+  preloadImageSrcSet,
+  preloadImageSizes,
 }: SeoProps) {
   useEffect(() => {
     document.title = title;
@@ -80,6 +84,16 @@ export function Seo({
       preloadLink.rel = 'preload';
       preloadLink.as = 'image';
       preloadLink.href = preloadImage;
+      if (preloadImageSrcSet) {
+        preloadLink.setAttribute('imagesrcset', preloadImageSrcSet);
+      } else {
+        preloadLink.removeAttribute('imagesrcset');
+      }
+      if (preloadImageSizes) {
+        preloadLink.setAttribute('imagesizes', preloadImageSizes);
+      } else {
+        preloadLink.removeAttribute('imagesizes');
+      }
       if (!existingPreload) document.head.appendChild(preloadLink);
     } else if (existingPreload) {
       existingPreload.remove();
@@ -108,7 +122,7 @@ export function Seo({
         currentPreload.remove();
       }
     };
-  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath, preloadImage]);
+  }, [title, description, canonicalPath, robots, jsonLd, ogType, imagePath, preloadImage, preloadImageSrcSet, preloadImageSizes]);
 
   return null;
 }

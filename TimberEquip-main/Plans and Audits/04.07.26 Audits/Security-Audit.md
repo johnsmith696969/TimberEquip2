@@ -177,6 +177,24 @@ The **April 14 Tier 3.5 sprint** added further security-relevant infrastructure:
 | Permissions-Policy | camera=(), microphone=(), usb=(), geolocation=(self) | ENABLED |
 | Cross-Origin-Resource-Policy | same-site | ENABLED |
 
+### April 15, 2026 External Host Light Scan Findings (Pentester.com)
+
+Source: Pentester.com host light scan screenshot for `https://timberequip.com`, completed April 15, 2026.
+
+| ID | Severity | External Finding | Evidence From Scan | Recommended Action | Status |
+|----|----------|------------------|--------------------|--------------------|--------|
+| PEN-01 | LOW | Public subdomains discovered | `pay.timberequip.com`, `timberequip.com`, `www.timberequip.com` | Inventory all public DNS records, confirm ownership/TLS/WAF coverage, remove stale or unused subdomains, and verify there are no dangling CNAMEs. | OPEN |
+| PEN-02 | LOW | Server software/technology fingerprinting possible | Scan identified font/script technology metadata | Minimize version leakage where possible and keep frontend/server dependencies patched. Treat this as recon reduction, not a direct exploit. | OPEN |
+| PEN-03 | LOW | Public directories/security files identified | `/security.txt`, `/robots.txt`, `/.well-known/security.txt` | Keep `security.txt` intentional and current; verify `robots.txt` does not reveal private/admin-only paths or legacy migration staging URLs. | OPEN |
+| PEN-04 | INFO/POSITIVE | WAF detected | Cloudflare/WAF behavior detected, including SQL injection probe handling | Keep Cloudflare WAF enabled, log blocked requests, and add alerting for repeated attack signatures. | MONITOR |
+| PEN-05 | INFO/POSITIVE | SSL certificate valid | Certificate shown valid with 66 days remaining at scan time | Confirm auto-renewal and alerting at 30/14/7 days before expiry. | MONITOR |
+| PEN-06 | LOW | Missing or policy-mismatched HTTP headers reported externally | Cache-Control, Content-Security-Policy, Pragma, Referrer-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options, X-XSS-Protection | Reconcile external scan with live `curl -I` checks for root, static assets, API functions, redirects, and error pages. Do not re-add deprecated `X-XSS-Protection` unless required by policy; prefer a strong CSP. | OPEN |
+| PEN-07 | INFO/POSITIVE | No face-associated, dark web, or malware findings shown | Scan showed no findings for those categories | Re-run periodically and keep vendor evidence with security audit artifacts. | MONITOR |
+
+**Important note:** This external scan conflicts with the current internal table above that marks several headers enabled. The likely cause is inconsistent header coverage between Firebase Hosting routes, Cloud Functions responses, redirects, static assets, or scanner-specific policy expectations. Treat PEN-06 as an open validation task until headers are confirmed across all response classes.
+
+Follow-up spot check on April 15, 2026 with `curl -I https://timberequip.com/` confirmed `Cache-Control` and `Strict-Transport-Security` are present on the root HTML response, but `Content-Security-Policy`, `Referrer-Policy`, `X-Content-Type-Options`, and `X-Frame-Options` were not present on that response. This confirms PEN-06 is actionable and should be remediated in Firebase Hosting headers and/or Cloud Functions response headers.
+
 ### Findings
 
 | ID | Severity | Finding | File:Line | Status |

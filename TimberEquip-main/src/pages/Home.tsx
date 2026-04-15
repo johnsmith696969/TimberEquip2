@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   TrendingUp,
@@ -21,9 +21,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReducedMotion } from '../hooks/useReducedMotion';
-import { equipmentService } from '../services/equipmentService';
 import { Listing } from '../types';
-import { ListingCard } from '../components/ListingCard';
 import { Seo } from '../components/Seo';
 import { useTheme } from '../components/ThemeContext';
 import { useLocale } from '../components/LocaleContext';
@@ -46,6 +44,8 @@ import {
   TrucksIcon,
   PartsAndAttachmentsIcon,
 } from '../components/CategoryIcons';
+
+const ListingCard = lazy(() => import('../components/ListingCard').then((module) => ({ default: module.ListingCard })));
 
 const TOP_LEVEL_CATEGORY_VISUALS: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   'Logging Equipment': { icon: LoggingEquipmentIcon, color: 'bg-orange-500/10 text-orange-500' },
@@ -73,7 +73,12 @@ const SUBCATEGORY_MARKET_ORDER = [
   'Skidders',
 ];
 
-const HERO_IMAGE_PATH = '/page-photos/grapple-hero-image.webp?v=20260402a';
+const HERO_ASSET_VERSION = '20260415a';
+const HERO_IMAGE_MOBILE_PATH = `/page-photos/grapple-hero-image-mobile.webp?v=${HERO_ASSET_VERSION}`;
+const HERO_IMAGE_1280_PATH = `/page-photos/grapple-hero-image-1280.webp?v=${HERO_ASSET_VERSION}`;
+const HERO_IMAGE_1600_PATH = `/page-photos/grapple-hero-image-1600.webp?v=${HERO_ASSET_VERSION}`;
+const HERO_IMAGE_SRC_SET = `${HERO_IMAGE_1280_PATH} 1280w, ${HERO_IMAGE_1600_PATH} 1600w`;
+const HERO_IMAGE_PRELOAD_SRC_SET = `${HERO_IMAGE_MOBILE_PATH} 768w, ${HERO_IMAGE_1280_PATH} 1280w, ${HERO_IMAGE_1600_PATH} 1600w`;
 
 const formatChange = (value: unknown) => {
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -102,7 +107,20 @@ const CATEGORY_SINGULAR_LABELS: Record<string, string> = {
 
 const toSingularCategoryLabel = (category: string) => CATEGORY_SINGULAR_LABELS[category] || category;
 
-const buildCategoryMetricMap = (marketplaceData?: ReturnType<typeof equipmentService.getCachedHomeMarketplaceData>) =>
+type HomeMarketplaceData = {
+  categoryMetrics?: Array<{
+    category: string;
+    activeCount: number;
+    weeklyChangePercent: number;
+    averagePrice: number | null;
+    previousWeekCount: number;
+  }>;
+  featuredListings?: Listing[];
+  recentSoldListings?: Listing[];
+  heroStats?: { totalActive: number; totalMarketValue: number };
+};
+
+const buildCategoryMetricMap = (marketplaceData?: HomeMarketplaceData | null) =>
   (marketplaceData?.categoryMetrics || []).reduce<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>((acc, item) => {
     acc[item.category] = {
       activeCount: item.activeCount,
@@ -113,55 +131,16 @@ const buildCategoryMetricMap = (marketplaceData?: ReturnType<typeof equipmentSer
     return acc;
   }, {});
 
-type HomeStateSummary = {
-  name: string;
-  count: number;
-  topManufacturer: string;
-};
-
-const buildHomeStateSummaries = (listings: Listing[]): HomeStateSummary[] => {
-  const stateMap = new Map<string, { count: number; manufacturers: Map<string, number> }>();
-
-  listings.forEach((listing) => {
-    const state = getListingStateName(listing);
-    if (!state) return;
-
-    const manufacturer = getListingManufacturer(listing);
-    const existing = stateMap.get(state) || {
-      count: 0,
-      manufacturers: new Map<string, number>(),
-    };
-
-    existing.count += 1;
-    if (manufacturer) {
-      existing.manufacturers.set(manufacturer, (existing.manufacturers.get(manufacturer) || 0) + 1);
-    }
-
-    stateMap.set(state, existing);
-  });
-
-  return [...stateMap.entries()]
-    .map(([name, value]) => ({
-      name,
-      count: value.count,
-      topManufacturer: [...value.manufacturers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Mixed Inventory',
-    }))
-    .sort((a, b) => compareRegionNames(a.name, b.name))
-    .slice(0, 8);
-};
-
 export function Home() {
   const location = useLocation();
-  const cachedMarketplaceData = equipmentService.getCachedHomeMarketplaceData();
   const { theme } = useTheme();
   const { t, formatNumber, formatCurrency } = useLocale();
   const { user, isAuthenticated } = useAuth();
   const prefersReducedMotion = useReducedMotion();
-  const [featuredListings, setFeaturedListings] = useState<Listing[]>(() => cachedMarketplaceData?.featuredListings || []);
-  const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>(() => cachedMarketplaceData?.recentSoldListings || []);
-  const [stateSummaries, setStateSummaries] = useState<HomeStateSummary[]>([]);
-  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>(() => buildCategoryMetricMap(cachedMarketplaceData));
-  const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>(() => cachedMarketplaceData?.heroStats || { totalActive: 0, totalMarketValue: 0 });
+  const [featuredListings, setFeaturedListings] = useState<Listing[]>([]);
+  const [recentSoldListings, setRecentSoldListings] = useState<Listing[]>([]);
+  const [categoryMetrics, setCategoryMetrics] = useState<Record<string, { activeCount: number; weeklyChangePercent: number; averagePrice: number | null; previousWeekCount: number }>>({});
+  const [heroStats, setHeroStats] = useState<{ totalActive: number; totalMarketValue: number }>({ totalActive: 0, totalMarketValue: 0 });
   const listEquipmentPath = getListEquipmentPath(user, isAuthenticated);
   const currentReturnPath = `${location.pathname}${location.search}`;
   const listEquipmentHref = appendReturnToParam(listEquipmentPath, currentReturnPath);
@@ -171,8 +150,12 @@ export function Home() {
   const [allListings, setAllListings] = useState<Listing[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       try {
+        const { equipmentService } = await import('../services/equipmentService');
+        if (cancelled) return;
+
         const [marketplaceData, inventory] = await Promise.all([
           equipmentService.getHomeMarketplaceData(),
           equipmentService.getListings().catch((error) => {
@@ -186,12 +169,15 @@ export function Home() {
         setCategoryMetrics(buildCategoryMetricMap(marketplaceData));
         setHeroStats(marketplaceData.heroStats);
         setAllListings(inventory);
-        setStateSummaries(buildHomeStateSummaries(inventory));
       } catch (error) {
         console.error('Error fetching home data:', error);
       }
     };
-    fetchData();
+    const timeoutId = window.setTimeout(fetchData, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   const tickerListings = recentSoldListings.length > 0 ? recentSoldListings : featuredListings;
@@ -525,23 +511,31 @@ export function Home() {
         canonicalPath="/"
         jsonLd={homeJsonLd}
         imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
-        preloadImage={HERO_IMAGE_PATH}
+        preloadImage={HERO_IMAGE_1600_PATH}
+        preloadImageSrcSet={HERO_IMAGE_PRELOAD_SRC_SET}
+        preloadImageSizes="100vw"
       />
 
       {/* Hero Section */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-bg">
         <div className="absolute inset-0 z-0 bg-ink">
-          <img
-            src={HERO_IMAGE_PATH}
-            alt=""
-            aria-hidden="true"
-            width={1920}
-            height={1080}
-            className="absolute inset-0 h-full w-full object-cover object-center"
-            loading="eager"
-            decoding="async"
-            fetchPriority="high"
-          />
+          <picture>
+            <source media="(max-width: 767px)" srcSet={HERO_IMAGE_MOBILE_PATH} />
+            <source srcSet={HERO_IMAGE_SRC_SET} sizes="100vw" />
+            <img
+              src={HERO_IMAGE_1600_PATH}
+              srcSet={HERO_IMAGE_SRC_SET}
+              sizes="100vw"
+              alt=""
+              aria-hidden="true"
+              width={1600}
+              height={1066}
+              className="absolute inset-0 h-full w-full object-cover object-center"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
+          </picture>
           <div className={`absolute inset-0 ${theme === 'light' ? 'bg-black/30' : 'bg-black/58'}`}></div>
           <div
             className={`absolute inset-0 ${
@@ -908,7 +902,9 @@ export function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {featuredListings.map((listing) => (
                 <div key={listing.id}>
-                  <ListingCard listing={listing} />
+                  <Suspense fallback={<div className="h-[460px] rounded-sm border border-line bg-surface" />}>
+                    <ListingCard listing={listing} />
+                  </Suspense>
                 </div>
               ))}
             </div>

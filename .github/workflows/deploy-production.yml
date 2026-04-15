@@ -10,7 +10,7 @@ on:
       deploy_scope:
         description: Firebase deploy scope
         required: false
-        default: hosting,functions:apiProxy,functions:publicPages,firestore:rules
+        default: hosting,functions:apiProxy,functions:publicPages,firestore:rules,storage
 
 permissions:
   contents: read
@@ -46,7 +46,9 @@ jobs:
         run: npm ci --prefix functions
 
       - name: Security audit
-        run: npm audit --audit-level=high || true
+        run: |
+          npm audit --audit-level=high
+          npm --prefix functions audit --audit-level=high
 
       - name: Verify production bundle
         run: npm run verify:production
@@ -117,7 +119,7 @@ jobs:
         run: npm run deploy:production:ci
         env:
           FIREBASE_PROJECT_ID_PRODUCTION: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIREBASE_DEPLOY_SCOPE: ${{ github.event.inputs.deploy_scope || 'hosting,functions:apiProxy,functions:publicPages,firestore:rules' }}
+          FIREBASE_DEPLOY_SCOPE: ${{ github.event.inputs.deploy_scope || 'hosting,functions:apiProxy,functions:publicPages,firestore:rules,storage' }}
           RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
           RECAPTCHA_PROJECT_ID: mobile-app-equipment-sales
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY_PRODUCTION }}

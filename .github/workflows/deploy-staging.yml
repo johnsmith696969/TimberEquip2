@@ -38,7 +38,9 @@ jobs:
         run: npm ci --prefix functions
 
       - name: Security audit
-        run: npm audit --audit-level=high || true
+        run: |
+          npm audit --audit-level=high
+          npm --prefix functions audit --audit-level=high
 
       - name: Verify staging bundle
         run: npm run verify:staging
@@ -107,7 +109,7 @@ jobs:
         run: npm run deploy:staging:ci
         env:
           FIREBASE_PROJECT_ID_STAGING: timberequip-staging
-          FIREBASE_DEPLOY_SCOPE: ${{ vars.FIREBASE_DEPLOY_SCOPE }}
+          FIREBASE_DEPLOY_SCOPE: ${{ vars.FIREBASE_DEPLOY_SCOPE || 'hosting,functions,firestore:rules,storage' }}
           RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
           RECAPTCHA_PROJECT_ID: mobile-app-equipment-sales
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY_STAGING }}

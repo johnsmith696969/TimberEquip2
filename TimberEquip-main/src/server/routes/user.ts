@@ -15,7 +15,34 @@ export interface UserRouteDeps {
 export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
   const { db, auth, upload, scanFileForViruses, apiSuccess, apiError } = deps;
 
-  // Automated Data Deletion Backend
+  const ACCOUNT_DELETION_RETENTION_DAYS = 90;
+
+  function accountDeletionRetentionDate(): admin.firestore.Timestamp {
+    const retainedUntil = new Date(Date.now() + ACCOUNT_DELETION_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    return admin.firestore.Timestamp.fromDate(retainedUntil);
+  }
+
+  async function markQuerySnapshotForDeletedAccount(
+    snapshot: admin.firestore.QuerySnapshot,
+    update: admin.firestore.UpdateData<admin.firestore.DocumentData>,
+  ): Promise<number> {
+    let updated = 0;
+
+    for (let i = 0; i < snapshot.docs.length; i += 400) {
+      const batch = db.batch();
+      const docs = snapshot.docs.slice(i, i + 400);
+      docs.forEach((doc) => {
+        batch.set(doc.ref, update, { merge: true });
+      });
+      await batch.commit();
+      updated += docs.length;
+    }
+
+    return updated;
+  }
+
+  // Retained account deletion backend. This disables the user and redacts public PII
+  // while keeping operational records available for support, disputes, and audits.
   app.post('/api/user/delete', async (req, res) => {
     const idToken = req.headers.authorization?.split('Bearer ')[1];
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
@@ -23,39 +50,95 @@ export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
     try {
       const decodedToken = await auth.verifyIdToken(idToken, true);
       const uid = decodedToken.uid;
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const retainedUntil = accountDeletionRetentionDate();
+      const retainedRecordUpdate: admin.firestore.UpdateData<admin.firestore.DocumentData> = {
+        accountDeleted: true,
+        accountDeletedAt: now,
+        deletedAccountUid: uid,
+        retainedUntil,
+        retentionMinimumDays: ACCOUNT_DELETION_RETENTION_DAYS,
+        updatedAt: now,
+      };
+      const redactedContactUpdate: admin.firestore.UpdateData<admin.firestore.DocumentData> = {
+        ...retainedRecordUpdate,
+        email: admin.firestore.FieldValue.delete(),
+        phone: admin.firestore.FieldValue.delete(),
+        phoneNumber: admin.firestore.FieldValue.delete(),
+        contactEmail: admin.firestore.FieldValue.delete(),
+        contactPhone: admin.firestore.FieldValue.delete(),
+        customerEmail: admin.firestore.FieldValue.delete(),
+        customerName: admin.firestore.FieldValue.delete(),
+      };
 
-      // 1. Delete user data across collections
-      const collections = ['listings', 'inquiries', 'financingRequests', 'invoices', 'subscriptions', 'consentLogs'];
+      const retainedCounts: Record<string, number> = {};
+      const collectionsByUserUid = ['inquiries', 'financingRequests', 'invoices', 'subscriptions', 'consentLogs'];
 
-      for (const coll of collections) {
+      for (const coll of collectionsByUserUid) {
         const snapshot = await db.collection(coll).where('userUid', '==', uid).get();
-        const batch = db.batch();
-        snapshot.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
+        retainedCounts[coll] = await markQuerySnapshotForDeletedAccount(snapshot, redactedContactUpdate);
       }
 
-      // Special case for listings where field is 'sellerUid'
-      const listingsSnapshot = await db.collection('listings').where('sellerUid', '==', uid).get();
-      const listingsBatch = db.batch();
-      listingsSnapshot.docs.forEach(doc => listingsBatch.delete(doc.ref));
-      await listingsBatch.commit();
+      const listingRetentionUpdate: admin.firestore.UpdateData<admin.firestore.DocumentData> = {
+        ...retainedRecordUpdate,
+        status: 'archived',
+        lifecycleStatus: 'archived',
+        archivedReason: 'seller_account_deleted',
+        archivedAt: now,
+        sellerEmail: admin.firestore.FieldValue.delete(),
+        sellerPhone: admin.firestore.FieldValue.delete(),
+        contactEmail: admin.firestore.FieldValue.delete(),
+        contactPhone: admin.firestore.FieldValue.delete(),
+      };
+      const listingsBySellerUid = await db.collection('listings').where('sellerUid', '==', uid).get();
+      retainedCounts.listingsBySellerUid = await markQuerySnapshotForDeletedAccount(listingsBySellerUid, listingRetentionUpdate);
 
-      // 2. Delete User Profile
-      await db.collection('users').doc(uid).delete();
+      const listingsByUserUid = await db.collection('listings').where('userUid', '==', uid).get();
+      retainedCounts.listingsByUserUid = await markQuerySnapshotForDeletedAccount(listingsByUserUid, listingRetentionUpdate);
 
-      // 3. Delete Firebase Auth User
-      await auth.deleteUser(uid);
+      await db.collection('users').doc(uid).set({
+        accountDeleted: true,
+        accountDeletedAt: now,
+        deleted: true,
+        disabled: true,
+        role: 'deleted',
+        status: 'deleted',
+        retainedUntil,
+        retentionMinimumDays: ACCOUNT_DELETION_RETENTION_DAYS,
+        emailNotificationsEnabled: false,
+        displayName: 'Deleted User',
+        name: 'Deleted User',
+        email: admin.firestore.FieldValue.delete(),
+        phone: admin.firestore.FieldValue.delete(),
+        phoneNumber: admin.firestore.FieldValue.delete(),
+        companyName: admin.firestore.FieldValue.delete(),
+        photoURL: admin.firestore.FieldValue.delete(),
+        avatarUrl: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      }, { merge: true });
 
-      // 4. Log the action
+      await auth.updateUser(uid, {
+        disabled: true,
+        displayName: 'Deleted User',
+        photoURL: null,
+      });
+
       await db.collection('auditLogs').add({
-        action: 'ACCOUNT_DELETED_BY_USER',
+        action: 'ACCOUNT_SOFT_DELETED_BY_USER',
         targetId: uid,
         targetType: 'user',
-        details: `User ${uid} deleted their account and all associated data.`,
+        details: `User ${uid} requested account deletion. Records retained for at least ${ACCOUNT_DELETION_RETENTION_DAYS} days.`,
+        retainedUntil,
+        retainedCounts,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      apiSuccess(res, { deleted: true });
+      apiSuccess(res, {
+        deleted: true,
+        retained: true,
+        retainedUntil: retainedUntil.toDate().toISOString(),
+        retentionMinimumDays: ACCOUNT_DELETION_RETENTION_DAYS,
+      });
     } catch (error: any) {
       logger.error({ err: error }, 'Error deleting user account');
       apiError(res, 500, 'DELETE_FAILED', 'An internal error occurred.');
@@ -85,7 +168,7 @@ export function registerUserRoutes(app: express.Express, deps: UserRouteDeps) {
         return res.status(400).json({ error: 'File check failed. Upload rejected.' });
       }
 
-      // 2. Content moderation — check for nudity, violence, child exploitation
+      // 2. Content moderation: check for nudity, violence, child exploitation
       if (req.file.mimetype.startsWith('image/')) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires

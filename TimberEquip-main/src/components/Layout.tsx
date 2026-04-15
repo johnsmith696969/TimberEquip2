@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
+import { Suspense, lazy } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Menu, X, Sun, Moon,
@@ -14,11 +15,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
 import { Currency, Language } from '../types';
 import { useAuth } from './AuthContext';
-import { ConsentBanner } from './ConsentBanner';
 import { useLocale } from './LocaleContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import { userService } from '../services/userService';
 import { appendReturnToParam, canAccessDealerOs, getDefaultAccountWorkspacePath, getListEquipmentPath, rememberSellerReturnTo } from '../utils/sellerAccess';
+
+const ConsentBanner = lazy(() => import('./ConsentBanner').then((module) => ({ default: module.ConsentBanner })));
 const BRAND_ASSET_VERSION = '20260407a';
 const LIGHT_HEADER_LOGO = `/Forestry_Equipment_Sales_Light_Mode_Logo.svg?v=${BRAND_ASSET_VERSION}`;
 const DARK_HEADER_LOGO = `/Forestry_Equipment_Sales_Logo_Dusk.svg?v=${BRAND_ASSET_VERSION}`;
@@ -76,6 +77,12 @@ const CURRENCY_OPTIONS: ReadonlyArray<{ key: string; code: Currency; label: stri
   { key: 'RON', code: 'RON', label: 'Romanian Leu' },
   { key: 'HUF', code: 'HUF', label: 'Hungarian Forint' },
 ];
+
+const updatePreferredProfile = (uid: string, updates: { preferredLanguage?: Language; preferredCurrency?: Currency }) => {
+  void import('../services/userService')
+    .then(({ userService }) => userService.updateProfile(uid, updates))
+    .catch((error) => console.warn('Unable to save profile preference:', error));
+};
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
@@ -274,7 +281,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     onClick={() => {
                       setLanguage(lang.code);
                       if (user?.uid) {
-                        void userService.updateProfile(user.uid, { preferredLanguage: lang.code });
+                        updatePreferredProfile(user.uid, { preferredLanguage: lang.code });
                       }
                       setLangDropdownOpen(false);
                     }}
@@ -323,7 +330,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       setSelectedCurrencyKey(curr.key);
                       setCurrency(curr.code);
                       if (user?.uid) {
-                        void userService.updateProfile(user.uid, { preferredCurrency: curr.code });
+                        updatePreferredProfile(user.uid, { preferredCurrency: curr.code });
                       }
                       setCurrDropdownOpen(false);
                     }}
@@ -477,7 +484,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         onClick={() => {
                           setLanguage(lang.code);
                           if (user?.uid) {
-                            void userService.updateProfile(user.uid, { preferredLanguage: lang.code });
+                            updatePreferredProfile(user.uid, { preferredLanguage: lang.code });
                           }
                         }}
                         className={`px-2 py-2 rounded-sm border text-left text-[10px] font-bold flex items-start gap-2 transition-colors ${
@@ -504,7 +511,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           setSelectedCurrencyKey(curr.key);
                           setCurrency(curr.code);
                           if (user?.uid) {
-                            void userService.updateProfile(user.uid, { preferredCurrency: curr.code });
+                            updatePreferredProfile(user.uid, { preferredCurrency: curr.code });
                           }
                         }}
                         className={`px-2 py-2 rounded-sm border text-left text-[10px] font-bold transition-colors ${
@@ -538,7 +545,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <ConsentBanner />
+      <Suspense fallback={null}>
+        <ConsentBanner />
+      </Suspense>
 
       {/* Footer */}
       <footer className="bg-surface border-t border-line pt-24 pb-12 px-4 md:px-8">
