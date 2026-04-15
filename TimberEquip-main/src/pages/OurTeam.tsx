@@ -15,7 +15,7 @@ const teamMembers = [
   {
     name: 'Erik Madsen',
     role: 'Co-Owner & Sales',
-    bio: 'Erik has 14 years of experience in the industry. He brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
+    bio: 'Erik has fourteen years of experience in the industry. He brings sharp instincts and hands-on knowledge of equipment. He helps sellers move their machines efficiently, supports financing efforts, and uses his industry knowledge to drive results-oriented deals.',
   },
   {
     name: 'Caleb Happy',
@@ -119,9 +119,6 @@ export function OurTeam() {
             {teamMembers.map((member) => (
               <div key={member.name} className="flex flex-col overflow-hidden border border-line bg-surface">
                 <div className="flex flex-1 flex-col p-8">
-                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-bg border border-line">
-                    <Users className="text-accent" size={24} />
-                  </div>
                   <h2 className="text-2xl font-black uppercase tracking-tight">{member.name}</h2>
                   <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-accent">{member.role}</p>
                   <p className="mt-5 text-sm font-medium leading-relaxed text-muted">{member.bio}</p>
