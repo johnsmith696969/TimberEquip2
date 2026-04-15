@@ -11868,7 +11868,8 @@ exports.apiProxy = onRequest(
       // legacy clients share the same production handlers.
       path = (req.path || '/')
         .replace(/^\/api\/v1(?=\/|$)/, '')
-        .replace(/^\/api(?=\/|$)/, '') || '/';
+        .replace(/^\/api(?=\/|$)/, '')
+        .replace(/^\/v1(?=\/|$)/, '') || '/';
 
       // ── Twilio voice webhooks (no CORS, no auth, TwiML responses) ──
       if (req.method === 'POST' && path === '/twilio/voice/inbound') {
