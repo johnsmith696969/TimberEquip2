@@ -1117,10 +1117,10 @@ async function getPlacesAutocompletePredictions(input, mode, apiKey) {
         return predictions;
       }
     } else {
-      functions.logger.warn('Places API v1 autocomplete request failed', { status: response.status });
+      logger.warn('Places API v1 autocomplete request failed', { status: response.status });
     }
   } catch (error) {
-    functions.logger.warn('Places API v1 autocomplete request errored', { error: String(error) });
+    logger.warn('Places API v1 autocomplete request errored', { error: String(error) });
   }
 
   const typeFilter = mode === 'address' ? 'address' : '(cities)';
@@ -1128,13 +1128,13 @@ async function getPlacesAutocompletePredictions(input, mode, apiKey) {
     `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
   );
   if (!legacyResponse.ok) {
-    functions.logger.warn('Legacy Places autocomplete request failed', { status: legacyResponse.status });
+    logger.warn('Legacy Places autocomplete request failed', { status: legacyResponse.status });
     return [];
   }
 
   const legacyData = await legacyResponse.json();
   if (legacyData?.status && legacyData.status !== 'OK' && legacyData.status !== 'ZERO_RESULTS') {
-    functions.logger.warn('Legacy Places autocomplete returned non-OK status', {
+    logger.warn('Legacy Places autocomplete returned non-OK status', {
       status: legacyData.status,
       errorMessage: normalizeNonEmptyString(legacyData.error_message),
     });
@@ -1166,23 +1166,23 @@ async function getPlaceDetailsFromGoogle(placeId, apiKey) {
         return parseGooglePlaceDetails(data, placeId);
       }
     } else {
-      functions.logger.warn('Places API v1 details request failed', { status: response.status });
+      logger.warn('Places API v1 details request failed', { status: response.status });
     }
   } catch (error) {
-    functions.logger.warn('Places API v1 details request errored', { error: String(error) });
+    logger.warn('Places API v1 details request errored', { error: String(error) });
   }
 
   const placeDetailsRes = await fetch(
     `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
   );
   if (!placeDetailsRes.ok) {
-    functions.logger.warn('Legacy place details request failed', { status: placeDetailsRes.status });
+    logger.warn('Legacy place details request failed', { status: placeDetailsRes.status });
     return null;
   }
 
   const placeDetailsData = await placeDetailsRes.json();
   if (placeDetailsData.status !== 'OK' || !placeDetailsData.result) {
-    functions.logger.warn('Legacy place details returned non-OK status', {
+    logger.warn('Legacy place details returned non-OK status', {
       status: placeDetailsData.status,
       errorMessage: normalizeNonEmptyString(placeDetailsData.error_message),
     });
@@ -14824,19 +14824,19 @@ exports.apiProxy = onRequest(
                   },
                 ];
               } else if (geocodePayload?.status && geocodePayload.status !== 'ZERO_RESULTS') {
-                functions.logger.warn('Geocoding autocomplete fallback returned non-OK status', {
+                logger.warn('Geocoding autocomplete fallback returned non-OK status', {
                   status: geocodePayload.status,
                   errorMessage: normalizeNonEmptyString(geocodePayload.error_message),
                 });
               }
             } else {
-              functions.logger.warn('Geocoding autocomplete fallback request failed', { status: geocodeResponse.status });
+              logger.warn('Geocoding autocomplete fallback request failed', { status: geocodeResponse.status });
             }
           }
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ predictions });
         } catch (err) {
-          functions.logger.error('Places autocomplete failed', { error: String(err) });
+          logger.error('Places autocomplete failed', { error: String(err) });
           return res.status(200).json({ predictions: [] });
         }
       }
@@ -14868,7 +14868,7 @@ exports.apiProxy = onRequest(
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ place });
         } catch (err) {
-          functions.logger.error('Place details lookup failed', { error: String(err) });
+          logger.error('Place details lookup failed', { error: String(err) });
           return res.status(200).json({ place: null });
         }
       }
@@ -14910,7 +14910,7 @@ exports.apiProxy = onRequest(
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ location: formattedLocation });
         } catch (err) {
-          functions.logger.error('Reverse geocode failed', { error: String(err) });
+          logger.error('Reverse geocode failed', { error: String(err) });
           return res.status(200).json({ location: null });
         }
       }
