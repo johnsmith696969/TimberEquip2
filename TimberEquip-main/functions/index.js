@@ -1026,10 +1026,10 @@ function getGoogleAddressComponent(components, wantedTypes, format = 'long_name'
   }
 
   if (format === 'short_name') {
-    return normalizeNonEmptyString(match.short_name || match.long_name);
+    return normalizeNonEmptyString(match.short_name || match.shortText || match.long_name || match.longText);
   }
 
-  return normalizeNonEmptyString(match.long_name || match.short_name);
+  return normalizeNonEmptyString(match.long_name || match.longText || match.short_name || match.shortText);
 }
 
 function normalizeCountyName(value) {
@@ -1040,12 +1040,17 @@ function normalizeCountyName(value) {
 }
 
 function parseGooglePlaceDetails(result, placeId = '') {
-  const components = Array.isArray(result?.address_components) ? result.address_components : [];
+  const components = Array.isArray(result?.address_components)
+    ? result.address_components
+    : (Array.isArray(result?.addressComponents) ? result.addressComponents : []);
+  const displayName = normalizeNonEmptyString(result?.displayName?.text);
+  const resourceName = normalizeNonEmptyString(result?.name);
+  const resolvedPlaceId = normalizeNonEmptyString(placeId || result?.place_id || result?.placeId || result?.id || resourceName.replace(/^places\//, ''));
   const streetNumber = getGoogleAddressComponent(components, ['street_number'], 'short_name');
   const route = getGoogleAddressComponent(components, ['route']);
   const street1 = [streetNumber, route].filter(Boolean).join(' ')
     || getGoogleAddressComponent(components, ['premise', 'subpremise', 'establishment'])
-    || normalizeNonEmptyString(result?.name);
+    || displayName;
   const city = getGoogleAddressComponent(components, ['locality'])
     || getGoogleAddressComponent(components, ['postal_town'])
     || getGoogleAddressComponent(components, ['sublocality_level_1'])
@@ -1054,12 +1059,16 @@ function parseGooglePlaceDetails(result, placeId = '') {
   const county = normalizeCountyName(getGoogleAddressComponent(components, ['administrative_area_level_2']));
   const postalCode = getGoogleAddressComponent(components, ['postal_code'], 'short_name');
   const country = getGoogleAddressComponent(components, ['country']);
-  const latitude = Number.isFinite(Number(result?.geometry?.location?.lat)) ? Number(result.geometry.location.lat) : null;
-  const longitude = Number.isFinite(Number(result?.geometry?.location?.lng)) ? Number(result.geometry.location.lng) : null;
+  const latitude = Number.isFinite(Number(result?.geometry?.location?.lat))
+    ? Number(result.geometry.location.lat)
+    : (Number.isFinite(Number(result?.location?.latitude)) ? Number(result.location.latitude) : null);
+  const longitude = Number.isFinite(Number(result?.geometry?.location?.lng))
+    ? Number(result.geometry.location.lng)
+    : (Number.isFinite(Number(result?.location?.longitude)) ? Number(result.location.longitude) : null);
 
   return {
-    placeId: normalizeNonEmptyString(placeId),
-    formattedAddress: normalizeNonEmptyString(result?.formatted_address || result?.name),
+    placeId: resolvedPlaceId,
+    formattedAddress: normalizeNonEmptyString(result?.formatted_address || result?.formattedAddress || result?.shortFormattedAddress || displayName),
     street1,
     city,
     state,
@@ -1069,6 +1078,118 @@ function parseGooglePlaceDetails(result, placeId = '') {
     latitude,
     longitude,
   };
+}
+
+async function getPlacesAutocompletePredictions(input, mode, apiKey) {
+  const requestBody = {
+    input,
+    languageCode: 'en',
+    regionCode: 'us',
+    includedRegionCodes: ['us', 'ca'],
+  };
+  if (mode !== 'address') {
+    requestBody.includedPrimaryTypes = ['(cities)'];
+  }
+
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const predictions = (Array.isArray(data?.suggestions) ? data.suggestions : [])
+        .map((suggestion) => suggestion?.placePrediction)
+        .filter(Boolean)
+        .slice(0, 5)
+        .map((prediction) => ({
+          description: normalizeNonEmptyString(prediction?.text?.text),
+          placeId: normalizeNonEmptyString(prediction?.placeId || prediction?.place?.replace(/^places\//, '')),
+          mainText: normalizeNonEmptyString(prediction?.structuredFormat?.mainText?.text || prediction?.text?.text),
+          secondaryText: normalizeNonEmptyString(prediction?.structuredFormat?.secondaryText?.text),
+        }))
+        .filter((prediction) => prediction.description && prediction.placeId);
+      if (predictions.length) {
+        return predictions;
+      }
+    } else {
+      functions.logger.warn('Places API v1 autocomplete request failed', { status: response.status });
+    }
+  } catch (error) {
+    functions.logger.warn('Places API v1 autocomplete request errored', { error: String(error) });
+  }
+
+  const typeFilter = mode === 'address' ? 'address' : '(cities)';
+  const legacyResponse = await fetch(
+    `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
+  );
+  if (!legacyResponse.ok) {
+    functions.logger.warn('Legacy Places autocomplete request failed', { status: legacyResponse.status });
+    return [];
+  }
+
+  const legacyData = await legacyResponse.json();
+  if (legacyData?.status && legacyData.status !== 'OK' && legacyData.status !== 'ZERO_RESULTS') {
+    functions.logger.warn('Legacy Places autocomplete returned non-OK status', {
+      status: legacyData.status,
+      errorMessage: normalizeNonEmptyString(legacyData.error_message),
+    });
+  }
+
+  return (Array.isArray(legacyData?.predictions) ? legacyData.predictions : [])
+    .slice(0, 5)
+    .map((prediction) => ({
+      description: normalizeNonEmptyString(prediction.description),
+      placeId: normalizeNonEmptyString(prediction.place_id),
+      mainText: normalizeNonEmptyString(prediction?.structured_formatting?.main_text),
+      secondaryText: normalizeNonEmptyString(prediction?.structured_formatting?.secondary_text),
+    }))
+    .filter((prediction) => prediction.description && prediction.placeId);
+}
+
+async function getPlaceDetailsFromGoogle(placeId, apiKey) {
+  try {
+    const response = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'id,formattedAddress,shortFormattedAddress,addressComponents,location,displayName',
+      },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.id || data?.formattedAddress || data?.shortFormattedAddress) {
+        return parseGooglePlaceDetails(data, placeId);
+      }
+    } else {
+      functions.logger.warn('Places API v1 details request failed', { status: response.status });
+    }
+  } catch (error) {
+    functions.logger.warn('Places API v1 details request errored', { error: String(error) });
+  }
+
+  const placeDetailsRes = await fetch(
+    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
+  );
+  if (!placeDetailsRes.ok) {
+    functions.logger.warn('Legacy place details request failed', { status: placeDetailsRes.status });
+    return null;
+  }
+
+  const placeDetailsData = await placeDetailsRes.json();
+  if (placeDetailsData.status !== 'OK' || !placeDetailsData.result) {
+    functions.logger.warn('Legacy place details returned non-OK status', {
+      status: placeDetailsData.status,
+      errorMessage: normalizeNonEmptyString(placeDetailsData.error_message),
+    });
+    return null;
+  }
+
+  return parseGooglePlaceDetails(placeDetailsData.result, placeId);
 }
 
 function decodeAutocompleteFallbackAddress(placeId) {
@@ -14686,17 +14807,7 @@ exports.apiProxy = onRequest(
         const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
         if (!apiKey) return res.status(200).json({ predictions: [] });
         try {
-          const typeFilter = mode === 'address' ? 'address' : '(cities)';
-          const placesRes = await fetch(
-            `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=${encodeURIComponent(typeFilter)}&key=${encodeURIComponent(apiKey)}`
-          );
-          const placesData = await placesRes.json();
-          let predictions = (placesData.predictions || []).slice(0, 5).map((p) => ({
-            description: p.description,
-            placeId: p.place_id,
-            mainText: normalizeNonEmptyString(p?.structured_formatting?.main_text),
-            secondaryText: normalizeNonEmptyString(p?.structured_formatting?.secondary_text),
-          }));
+          let predictions = await getPlacesAutocompletePredictions(input, mode, apiKey);
 
           if (!predictions.length) {
             const geocodeResponse = await fetch(
@@ -14718,7 +14829,14 @@ exports.apiProxy = onRequest(
                     secondaryText: [geocodedPlace.city, geocodedPlace.state, geocodedPlace.country].filter(Boolean).join(', '),
                   },
                 ];
+              } else if (geocodePayload?.status && geocodePayload.status !== 'ZERO_RESULTS') {
+                functions.logger.warn('Geocoding autocomplete fallback returned non-OK status', {
+                  status: geocodePayload.status,
+                  errorMessage: normalizeNonEmptyString(geocodePayload.error_message),
+                });
               }
+            } else {
+              functions.logger.warn('Geocoding autocomplete fallback request failed', { status: geocodeResponse.status });
             }
           }
           res.set('Cache-Control', 'public, max-age=300');
@@ -14751,19 +14869,8 @@ exports.apiProxy = onRequest(
             }
           }
 
-          const placeDetailsRes = await fetch(
-            `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent('formatted_address,address_component,geometry,name')}&key=${encodeURIComponent(apiKey)}`
-          );
-          if (!placeDetailsRes.ok) {
-            return res.status(200).json({ place: null });
-          }
-
-          const placeDetailsData = await placeDetailsRes.json();
-          if (placeDetailsData.status !== 'OK' || !placeDetailsData.result) {
-            return res.status(200).json({ place: null });
-          }
-
-          const place = parseGooglePlaceDetails(placeDetailsData.result, placeId);
+          const place = await getPlaceDetailsFromGoogle(placeId, apiKey);
+          if (!place) return res.status(200).json({ place: null });
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ place });
         } catch (err) {
