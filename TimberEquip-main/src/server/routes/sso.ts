@@ -252,14 +252,14 @@ export function registerSsoRoutes(app: express.Express, deps: SsoRouteDeps) {
         .get();
 
       if (snapshot.empty) {
-        return res.json({ ssoEnabled: false });
+        return res.json({ ssoAvailable: false });
       }
 
       const doc = snapshot.docs[0];
       const data = doc.data();
 
       return res.json({
-        ssoEnabled: true,
+        ssoAvailable: true,
         providerId: doc.id,
         providerType: String(data.providerType || '') as 'saml' | 'oidc',
       });
