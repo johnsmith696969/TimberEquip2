@@ -54,12 +54,6 @@ async function applyWatermark(imageBuffer) {
     const resizedWatermark = await sharp(wmSource)
       .resize({ width: wmWidth, fit: 'inside', withoutEnlargement: false })
       .ensureAlpha()
-      .composite([{
-        input: Buffer.from(
-          `<svg width="${wmWidth}" height="${wmWidth}"><rect width="100%" height="100%" fill-opacity="0"/></svg>`,
-        ),
-        blend: 'dest-in',
-      }])
       .png()
       .toBuffer();
 
