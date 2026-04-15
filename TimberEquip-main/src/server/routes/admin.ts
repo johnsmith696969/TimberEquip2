@@ -575,4 +575,208 @@ export function registerAdminRoutes(app: express.Express, deps: AdminRouteDeps) 
       res.status(500).json({ error: 'An internal error occurred.' });
     }
   });
+
+  // ── Admin Diagnostics ──────────────────────────────────────────────
+
+  app.get('/api/admin/diagnostics', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return apiError(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken, true);
+      const uid = decodedToken.uid;
+      const email = String(decodedToken.email || '').trim().toLowerCase();
+      const tokenRole = String(decodedToken.role || '');
+      const tokenClaims = decodedToken;
+
+      const actorDoc = await db.collection('users').doc(uid).get();
+      const firestoreRole = actorDoc.exists ? String(actorDoc.data()?.role || '') : '';
+      const actorRole = normalizeRole(firestoreRole || tokenRole);
+
+      const isAdmin = isPrivilegedAdminEmail(email) || ['super_admin', 'admin', 'developer'].includes(actorRole);
+      if (!isAdmin) return apiError(res, 403, 'FORBIDDEN', 'Admin access required.');
+
+      const mismatches: string[] = [];
+      if (tokenRole && firestoreRole && tokenRole !== firestoreRole) {
+        mismatches.push(`Token role "${tokenRole}" differs from Firestore role "${firestoreRole}"`);
+      }
+      if (!actorDoc.exists) {
+        mismatches.push('No Firestore user document found for this UID');
+      }
+      if (!tokenRole) {
+        mismatches.push('No role claim present on ID token');
+      }
+      if (!decodedToken.email_verified) {
+        mismatches.push('Email is not verified on ID token');
+      }
+
+      const fullAdmin = ['super_admin', 'admin', 'developer'].includes(actorRole);
+      const contentAccess = fullAdmin || ['content_manager', 'editor'].includes(actorRole);
+
+      return apiSuccess(res, {
+        uid,
+        email,
+        tokenClaims: {
+          role: tokenRole,
+          email_verified: decodedToken.email_verified,
+          auth_time: decodedToken.auth_time,
+          iat: decodedToken.iat,
+          exp: decodedToken.exp,
+        },
+        firestoreProfile: actorDoc.exists ? {
+          role: firestoreRole,
+          accountStatus: actorDoc.data()?.accountStatus,
+          displayName: actorDoc.data()?.displayName,
+          subscriptionStatus: actorDoc.data()?.subscriptionStatus,
+        } : null,
+        effectiveAccess: {
+          role: actorRole,
+          fullAdmin,
+          contentAccess,
+          privilegedEmailMatch: isPrivilegedAdminEmail(email),
+          allowedDashboardScopes: fullAdmin
+            ? ['overview', 'listings', 'inquiries', 'calls', 'accounts', 'users', 'settings', 'tracking', 'billing', 'content', 'dealer_feeds', 'taxonomy', 'auctions']
+            : contentAccess ? ['content', 'taxonomy'] : [],
+        },
+        mismatches,
+        repairRecommended: mismatches.length > 0,
+      });
+    } catch (error: any) {
+      logger.error({ err: error }, 'Admin diagnostics failed');
+      return apiError(res, 500, 'DIAGNOSTICS_FAILED', 'Unable to load diagnostics.');
+    }
+  });
+
+  app.post('/api/admin/diagnostics/repair-self', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return apiError(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken, true);
+      const uid = decodedToken.uid;
+      const email = String(decodedToken.email || '').trim().toLowerCase();
+
+      const isPrivileged = isPrivilegedAdminEmail(email);
+      const tokenRole = String(decodedToken.role || '');
+      const actorDoc = await db.collection('users').doc(uid).get();
+      const firestoreRole = actorDoc.exists ? String(actorDoc.data()?.role || '') : '';
+      const actorRole = normalizeRole(firestoreRole || tokenRole);
+
+      if (!isPrivileged && !['super_admin', 'admin', 'developer'].includes(actorRole)) {
+        return apiError(res, 403, 'FORBIDDEN', 'Admin access required.');
+      }
+
+      const targetRole = isPrivileged ? 'super_admin' : actorRole;
+      const repairs: string[] = [];
+
+      // Sync custom claims if mismatched
+      if (tokenRole !== targetRole) {
+        await auth.setCustomUserClaims(uid, { ...(decodedToken as Record<string, unknown>), role: targetRole });
+        repairs.push(`Token claim updated from "${tokenRole}" to "${targetRole}"`);
+      }
+
+      // Create or update Firestore doc if missing or mismatched
+      if (!actorDoc.exists) {
+        const authUser = await auth.getUser(uid);
+        await db.collection('users').doc(uid).set({
+          uid,
+          email,
+          displayName: authUser.displayName || email.split('@')[0],
+          role: targetRole,
+          emailVerified: true,
+          accountStatus: 'active',
+          accountAccessSource: 'admin_override',
+          activeSubscriptionPlanId: 'fleet_dealer',
+          subscriptionStatus: 'active',
+          subscriptionStartDate: new Date().toISOString(),
+          currentPeriodEnd: '2200-01-01T00:00:00.000Z',
+          listingCap: 99999,
+          managedAccountCap: 999,
+          storefrontEnabled: true,
+          favorites: [],
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        repairs.push('Created missing Firestore user document');
+      } else if (firestoreRole !== targetRole) {
+        await db.collection('users').doc(uid).update({
+          role: targetRole,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        repairs.push(`Firestore role updated from "${firestoreRole}" to "${targetRole}"`);
+      }
+
+      // Re-fetch for response
+      const updatedDoc = await db.collection('users').doc(uid).get();
+      const updatedRole = updatedDoc.exists ? String(updatedDoc.data()?.role || '') : targetRole;
+      const fullAdmin = ['super_admin', 'admin', 'developer'].includes(updatedRole);
+
+      return apiSuccess(res, {
+        uid,
+        email,
+        tokenClaims: { role: targetRole },
+        firestoreProfile: updatedDoc.exists ? {
+          role: updatedRole,
+          accountStatus: updatedDoc.data()?.accountStatus,
+          displayName: updatedDoc.data()?.displayName,
+        } : null,
+        effectiveAccess: {
+          role: updatedRole,
+          fullAdmin,
+          contentAccess: true,
+          privilegedEmailMatch: isPrivileged,
+          allowedDashboardScopes: fullAdmin
+            ? ['overview', 'listings', 'inquiries', 'calls', 'accounts', 'users', 'settings', 'tracking', 'billing', 'content', 'dealer_feeds', 'taxonomy', 'auctions']
+            : ['content', 'taxonomy'],
+        },
+        mismatches: [],
+        repairRecommended: false,
+        repairs,
+      });
+    } catch (error: any) {
+      logger.error({ err: error }, 'Admin repair-self failed');
+      return apiError(res, 500, 'REPAIR_FAILED', 'Unable to repair admin access.');
+    }
+  });
+
+  // ── Tax-Exempt Certificates (Auction Admin) ────────────────────────
+
+  app.get('/api/admin/auctions/tax-exempt-certificates', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return apiError(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken, true);
+      const actorDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const actorRole = normalizeRole(actorDoc.data()?.role || decodedToken.role);
+      if (!['super_admin', 'admin', 'developer'].includes(actorRole)) {
+        return apiError(res, 403, 'FORBIDDEN', 'Admin access required.');
+      }
+
+      const usersSnap = await db.collectionGroup('bidderProfile').get();
+      const certificates: Record<string, unknown>[] = [];
+
+      for (const doc of usersSnap.docs) {
+        const data = doc.data();
+        if (data.taxExempt && data.taxExemptCertificateUrl) {
+          const userId = doc.ref.parent.parent?.id || '';
+          certificates.push({
+            userId,
+            profileId: doc.id,
+            taxExempt: true,
+            taxExemptCertificateUrl: String(data.taxExemptCertificateUrl || ''),
+            taxExemptState: String(data.taxExemptState || ''),
+            displayName: String(data.displayName || data.name || ''),
+            email: String(data.email || ''),
+            submittedAt: data.updatedAt || data.createdAt || null,
+          });
+        }
+      }
+
+      return apiSuccess(res, { certificates });
+    } catch (error: any) {
+      logger.error({ err: error }, 'Failed to fetch tax-exempt certificates');
+      return apiError(res, 500, 'FETCH_FAILED', 'Unable to load tax-exempt certificates.');
+    }
+  });
 }
