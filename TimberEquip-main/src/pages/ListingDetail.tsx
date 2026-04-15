@@ -52,7 +52,7 @@ import {
 const LISTING_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%2311161d'/%3E%3Crect x='100' y='100' width='1400' height='700' rx='24' fill='%231b222c' stroke='%23343c46' stroke-width='8'/%3E%3Cpath d='M390 610l170-180 140 120 170-210 340 270H390z' fill='%23a0a8b3' opacity='.7'/%3E%3Ccircle cx='585' cy='315' r='58' fill='%23e6b800' opacity='.9'/%3E%3Ctext x='800' y='760' fill='%23f5f7fa' font-family='Arial, Helvetica, sans-serif' font-size='56' font-weight='700' text-anchor='middle'%3ETwitterEquip Listing%3C/text%3E%3C/svg%3E";
 const SELLER_CONTACT_CONSENT_VERSION = 'seller-contact-v1';
 const FINANCING_CONTACT_CONSENT_VERSION = 'financing-contact-v1';
-const GALLERY_PRELOAD_WINDOW = 1;
+const GALLERY_PRELOAD_WINDOW = 2;
 
 function getVideoEmbedDescriptor(rawUrl: string): { kind: 'embed' | 'video' | 'link'; src: string } {
   const normalizedUrl = String(rawUrl || '').trim();
@@ -1283,8 +1283,8 @@ export function ListingDetail() {
             )}
 
             {/* Gallery */}
-            <div className="flex w-full max-w-full flex-col space-y-4 overflow-hidden">
-              <div className="bg-black/90 border border-line overflow-hidden relative group min-h-[320px] max-h-[70vh] aspect-[16/10] md:aspect-[16/9] w-full max-w-full">
+            <div className="flex w-full max-w-full min-w-0 flex-col space-y-4 overflow-hidden">
+              <div className="relative isolate aspect-[4/3] w-full max-w-full overflow-hidden border border-line bg-black/90 group sm:aspect-[16/10] lg:aspect-[16/9]">
                 <div
                   className={`absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(255,255,255,0)_45%),linear-gradient(135deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] transition-opacity duration-200 ${
                     isActiveGalleryImageLoaded ? 'opacity-0' : 'opacity-100'
@@ -1302,6 +1302,8 @@ export function ListingDetail() {
                     <img
                       src={activeGalleryImageSrc}
                       alt={activeImageTitle || listing.title}
+                      width={1600}
+                      height={1000}
                       className="block h-full w-full max-h-full max-w-full object-contain cursor-zoom-in"
                       onClick={hasGallery ? openFullscreenImage : undefined}
                       onLoad={() => markGalleryImageLoaded(activeGalleryImageSrc)}
@@ -1948,7 +1950,11 @@ export function ListingDetail() {
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex flex-col">
                     <span className="label-micro mb-2">{t('listingDetail.seller', 'Seller')}</span>
-                    <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
+                    {dealerPath ? (
+                      <Link to={dealerPath} className="text-lg font-black uppercase tracking-tighter leading-none mb-1 hover:text-accent transition-colors">{safeSellerName}</Link>
+                    ) : (
+                      <h4 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{safeSellerName}</h4>
+                    )}
                     <a 
                       href={`https://maps.apple.com/?q=${encodeURIComponent(safeSellerLocation)}`}
                       target="_blank"
@@ -2079,8 +2085,8 @@ export function ListingDetail() {
                     </div>
 
                     <TransformComponent
-                      wrapperClass="w-full h-full !overflow-visible"
-                      contentClass="w-full h-full flex items-center justify-center !overflow-visible px-4 py-10"
+                      wrapperClass="w-full h-full !overflow-hidden"
+                      contentClass="w-full h-full flex items-center justify-center !overflow-hidden px-4 py-10"
                       wrapperProps={{
                         onTouchStart: (e: React.TouchEvent) => {
                           if (e.touches.length === 1) {
@@ -2110,7 +2116,7 @@ export function ListingDetail() {
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.15, ease: 'easeOut' }}
                           onAnimationStart={() => resetTransform()}
-                          className="relative inline-flex h-[min(84vh,calc(100dvh-8rem))] w-[min(94vw,1600px)] items-center justify-center"
+                          className="relative inline-flex h-[min(84vh,calc(100dvh-8rem))] w-[min(94vw,1600px)] items-center justify-center overflow-hidden"
                         >
                           <div
                             className={`absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(255,255,255,0)_45%),linear-gradient(135deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] transition-opacity duration-200 ${
@@ -2120,6 +2126,8 @@ export function ListingDetail() {
                           <img
                             src={activeGalleryImageSrc}
                             alt={activeImageTitle || listing.title}
+                            width={1600}
+                            height={1000}
                             className="block h-full w-full max-h-full max-w-full object-contain select-none"
                             onLoad={() => markGalleryImageLoaded(activeGalleryImageSrc)}
                             referrerPolicy="no-referrer"

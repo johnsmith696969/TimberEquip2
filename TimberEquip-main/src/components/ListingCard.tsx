@@ -101,6 +101,9 @@ export const ListingCard = React.memo(function ListingCard({
   const displayLocation = getListingLocationLabel(listing) || 'Location pending';
   const displayCondition = listing.condition || 'Unspecified';
   const displaySellerName = String(listing.sellerName || '').trim() || undefined;
+  const sellerProfilePath = (listing.sellerUid || listing.sellerId)
+    ? `/sellers/${listing.sellerUid || listing.sellerId}`
+    : '';
   const displaySellerPhoneLabel = formatPhoneLabel(listing.sellerPhone);
   const displaySellerPhoneHref = toDialablePhone(listing.sellerPhone);
   const displayUpdatedAt = formatListingDate(listing.updatedAt || listing.publishedAt || listing.createdAt);
@@ -284,9 +287,15 @@ export const ListingCard = React.memo(function ListingCard({
                   </div>
                 </div>
                 {displaySellerName ? (
-                  <p className="truncate text-[10px] font-black uppercase tracking-widest text-ink lg:max-w-[220px] lg:shrink-0 lg:text-right">
-                    {displaySellerName}
-                  </p>
+                  sellerProfilePath ? (
+                    <Link to={sellerProfilePath} className="truncate text-[10px] font-black uppercase tracking-widest text-ink hover:text-accent transition-colors lg:max-w-[220px] lg:shrink-0 lg:text-right" onClick={(e) => e.stopPropagation()}>
+                      {displaySellerName}
+                    </Link>
+                  ) : (
+                    <p className="truncate text-[10px] font-black uppercase tracking-widest text-ink lg:max-w-[220px] lg:shrink-0 lg:text-right">
+                      {displaySellerName}
+                    </p>
+                  )
                 ) : null}
               </div>
               {isAdmin && (
@@ -520,9 +529,15 @@ export const ListingCard = React.memo(function ListingCard({
               </span>
             ) : <span />}
             {displaySellerName ? (
-              <p className="truncate text-[9px] font-black uppercase tracking-widest text-ink text-right max-w-[60%]">
-                {displaySellerName}
-              </p>
+              sellerProfilePath ? (
+                <Link to={sellerProfilePath} className="truncate text-[9px] font-black uppercase tracking-widest text-ink hover:text-accent transition-colors text-right max-w-[60%]" onClick={(e) => e.stopPropagation()}>
+                  {displaySellerName}
+                </Link>
+              ) : (
+                <p className="truncate text-[9px] font-black uppercase tracking-widest text-ink text-right max-w-[60%]">
+                  {displaySellerName}
+                </p>
+              )
             ) : null}
           </div>
         </div>
