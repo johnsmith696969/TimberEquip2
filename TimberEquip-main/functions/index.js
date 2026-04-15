@@ -7469,6 +7469,20 @@ async function assessRecaptchaToken(token, action) {
   return { valid: true, score: response.riskAnalysis.score };
 }
 
+function getRecaptchaMinimumScore(action) {
+  const normalizedAction = normalizeNonEmptyString(action).toUpperCase();
+  if (normalizedAction === 'LOGIN') {
+    // Firebase Auth still rate-limits and validates credentials. Keep token
+    // validation mandatory, but avoid locking out legitimate mobile users while
+    // reCAPTCHA Enterprise calibrates traffic for the restored production key.
+    return 0.1;
+  }
+  if (normalizedAction === 'PASSWORD_RESET' || normalizedAction === 'LOGIN_PROMPT') {
+    return 0.3;
+  }
+  return 0.5;
+}
+
 const LISTING_CHECKOUT_PLANS = {
   individual_seller: {
     id: 'individual_seller',
@@ -18051,8 +18065,9 @@ exports.apiProxy = onRequest(
         }
         try {
           const result = await assessRecaptchaToken(token, action);
-          const pass = result.valid && result.score >= 0.5;
-          return res.status(200).json({ pass, score: result.score });
+          const minScore = getRecaptchaMinimumScore(action);
+          const pass = result.valid && result.score >= minScore;
+          return res.status(200).json({ pass, score: result.score, minScore });
         } catch (err) {
           logger.error('reCAPTCHA assessment error', err);
           return res.status(200).json({ pass: false, score: null });
