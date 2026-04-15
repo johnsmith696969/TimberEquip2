@@ -11850,6 +11850,8 @@ exports.publicPages = onRequest(
   {
     region: 'us-central1',
     cors: ALLOWED_CORS_ORIGINS,
+    minInstances: 0,
+    maxInstances: 3,
   },
   async (req, res) => handlePublicPagesRequest(req, res)
 );
@@ -11858,6 +11860,8 @@ exports.apiProxy = onRequest(
   {
     region: 'us-central1',
     cors: ALLOWED_CORS_ORIGINS,
+    minInstances: 0,
+    maxInstances: 5,
     secrets: API_PROXY_SECRETS,
   },
   async (req, res) => {
