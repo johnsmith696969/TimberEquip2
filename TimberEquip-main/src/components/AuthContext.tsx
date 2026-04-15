@@ -41,6 +41,7 @@ interface AuthContextType {
   sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  authLoading: boolean;
   toggleFavorite: (listingId: string) => Promise<void>;
   patchCurrentUserProfile: (updates: Partial<UserProfile>) => void;
 }
@@ -895,8 +896,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, accountBootstrap, login, register, loginWithGoogle, sendVerificationEmail: () => sendVerificationEmailViaApi(), sendPasswordReset, logout, isAuthenticated: !!user, toggleFavorite, patchCurrentUserProfile: applyPatchedCurrentUserProfile }}>
-      {!loading && children}
+    <AuthContext.Provider value={{ user, accountBootstrap, login, register, loginWithGoogle, sendVerificationEmail: () => sendVerificationEmailViaApi(), sendPasswordReset, logout, isAuthenticated: !!user, authLoading: loading, toggleFavorite, patchCurrentUserProfile: applyPatchedCurrentUserProfile }}>
+      {children}
     </AuthContext.Provider>
   );
 }

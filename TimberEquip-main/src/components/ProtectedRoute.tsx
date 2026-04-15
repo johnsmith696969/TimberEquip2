@@ -15,7 +15,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs = false, requireVerified = false }: ProtectedRouteProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { authLoading, isAuthenticated, user } = useAuth();
   const location = useLocation();
   const state = location.state as { returnTo?: unknown } | null;
   const returnTo = typeof state?.returnTo === 'string' && state.returnTo.startsWith('/')
@@ -28,6 +28,14 @@ export function ProtectedRoute({ children, requireAdmin = false, requireDealerOs
   const hasAdminAccess = !!(user && user.role && ADMIN_ROLES.includes(user.role));
   const isOperatorAccount = Boolean(user && isOperatorOnlyRole(user.role));
   const hasDealerOsAccess = canAccessDealerOs(user);
+
+  if (authLoading && !hasSession) {
+    return (
+      <div className="mx-auto flex min-h-[40vh] max-w-[1600px] items-center justify-center px-4 py-16 md:px-8">
+        <div className="text-[11px] font-black uppercase tracking-widest text-muted">Loading Account...</div>
+      </div>
+    );
+  }
 
   if (!hasSession) {
     return (
