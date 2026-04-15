@@ -11863,7 +11863,12 @@ exports.apiProxy = onRequest(
   async (req, res) => {
     let path = '/';
     try {
-      path = (req.path || '/').replace(/^\/api/, '') || '/';
+      // Firebase Hosting rewrites both /api/* and /api/v1/* to this function.
+      // Normalize the versioned prefix here so frontend API versioning and
+      // legacy clients share the same production handlers.
+      path = (req.path || '/')
+        .replace(/^\/api\/v1(?=\/|$)/, '')
+        .replace(/^\/api(?=\/|$)/, '') || '/';
 
       // ── Twilio voice webhooks (no CORS, no auth, TwiML responses) ──
       if (req.method === 'POST' && path === '/twilio/voice/inbound') {
