@@ -396,7 +396,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/search" className="hover:text-accent transition-colors">{t('layout.inventory', 'Inventory')}</Link>
           <Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link>
           <Link to="/ad-programs" className="hover:text-accent transition-colors text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
-          <Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.auctions', 'Auctions')}</Link>
+          <Link to="/dealer-hosting" className="hover:text-accent transition-colors">Hosted Websites</Link>
           <Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financing', 'Financing')}</Link>
           <Link to="/dealers" className="hover:text-accent transition-colors">{t('layout.dealerNetwork', 'Dealers')}</Link>
           <Link to="/blog" className="hover:text-accent transition-colors">{t('layout.equipmentNews', 'Equipment News')}</Link>
@@ -466,7 +466,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/manufacturers" onClick={() => setIsMenuOpen(false)}>Manufacturers</Link>
               <Link to="/states" onClick={() => setIsMenuOpen(false)}>Browse by State</Link>
               <Link to="/ad-programs" onClick={() => setIsMenuOpen(false)} className="text-accent-link">{t('layout.adPrograms', 'Ad Programs')}</Link>
-              <Link to="/auctions" onClick={() => setIsMenuOpen(false)}>{t('layout.auctions', 'Auctions')}</Link>
+              <Link to="/dealer-hosting" onClick={() => setIsMenuOpen(false)}>Hosted Websites</Link>
               <Link to="/financing" onClick={() => setIsMenuOpen(false)}>{t('layout.financing', 'Financing')}</Link>
               <Link to="/dealers" onClick={() => setIsMenuOpen(false)}>{t('layout.dealerNetwork', 'Dealers')}</Link>
               <Link to="/blog" onClick={() => setIsMenuOpen(false)}>{t('layout.equipmentNews', 'Equipment News')}</Link>
@@ -595,7 +595,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
                 <li><Link to="/manufacturers" className="hover:text-accent transition-colors">Manufacturers</Link></li>
                 <li><Link to="/states" className="hover:text-accent transition-colors">Browse by State</Link></li>
-                <li><Link to="/auctions" className="hover:text-accent transition-colors">{t('layout.liveAuctions', 'Live Auctions')}</Link></li>
+                <li><Link to="/dealer-hosting" className="hover:text-accent transition-colors">Hosted Websites</Link></li>
                 <li><Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>
               </ul>
