@@ -23,7 +23,6 @@ import {
 } from 'firebase/auth';
 
 import { AlertMessage } from '../components/AlertMessage';
-import { SsoLoginButton } from '../components/SsoLoginButton';
 import { useAuth } from '../components/AuthContext';
 import { verifyRecaptchaAction } from '../services/recaptchaService';
 import {
@@ -610,9 +609,6 @@ export function Login() {
               )}
             </button>
           </div>
-
-          <div className="text-center text-xs text-muted uppercase tracking-widest my-4">or</div>
-          <SsoLoginButton onSuccess={() => setInfoMessage('SSO login successful. Redirecting...')} onError={(msg) => setError(msg)} />
 
           <div className="mt-8 pt-8 border-t border-line flex flex-col space-y-6">
             <div className="flex items-center justify-between">

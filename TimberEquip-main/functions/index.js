@@ -14723,7 +14723,8 @@ exports.apiProxy = onRequest(
           }
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ predictions });
-        } catch {
+        } catch (err) {
+          functions.logger.error('Places autocomplete failed', { error: String(err) });
           return res.status(200).json({ predictions: [] });
         }
       }
@@ -14765,7 +14766,8 @@ exports.apiProxy = onRequest(
           const place = parseGooglePlaceDetails(placeDetailsData.result, placeId);
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ place });
-        } catch {
+        } catch (err) {
+          functions.logger.error('Place details lookup failed', { error: String(err) });
           return res.status(200).json({ place: null });
         }
       }
@@ -14806,7 +14808,8 @@ exports.apiProxy = onRequest(
 
           res.set('Cache-Control', 'public, max-age=300');
           return res.status(200).json({ location: formattedLocation });
-        } catch {
+        } catch (err) {
+          functions.logger.error('Reverse geocode failed', { error: String(err) });
           return res.status(200).json({ location: null });
         }
       }
