@@ -7,6 +7,10 @@ on:
         description: Git ref to deploy
         required: false
         default: main
+      deploy_scope:
+        description: Firebase deploy scope
+        required: false
+        default: hosting,functions:apiProxy,functions:publicPages,firestore:rules
 
 permissions:
   contents: read
@@ -103,7 +107,7 @@ jobs:
         run: npm run deploy:production:ci
         env:
           FIREBASE_PROJECT_ID_PRODUCTION: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIREBASE_DEPLOY_SCOPE: hosting,functions,firestore:rules
+          FIREBASE_DEPLOY_SCOPE: ${{ github.event.inputs.deploy_scope || 'hosting,functions:apiProxy,functions:publicPages,firestore:rules' }}
           RECAPTCHA_SITE_KEY: 6LdxzpIsAAAAADS0ws0EJT-ulSMBH5yO9uAWOqX0
           RECAPTCHA_PROJECT_ID: mobile-app-equipment-sales
           VITE_FIREBASE_API_KEY: AIzaSyChC_87Qt3KNzsiV9v4Nkz2kIXd9QZ60XQ
