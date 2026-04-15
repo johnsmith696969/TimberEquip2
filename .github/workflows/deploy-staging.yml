@@ -93,6 +93,16 @@ jobs:
           FIREBASE_PROJECT_ID: timberequip-staging
           SMOKE_BASE_URL: https://timberequip-staging.web.app
 
+      - name: Write Functions deploy params
+        run: |
+          {
+            echo "RECAPTCHA_SITE_KEY=${RECAPTCHA_SITE_KEY}"
+            echo "RECAPTCHA_PROJECT_ID=${RECAPTCHA_PROJECT_ID}"
+          } > functions/.env
+        env:
+          RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
+          RECAPTCHA_PROJECT_ID: mobile-app-equipment-sales
+
       - name: Deploy staging
         run: npm run deploy:staging:ci
         env:
