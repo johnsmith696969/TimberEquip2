@@ -815,6 +815,93 @@ export function registerBillingRoutes(app: express.Express, deps: BillingRouteDe
     });
   });
 
+  // ── GET /api/admin/billing/bootstrap ──────────────────────────────────────────
+  app.get('/api/admin/billing/bootstrap', async (req, res) => {
+    const idToken = req.headers.authorization?.split('Bearer ')[1];
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const decodedToken = await auth.verifyIdToken(idToken, true);
+      const uid = decodedToken.uid;
+
+      // Verify admin role
+      const userDoc = await db.collection('users').doc(uid).get();
+      const userData = userDoc.data();
+      const role = userData?.role || 'member';
+      if (!['super_admin', 'admin', 'developer'].includes(role)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const invoices: unknown[] = [];
+      const subscriptions: unknown[] = [];
+      const auditLogs: unknown[] = [];
+      const accountAuditLogs: unknown[] = [];
+      const sellerAgreementAcceptances: unknown[] = [];
+      const errors: Record<string, string> = {};
+
+      // Fetch invoices
+      try {
+        const snap = await db.collection('invoices').orderBy('createdAt', 'desc').limit(200).get();
+        snap.docs.forEach(d => invoices.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        errors.invoices = 'Failed to fetch invoices';
+        logger.warn({ err }, 'Admin billing bootstrap: invoices fetch failed');
+      }
+
+      // Fetch subscriptions
+      try {
+        const snap = await db.collection('subscriptions').orderBy('createdAt', 'desc').limit(200).get();
+        snap.docs.forEach(d => subscriptions.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        errors.subscriptions = 'Failed to fetch subscriptions';
+        logger.warn({ err }, 'Admin billing bootstrap: subscriptions fetch failed');
+      }
+
+      // Fetch audit logs
+      try {
+        const snap = await db.collection('billingAuditLogs').orderBy('timestamp', 'desc').limit(200).get();
+        snap.docs.forEach(d => auditLogs.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        errors.auditLogs = 'Failed to fetch audit logs';
+        logger.warn({ err }, 'Admin billing bootstrap: audit logs fetch failed');
+      }
+
+      // Fetch account audit logs
+      try {
+        const snap = await db.collection('accountAuditLogs').orderBy('timestamp', 'desc').limit(200).get();
+        snap.docs.forEach(d => accountAuditLogs.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        errors.accountAuditLogs = 'Failed to fetch account audit logs';
+        logger.warn({ err }, 'Admin billing bootstrap: account audit logs fetch failed');
+      }
+
+      // Fetch seller agreement acceptances
+      try {
+        const snap = await db.collection('sellerAgreementAcceptances').orderBy('acceptedAt', 'desc').limit(200).get();
+        snap.docs.forEach(d => sellerAgreementAcceptances.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        errors.sellerAgreementAcceptances = 'Failed to fetch seller agreement acceptances';
+        logger.warn({ err }, 'Admin billing bootstrap: seller acceptances fetch failed');
+      }
+
+      return res.json({
+        invoices,
+        subscriptions,
+        auditLogs,
+        accountAuditLogs,
+        sellerAgreementAcceptances,
+        partial: Object.keys(errors).length > 0,
+        degradedSections: Object.keys(errors),
+        errors,
+        firestoreQuotaLimited: false,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.error({ err }, 'Admin billing bootstrap failed');
+      return res.status(500).json({ error: 'Failed to load billing data' });
+    }
+  });
+
   // ── POST /api/billing/refresh-account-access ─────────────────────────────────
   app.post('/api/billing/refresh-account-access', async (req, res) => {
     if (!stripe && isLocalBillingStubEnabled()) {

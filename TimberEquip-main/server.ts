@@ -24,7 +24,6 @@ import { registerAdminRoutes } from './src/server/routes/admin.js';
 import { registerBillingRoutes } from './src/server/routes/billing.js';
 import { registerAuctionRoutes } from './src/server/routes/auctions.js';
 import { registerManagedRolesRoutes } from './src/server/routes/managed-roles.js';
-import { registerSsoRoutes } from './src/server/routes/sso.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { AuctionTimerManager } from './src/server/auctionTimerManager.js';
 // Validation schemas are now imported by individual route modules
@@ -1802,13 +1801,6 @@ async function startServer() {
     sendServerEmail,
     emailTemplates,
     APP_BASE_URL,
-  });
-
-  registerSsoRoutes(app, {
-    db,
-    auth,
-    normalizeRole,
-    isPrivilegedAdminEmail,
   });
 
   const { closeLotByTimer } = registerAuctionRoutes(app, {
