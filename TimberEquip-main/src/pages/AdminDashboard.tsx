@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { equipmentService, type AdminListingsCursor, type ListingReviewSummary } from '../services/equipmentService';
 import { userService } from '../services/userService';
-import { adminUserService, type AdminOperationsBootstrapResponse, type PgAnalyticsResponse } from '../services/adminUserService';
+import { adminUserService, type AdminDiagnosticsResponse, type AdminOperationsBootstrapResponse, type PgAnalyticsResponse } from '../services/adminUserService';
 import { Listing, Inquiry, Account, CallLog, UserRole } from '../types';
 import { billingService, Invoice, Subscription, isSubscriptionTrulyActive, type AdminBillingBootstrapResponse } from '../services/billingService';
 import { ListingModal } from '../components/admin/ListingModal';
@@ -139,6 +139,10 @@ export function AdminDashboard() {
   const [pgAnalytics, setPgAnalytics] = useState<PgAnalyticsResponse | null>(null);
   const [pgAnalyticsLoading, setPgAnalyticsLoading] = useState(false);
   const [pgAnalyticsError, setPgAnalyticsError] = useState('');
+  const [adminDiagnostics, setAdminDiagnostics] = useState<AdminDiagnosticsResponse | null>(null);
+  const [adminDiagnosticsLoading, setAdminDiagnosticsLoading] = useState(false);
+  const [adminDiagnosticsError, setAdminDiagnosticsError] = useState('');
+  const [adminRepairingAccess, setAdminRepairingAccess] = useState(false);
   const listingAuditPanelRef = useRef<HTMLDivElement | null>(null);
   const [pendingListingLifecycleKey, setPendingListingLifecycleKey] = useState('');
   const [listingReviewFilter, setListingReviewFilter] = useState<ListingReviewFilter>('all');
@@ -390,6 +394,53 @@ export function AdminDashboard() {
       setPgAnalyticsLoading(false);
     }
   }, [authUser?.uid, pgAnalyticsLoading]);
+
+  const loadAdminDiagnostics = useCallback(async () => {
+    if (!authUser?.uid || !hasFullAdminDashboardScope || adminDiagnosticsLoading) return;
+    setAdminDiagnosticsLoading(true);
+    setAdminDiagnosticsError('');
+    try {
+      const diagnostics = await adminUserService.getAdminDiagnostics();
+      setAdminDiagnostics(diagnostics);
+    } catch (err) {
+      setAdminDiagnosticsError(err instanceof Error ? err.message : 'Failed to load admin diagnostics.');
+    } finally {
+      setAdminDiagnosticsLoading(false);
+    }
+  }, [adminDiagnosticsLoading, authUser?.uid, hasFullAdminDashboardScope]);
+
+  const handleRepairAdminAccess = useCallback(async () => {
+    if (!authUser?.uid || !hasFullAdminDashboardScope || adminRepairingAccess) return;
+
+    const confirmed = await confirm({
+      title: 'Repair Admin Access',
+      message: 'This will align your Firebase Auth custom claims and Firestore profile role/status, then force-refresh your ID token. Continue?',
+      confirmLabel: 'Repair Access',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+
+    setAdminRepairingAccess(true);
+    setAdminDiagnosticsError('');
+    try {
+      const diagnostics = await adminUserService.repairCurrentAdminAccess();
+      await auth.currentUser?.getIdToken(true);
+      setAdminDiagnostics(diagnostics);
+      setUserFeedback({
+        tone: diagnostics.repairRecommended ? 'warning' : 'success',
+        message: diagnostics.repairRecommended
+          ? 'Admin repair completed, but diagnostics still found mismatches. Refresh diagnostics or sign out and back in once.'
+          : 'Admin access repaired and your ID token was refreshed.',
+      });
+      void loadAdminDiagnostics();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to repair admin access.';
+      setAdminDiagnosticsError(message);
+      setUserFeedback({ tone: 'error', message });
+    } finally {
+      setAdminRepairingAccess(false);
+    }
+  }, [adminRepairingAccess, authUser?.uid, confirm, hasFullAdminDashboardScope, loadAdminDiagnostics]);
 
   const loadTrackingListings = async (force = false) => {
     if (!authUser?.uid) {
@@ -805,6 +856,10 @@ export function AdminDashboard() {
 
     if (activeTab === 'overview' && hasFullAdminDashboardScope && !pgAnalytics && !pgAnalyticsLoading) {
       void fetchPgAnalytics();
+    }
+
+    if (activeTab === 'settings' && hasFullAdminDashboardScope && !adminDiagnostics && !adminDiagnosticsLoading) {
+      void loadAdminDiagnostics();
     }
   }, [activeTab, authUser?.uid]);
 
@@ -2271,6 +2326,10 @@ export function AdminDashboard() {
                   sendingAdminPasswordReset={sendingAdminPasswordReset}
                   sendingTestReport={sendingTestReport}
                   testReportResult={testReportResult}
+                  adminDiagnostics={adminDiagnostics}
+                  adminDiagnosticsLoading={adminDiagnosticsLoading}
+                  adminDiagnosticsError={adminDiagnosticsError}
+                  adminRepairingAccess={adminRepairingAccess}
                   patchCurrentUserProfile={patchCurrentUserProfile}
                   confirm={confirm}
                   selectAdminTab={selectAdminTab}
@@ -2279,6 +2338,8 @@ export function AdminDashboard() {
                   onToggleEmailNotifications={handleToggleAdminEmailNotifications}
                   onSendPasswordReset={handleSendAdminPasswordReset}
                   onSendTestReport={handleSendTestReport}
+                  onLoadAdminDiagnostics={loadAdminDiagnostics}
+                  onRepairAdminAccess={handleRepairAdminAccess}
                 />
               )}
             </div>

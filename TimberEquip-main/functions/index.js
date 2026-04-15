@@ -11149,6 +11149,51 @@ function canAccessContentStudio(role) {
   return ['super_admin', 'admin', 'developer', 'content_manager', 'editor'].includes(normalizeUserRole(role));
 }
 
+function getAllowedDashboardScopesForRole(role) {
+  const normalizedRole = normalizeUserRole(role);
+  if (['super_admin', 'admin', 'developer'].includes(normalizedRole)) {
+    return [
+      'overview',
+      'listings',
+      'inquiries',
+      'calls',
+      'accounts',
+      'settings',
+      'tracking',
+      'users',
+      'billing',
+      'content',
+      'dealer_feeds',
+      'taxonomy',
+      'auctions',
+    ];
+  }
+
+  if (['content_manager', 'editor'].includes(normalizedRole)) {
+    return ['content', 'settings'];
+  }
+
+  return [];
+}
+
+function secondsToIso(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed * 1000).toISOString() : null;
+}
+
+function summarizeAuthAccessClaims(claims = {}) {
+  return {
+    role: normalizeUserRole(claims.role || ''),
+    accountStatus: normalizeAccountStatus(claims.accountStatus || '') || null,
+    accountAccessSource: normalizeAccountAccessSource(claims.accountAccessSource || '') || null,
+    subscriptionPlanId: normalizeNonEmptyString(claims.subscriptionPlanId) || null,
+    subscriptionStatus: normalizeNonEmptyString(claims.subscriptionStatus) || null,
+    listingCap: Number.isFinite(Number(claims.listingCap)) ? Number(claims.listingCap) : null,
+    managedAccountCap: Number.isFinite(Number(claims.managedAccountCap)) ? Number(claims.managedAccountCap) : null,
+    parentAccountUid: normalizeNonEmptyString(claims.parentAccountUid) || null,
+  };
+}
+
 function getActorRoleFromDecodedToken(decodedToken) {
   return normalizeUserRole(String(decodedToken?.role || decodedToken?.claims?.role || ''));
 }
@@ -11175,6 +11220,114 @@ function buildAdminActorContextFromToken(decodedToken, actorUid, actorEmail, act
       ...extraProfile,
     }),
     actorRole,
+  };
+}
+
+async function buildAdminDiagnosticsPayload(decodedToken, options = {}) {
+  const uid = normalizeNonEmptyString(decodedToken?.uid);
+  const email = normalizeNonEmptyString(decodedToken?.email).toLowerCase();
+  const tokenClaims = summarizeAuthAccessClaims(decodedToken || {});
+  const privilegedEmailMatch = isPrivilegedAdminEmail(email);
+
+  let authRecord = null;
+  let authRecordError = null;
+  try {
+    authRecord = uid ? await admin.auth().getUser(uid) : null;
+  } catch (error) {
+    authRecordError = error instanceof Error ? error.message : String(error || 'Unable to load Auth user.');
+  }
+
+  let profileSnap = null;
+  let profileData = null;
+  let profileError = null;
+  try {
+    profileSnap = uid ? await getDb().collection('users').doc(uid).get() : null;
+    profileData = profileSnap?.exists ? (profileSnap.data() || {}) : null;
+  } catch (error) {
+    profileError = error instanceof Error ? error.message : String(error || 'Unable to load Firestore profile.');
+  }
+
+  const authClaims = summarizeAuthAccessClaims(authRecord?.customClaims || {});
+  const profileRole = normalizeUserRole(profileData?.role || '');
+  const profileStatus = normalizeAccountStatus(profileData?.accountStatus || '') || null;
+  const profileAccessSource = normalizeAccountAccessSource(profileData?.accountAccessSource || '') || null;
+  const effectiveRole = privilegedEmailMatch
+    ? 'super_admin'
+    : normalizeUserRole(tokenClaims.role || authClaims.role || profileRole || '');
+  const allowedDashboardScopes = getAllowedDashboardScopesForRole(effectiveRole);
+  const mismatches = [];
+
+  if (privilegedEmailMatch && tokenClaims.role !== 'super_admin') {
+    mismatches.push('ID token role claim is not super_admin for a privileged admin email.');
+  }
+  if (privilegedEmailMatch && authClaims.role !== 'super_admin') {
+    mismatches.push('Firebase Auth custom claims are not super_admin for a privileged admin email.');
+  }
+  if (privilegedEmailMatch && profileRole !== 'super_admin') {
+    mismatches.push('Firestore profile role is not super_admin for a privileged admin email.');
+  }
+  if (privilegedEmailMatch && profileStatus !== 'active') {
+    mismatches.push('Firestore profile accountStatus is not active for a privileged admin email.');
+  }
+  if (privilegedEmailMatch && profileAccessSource !== 'admin_override') {
+    mismatches.push('Firestore profile accountAccessSource is not admin_override for a privileged admin email.');
+  }
+  if (!allowedDashboardScopes.length) {
+    mismatches.push('Effective role does not grant any admin dashboard scopes.');
+  }
+  if (authRecord?.disabled) {
+    mismatches.push('Firebase Auth account is disabled.');
+  }
+  if (authRecordError) {
+    mismatches.push('Firebase Auth record could not be loaded.');
+  }
+  if (profileError) {
+    mismatches.push('Firestore profile could not be loaded.');
+  }
+
+  return {
+    requestedAt: new Date().toISOString(),
+    repaired: Boolean(options.repaired),
+    tokenRefreshRequired: Boolean(options.tokenRefreshRequired),
+    effectiveAccess: {
+      role: effectiveRole || 'member',
+      allowedDashboardScopes,
+      fullAdmin: canAdministrateAccount(effectiveRole),
+      contentAccess: canAccessContentStudio(effectiveRole),
+      privilegedEmailMatch,
+    },
+    token: {
+      uid,
+      email,
+      emailVerified: Boolean(decodedToken?.email_verified),
+      claims: tokenClaims,
+      issuedAt: secondsToIso(decodedToken?.iat),
+      authTime: secondsToIso(decodedToken?.auth_time),
+    },
+    authRecord: {
+      exists: Boolean(authRecord),
+      uid: authRecord?.uid || uid,
+      email: authRecord?.email || email,
+      disabled: Boolean(authRecord?.disabled),
+      emailVerified: Boolean(authRecord?.emailVerified),
+      claims: authClaims,
+      createdAt: authRecord?.metadata?.creationTime || null,
+      lastSignInAt: authRecord?.metadata?.lastSignInTime || null,
+      error: authRecordError,
+    },
+    profile: {
+      exists: Boolean(profileSnap?.exists),
+      role: profileRole || null,
+      accountStatus: profileStatus,
+      accountAccessSource: profileAccessSource,
+      email: normalizeNonEmptyString(profileData?.email) || null,
+      displayName: normalizeNonEmptyString(profileData?.displayName) || null,
+      updatedAt: timestampValueToIso(profileData?.updatedAt) || null,
+      createdAt: timestampValueToIso(profileData?.createdAt) || null,
+      error: profileError,
+    },
+    mismatches,
+    repairRecommended: mismatches.length > 0,
   };
 }
 
@@ -16367,6 +16520,127 @@ exports.apiProxy = onRequest(
 
         const includeOverview = ['1', 'true', 'yes'].includes(String(req.query?.includeOverview || '').trim().toLowerCase());
         return res.status(200).json(await buildAdminOperationsBootstrapPayload({ includeOverview }));
+      }
+
+      if (req.method === 'GET' && path === '/admin/diagnostics') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({
+            error: actor.error,
+            diagnostics: await buildAdminDiagnosticsPayload(decodedToken),
+          });
+        }
+
+        return res.status(200).json(await buildAdminDiagnosticsPayload(decodedToken));
+      }
+
+      if (req.method === 'POST' && path === '/admin/diagnostics/repair-self') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const uid = normalizeNonEmptyString(decodedToken.uid);
+        const email = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        if (!uid || !email) {
+          return res.status(400).json({ error: 'Authenticated user id and email are required.' });
+        }
+
+        const privilegedEmailMatch = isPrivilegedAdminEmail(email);
+        const tokenRole = getActorRoleFromDecodedToken(decodedToken);
+        let profileRole = '';
+        let profileSnap = null;
+        try {
+          profileSnap = await getDb().collection('users').doc(uid).get();
+          profileRole = normalizeUserRole(profileSnap.data()?.role || '');
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(503).json({
+              error: 'Admin account repair is temporarily unavailable because the Firestore daily read quota is exhausted.',
+              diagnostics: await buildAdminDiagnosticsPayload(decodedToken),
+            });
+          }
+          throw error;
+        }
+
+        const effectiveCurrentRole = privilegedEmailMatch ? 'super_admin' : normalizeUserRole(tokenRole || profileRole);
+        if (!privilegedEmailMatch && !canAdministrateAccount(effectiveCurrentRole)) {
+          return res.status(403).json({
+            error: 'Only privileged or existing full-admin accounts can repair admin access.',
+            diagnostics: await buildAdminDiagnosticsPayload(decodedToken),
+          });
+        }
+
+        const desiredRole = privilegedEmailMatch ? 'super_admin' : effectiveCurrentRole;
+        const authRecord = await admin.auth().getUser(uid);
+        const existingClaims = authRecord.customClaims || {};
+        const userRef = getDb().collection('users').doc(uid);
+        const existingProfile = profileSnap?.data() || {};
+
+        await userRef.set(
+          {
+            uid,
+            email,
+            displayName: normalizeNonEmptyString(
+              existingProfile.displayName || authRecord.displayName || decodedToken.name,
+              'Forestry Equipment Sales Admin'
+            ),
+            role: desiredRole,
+            accountStatus: 'active',
+            accountAccessSource: 'admin_override',
+            emailVerified: Boolean(authRecord.emailVerified),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            ...(profileSnap?.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp(), favorites: [] }),
+          },
+          { merge: true }
+        );
+
+        await admin.auth().setCustomUserClaims(uid, buildAccessClaims(existingClaims, {
+          role: desiredRole,
+          accountStatus: 'active',
+          accountAccessSource: 'admin_override',
+          subscriptionPlanId: null,
+          subscriptionStatus: null,
+          listingCap: null,
+          managedAccountCap: null,
+        }));
+
+        await writeAccountAuditLog({
+          eventType: 'admin_self_access_repair',
+          actorUid: uid,
+          targetUid: uid,
+          source: 'admin_diagnostics',
+          reason: privilegedEmailMatch
+            ? 'Privileged admin email self-repaired dashboard access.'
+            : 'Full admin self-repaired dashboard access.',
+          previousState: {
+            tokenRole,
+            profileRole,
+            authClaims: summarizeAuthAccessClaims(existingClaims),
+          },
+          nextState: {
+            role: desiredRole,
+            accountStatus: 'active',
+            accountAccessSource: 'admin_override',
+          },
+        });
+
+        const refreshedTokenShape = {
+          ...decodedToken,
+          role: desiredRole,
+          accountStatus: 'active',
+          accountAccessSource: 'admin_override',
+        };
+
+        return res.status(200).json(await buildAdminDiagnosticsPayload(refreshedTokenShape, {
+          repaired: true,
+          tokenRefreshRequired: true,
+        }));
       }
 
       if (req.method === 'GET' && path === '/admin/content/bootstrap') {

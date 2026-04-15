@@ -162,6 +162,51 @@ export interface PgAnalyticsResponse {
   errors: string[];
 }
 
+export interface AdminDiagnosticsResponse {
+  requestedAt: string;
+  repaired?: boolean;
+  tokenRefreshRequired?: boolean;
+  effectiveAccess: {
+    role: string;
+    allowedDashboardScopes: string[];
+    fullAdmin: boolean;
+    contentAccess: boolean;
+    privilegedEmailMatch: boolean;
+  };
+  token: {
+    uid: string;
+    email: string;
+    emailVerified: boolean;
+    claims: Record<string, unknown>;
+    issuedAt: string | null;
+    authTime: string | null;
+  };
+  authRecord: {
+    exists: boolean;
+    uid: string;
+    email: string;
+    disabled: boolean;
+    emailVerified: boolean;
+    claims: Record<string, unknown>;
+    createdAt: string | null;
+    lastSignInAt: string | null;
+    error?: string | null;
+  };
+  profile: {
+    exists: boolean;
+    role: string | null;
+    accountStatus: string | null;
+    accountAccessSource: string | null;
+    email: string | null;
+    displayName: string | null;
+    updatedAt: string | null;
+    createdAt: string | null;
+    error?: string | null;
+  };
+  mismatches: string[];
+  repairRecommended: boolean;
+}
+
 function getApiRequestUrls(input: RequestInfo | URL): string[] {
   const rawInput = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input);
   if (typeof window === 'undefined' || !rawInput.startsWith(API_BASE)) {
@@ -385,6 +430,36 @@ export const adminUserService = {
     return getAuthorizedJson<PgAnalyticsResponse>(`${API_BASE}/admin/pg-analytics`, {
       method: 'GET',
     });
+  },
+
+  async getAdminDiagnostics(): Promise<AdminDiagnosticsResponse> {
+    const payload = await getAuthorizedJson<AdminDiagnosticsResponse>(`${API_BASE}/admin/diagnostics`, {
+      method: 'GET',
+    });
+
+    return {
+      ...payload,
+      effectiveAccess: {
+        role: String(payload.effectiveAccess?.role || 'member'),
+        allowedDashboardScopes: Array.isArray(payload.effectiveAccess?.allowedDashboardScopes)
+          ? payload.effectiveAccess.allowedDashboardScopes
+          : [],
+        fullAdmin: Boolean(payload.effectiveAccess?.fullAdmin),
+        contentAccess: Boolean(payload.effectiveAccess?.contentAccess),
+        privilegedEmailMatch: Boolean(payload.effectiveAccess?.privilegedEmailMatch),
+      },
+      mismatches: Array.isArray(payload.mismatches) ? payload.mismatches : [],
+      repairRecommended: Boolean(payload.repairRecommended),
+    };
+  },
+
+  async repairCurrentAdminAccess(): Promise<AdminDiagnosticsResponse> {
+    const payload = await getAuthorizedJson<AdminDiagnosticsResponse>(`${API_BASE}/admin/diagnostics/repair-self`, {
+      method: 'POST',
+    });
+
+    await auth.currentUser?.getIdToken(true);
+    return payload;
   },
 
   async sendTestPlatformReport(options: { recipients: string[]; days?: number }): Promise<{ sent: boolean; recipients: string[]; periodLabel?: string }> {

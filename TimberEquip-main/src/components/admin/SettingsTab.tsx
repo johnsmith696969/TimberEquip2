@@ -1,8 +1,9 @@
 import React from 'react';
-import { User, Bell, ShieldAlert, CreditCard, FileText } from 'lucide-react';
+import { User, Bell, ShieldAlert, CreditCard, FileText, RefreshCw, Wrench } from 'lucide-react';
 import { AccountMfaSettingsCard } from '../AccountMfaSettingsCard';
 import type { UserProfile } from '../../types';
 import type { DashboardTab } from './adminTypes';
+import type { AdminDiagnosticsResponse } from '../../services/adminUserService';
 
 interface SettingsTabProps {
   authUser: UserProfile | null;
@@ -21,6 +22,10 @@ interface SettingsTabProps {
   sendingAdminPasswordReset: boolean;
   sendingTestReport: string | null;
   testReportResult: { type: 'success' | 'error'; message: string } | null;
+  adminDiagnostics: AdminDiagnosticsResponse | null;
+  adminDiagnosticsLoading: boolean;
+  adminDiagnosticsError: string;
+  adminRepairingAccess: boolean;
   patchCurrentUserProfile: (patch: Record<string, unknown>) => void;
   confirm: (opts: { title: string; message: string; confirmLabel?: string; variant?: 'danger' | 'warning' | 'info' }) => Promise<boolean>;
   selectAdminTab: (tab: DashboardTab) => void;
@@ -29,6 +34,15 @@ interface SettingsTabProps {
   onToggleEmailNotifications: () => Promise<void>;
   onSendPasswordReset: () => Promise<void>;
   onSendTestReport: (reportType: 'platform') => Promise<void>;
+  onLoadAdminDiagnostics: () => Promise<void>;
+  onRepairAdminAccess: () => Promise<void>;
+}
+
+function formatClaimValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Not set';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : 'None';
+  return String(value);
 }
 
 export function SettingsTab({
@@ -42,6 +56,10 @@ export function SettingsTab({
   sendingAdminPasswordReset,
   sendingTestReport,
   testReportResult,
+  adminDiagnostics,
+  adminDiagnosticsLoading,
+  adminDiagnosticsError,
+  adminRepairingAccess,
   patchCurrentUserProfile,
   confirm,
   selectAdminTab,
@@ -50,7 +68,11 @@ export function SettingsTab({
   onToggleEmailNotifications,
   onSendPasswordReset,
   onSendTestReport,
+  onLoadAdminDiagnostics,
+  onRepairAdminAccess,
 }: SettingsTabProps) {
+  const showAdminDiagnostics = ['super_admin', 'admin', 'developer'].includes(String(authUser?.role || ''));
+
   return (
     <div className="max-w-3xl space-y-8">
       <section className="bg-surface border border-line rounded-sm overflow-hidden">
@@ -126,6 +148,104 @@ export function SettingsTab({
           </button>
         </div>
       </section>
+
+      {showAdminDiagnostics ? (
+        <section className="bg-surface border border-line rounded-sm overflow-hidden">
+          <div className="p-6 border-b border-line bg-bg flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-ink">Super Admin Diagnostics</h3>
+              <p className="text-[10px] font-bold text-muted uppercase mt-1">Compare token claims, Auth custom claims, Firestore profile role, and dashboard access.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void onLoadAdminDiagnostics()}
+                disabled={adminDiagnosticsLoading}
+                className="btn-industrial inline-flex items-center gap-2 py-2 px-4 text-[10px] disabled:opacity-60"
+              >
+                <RefreshCw size={13} className={adminDiagnosticsLoading ? 'animate-spin' : ''} />
+                {adminDiagnosticsLoading ? 'Checking...' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void onRepairAdminAccess()}
+                disabled={adminRepairingAccess}
+                className="btn-industrial btn-accent inline-flex items-center gap-2 py-2 px-4 text-[10px] disabled:opacity-60"
+              >
+                <Wrench size={13} />
+                {adminRepairingAccess ? 'Repairing...' : 'Repair Access'}
+              </button>
+            </div>
+          </div>
+          <div className="p-8 space-y-5">
+            {adminDiagnosticsError ? (
+              <div className="rounded-sm border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs font-semibold text-red-500">
+                {adminDiagnosticsError}
+              </div>
+            ) : null}
+
+            {adminDiagnostics ? (
+              <>
+                <div className={`rounded-sm border px-4 py-3 ${
+                  adminDiagnostics.repairRecommended
+                    ? 'border-amber-500/25 bg-amber-500/10 text-amber-700'
+                    : 'border-data/30 bg-data/10 text-data'
+                }`}>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em]">
+                    {adminDiagnostics.repairRecommended ? 'Repair Recommended' : 'Access Aligned'}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold leading-5">
+                    Effective role: {adminDiagnostics.effectiveAccess.role}. Dashboard scopes: {adminDiagnostics.effectiveAccess.allowedDashboardScopes.length || 0}.
+                  </p>
+                  {adminDiagnostics.tokenRefreshRequired ? (
+                    <p className="mt-1 text-xs font-semibold leading-5">Your ID token was refreshed after repair. If a tab still denies access, sign out and back in once.</p>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-sm border border-line bg-bg p-4">
+                    <p className="label-micro mb-2">Token</p>
+                    <p className="font-bold text-ink">Role: {formatClaimValue(adminDiagnostics.token.claims.role)}</p>
+                    <p className="text-muted">Email: {adminDiagnostics.token.email}</p>
+                    <p className="text-muted">Issued: {formatClaimValue(adminDiagnostics.token.issuedAt)}</p>
+                  </div>
+                  <div className="rounded-sm border border-line bg-bg p-4">
+                    <p className="label-micro mb-2">Firebase Auth</p>
+                    <p className="font-bold text-ink">Role: {formatClaimValue(adminDiagnostics.authRecord.claims.role)}</p>
+                    <p className="text-muted">Disabled: {formatClaimValue(adminDiagnostics.authRecord.disabled)}</p>
+                    <p className="text-muted">Last sign-in: {formatClaimValue(adminDiagnostics.authRecord.lastSignInAt)}</p>
+                  </div>
+                  <div className="rounded-sm border border-line bg-bg p-4">
+                    <p className="label-micro mb-2">Firestore Profile</p>
+                    <p className="font-bold text-ink">Role: {formatClaimValue(adminDiagnostics.profile.role)}</p>
+                    <p className="text-muted">Status: {formatClaimValue(adminDiagnostics.profile.accountStatus)}</p>
+                    <p className="text-muted">Access: {formatClaimValue(adminDiagnostics.profile.accountAccessSource)}</p>
+                  </div>
+                  <div className="rounded-sm border border-line bg-bg p-4">
+                    <p className="label-micro mb-2">Access</p>
+                    <p className="font-bold text-ink">Privileged email: {formatClaimValue(adminDiagnostics.effectiveAccess.privilegedEmailMatch)}</p>
+                    <p className="text-muted">Full admin: {formatClaimValue(adminDiagnostics.effectiveAccess.fullAdmin)}</p>
+                    <p className="text-muted">Content access: {formatClaimValue(adminDiagnostics.effectiveAccess.contentAccess)}</p>
+                  </div>
+                </div>
+
+                {adminDiagnostics.mismatches.length > 0 ? (
+                  <div className="rounded-sm border border-amber-500/25 bg-amber-500/10 p-4">
+                    <p className="label-micro text-amber-700 mb-2">Mismatches</p>
+                    <ul className="space-y-2 text-xs font-semibold text-amber-800">
+                      {adminDiagnostics.mismatches.map((mismatch) => (
+                        <li key={mismatch}>{mismatch}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-xs font-semibold text-muted">Run diagnostics to inspect this admin session before making role or permission changes.</p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <section className="bg-surface border border-line rounded-sm overflow-hidden">
         <div className="p-6 border-b border-line bg-bg">
