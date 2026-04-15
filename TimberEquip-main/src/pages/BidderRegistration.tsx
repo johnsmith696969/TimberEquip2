@@ -165,6 +165,7 @@ export function BidderRegistration() {
   useEffect(() => {
     if (searchParams.get('identity_return') === '1') {
       setNotice('Identity verification returned. Refresh bidder status below if approval does not appear right away.');
+      void refreshBidderStatus();
     } else if (searchParams.get('setup_cancelled') === '1') {
       setNotice('Payment method setup was cancelled. You can restart it below when ready.');
     }
@@ -223,6 +224,10 @@ export function BidderRegistration() {
     setError('');
     setNotice('');
     try {
+      if (taxExempt && (!taxExemptState || (!taxCertFile && !taxCertUrl))) {
+        throw new Error('Select an exemption state and upload the matching tax-exempt certificate before saving tax-exempt status.');
+      }
+
       // Upload tax certificate if a new file was selected
       let certificateUrl = taxCertUrl;
       if (taxExempt && taxExemptState && taxCertFile) {
@@ -324,6 +329,10 @@ export function BidderRegistration() {
       icon: CreditCard,
     },
   ];
+  const registrationSaved = Boolean(status?.legalAccepted);
+  const identityVerified = Boolean(status?.identityVerified);
+  const paymentMethodReady = Boolean(status?.paymentMethodReady);
+  const taxCertificateRequiredMissing = taxExempt && (!taxExemptState || (!taxCertFile && !taxCertUrl));
 
   return (
     <>
@@ -552,11 +561,16 @@ export function BidderRegistration() {
               <button
                 type="button"
                 className="btn-industrial btn-accent mt-5"
-                disabled={saving || !termsAccepted || !fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !state.trim() || !zip.trim()}
+                disabled={saving || !termsAccepted || !fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !state.trim() || !zip.trim() || taxCertificateRequiredMissing}
                 onClick={handleSaveRegistration}
               >
                 {saving ? 'Saving Registration...' : 'Save Registration Details'}
               </button>
+              {taxCertificateRequiredMissing ? (
+                <p className="mt-2 text-xs font-semibold text-red-600">
+                  Tax-exempt registration requires an exemption state and certificate upload before saving.
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-sm border border-line bg-surface p-6">
@@ -570,13 +584,18 @@ export function BidderRegistration() {
                 <button
                   type="button"
                   className="btn-industrial btn-accent"
-                  disabled={identityLoading || !status?.legalAccepted}
+                  disabled={identityLoading || !registrationSaved || identityVerified}
                   onClick={handleStartIdentityVerification}
                 >
                   {identityLoading ? (
                     <>
                       <Loader2 size={14} className="mr-2 animate-spin" />
                       Opening Stripe...
+                    </>
+                  ) : identityVerified ? (
+                    <>
+                      Identity Verified
+                      <CheckCircle size={13} className="ml-2" />
                     </>
                   ) : (
                     <>
@@ -586,6 +605,11 @@ export function BidderRegistration() {
                   )}
                 </button>
               </div>
+              {!registrationSaved ? (
+                <p className="mt-4 rounded-sm border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700">
+                  Save registration details first. Then Stripe Identity opens in a secure checkout-style flow.
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-sm border border-line bg-surface p-6">
@@ -599,13 +623,18 @@ export function BidderRegistration() {
                 <button
                   type="button"
                   className="btn-industrial btn-accent"
-                  disabled={paymentLoading || !status?.legalAccepted}
+                  disabled={paymentLoading || !registrationSaved || paymentMethodReady}
                   onClick={handleStartPaymentSetup}
                 >
                   {paymentLoading ? (
                     <>
                       <Loader2 size={14} className="mr-2 animate-spin" />
                       Opening Stripe...
+                    </>
+                  ) : paymentMethodReady ? (
+                    <>
+                      Payment Method Saved
+                      <CheckCircle size={13} className="ml-2" />
                     </>
                   ) : (
                     <>
@@ -615,6 +644,11 @@ export function BidderRegistration() {
                   )}
                 </button>
               </div>
+              {!registrationSaved ? (
+                <p className="mt-4 rounded-sm border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700">
+                  Save registration details first. Then Stripe opens a secure payment setup page and returns here automatically.
+                </p>
+              ) : null}
             </div>
           </section>
 

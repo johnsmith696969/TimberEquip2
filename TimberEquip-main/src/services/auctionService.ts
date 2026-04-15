@@ -136,6 +136,31 @@ export interface AuctionLotInvoiceResponse {
   buyer?: AuctionAdminBidderSummary | null;
 }
 
+export interface AuctionTaxExemptCertificate {
+  userUid: string;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  companyName: string | null;
+  taxExempt: boolean;
+  taxExemptState: string | null;
+  taxExemptCertificateUrl: string | null;
+  taxExemptCertificateUploadedAt: string | null;
+  termsAcceptedAt: string | null;
+  termsVersion: string | null;
+  legalAcceptedAuctionSlug: string | null;
+  legalAcceptedAuctionId: string | null;
+  bidderApprovedAt: string | null;
+  idVerificationStatus: string | null;
+  paymentMethodReady: boolean;
+}
+
+export interface AuctionTaxExemptCertificatesResponse {
+  certificates: AuctionTaxExemptCertificate[];
+  count: number;
+  requestedAt: string;
+}
+
 export const auctionService = {
   async getAuctions(): Promise<Auction[]> {
     const q = query(collection(db, 'auctions'), orderBy('startTime', 'desc'));
@@ -392,6 +417,10 @@ export const auctionService = {
     }
     const suffix = params.toString() ? `?${params.toString()}` : '';
     return getAuthorizedJson<AuctionBidderStatusResponse>(`${API_BASE}/auctions/bidder-setup-session/${encodeURIComponent(sessionId)}${suffix}`);
+  },
+
+  async getAdminTaxExemptCertificates(): Promise<AuctionTaxExemptCertificatesResponse> {
+    return getAuthorizedJson<AuctionTaxExemptCertificatesResponse>(`${API_BASE}/admin/auctions/tax-exempt-certificates`);
   },
 
   async getAssignableListings(auctionId: string, searchQuery = ''): Promise<AuctionAssignableListingsResponse> {

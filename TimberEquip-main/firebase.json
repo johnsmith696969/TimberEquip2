@@ -5,6 +5,9 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "dataconnect": {
     "source": "dataconnect"
   },

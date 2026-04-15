@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Gavel, Layers, Edit, Trash2, Search, ArrowLeft, Download } from 'lucide-react';
-import { auctionService } from '../../services/auctionService';
+import { Package, Gavel, Layers, Edit, Trash2, Search, ArrowLeft, Download, ExternalLink, FileText, RefreshCw } from 'lucide-react';
+import { auctionService, type AuctionTaxExemptCertificate } from '../../services/auctionService';
 import { equipmentService } from '../../services/equipmentService';
 import type { Auction, AuctionStatus, AuctionLot } from '../../types';
 import { Listing } from '../../types';
@@ -32,11 +32,15 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
   const [addLotReservePrice, setAddLotReservePrice] = useState<string>('');
   const [lotEditForm, setLotEditForm] = useState<{ startingBid: number; reservePrice: string; status: string; isTitledItem: boolean; buyerPremiumPercent: string }>({ startingBid: 0, reservePrice: '', status: 'upcoming', isTitledItem: false, buyerPremiumPercent: '' });
   const [managedAuctionId, setManagedAuctionId] = useState('');
+  const [taxCertificates, setTaxCertificates] = useState<AuctionTaxExemptCertificate[]>([]);
+  const [taxCertificatesLoading, setTaxCertificatesLoading] = useState(false);
+  const [taxCertificatesError, setTaxCertificatesError] = useState('');
 
   // ── Data loading ───────────────────────────────────────────────────────
 
   useEffect(() => {
     void loadAuctions();
+    void loadTaxExemptCertificates();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadAuctions() {
@@ -48,6 +52,21 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
       console.error('Failed to load auctions:', e);
     } finally {
       setAuctionsLoading(false);
+    }
+  }
+
+  async function loadTaxExemptCertificates() {
+    setTaxCertificatesLoading(true);
+    setTaxCertificatesError('');
+    try {
+      const response = await auctionService.getAdminTaxExemptCertificates();
+      setTaxCertificates(response.certificates || []);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load tax-exempt certificates.';
+      console.error('Failed to load tax-exempt certificates:', e);
+      setTaxCertificatesError(message);
+    } finally {
+      setTaxCertificatesLoading(false);
     }
   }
 
@@ -315,6 +334,13 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
   }
 
   // ── CSV export ─────────────────────────────────────────────────────────
+
+  const formatCertificateDate = (value: string | null | undefined) => {
+    if (!value) return 'Not recorded';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString();
+  };
 
   const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
@@ -633,6 +659,108 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
             </button>
           </div>
         </div>
+
+        <section className="rounded-sm border border-line bg-surface p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <FileText size={16} className="text-accent" />
+                <h3 className="text-sm font-black uppercase tracking-widest">Tax-Exempt Certificates</h3>
+              </div>
+              <p className="mt-2 text-xs font-semibold text-muted">
+                Review bidder-uploaded exemption certificates before applying tax-exempt treatment to auction invoices.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadTaxExemptCertificates()}
+              disabled={taxCertificatesLoading}
+              className="btn-industrial btn-outline inline-flex items-center gap-2 px-3 py-2 text-[9px] disabled:opacity-60"
+            >
+              <RefreshCw size={11} className={taxCertificatesLoading ? 'animate-spin' : ''} />
+              {taxCertificatesLoading ? 'Refreshing' : 'Refresh'}
+            </button>
+          </div>
+
+          {taxCertificatesError ? (
+            <div className="mt-4 rounded-sm border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600">
+              {taxCertificatesError}
+            </div>
+          ) : null}
+
+          <div className="mt-4 overflow-x-auto">
+            {taxCertificatesLoading && taxCertificates.length === 0 ? (
+              <div className="py-6 text-center text-xs font-bold text-muted">Loading tax-exempt certificates...</div>
+            ) : taxCertificates.length === 0 ? (
+              <div className="rounded-sm border border-dashed border-line bg-bg/50 px-4 py-6 text-center text-xs font-bold text-muted">
+                No tax-exempt certificates have been uploaded yet.
+              </div>
+            ) : (
+              <table className="w-full min-w-[760px] text-left">
+                <thead>
+                  <tr className="border-b border-line text-[9px] font-black uppercase tracking-widest text-muted">
+                    <th className="px-3 py-2">Bidder</th>
+                    <th className="px-3 py-2">State</th>
+                    <th className="px-3 py-2">Auction</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Uploaded</th>
+                    <th className="px-3 py-2 text-right">Certificate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {taxCertificates.map((certificate) => (
+                    <tr key={`${certificate.userUid}-${certificate.taxExemptCertificateUrl}`} className="text-xs">
+                      <td className="px-3 py-3">
+                        <p className="font-black uppercase tracking-wide text-ink">{certificate.fullName || 'Bidder'}</p>
+                        <p className="mt-1 break-all text-[10px] font-semibold text-muted">{certificate.email || certificate.userUid}</p>
+                        {certificate.companyName ? (
+                          <p className="mt-1 text-[10px] font-semibold text-muted">{certificate.companyName}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-3 font-bold">{certificate.taxExemptState || 'Not set'}</td>
+                      <td className="px-3 py-3">
+                        {certificate.legalAcceptedAuctionSlug ? (
+                          <a
+                            href={`/auctions/${certificate.legalAcceptedAuctionSlug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-bold text-accent hover:underline"
+                          >
+                            {certificate.legalAcceptedAuctionSlug}
+                            <ExternalLink size={10} />
+                          </a>
+                        ) : (
+                          <span className="font-bold text-muted">Generic approval</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted">
+                        ID {certificate.idVerificationStatus || 'not_started'} · Payment {certificate.paymentMethodReady ? 'ready' : 'pending'}
+                      </td>
+                      <td className="px-3 py-3 text-[10px] font-bold text-muted">
+                        {formatCertificateDate(certificate.taxExemptCertificateUploadedAt)}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {certificate.taxExemptCertificateUrl ? (
+                          <a
+                            href={certificate.taxExemptCertificateUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-industrial btn-accent inline-flex items-center gap-1 px-3 py-2 text-[9px]"
+                          >
+                            View
+                            <ExternalLink size={10} />
+                          </a>
+                        ) : (
+                          <span className="text-[10px] font-bold text-muted">Missing</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
 
         {auctionEditing ? (
           <AuctionEditor

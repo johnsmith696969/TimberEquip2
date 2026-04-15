@@ -1633,6 +1633,31 @@ async function saveAuctionBidderProfile(userUid, profile) {
   return normalizedProfile;
 }
 
+function buildAuctionTaxExemptCertificateSummary(profileDoc) {
+  const profile = normalizeAuctionBidderProfile(profileDoc.data() || {});
+  const userUid = normalizeNonEmptyString(profileDoc.ref.parent?.parent?.id);
+  const paymentMethodReady = Boolean(normalizeNonEmptyString(profile.defaultPaymentMethodId));
+
+  return {
+    userUid,
+    fullName: profile.fullName || null,
+    email: profile.email || null,
+    phone: profile.phone || null,
+    companyName: profile.companyName || null,
+    taxExempt: profile.taxExempt === true,
+    taxExemptState: profile.taxExemptState || null,
+    taxExemptCertificateUrl: profile.taxExemptCertificateUrl || null,
+    taxExemptCertificateUploadedAt: profile.taxExemptCertificateUploadedAt || null,
+    termsAcceptedAt: profile.termsAcceptedAt || null,
+    termsVersion: profile.termsVersion || null,
+    legalAcceptedAuctionSlug: profile.legalAcceptedAuctionSlug || null,
+    legalAcceptedAuctionId: profile.legalAcceptedAuctionId || null,
+    bidderApprovedAt: profile.bidderApprovedAt || null,
+    idVerificationStatus: profile.idVerificationStatus || null,
+    paymentMethodReady,
+  };
+}
+
 function buildAuctionBidderAnonymousId(userUid, profile = {}) {
   const fullName = normalizeNonEmptyString(profile.fullName);
   if (fullName) {
@@ -13106,6 +13131,34 @@ exports.apiProxy = onRequest(
         }
 
         return res.status(200).json(statusPayload);
+      }
+
+      if (req.method === 'GET' && path === '/admin/auctions/tax-exempt-certificates') {
+        const actor = await getAdminActorContext(req);
+        if (actor.error) {
+          return res.status(actor.status).json({ error: actor.error });
+        }
+
+        const profileSnap = await getAuctionDb()
+          .collectionGroup('bidderProfile')
+          .where('taxExempt', '==', true)
+          .limit(100)
+          .get();
+
+        const certificates = profileSnap.docs
+          .map(buildAuctionTaxExemptCertificateSummary)
+          .filter((entry) => entry.taxExemptCertificateUrl)
+          .sort((a, b) => {
+            const left = new Date(a.taxExemptCertificateUploadedAt || a.termsAcceptedAt || 0).getTime();
+            const right = new Date(b.taxExemptCertificateUploadedAt || b.termsAcceptedAt || 0).getTime();
+            return right - left;
+          });
+
+        return res.status(200).json({
+          certificates,
+          count: certificates.length,
+          requestedAt: new Date().toISOString(),
+        });
       }
 
       const adminAssignableListingsMatch = path.match(/^\/admin\/auctions\/([^/]+)\/assignable-listings$/i);
