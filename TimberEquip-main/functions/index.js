@@ -18813,6 +18813,7 @@ exports.apiProxy = onRequest(
           const extract = (idx) => {
             const r = results[idx];
             if (r.status === 'fulfilled') return { ok: true, data: r.value?.data || r.value || null };
+            logger.warn('PG Analytics connector query failed', { index: idx, error: r.reason?.message || String(r.reason) });
             return { ok: false, error: r.reason?.message || String(r.reason) };
           };
 
