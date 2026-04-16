@@ -665,14 +665,10 @@ async function consumeAuthRateLimit(scope, req, identifier, limit = 5) {
       return { allowed: false, remaining: 0, retryAfterSeconds: Math.max(Math.ceil((currentBucket.resetAt - now) / 1000), 1) };
     }
 
-  currentBucket.count += 1;
-  recentAuthEndpointRequests.set(key, currentBucket);
-
-  return {
-    allowed: true,
-    remaining: Math.max(limit - currentBucket.count, 0),
-    retryAfterSeconds: Math.ceil((currentBucket.resetAt - now) / 1000),
-  };
+    currentBucket.count += 1;
+    recentAuthEndpointRequests.set(memKey, currentBucket);
+    return { allowed: true, remaining: Math.max(limit - currentBucket.count, 0), retryAfterSeconds: Math.ceil((currentBucket.resetAt - now) / 1000) };
+  }
 }
 
 function normalizeUserRole(role) {
