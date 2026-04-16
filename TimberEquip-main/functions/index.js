@@ -15807,6 +15807,179 @@ exports.apiProxy = onRequest(
         });
       }
 
+      // ── Saved Searches ─────────────────────────────────────────────
+      if (req.method === 'GET' && path === '/account/saved-searches') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) return res.status(401).json({ error: 'Unauthorized' });
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        try {
+          const snap = await getDb().collection('savedSearches')
+            .where('userUid', '==', actorUid)
+            .orderBy('createdAt', 'desc')
+            .limit(50)
+            .get();
+          const savedSearches = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          return res.status(200).json({ savedSearches });
+        } catch (error) {
+          if (isFirestoreQuotaExceeded(error)) {
+            return res.status(200).json({ savedSearches: [], firestoreQuotaLimited: true });
+          }
+          throw error;
+        }
+      }
+
+      if (req.method === 'POST' && path === '/account/saved-searches') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) return res.status(401).json({ error: 'Unauthorized' });
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const actorEmail = normalizeNonEmptyString(decodedToken.email).toLowerCase();
+        const name = normalizeNonEmptyString(req.body?.name);
+        const filters = req.body?.filters && typeof req.body.filters === 'object' ? req.body.filters : {};
+        const alertEmail = normalizeNonEmptyString(req.body?.alertEmail, actorEmail);
+        const alertPreferences = req.body?.alertPreferences && typeof req.body.alertPreferences === 'object'
+          ? req.body.alertPreferences
+          : { newListingAlerts: true, priceDropAlerts: true, soldStatusAlerts: false, restockSimilarAlerts: false };
+
+        if (!name) return res.status(400).json({ error: 'Search name is required.' });
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const docRef = getDb().collection('savedSearches').doc();
+        await docRef.set({
+          userUid: actorUid,
+          name,
+          filters,
+          alertEmail,
+          alertPreferences: {
+            newListingAlerts: Boolean(alertPreferences.newListingAlerts),
+            priceDropAlerts: Boolean(alertPreferences.priceDropAlerts),
+            soldStatusAlerts: Boolean(alertPreferences.soldStatusAlerts),
+            restockSimilarAlerts: Boolean(alertPreferences.restockSimilarAlerts),
+          },
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        });
+        const created = await docRef.get();
+        return res.status(201).json({ savedSearch: { id: docRef.id, ...created.data() } });
+      }
+
+      const savedSearchDeleteMatch = path.match(/^\/account\/saved-searches\/([^/]+)$/i);
+      if (req.method === 'DELETE' && savedSearchDeleteMatch) {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) return res.status(401).json({ error: 'Unauthorized' });
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+        const searchId = decodeURIComponent(savedSearchDeleteMatch[1] || '');
+        if (!searchId) return res.status(400).json({ error: 'Search id required.' });
+        const searchDoc = await getDb().collection('savedSearches').doc(searchId).get();
+        if (!searchDoc.exists) return res.status(404).json({ error: 'Saved search not found.' });
+        if (searchDoc.data()?.userUid !== actorUid) return res.status(403).json({ error: 'Forbidden.' });
+        await getDb().collection('savedSearches').doc(searchId).delete();
+        return res.status(200).json({ deleted: true });
+      }
+
+      // ── Account Deletion ──────────────────────────────────────────
+      if (req.method === 'POST' && path === '/user/delete') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) return res.status(401).json({ error: 'Unauthorized' });
+        const uid = normalizeNonEmptyString(decodedToken.uid);
+        if (!uid) return res.status(400).json({ error: 'Missing user id.' });
+
+        const RETENTION_DAYS = 90;
+        const retainedUntil = new Date(Date.now() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const redactUpdate = {
+          accountDeleted: true,
+          accountDeletedAt: now,
+          deletedAccountUid: uid,
+          retainedUntil: admin.firestore.Timestamp.fromDate(retainedUntil),
+          retentionMinimumDays: RETENTION_DAYS,
+          updatedAt: now,
+        };
+
+        // Soft-delete user doc
+        await getDb().collection('users').doc(uid).set({
+          ...redactUpdate,
+          deleted: true,
+          disabled: true,
+          role: 'deleted',
+          status: 'deleted',
+          emailNotificationsEnabled: false,
+          displayName: 'Deleted User',
+          name: 'Deleted User',
+          email: admin.firestore.FieldValue.delete(),
+          phone: admin.firestore.FieldValue.delete(),
+          phoneNumber: admin.firestore.FieldValue.delete(),
+        }, { merge: true });
+
+        // Archive listings
+        const listingsSnap = await getDb().collection('listings').where('sellerUid', '==', uid).get();
+        for (let i = 0; i < listingsSnap.docs.length; i += 400) {
+          const batch = getDb().batch();
+          listingsSnap.docs.slice(i, i + 400).forEach((doc) => {
+            batch.set(doc.ref, { ...redactUpdate, status: 'archived', lifecycleStatus: 'archived', archivedReason: 'seller_account_deleted' }, { merge: true });
+          });
+          await batch.commit();
+        }
+
+        // Disable auth
+        await admin.auth().updateUser(uid, { disabled: true, displayName: 'Deleted User', photoURL: null });
+
+        // Audit log
+        await getDb().collection('auditLogs').add({
+          action: 'ACCOUNT_SOFT_DELETED_BY_USER',
+          targetId: uid,
+          targetType: 'user',
+          details: `User ${uid} requested account deletion. Records retained for ${RETENTION_DAYS} days.`,
+          actorUid: uid,
+          createdAt: now,
+        });
+
+        return res.status(200).json({ deleted: true, retentionDays: RETENTION_DAYS });
+      }
+
+      // ── Subscription Cancellation ─────────────────────────────────
+      if (req.method === 'POST' && path === '/billing/cancel-subscription') {
+        const decodedToken = await getDecodedUserFromBearer(req);
+        if (!decodedToken) return res.status(401).json({ error: 'Unauthorized' });
+        const actorUid = normalizeNonEmptyString(decodedToken.uid);
+
+        const userDoc = await getDb().collection('users').doc(actorUid).get();
+        const userData = userDoc.data() || {};
+        const stripeCustomerId = normalizeNonEmptyString(userData.stripeCustomerId);
+
+        if (!stripeCustomerId) {
+          return res.status(400).json({ error: 'No active subscription found.' });
+        }
+
+        try {
+          const subscriptions = await stripe.subscriptions.list({ customer: stripeCustomerId, status: 'active', limit: 5 });
+          if (subscriptions.data.length === 0) {
+            return res.status(400).json({ error: 'No active subscription to cancel.' });
+          }
+
+          const results = [];
+          for (const sub of subscriptions.data) {
+            const canceled = await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+            results.push({ subscriptionId: canceled.id, cancelAtPeriodEnd: canceled.cancel_at_period_end, currentPeriodEnd: canceled.current_period_end });
+          }
+
+          await getDb().collection('billingAuditLogs').add({
+            action: 'SUBSCRIPTION_CANCEL_REQUESTED',
+            actorUid,
+            targetId: stripeCustomerId,
+            targetType: 'stripe_customer',
+            details: `User requested subscription cancellation. ${results.length} subscription(s) set to cancel at period end.`,
+            metadata: { results },
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          return res.status(200).json({ canceled: true, subscriptions: results });
+        } catch (error) {
+          logger.error({ err: error }, 'Subscription cancellation failed');
+          return res.status(500).json({ error: 'Unable to cancel subscription.' });
+        }
+      }
+
       if (req.method === 'GET' && path === '/account/financing-requests') {
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
