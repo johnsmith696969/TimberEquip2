@@ -15,7 +15,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { API_BASE } from '../constants/api';
-import { auth, db } from '../firebase';
+import { auth, auctionDb as db } from '../firebase';
 import type { Auction, AuctionBid, AuctionInvoice, AuctionLot, AuctionLotStatus, AuctionStatus, BidderProfile, Listing } from '../types';
 
 function normalizeSeoSlug(text: string): string {

@@ -34,6 +34,7 @@ export const app = initializeApp({
   measurementId: resolvedFirebaseConfig.measurementId || undefined,
 });
 export const db = getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
+export const auctionDb = getFirestore(app); // (default) database for auctions
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
