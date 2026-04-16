@@ -146,11 +146,11 @@ export function DealerHosting() {
               Join the Forestry Equipment Sales dealer network. List your inventory, host it on your website,
               and let our platform handle the leads, calls, and reporting.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/contact" className="inline-flex items-center gap-2 bg-accent text-white font-bold text-sm uppercase tracking-widest px-8 py-3 rounded-sm hover:bg-accent/90 transition-colors">
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <Link to="/contact" className="btn-industrial btn-accent inline-flex items-center gap-2">
                 Contact Sales <ArrowRight size={16} />
               </Link>
-              <a href="tel:+12187200933" className="inline-flex items-center gap-2 border-2 border-line text-ink font-bold text-sm uppercase tracking-widest px-8 py-3 rounded-sm hover:border-accent hover:text-accent transition-colors">
+              <a href="tel:+12187200933" className="btn-industrial inline-flex items-center gap-2">
                 <Phone size={16} /> (218) 720-0933
               </a>
             </div>

@@ -4,7 +4,6 @@ import {
   TrendingUp,
   ShieldCheck,
   Globe,
-  Clock,
   ArrowRight,
   Zap,
   Truck,
@@ -15,7 +14,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Package,
-  Calculator,
   Search as SearchIcon,
   MapPin
 } from 'lucide-react';
@@ -106,6 +104,9 @@ const CATEGORY_SINGULAR_LABELS: Record<string, string> = {
 };
 
 const toSingularCategoryLabel = (category: string) => CATEGORY_SINGULAR_LABELS[category] || category;
+
+const HOMEPAGE_SEO_DESCRIPTION =
+  'Buy and sell new and used forestry and logging equipment. Browse skidders, forwarders, feller bunchers, chippers, log loaders, processors, and more for sale near you by category, manufacturer, dealer, and state.';
 
 type HomeMarketplaceData = {
   categoryMetrics?: Array<{
@@ -329,29 +330,67 @@ export function Home() {
       '@graph': [
         {
           '@type': 'Organization',
+          '@id': buildSiteUrl('/#organization'),
           name: 'Forestry Equipment Sales',
-          alternateName: 'Forestry Equipment Sales.com',
+          alternateName: ['FES', 'Forestry Equipment Sales.com'],
           url: buildSiteUrl('/'),
-          logo: buildSiteUrl('/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
-          email: 'info@forestryequipmentsales.com',
-          description: 'New and used logging equipment marketplace connecting buyers, sellers, and dealers across North America.',
-          contactPoint: {
-            '@type': 'ContactPoint',
-            contactType: 'customer service',
-            email: 'support@forestryequipmentsales.com',
-            availableLanguage: 'English',
+          logo: {
+            '@type': 'ImageObject',
+            url: buildSiteUrl('/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
+            width: 512,
+            height: 512,
           },
+          email: 'info@forestryequipmentsales.com',
+          telephone: '+1-218-720-0933',
+          description: HOMEPAGE_SEO_DESCRIPTION,
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: 'Duluth',
+            addressRegion: 'MN',
+            addressCountry: 'US',
+          },
+          sameAs: [
+            'https://www.facebook.com/ForestryEquipmentSales',
+            'https://www.youtube.com/@ForestryequipmentsalesOnline',
+            'https://linkedin.com/company/forestryequipmentsales',
+          ],
+          contactPoint: [
+            {
+              '@type': 'ContactPoint',
+              contactType: 'customer service',
+              telephone: '+1-218-720-0933',
+              email: 'support@forestryequipmentsales.com',
+              availableLanguage: 'English',
+            },
+            {
+              '@type': 'ContactPoint',
+              contactType: 'sales',
+              telephone: '+1-218-720-0933',
+              email: 'info@forestryequipmentsales.com',
+              availableLanguage: 'English',
+            },
+          ],
         },
         {
           '@type': 'WebSite',
+          '@id': buildSiteUrl('/#website'),
           name: 'Forestry Equipment Sales',
           url: buildSiteUrl('/'),
           inLanguage: 'en-US',
+          publisher: { '@id': buildSiteUrl('/#organization') },
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: {
+              '@type': 'EntryPoint',
+              urlTemplate: buildSiteUrl('/search?q={search_term_string}'),
+            },
+            'query-input': 'required name=search_term_string',
+          },
         },
         {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
-          description: 'Browse in-stock forestry equipment by make (manufacturer), model, category, dealer, and state. Shop equipment from Caterpillar, John Deere, Tigercat, and more.',
+          description: HOMEPAGE_SEO_DESCRIPTION,
           url: buildSiteUrl('/'),
         },
         {
@@ -507,7 +546,7 @@ export function Home() {
     <div className="flex flex-col">
       <Seo
         title="Logging Equipment For Sale | Forestry Equipment Sales"
-        description="Buy and Sell New & Used Forestry/Logging Equipment on our marketplace. Find skidders, feller bunchers, forwarders, processors, and more for sale near you. Browse the best forestry equipment on Forestry Equipment Sales."
+        description={HOMEPAGE_SEO_DESCRIPTION}
         canonicalPath="/"
         jsonLd={homeJsonLd}
         imagePath="/Forestry_Equipment_Sales_Logo.png?v=20260405c"
@@ -921,7 +960,7 @@ export function Home() {
                 Browse by <span className="text-muted">Manufacturer</span>
               </h2>
               <p className="text-muted font-medium mt-4 max-w-xl">
-                Search equipment by make (manufacturer) including Caterpillar, John Deere, Tigercat, and more.
+                Find equipment by manufacturer including Caterpillar, John Deere, Multitek, Tigercat, and more.
               </p>
             </div>
             <div className="relative w-full md:w-80">
@@ -930,7 +969,7 @@ export function Home() {
                 type="text"
                 value={mfgSearch}
                 onChange={(e) => setMfgSearch(e.target.value)}
-                placeholder="Search by make..."
+                placeholder="Find by manufacturer..."
                 className="w-full bg-bg border border-line py-3 pl-12 pr-4 text-xs font-bold uppercase tracking-widest text-ink placeholder:text-muted focus:outline-none focus:border-accent"
               />
             </div>
@@ -973,7 +1012,7 @@ export function Home() {
                   Equipment <span className="text-muted">Near You</span>
                 </h2>
                 <p className="text-muted font-medium mt-4 max-w-xl">
-                  Find forestry and logging equipment for sale in your state from local dealers and private sellers.
+                  Find forestry and logging equipment for sale in your state and compare inventory from local dealers and private sellers.
                 </p>
               </div>
             </div>
@@ -1008,42 +1047,65 @@ export function Home() {
 
       {marketIntelligenceSection}
 
-      {/* Financing CTA */}
+      {/* About Us */}
       <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">
-        <div className="absolute top-0 right-0 w-1/2 h-full skew-x-12 translate-x-1/2 bg-accent/10"></div>
         <div className="max-w-[1600px] mx-auto relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <div className="overflow-hidden border border-line bg-bg shadow-[var(--shadow-card)]">
+              <img
+                src="/page-photos/about-us.webp"
+                alt="Forestry equipment professionals standing with logging machinery"
+                className="aspect-[5/4] h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
             <div>
-              <span className="label-micro text-accent mb-4 block">Equipment Financing</span>
+              <span className="label-micro text-accent mb-4 block">About Us</span>
               <h2 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 text-ink">
-                Flexible <br />
-                <span className="text-accent">Financing</span>
+                Built For <br />
+                <span className="text-accent">Forestry Equipment</span>
               </h2>
               <p className="text-lg font-medium mb-12 max-w-lg text-muted">
-                Apply for equipment financing and get a credit decision, typically within one business day.
+                Forestry Equipment Sales helps buyers, sellers, and dealers move logging equipment with stronger listing presentation, better marketplace visibility, and practical support across financing, logistics, and lead generation.
               </p>
-              <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                <Link to="/financing" className="btn-industrial btn-accent py-5 px-10">
-                  Apply for Credit
+              <div className="space-y-5 mb-12">
+                {[
+                  {
+                    label: 'Marketplace Focus',
+                    value: 'New and used forestry, logging, land clearing, sawmill, truck, trailer, and attachment inventory.',
+                    icon: Globe,
+                  },
+                  {
+                    label: 'Dealer Support',
+                    value: 'Listing tools, dealer websites, lead delivery, and merchandising support built around equipment sellers.',
+                    icon: ShieldCheck,
+                  },
+                  {
+                    label: 'Buyer Services',
+                    value: 'Equipment discovery, financing coordination, and logistics help for serious buyers across regional and national markets.',
+                    icon: Truck,
+                  },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-start gap-4 border-t border-line pt-5 first:border-t-0 first:pt-0">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-line bg-bg text-accent">
+                      <item.icon size={18} />
+                    </div>
+                    <div>
+                      <span className="label-micro block mb-2 text-muted">{item.label}</span>
+                      <p className="text-sm font-medium leading-relaxed text-muted max-w-xl">{item.value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link to="/about" className="btn-industrial btn-accent py-5 px-10">
+                  About Us
+                </Link>
+                <Link to="/contact" className="btn-industrial py-5 px-10">
+                  Contact Us
                 </Link>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Approval Time', value: '24 Hours', icon: Clock },
-                { label: 'Max Facility', value: '$2.0M', icon: ShieldCheck },
-                { label: 'Terms Up To', value: '84 Months', icon: Activity },
-                { label: 'Down Payment', value: 'From 0%', icon: Calculator }
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  className="p-8 bg-bg border border-line"
-                >
-                  <item.icon className="text-accent mb-4" size={24} />
-                  <span className="label-micro block mb-1 text-muted">{item.label}</span>
-                  <span className="text-2xl font-black tracking-tighter text-ink">{item.value}</span>
-                </div>
-              ))}
             </div>
           </div>
         </div>

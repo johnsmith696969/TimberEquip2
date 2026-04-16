@@ -224,7 +224,7 @@ export function Register() {
                       required
                       type="text"
                       placeholder="OPERATOR NAME"
-                      className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
+                      className="flex-1 bg-transparent border-none py-4 pl-2 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                       value={formData.displayName}
                       onChange={(e) => setFormData((prev) => ({ ...prev, displayName: e.target.value }))}
                     />
@@ -241,7 +241,7 @@ export function Register() {
                       id="register-company"
                       type="text"
                       placeholder="ENTITY NAME"
-                      className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
+                      className="flex-1 bg-transparent border-none py-4 pl-2 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                       value={formData.company}
                       onChange={(e) => setFormData((prev) => ({ ...prev, company: e.target.value }))}
                     />
@@ -278,7 +278,7 @@ export function Register() {
                       required
                       type="email"
                       placeholder="YOUR@EMAIL.COM"
-                      className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
+                      className="flex-1 bg-transparent border-none py-4 pl-2 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                       value={formData.email}
                       onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                     />
@@ -296,7 +296,7 @@ export function Register() {
                       required
                       type="password"
                       placeholder="••••••••••••"
-                      className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-widest"
+                      className="flex-1 bg-transparent border-none py-4 pl-2 text-sm font-bold focus:ring-0 tracking-widest"
                       value={formData.password}
                       onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
                     />
