@@ -50,7 +50,7 @@ import {
 } from '../utils/equipmentTaxonomy';
 import { buildSearchPageCopy } from '../utils/searchPageCopy';
 
-type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest';
+type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest' | 'year_asc' | 'year_desc' | 'hours_asc' | 'hours_desc';
 type SearchViewMode = 'grid' | 'list';
 
 const MULTI_SELECT_KEYS = new Set(['manufacturer', 'model', 'subcategory', 'condition', 'state', 'country', 'attachment', 'feature']);
@@ -1014,6 +1014,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         const bRank = ranks?.get(b.id) ?? Number.MAX_SAFE_INTEGER;
         return aRank - bRank;
       });
+    } else if (filters.sortBy === 'year_asc') {
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (Number(a.year) || 0) - (Number(b.year) || 0));
+    } else if (filters.sortBy === 'year_desc') {
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (Number(b.year) || 0) - (Number(a.year) || 0));
+    } else if (filters.sortBy === 'hours_asc') {
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (Number(a.hours) || 0) - (Number(b.hours) || 0));
+    } else if (filters.sortBy === 'hours_desc') {
+      results = [...results].sort((a, b) => featuredFirst(a, b) || (Number(b.hours) || 0) - (Number(a.hours) || 0));
     } else if (filters.sortBy === 'nearest' && userCoords) {
       results = [...results].sort((a, b) => {
         const fd = featuredFirst(a, b);
@@ -1944,12 +1952,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   aria-label="Sort by"
                   className="ml-1 min-w-0 bg-bg border-none pl-2 font-bold text-ink cursor-pointer focus:ring-0"
                 >
-                  <option value="newest">{t('search.sortNewest', 'Newest')}</option>
+                  <option value="relevance">{t('search.sortBestMatch', 'Best Match')}</option>
+                  <option value="newest">{t('search.sortNewest', 'Newest Listed')}</option>
+                  <option value="nearest">{t('search.sortNearest', 'Distance: Nearest')}</option>
                   <option value="price_asc">{t('search.sortPriceLowHigh', 'Price: Low to High')}</option>
                   <option value="price_desc">{t('search.sortPriceHighLow', 'Price: High to Low')}</option>
-                  <option value="relevance">{t('search.sortRelevance', 'Relevance')}</option>
-                  <option value="popular">{t('search.sortPopular', 'Popular')}</option>
-                  <option value="nearest">{t('search.sortNearest', 'Nearest First')}</option>
+                  <option value="year_asc">Year: Low to High</option>
+                  <option value="year_desc">Year: High to Low</option>
+                  <option value="hours_asc">Hours: Low to High</option>
+                  <option value="hours_desc">Hours: High to Low</option>
+                  <option value="popular">{t('search.sortPopular', 'Most Viewed')}</option>
                 </select>
               </div>
               <button
@@ -2103,24 +2115,24 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-ink text-white z-50 py-6 px-4 md:px-8 border-t border-accent/30 shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-bg/95 px-4 py-5 text-ink shadow-[0_-18px_42px_rgba(28,25,23,0.14)] backdrop-blur-xl md:px-8"
           >
-            <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center space-x-8">
-                <div className="flex flex-col">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col items-start justify-between gap-5 md:flex-row md:items-center">
+              <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-center md:w-auto">
+                <div className="flex shrink-0 flex-col">
                   <span className="text-accent text-[10px] font-black uppercase tracking-widest mb-1">{t('search.comparisonTool', 'Comparison Tool')}</span>
                   <span className="text-lg font-black tracking-tighter">{formatNumber(compareList.length)} {t('search.equipmentSelected', 'Equipment Selected')}</span>
                 </div>
-                <div className="flex -space-x-4 overflow-hidden">
+                <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:pb-0">
                   {compareList.map((id) => {
                     const listing = filteredListings.find((item) => item.id === id) || allListings.find((item) => item.id === id);
                     return listing ? (
-                      <div key={id} className="relative w-12 h-12 rounded-sm border-2 border-ink overflow-hidden group">
+                      <div key={id} className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-sm border border-line bg-surface">
                         <img src={listing.images[0]} alt={`${listing.year || ''} ${listing.make || listing.manufacturer || ''} ${listing.model || ''} - ${listing.category || 'Equipment'}`.replace(/\s+/g, ' ').trim()} className="w-full h-full object-cover" />
                         <button
                           onClick={() => toggleCompare(id)}
                           aria-label="Remove from comparison"
-                          className="absolute inset-0 bg-accent/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute inset-0 flex items-center justify-center bg-accent/85 text-white opacity-0 transition-opacity group-hover:opacity-100"
                         >
                           <X size={14} />
                         </button>
@@ -2130,14 +2142,14 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 </div>
               </div>
 
-              <div className="flex items-center space-x-4">
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
                 <button
                   onClick={() => setCompareList([])}
-                  className="text-xs font-bold uppercase tracking-widest text-white/60 hover:text-white"
+                  className="text-xs font-bold uppercase tracking-widest text-muted hover:text-ink"
                 >
                   {t('search.clearSelection', 'Clear Selection')}
                 </button>
-                <Link to={`/compare?ids=${compareList.join(',')}`} className="btn-industrial btn-accent py-4 px-12">
+                <Link to={`/compare?ids=${compareList.join(',')}`} className="btn-industrial btn-accent w-full py-4 px-12 sm:w-auto">
                   {t('search.compareEquipment', 'Compare Equipment')}
                 </Link>
               </div>
