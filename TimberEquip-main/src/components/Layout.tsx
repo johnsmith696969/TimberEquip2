@@ -640,7 +640,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </a>
                 </div>
                 <div className="bg-bg border border-line p-5 rounded-sm">
-                  <span className="label-micro block mb-2">{t('layout.systemStatus', 'System Status')}</span>
+                  <span className="label-micro block mb-2">{t('layout.systemStatus', 'Webapp Status')}</span>
                   <span className="text-[10px] font-black text-data flex items-center tracking-widest">
                     <span className="w-2 h-2 bg-data rounded-full mr-2 animate-pulse"></span>
                     {t('layout.active', 'ACTIVE')}

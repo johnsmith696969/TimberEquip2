@@ -48,13 +48,12 @@ export function DealerHosting() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { step: '01', title: 'Import Your Inventory', desc: 'Upload via JSON, XML, CSV, or connect your API feed. Your equipment catalog syncs automatically on the schedule you choose.' },
-              { step: '02', title: 'Customize Your Widget', desc: 'Use the visual builder in DealerOS to match your brand \u2014 colors, fonts, layout, card style, button placement, and more.' },
-              { step: '03', title: 'Embed & Go Live', desc: 'Copy a single script tag or iframe snippet onto your website. Inventory updates automatically as your feed changes.' },
+              { title: 'Import Your Inventory', desc: 'Upload via JSON, XML, CSV, or connect your API feed. Your equipment catalog syncs automatically on the schedule you choose.' },
+              { title: 'Customize Your Widget', desc: 'Use the visual builder in DealerOS to match your brand — colors, fonts, layout, card style, button placement, and more.' },
+              { title: 'Embed & Go Live', desc: 'Copy a single script tag or iframe snippet onto your website. Inventory updates automatically as your feed changes.' },
             ].map((item) => (
-              <div key={item.step} className="bg-surface border border-line rounded-sm p-6">
-                <div className="text-accent font-black text-3xl tracking-tight mb-3">{item.step}</div>
-                <h3 className="font-black text-sm uppercase tracking-widest text-ink mb-2">{item.title}</h3>
+              <div key={item.title} className="bg-surface border border-line rounded-sm p-6">
+                <h3 className="font-black text-sm uppercase tracking-widest text-ink mb-3">{item.title}</h3>
                 <p className="text-xs text-muted leading-relaxed">{item.desc}</p>
               </div>
             ))}

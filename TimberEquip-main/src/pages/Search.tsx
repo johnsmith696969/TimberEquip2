@@ -904,13 +904,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       if (filters.stockNumber && !normalize(listing.stockNumber).includes(normalize(filters.stockNumber))) return false;
       if (filters.serialNumber && !normalize(listing.serialNumber).includes(normalize(filters.serialNumber))) return false;
 
-      if (filters.listedAfter) {
-        const listedDate = new Date(listing.createdAt || listing.publishedAt || 0).getTime();
-        if (listedDate < new Date(filters.listedAfter).getTime()) return false;
-      }
-      if (filters.listedBefore) {
-        const listedDate = new Date(listing.createdAt || listing.publishedAt || 0).getTime();
-        if (listedDate > new Date(filters.listedBefore + 'T23:59:59').getTime()) return false;
+      if (filters.listedAfter || filters.listedBefore) {
+        const raw = listing.createdAt || listing.publishedAt;
+        const listedDate = raw && typeof raw === 'object' && 'toDate' in raw
+          ? (raw as { toDate: () => Date }).toDate().getTime()
+          : new Date(raw || 0).getTime();
+        if (filters.listedAfter && listedDate < new Date(filters.listedAfter).getTime()) return false;
+        if (filters.listedBefore && listedDate > new Date(filters.listedBefore + 'T23:59:59').getTime()) return false;
       }
 
       return true;

@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, Globe, Mail, MapPin, Navigation, Search, X } from 'lucide-react';
+import { ArrowRight, Building2, Globe, Mail, MapPin, Navigation, Phone, Search, X } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ImageHero } from '../components/ImageHero';
 import { Seo } from '../components/Seo';
@@ -866,12 +866,15 @@ export function Dealers() {
                           <div className="min-w-0">
                             <h3 className="truncate text-2xl font-black uppercase tracking-tight text-ink">{dealerName}</h3>
                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                              <div className="border border-line bg-surface/60 px-4 py-3">
-                                <span className="label-micro mb-2 block">Storefront Type</span>
-                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-ink">
-                                  {getDealerRoleLabel(dealer.role)}
-                                </span>
-                              </div>
+                              {(dealer.twilioPhoneNumber || dealer.phone) && (
+                                <div className="border border-line bg-surface/60 px-4 py-3">
+                                  <span className="label-micro mb-2 block">Phone</span>
+                                  <a href={`tel:${dealer.twilioPhoneNumber || dealer.phone}`} className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-ink hover:text-accent transition-colors">
+                                    <Phone size={12} className="text-accent" />
+                                    {dealer.twilioPhoneNumber || dealer.phone}
+                                  </a>
+                                </div>
+                              )}
                               {distance && (
                                 <div className="border border-line bg-surface/60 px-4 py-3">
                                   <span className="label-micro mb-2 block">Distance</span>
