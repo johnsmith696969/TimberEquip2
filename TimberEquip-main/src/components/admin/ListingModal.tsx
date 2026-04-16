@@ -562,12 +562,6 @@ export function ListingModal({ isOpen, onClose, onSave, listing, showSellerAssig
               </h3>
             </div>
             <div className="flex items-center gap-4">
-              {formData.sellerVerified && (
-                <div className="flex items-center gap-1.5 bg-data/10 text-data border border-data/30 px-3 py-1.5 rounded-sm">
-                  <ShieldCheck size={14} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Verified Seller</span>
-                </div>
-              )}
               <button onClick={onClose} className="p-2 text-muted hover:text-ink transition-colors">
                 <X size={24} />
               </button>
