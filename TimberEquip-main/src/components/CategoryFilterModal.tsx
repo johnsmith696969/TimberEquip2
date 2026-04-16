@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Search } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { FullEquipmentTaxonomy } from '../utils/equipmentTaxonomy';
 
 interface CategoryFilterModalProps {
@@ -10,8 +10,8 @@ interface CategoryFilterModalProps {
   selectedSubcategory: string;
   onSelect: (category: string, subcategory: string) => void;
   facetedCounts?: {
-    category: Map<string, number>;
-    subcategory: Map<string, number>;
+    category?: Map<string, number>;
+    subcategory?: Map<string, number>;
   };
 }
 
@@ -31,7 +31,7 @@ export function CategoryFilterModal({
       .map(([category, subcategories]) => ({
         category,
         subcategories: Object.keys(subcategories).sort((a, b) => a.localeCompare(b)),
-        count: facetedCounts?.category.get(category) || 0,
+        count: facetedCounts?.category?.get(category) || 0,
       }))
       .sort((a, b) => a.category.localeCompare(b.category));
 
@@ -54,10 +54,10 @@ export function CategoryFilterModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[150] flex items-start justify-center pt-[10vh] px-4 animate-[fadeIn_150ms_ease-out]" onClick={onClose}>
       <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
       <div
-        className="relative bg-bg border border-line rounded-sm shadow-2xl w-full max-w-2xl max-h-[70vh] flex flex-col"
+        className="relative bg-bg border border-line rounded-sm shadow-2xl w-full max-w-2xl max-h-[70vh] flex flex-col animate-[slideUp_150ms_ease-out]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -70,17 +70,14 @@ export function CategoryFilterModal({
 
         {/* Filter input */}
         <div className="px-6 py-3 border-b border-line">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <input
-              type="text"
-              placeholder="Filter"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="input-industrial w-full pl-9"
-              autoFocus
-            />
-          </div>
+          <input
+            type="text"
+            placeholder="Filter categories..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="input-industrial w-full"
+            autoFocus
+          />
         </div>
 
         {/* Category list */}
@@ -121,7 +118,7 @@ export function CategoryFilterModal({
 
                 {/* Subcategories - regular weight, indented */}
                 {subcategories.map((sub) => {
-                  const subCount = facetedCounts?.subcategory.get(sub) || 0;
+                  const subCount = facetedCounts?.subcategory?.get(sub) || 0;
                   return (
                     <label key={sub} className="flex items-center gap-3 py-1 pl-7 cursor-pointer group">
                       <input

@@ -1615,23 +1615,25 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-listed-after" className="label-micro">Listed After</label>
+                          <label htmlFor="search-listed-after" className="label-micro">From Date</label>
                           <input
                             id="search-listed-after"
                             type="date"
-                            className="input-industrial w-full"
+                            className="input-industrial w-full cursor-pointer"
                             value={draftFilters.listedAfter}
                             onChange={(e) => handleDraftFilterChange('listedAfter', e.target.value)}
+                            onKeyDown={(e) => e.preventDefault()}
                           />
                         </div>
                         <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-listed-before" className="label-micro">Listed Before</label>
+                          <label htmlFor="search-listed-before" className="label-micro">To Date</label>
                           <input
                             id="search-listed-before"
                             type="date"
-                            className="input-industrial w-full"
+                            className="input-industrial w-full cursor-pointer"
                             value={draftFilters.listedBefore}
                             onChange={(e) => handleDraftFilterChange('listedBefore', e.target.value)}
+                            onKeyDown={(e) => e.preventDefault()}
                           />
                         </div>
                       </div>

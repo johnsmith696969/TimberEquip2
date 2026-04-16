@@ -430,7 +430,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0, y: -18 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -18 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+            transition={{ duration: 0.11, ease: 'easeOut' }}
             className="fixed left-0 right-0 top-0 z-[45]"
             aria-label="Sticky quick search"
           >
@@ -580,9 +580,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     title={label}
                     target={url.startsWith('http') ? '_blank' : undefined}
                     rel={url.startsWith('http') ? 'noopener noreferrer' : undefined}
-                    className="w-11 h-11 border-2 border-ink/20 bg-ink/5 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-white transition-all group"
+                    className="w-10 h-10 border border-line flex items-center justify-center hover:bg-ink hover:text-bg transition-all group"
                   >
-                    <Icon size={20} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
+                    <Icon size={18} fill="currentColor" strokeWidth={0} className="group-hover:scale-110 transition-transform" />
                   </a>
                 ))}
               </div>
@@ -591,10 +591,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="text-[11px] font-black uppercase tracking-[0.2em] mb-8 text-ink">{t('layout.marketplace', 'Marketplace')}</h4>
               <ul className="flex flex-col space-y-4 text-xs font-bold text-muted uppercase tracking-widest">
-                <li><Link to="/search" className="hover:text-accent transition-colors">{t('layout.browseInventory', 'Browse Inventory')}</Link></li>
+                <li><Link to="/search" className="hover:text-accent transition-colors">Search Inventory</Link></li>
                 <li><Link to="/categories" className="hover:text-accent transition-colors">{t('layout.categories', 'Categories')}</Link></li>
                 <li><Link to="/manufacturers" className="hover:text-accent transition-colors">Manufacturers</Link></li>
-                <li><Link to="/states" className="hover:text-accent transition-colors">Browse by State</Link></li>
+                <li><Link to="/states" className="hover:text-accent transition-colors">Search by State</Link></li>
+                <li><Link to="/auctions" className="hover:text-accent transition-colors">Auctions</Link></li>
                 <li><Link to="/dealer-hosting" className="hover:text-accent transition-colors">Hosted Websites</Link></li>
                 <li><Link to={listEquipmentHref} state={listEquipmentState} onClick={handleListEquipmentClick} className="hover:text-accent transition-colors">{t('layout.sellEquipment', 'Sell Equipment')}</Link></li>
                 <li><Link to="/financing" className="hover:text-accent transition-colors">{t('layout.financingCenter', 'Financing Center')}</Link></li>

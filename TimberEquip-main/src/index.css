@@ -237,6 +237,32 @@ main#main:focus {
   box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(22, 163, 74, 0.18), var(--shadow-input);
 }
 
+/* Date inputs */
+input[type="date"].input-industrial {
+  cursor: pointer;
+}
+
+input[type="date"].input-industrial::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+input[type="date"].input-industrial:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+
+/* Modal animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .surface-elevated {
   box-shadow: var(--shadow-card);
 }

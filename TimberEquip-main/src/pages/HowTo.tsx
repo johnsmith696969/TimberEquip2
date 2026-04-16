@@ -264,7 +264,7 @@ export function HowTo() {
         {/* Guide Sections */}
         <section className="max-w-4xl mx-auto px-4 sm:px-6 pb-20">
           {GUIDE_SECTIONS.map(({ id, icon: Icon, title, description, steps, cta }, index) => (
-            <div key={id} id={id} className={`py-12 ${index > 0 ? 'border-t border-line' : ''}`}>
+            <div key={id} id={id} className={`py-12 scroll-mt-24 ${index > 0 ? 'border-t border-line' : ''}`}>
               <div className="flex items-start gap-4 mb-6">
                 <div className="w-12 h-12 flex-shrink-0 bg-accent/10 border border-accent/20 flex items-center justify-center rounded-sm">
                   <Icon size={24} className="text-accent" />
@@ -275,16 +275,14 @@ export function HowTo() {
                 </div>
               </div>
 
-              <ol className="space-y-3 ml-16">
+              <ul className="space-y-2.5 ml-16">
                 {steps.map((step, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 bg-ink/5 border border-line rounded-sm flex items-center justify-center text-[10px] font-black text-muted">
-                      {i + 1}
-                    </span>
-                    <span className="text-sm text-ink leading-relaxed pt-0.5">{step}</span>
+                  <li key={i} className="flex items-start gap-2.5">
+                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-accent mt-2" />
+                    <span className="text-sm text-ink leading-relaxed">{step}</span>
                   </li>
                 ))}
-              </ol>
+              </ul>
 
               {cta && (
                 <div className="ml-16 mt-6">
