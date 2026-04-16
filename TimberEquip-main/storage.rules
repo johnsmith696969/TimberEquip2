@@ -112,18 +112,14 @@ service firebase.storage {
     }
 
     function isOwner(uid, listingId) {
-      // Listings live in a named Firestore database, not (default). Cross-service reads
-      // from Storage rules cannot target named databases. Instead, rely on upload metadata
-      // set by the client (uploadedBy) which is validated by isDraftUploader/isUploader,
-      // plus the admin claim check. For existing listings, the server-side upload endpoint
-      // validates ownership before returning a signed URL.
-      // Keeping a best-effort check against default DB for any listings that may exist there.
-      let listingData = firestore.get(/databases/(default)/documents/listings/$(listingId)).data;
-      return listingData != null && (
-        listingData.sellerUid == uid ||
-        listingData.sellerId == uid ||
-        listingData.userId == uid
-      );
+      // Listings live in a named Firestore database which Storage rules cannot
+      // cross-service read. Ownership is enforced by:
+      // 1. isDraftUploader() — upload metadata.uploadedBy must match auth UID
+      // 2. isAdmin() — admin custom claim bypass
+      // 3. Server-side upload endpoints validate ownership before accepting files
+      // The Firestore cross-service read is intentionally removed to prevent
+      // false negatives and to avoid the isDraftUploader bypass risk.
+      return false;
     }
 
     function isDraftUploader() {

@@ -621,37 +621,49 @@ function getRequestIp(req) {
   return forwardedFor.split(',')[0].trim().toLowerCase();
 }
 
-function consumeAuthRateLimit(scope, req, identifier, limit = 5) {
+async function consumeAuthRateLimit(scope, req, identifier, limit = 5) {
   const normalizedScope = normalizeNonEmptyString(scope, 'auth');
   const normalizedIdentifier = normalizeNonEmptyString(identifier, 'anonymous').toLowerCase();
   const ipAddress = getRequestIp(req);
   const now = Date.now();
+  const key = `${normalizedScope}:${normalizedIdentifier}:${createHash('sha256').update(ipAddress).digest('hex').slice(0, 16)}`;
 
-  pruneRecentAuthEndpointRequests(now);
+  // Use Firestore for persistent rate limiting across Cloud Function instances
+  try {
+    const rateLimitRef = getDb().collection('_rateLimits').doc(key);
+    const result = await getDb().runTransaction(async (transaction) => {
+      const doc = await transaction.get(rateLimitRef);
+      const data = doc.exists ? doc.data() : null;
 
-  const key = `${normalizedScope}:${normalizedIdentifier}:${ipAddress}`;
-  const currentBucket = recentAuthEndpointRequests.get(key);
+      if (!data || data.resetAt <= now) {
+        // Start new window
+        transaction.set(rateLimitRef, { count: 1, resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS });
+        return { allowed: true, remaining: Math.max(limit - 1, 0), retryAfterSeconds: Math.ceil(AUTH_RATE_LIMIT_WINDOW_MS / 1000) };
+      }
 
-  if (!currentBucket || currentBucket.resetAt <= now) {
-    const nextBucket = {
-      count: 1,
-      resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
-    };
-    recentAuthEndpointRequests.set(key, nextBucket);
-    return {
-      allowed: true,
-      remaining: Math.max(limit - nextBucket.count, 0),
-      retryAfterSeconds: Math.ceil((nextBucket.resetAt - now) / 1000),
-    };
-  }
+      if (data.count >= limit) {
+        return { allowed: false, remaining: 0, retryAfterSeconds: Math.max(Math.ceil((data.resetAt - now) / 1000), 1) };
+      }
 
-  if (currentBucket.count >= limit) {
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: Math.max(Math.ceil((currentBucket.resetAt - now) / 1000), 1),
-    };
-  }
+      transaction.update(rateLimitRef, { count: data.count + 1 });
+      return { allowed: true, remaining: Math.max(limit - data.count - 1, 0), retryAfterSeconds: Math.ceil((data.resetAt - now) / 1000) };
+    });
+    return result;
+  } catch (rateLimitError) {
+    // If Firestore rate limit fails, fall back to in-memory
+    logger.warn('Firestore rate limit check failed, falling back to in-memory', { error: rateLimitError?.message });
+    pruneRecentAuthEndpointRequests(now);
+    const memKey = `${normalizedScope}:${normalizedIdentifier}:${ipAddress}`;
+    const currentBucket = recentAuthEndpointRequests.get(memKey);
+
+    if (!currentBucket || currentBucket.resetAt <= now) {
+      recentAuthEndpointRequests.set(memKey, { count: 1, resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS });
+      return { allowed: true, remaining: Math.max(limit - 1, 0), retryAfterSeconds: Math.ceil(AUTH_RATE_LIMIT_WINDOW_MS / 1000) };
+    }
+
+    if (currentBucket.count >= limit) {
+      return { allowed: false, remaining: 0, retryAfterSeconds: Math.max(Math.ceil((currentBucket.resetAt - now) / 1000), 1) };
+    }
 
   currentBucket.count += 1;
   recentAuthEndpointRequests.set(key, currentBucket);
@@ -14170,7 +14182,7 @@ exports.apiProxy = onRequest(
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const verificationRateLimit = consumeAuthRateLimit(
+        const verificationRateLimit = await consumeAuthRateLimit(
           'send-verification-email',
           req,
           decodedToken.uid,
@@ -14219,7 +14231,7 @@ exports.apiProxy = onRequest(
           });
         }
 
-        const passwordResetRateLimit = consumeAuthRateLimit(
+        const passwordResetRateLimit = await consumeAuthRateLimit(
           'password-reset',
           req,
           email,
