@@ -18798,12 +18798,11 @@ exports.apiProxy = onRequest(
           const dealersSdk = require('./generated/dataconnect/dealers');
 
           const results = await Promise.allSettled([
-            lgSdk.listLifecycleQueue({ limit: 500 }),
-            lgSdk.listListingTransitions({ listingId: '', limit: 20 }),
+            lgSdk.listLifecycleQueue({ lifecycleStates: ['draft', 'pending_review', 'approved', 'active', 'rejected'], limit: 500 }),
             lgSdk.listOpenListingAnomalies({ limit: 50 }),
             marketplaceSdk.listActiveStorefronts(),
             marketplaceSdk.listUsersByRole({ role: 'seller' }),
-            billingSdk.getSellerApplicationsByUser({ userId: 'SUMMARY_PROBE' }),
+            billingSdk.getSellerApplicationsByUser({ userId: '00000000-0000-0000-0000-000000000000' }),
             auctionsSdk.listActiveAuctions(),
             leadsSdk.listInquiriesByStatus({ status: 'New' }),
             leadsSdk.listContactRequestsByStatus({ status: 'New' }),
@@ -18818,15 +18817,14 @@ exports.apiProxy = onRequest(
           };
 
           const lifecycleQueue = extract(0);
-          const recentTransitions = extract(1);
-          const openAnomalies = extract(2);
-          const storefronts = extract(3);
-          const sellers = extract(4);
-          const sellerApps = extract(5);
-          const activeAuctions = extract(6);
-          const newInquiries = extract(7);
-          const newContactRequests = extract(8);
-          const activeDealerFeeds = extract(9);
+          const openAnomalies = extract(1);
+          const storefronts = extract(2);
+          const sellers = extract(3);
+          const sellerApps = extract(4);
+          const activeAuctions = extract(5);
+          const newInquiries = extract(6);
+          const newContactRequests = extract(7);
+          const activeDealerFeeds = extract(8);
 
           // Aggregate lifecycle state counts from the queue
           const stateCounts = {};
@@ -18838,7 +18836,7 @@ exports.apiProxy = onRequest(
           }
 
           const connectorHealth = {
-            'listing-governance': lifecycleQueue.ok && recentTransitions.ok && openAnomalies.ok,
+            'listing-governance': lifecycleQueue.ok && openAnomalies.ok,
             'marketplace': storefronts.ok && sellers.ok,
             'billing': sellerApps.ok,
             'auctions': activeAuctions.ok,
@@ -18856,7 +18854,7 @@ exports.apiProxy = onRequest(
               listingsByState: stateCounts,
               totalListingsInPg: lifecycleQueue.ok ? (lifecycleQueue.data?.listings?.length || 0) : null,
               openAnomalies: openAnomalies.ok ? (openAnomalies.data?.anomalies?.length || 0) : null,
-              recentTransitions: recentTransitions.ok ? (recentTransitions.data?.transitions?.length || 0) : null,
+              recentTransitions: null,
               activeStorefronts: storefronts.ok ? (storefronts.data?.storefronts?.length || 0) : null,
               activeSellers: sellers.ok ? (sellers.data?.users?.length || 0) : null,
               activeAuctions: activeAuctions.ok ? (activeAuctions.data?.auctions?.length || 0) : null,
