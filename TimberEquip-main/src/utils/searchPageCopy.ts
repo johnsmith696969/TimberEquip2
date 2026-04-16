@@ -6,6 +6,7 @@ export interface SearchPageCopyFilters {
   subcategory?: string;
   manufacturer?: string;
   model?: string;
+  state?: string;
 }
 
 export interface SearchPageCopyCategoryRoute {
@@ -29,6 +30,7 @@ export interface SearchPageCopy {
   eyebrow: string;
   countLabel: string;
   description: string;
+  locationSuffix: string;
   seoTitle: string;
   seoDescription: string;
 }
@@ -185,6 +187,7 @@ export function buildSearchPageCopy({
     eyebrow,
     countLabel,
     description,
+    locationSuffix,
     seoTitle: `${title} | New & Used ${subject} | Forestry Equipment Sales`,
     seoDescription: `${countLabel}. ${description}`,
   };

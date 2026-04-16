@@ -1340,7 +1340,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-3">
-                {inventoryCopy.subject} <span className="text-muted">For Sale</span>
+                {inventoryCopy.subject} <span className="text-muted">For Sale{inventoryCopy.locationSuffix}</span>
               </h1>
               <p className="text-xs text-muted font-medium max-w-2xl">
                 {inventoryCopy.description}
@@ -2201,15 +2201,21 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
         open={showCategoryModal}
         onClose={() => {
           setShowCategoryModal(false);
-          handleFilterChange('category', draftFilters.category);
-          handleFilterChange('subcategory', draftFilters.subcategory);
+          setFilters((prev) => ({
+            ...prev,
+            category: draftFilters.category,
+            subcategory: draftFilters.subcategory,
+          }));
         }}
         taxonomy={fullTaxonomy}
         selectedCategory={draftFilters.category}
         selectedSubcategory={draftFilters.subcategory}
         onSelect={(category, subcategory) => {
-          handleDraftFilterChange('category', category);
-          handleDraftFilterChange('subcategory', subcategory);
+          setDraftFilters((prev) => ({
+            ...prev,
+            category,
+            subcategory,
+          }));
         }}
         facetedCounts={facetedCounts}
       />
