@@ -129,7 +129,9 @@ export function buildSearchPageCopy({
   const routeSubcategory = categoryRoute?.subcategoryName || (!categoryRoute?.isTopLevel ? categoryRoute?.categoryName || '' : '');
   const selectedManufacturer = singleValue(filters.manufacturer);
   const selectedModel = singleValue(filters.model);
-  const selectedSubcategory = routeSubcategory || singleValue(filters.subcategory);
+  const subcategoryValues = parseMultiValue(routeSubcategory || filters.subcategory);
+  const selectedSubcategory = subcategoryValues.length === 1 ? subcategoryValues[0] : '';
+  const hasMultipleSubcategories = subcategoryValues.length > 1;
   const selectedCategory = routeParentCategory || filters.category || '';
   const taxonomyLabels = getTaxonomyLabels(taxonomy);
   const queryManufacturer = !selectedManufacturer ? findLabelInQuery(taxonomyLabels.manufacturers, filters.q) : '';
@@ -142,17 +144,27 @@ export function buildSearchPageCopy({
   if (categoryRoute?.isTopLevel) {
     subject = categoryRoute.categoryName;
   } else if (categoryRoute) {
-    subject = joinSubject([routeParentCategory, routeSubcategory]);
-    eyebrow = 'Equipment Subcategory';
+    // SEO landing page with parent + subcategory
+    subject = routeSubcategory || routeParentCategory;
+    eyebrow = routeParentCategory || 'Equipment Subcategory';
   } else if (selectedManufacturer && selectedModel) {
     subject = joinSubject([selectedManufacturer, selectedModel]);
     eyebrow = 'Manufacturer Inventory';
   } else if (selectedManufacturer && selectedSubcategory) {
     subject = joinSubject([selectedManufacturer, selectedSubcategory]);
     eyebrow = 'Manufacturer Inventory';
-  } else if (selectedCategory && selectedSubcategory) {
-    subject = joinSubject([selectedCategory, selectedSubcategory]);
+  } else if (hasMultipleSubcategories && selectedCategory) {
+    // Multiple subcategories in same category → show category name
+    subject = selectedCategory;
     eyebrow = 'Filtered Equipment';
+  } else if (hasMultipleSubcategories) {
+    // Multiple subcategories across categories → generic
+    subject = 'Logging Equipment';
+    eyebrow = 'Filtered Equipment';
+  } else if (selectedSubcategory) {
+    // Single subcategory → show just the subcategory name
+    subject = selectedSubcategory;
+    eyebrow = selectedCategory || 'Equipment Category';
   } else if (queryManufacturer && querySubcategory) {
     subject = joinSubject([queryManufacturer, querySubcategory]);
     eyebrow = 'Search Results';
@@ -162,9 +174,6 @@ export function buildSearchPageCopy({
   } else if (selectedManufacturer) {
     subject = `${selectedManufacturer} Equipment`;
     eyebrow = 'Manufacturer Inventory';
-  } else if (selectedSubcategory) {
-    subject = selectedSubcategory;
-    eyebrow = selectedCategory || 'Equipment Category';
   } else if (selectedCategory) {
     subject = selectedCategory;
     eyebrow = 'Filtered Equipment';

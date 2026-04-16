@@ -1493,7 +1493,11 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                         >
                           <span className={`truncate ${draftFilters.category ? 'text-ink' : 'text-muted'}`}>
                             {draftFilters.category
-                              ? (draftFilters.subcategory ? `${draftFilters.category} / ${draftFilters.subcategory}` : draftFilters.category)
+                              ? (draftFilters.subcategory
+                                  ? (draftFilters.subcategory.includes('|')
+                                      ? `${draftFilters.category} (${draftFilters.subcategory.split('|').length})`
+                                      : draftFilters.subcategory)
+                                  : draftFilters.category)
                               : 'All Categories'}
                           </span>
                           <ChevronDown size={14} className="text-muted" />
@@ -1862,7 +1866,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-sm border border-line bg-bg p-8 shadow-2xl"
+                className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-sm border border-line bg-bg p-8 shadow-2xl"
               >
                 <button onClick={closeAlertModal} aria-label="Close alert modal" className="absolute top-4 right-4 text-muted hover:text-ink">
                   <X size={20} />
@@ -2213,23 +2217,13 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
       <CategoryFilterModal
         open={showCategoryModal}
-        onClose={() => {
-          setShowCategoryModal(false);
-          setFilters((prev) => ({
-            ...prev,
-            category: draftFilters.category,
-            subcategory: draftFilters.subcategory,
-          }));
-        }}
+        onClose={() => setShowCategoryModal(false)}
         taxonomy={fullTaxonomy}
-        selectedCategory={draftFilters.category}
-        selectedSubcategory={draftFilters.subcategory}
+        selectedCategory={filters.category}
+        selectedSubcategory={filters.subcategory}
         onSelect={(category, subcategory) => {
-          setDraftFilters((prev) => ({
-            ...prev,
-            category,
-            subcategory,
-          }));
+          setFilters((prev) => ({ ...prev, category, subcategory }));
+          setDraftFilters((prev) => ({ ...prev, category, subcategory }));
         }}
         facetedCounts={facetedCounts}
       />

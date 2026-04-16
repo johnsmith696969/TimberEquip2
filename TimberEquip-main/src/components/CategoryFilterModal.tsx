@@ -17,6 +17,11 @@ interface CategoryFilterModalProps {
   };
 }
 
+const parseMulti = (v: string): string[] => v ? v.split('|').map(s => s.trim()).filter(Boolean) : [];
+const joinMulti = (v: string[]): string => [...new Set(v)].filter(Boolean).join('|');
+const toggleInList = (list: string[], item: string): string[] =>
+  list.includes(item) ? list.filter(i => i !== item) : [...list, item];
+
 export function CategoryFilterModal({
   open,
   onClose,
@@ -29,13 +34,19 @@ export function CategoryFilterModal({
   const [filter, setFilter] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Local draft state so selections don't trigger URL updates until close
+  const [draftCategory, setDraftCategory] = useState(selectedCategory);
+  const [draftSubcategories, setDraftSubcategories] = useState<string[]>(parseMulti(selectedSubcategory));
+
   useEffect(() => {
     if (open) {
+      setDraftCategory(selectedCategory);
+      setDraftSubcategories(parseMulti(selectedSubcategory));
       setTimeout(() => inputRef.current?.focus(), 100);
     } else {
       setFilter('');
     }
-  }, [open]);
+  }, [open, selectedCategory, selectedSubcategory]);
 
   const categoriesWithSubs = useMemo(() => {
     const entries = Object.entries(taxonomy)
@@ -62,6 +73,44 @@ export function CategoryFilterModal({
       .filter(Boolean) as typeof entries;
   }, [taxonomy, filter, facetedCounts]);
 
+  const handleSelectAll = () => {
+    setDraftCategory('');
+    setDraftSubcategories([]);
+  };
+
+  const handleSelectCategory = (category: string) => {
+    if (draftCategory === category && draftSubcategories.length === 0) {
+      // Deselect
+      setDraftCategory('');
+    } else {
+      // Select entire category, clear subcategories
+      setDraftCategory(category);
+      setDraftSubcategories([]);
+    }
+  };
+
+  const handleToggleSubcategory = (category: string, sub: string) => {
+    // If selecting a subcategory in a different category, switch to that category
+    if (draftCategory && draftCategory !== category) {
+      setDraftCategory(category);
+      setDraftSubcategories([sub]);
+      return;
+    }
+    setDraftCategory(category);
+    setDraftSubcategories(prev => toggleInList(prev, sub));
+  };
+
+  const isCategoryChecked = (category: string) =>
+    draftCategory === category && draftSubcategories.length === 0;
+
+  const isSubcategoryChecked = (sub: string) =>
+    draftSubcategories.includes(sub);
+
+  const handleApply = () => {
+    onSelect(draftCategory, joinMulti(draftSubcategories));
+    onClose();
+  };
+
   const modal = createPortal(
     <AnimatePresence>
       {open && (
@@ -70,7 +119,7 @@ export function CategoryFilterModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={handleApply}
             className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
           />
           <motion.div
@@ -85,7 +134,7 @@ export function CategoryFilterModal({
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-line">
               <h2 className="text-lg font-black tracking-tighter uppercase">Category</h2>
-              <button onClick={onClose} className="p-1 text-muted hover:text-ink transition-colors" aria-label="Close">
+              <button onClick={handleApply} className="p-1 text-muted hover:text-ink transition-colors" aria-label="Close">
                 <X size={20} />
               </button>
             </div>
@@ -108,8 +157,8 @@ export function CategoryFilterModal({
               <label className="flex items-center gap-3 py-2 cursor-pointer group">
                 <input
                   type="checkbox"
-                  checked={!selectedCategory && !selectedSubcategory}
-                  onChange={() => { onSelect('', ''); onClose(); }}
+                  checked={!draftCategory && draftSubcategories.length === 0}
+                  onChange={handleSelectAll}
                   className="w-4 h-4 accent-accent flex-shrink-0"
                 />
                 <span className="text-sm font-black uppercase tracking-widest text-ink">All Categories</span>
@@ -122,14 +171,8 @@ export function CategoryFilterModal({
                     <label className="flex items-center gap-3 py-1.5 cursor-pointer group">
                       <input
                         type="checkbox"
-                        checked={selectedCategory === category && !selectedSubcategory}
-                        onChange={() => {
-                          if (selectedCategory === category && !selectedSubcategory) {
-                            onSelect('', '');
-                          } else {
-                            onSelect(category, '');
-                          }
-                        }}
+                        checked={isCategoryChecked(category)}
+                        onChange={() => handleSelectCategory(category)}
                         className="w-4 h-4 accent-accent flex-shrink-0"
                       />
                       <span className="text-xs font-black text-ink group-hover:text-accent transition-colors">
@@ -145,14 +188,8 @@ export function CategoryFilterModal({
                         <label key={sub} className="flex items-center gap-3 py-1 pl-7 cursor-pointer group">
                           <input
                             type="checkbox"
-                            checked={selectedCategory === category && selectedSubcategory === sub}
-                            onChange={() => {
-                              if (selectedCategory === category && selectedSubcategory === sub) {
-                                onSelect(category, '');
-                              } else {
-                                onSelect(category, sub);
-                              }
-                            }}
+                            checked={isSubcategoryChecked(sub)}
+                            onChange={() => handleToggleSubcategory(category, sub)}
                             className="w-3.5 h-3.5 accent-accent flex-shrink-0"
                           />
                           <span className="text-[11px] font-medium text-muted group-hover:text-ink transition-colors">
@@ -174,7 +211,7 @@ export function CategoryFilterModal({
             {/* Footer */}
             <div className="px-6 py-3 border-t border-line">
               <button
-                onClick={onClose}
+                onClick={handleApply}
                 className="btn-industrial btn-accent w-full py-3"
               >
                 Apply Filter & Close
