@@ -30,6 +30,7 @@ const OurTeam = lazy(() => import('./pages/OurTeam').then((m) => ({ default: m.O
 const Contact = lazy(() => import('./pages/Contact').then((m) => ({ default: m.Contact })));
 const AdPrograms = lazy(() => import('./pages/AdPrograms').then((m) => ({ default: m.AdPrograms })));
 const DealerHosting = lazy(() => import('./pages/DealerHosting').then((m) => ({ default: m.DealerHosting })));
+const HowTo = lazy(() => import('./pages/HowTo').then((m) => ({ default: m.HowTo })));
 const Auctions = lazy(() => import('./pages/Auctions').then((m) => ({ default: m.Auctions })));
 const Unsubscribe = lazy(() => import('./pages/Unsubscribe').then((m) => ({ default: m.Unsubscribe })));
 const ResetPassword = lazy(() => import('./pages/ResetPassword').then((m) => ({ default: m.ResetPassword })));
@@ -169,6 +170,7 @@ function App() {
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/ad-programs" element={<AdPrograms />} />
                     <Route path="/dealer-hosting" element={<DealerHosting />} />
+                    <Route path="/how-to" element={<HowTo />} />
                     <Route path="/subscription-success" element={<SubscriptionSuccess />} />
                     <Route path="/auctions" element={<Auctions />} />
                     <Route path="/bidder-registration" element={<ProtectedRoute><Suspense fallback={<div />}><BidderRegistration /></Suspense></ProtectedRoute>} />

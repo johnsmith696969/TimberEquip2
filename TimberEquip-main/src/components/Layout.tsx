@@ -580,9 +580,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     title={label}
                     target={url.startsWith('http') ? '_blank' : undefined}
                     rel={url.startsWith('http') ? 'noopener noreferrer' : undefined}
-                    className="w-10 h-10 border border-line flex items-center justify-center hover:bg-ink hover:text-bg transition-all group"
+                    className="w-11 h-11 border-2 border-ink/20 bg-ink/5 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-white transition-all group"
                   >
-                    <Icon size={18} className="group-hover:scale-110 transition-transform" />
+                    <Icon size={20} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
                   </a>
                 ))}
               </div>
@@ -617,6 +617,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/about" className="hover:text-accent transition-colors">About Us</Link></li>
                 <li><Link to="/our-team" className="hover:text-accent transition-colors">Our Team</Link></li>
                 <li><Link to="/faq" className="hover:text-accent transition-colors">FAQ</Link></li>
+                <li><Link to="/how-to" className="hover:text-accent transition-colors">How to Use FES</Link></li>
                 <li><Link to="/contact" className="hover:text-accent transition-colors">Contact Us</Link></li>
               </ul>
             </div>
