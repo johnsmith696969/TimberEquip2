@@ -512,7 +512,7 @@ export function Login() {
               {mfaVerificationId ? (
                 <div className="flex items-center space-x-2 text-data text-xs font-bold uppercase tracking-widest py-2">
                   <ShieldCheck size={16} />
-                  <span>Security check passed</span>
+                  <span>Success</span>
                 </div>
               ) : (
                 <div id="login-mfa-recaptcha" className="min-h-[78px]" />

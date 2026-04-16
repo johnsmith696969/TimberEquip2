@@ -1323,10 +1323,7 @@ async function sendPasswordResetEmailMessage({ email, displayName, requestedBy, 
   const resetLink = await buildPasswordResetLink(email, continueUrl);
   const brandedResetUrl = buildBrandedPasswordResetUrl(resetLink, continueUrl);
   const safeDisplayName = String(displayName || 'there').trim() || 'there';
-  const safeRequestedBy = String(requestedBy || '').trim();
-  const intro = safeRequestedBy
-    ? `${safeRequestedBy} requested a password reset for your Forestry Equipment Sales account.`
-    : 'We received a request to reset your Forestry Equipment Sales password.';
+  const intro = 'You requested a password reset for your Forestry Equipment Sales account.';
   const payload = templates.passwordReset({
     displayName: safeDisplayName,
     intro,
@@ -6038,6 +6035,93 @@ exports.monthlyAdminPlatformReport = onSchedule(
       logger.info(`monthlyAdminPlatformReport: sent to ${getAdminRecipients().length} admins for ${report.periodLabel}`);
     } catch (reportError) {
       logger.error('monthlyAdminPlatformReport: failed to send', reportError);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Monthly Market Analytics Blog Post — 1st of each month at 8 AM Eastern
+// Generates a draft Equipment Market Insights post for admin review
+// ---------------------------------------------------------------------------
+exports.monthlyMarketAnalyticsPost = onSchedule(
+  {
+    schedule: '0 8 1 * *',
+    timeZone: 'America/New_York',
+    region: 'us-central1',
+  },
+  async () => {
+    try {
+      const db = getDb();
+      const listingsSnap = await db.collection('listings').where('status', '==', 'active').get();
+      const listings = listingsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const now = new Date();
+      const monthName = now.toLocaleString('en-US', { month: 'long' });
+      const year = now.getFullYear();
+      const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+      const categoryMetrics = {};
+      for (const listing of listings) {
+        const cat = listing.category || 'Uncategorized';
+        if (!categoryMetrics[cat]) categoryMetrics[cat] = { count: 0, totalPrice: 0, minPrice: Infinity, maxPrice: 0, subcategories: {}, manufacturers: {}, states: {} };
+        const m = categoryMetrics[cat];
+        m.count++;
+        const price = Number(listing.price) || 0;
+        if (price > 0) { m.totalPrice += price; if (price < m.minPrice) m.minPrice = price; if (price > m.maxPrice) m.maxPrice = price; }
+        const sub = listing.subcategory || ''; if (sub) m.subcategories[sub] = (m.subcategories[sub] || 0) + 1;
+        const mfg = listing.manufacturer || listing.make || ''; if (mfg) m.manufacturers[mfg] = (m.manufacturers[mfg] || 0) + 1;
+        const st = listing.state || ''; if (st) m.states[st] = (m.states[st] || 0) + 1;
+      }
+      for (const m of Object.values(categoryMetrics)) { m.avgPrice = m.count > 0 ? Math.round(m.totalPrice / m.count) : 0; if (m.minPrice === Infinity) m.minPrice = 0; }
+
+      const total = listings.length;
+      const totalCats = Object.keys(categoryMetrics).length;
+      const fmt = (n) => n.toLocaleString('en-US');
+      const fmtP = (n) => n > 0 ? '$' + n.toLocaleString('en-US') : 'N/A';
+
+      let html = `<h2>Executive Summary</h2><p>The ${monthName} ${year} Forestry Equipment Sales Market Report tracks <strong>${fmt(total)} active listing${total !== 1 ? 's' : ''}</strong> across <strong>${fmt(totalCats)} categor${totalCats !== 1 ? 'ies' : 'y'}</strong>.</p>`;
+      html += `<p><em>This report reflects marketplace activity on Forestry Equipment Sales and does not represent the entire market. Readers should form their own conclusions about market sentiment.</em></p>`;
+      html += `<h2>Market Overview</h2>`;
+      const allPrices = listings.filter(l => Number(l.price) > 0).map(l => Number(l.price));
+      if (allPrices.length > 0) {
+        html += `<p>Average listing price: <strong>${fmtP(Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length))}</strong>. Range: ${fmtP(Math.min(...allPrices))} – ${fmtP(Math.max(...allPrices))}.</p>`;
+      } else {
+        html += `<p>Pricing data is being collected as inventory grows.</p>`;
+      }
+
+      html += `<h2>Category Breakdown</h2>`;
+      for (const [cat, m] of Object.entries(categoryMetrics).sort((a, b) => b[1].count - a[1].count)) {
+        html += `<h3>${cat}</h3><p><strong>${fmt(m.count)} listing${m.count !== 1 ? 's' : ''}</strong>`;
+        if (m.avgPrice > 0) html += ` | AMV: <strong>${fmtP(m.avgPrice)}</strong> | Range: ${fmtP(m.minPrice)} – ${fmtP(m.maxPrice)}`;
+        html += `</p>`;
+        const subs = Object.entries(m.subcategories).sort((a, b) => b[1] - a[1]);
+        if (subs.length > 0) html += `<p><strong>Subcategories:</strong> ${subs.map(([n, c]) => `${n} (${c})`).join(', ')}</p>`;
+        const mfgs = Object.entries(m.manufacturers).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (mfgs.length > 0) html += `<p><strong>Top Makes:</strong> ${mfgs.map(([n, c]) => `${n} (${c})`).join(', ')}</p>`;
+        const sts = Object.entries(m.states).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (sts.length > 0) html += `<p><strong>Top Markets:</strong> ${sts.map(([n, c]) => `${n} (${c})`).join(', ')}</p>`;
+      }
+
+      html += `<h2>What to Watch</h2><ul><li><strong>Supply Trends:</strong> Monitor listing volume month-over-month.</li><li><strong>AMV Shifts:</strong> Track average values by category for appreciation/depreciation.</li><li><strong>Geographic Demand:</strong> Regional concentration indicates where demand is strongest.</li></ul>`;
+      html += `<h2>Methodology</h2><p>Generated from active listings on ${dateStr}. This data does not determine overall market conditions. <a href="/contact">Contact us</a> or call (218) 720-0933.</p>`;
+
+      const title = `Logging Equipment Market Insights — ${monthName} ${year}`;
+      const slug = `logging-equipment-market-insights-${monthName.toLowerCase()}-${year}`;
+      const excerpt = `Monthly market analytics for ${monthName} ${year}: supply trends, average market values, and category breakdowns.`;
+
+      await db.collection('blogPosts').add({
+        title, seoTitle: `${title} | Forestry Equipment Sales`, seoDescription: excerpt, seoSlug: slug,
+        seoKeywords: ['logging equipment market', 'forestry equipment prices', 'market report', monthName.toLowerCase() + ' ' + year],
+        excerpt, summary: excerpt, content: html, category: 'Market Analytics',
+        tags: ['Market Report', 'Analytics', 'Equipment Prices', 'Industry Trends'],
+        authorName: 'Forestry Equipment Sales', image: '', status: 'draft', reviewStatus: 'draft',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        publishedAt: null, scheduledAt: null,
+      });
+
+      logger.info(`monthlyMarketAnalyticsPost: created draft "${title}" with ${total} listings analyzed`);
+    } catch (err) {
+      logger.error('monthlyMarketAnalyticsPost failed', err);
+      captureFunctionsException(err, { module: 'monthlyMarketAnalyticsPost' });
     }
   }
 );
@@ -12173,8 +12257,10 @@ exports.apiProxy = onRequest(
   {
     region: 'us-central1',
     cors: ALLOWED_CORS_ORIGINS,
-    minInstances: 0,
-    maxInstances: 5,
+    minInstances: 1,
+    maxInstances: 10,
+    cpu: 2,
+    memory: '1GiB',
     secrets: API_PROXY_SECRETS,
   },
   async (req, res) => {

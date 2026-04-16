@@ -1981,43 +1981,7 @@ export function ListingDetail() {
                   </div>
                 </div>
 
-                <div className="flex flex-col space-y-3">
-                  <div className={`flex items-center space-x-3 text-xs font-bold ${sellerIsVerified ? 'text-data' : 'text-muted'}`}>
-                    <ShieldCheck size={16} />
-                    <span className="uppercase tracking-widest">
-                      {sellerIsVerified ? t('listingDetail.verifiedSeller', 'Verified Seller') : t('listingDetail.verificationPending', 'Verification Pending')}
-                    </span>
-                  </div>
-                  {['super_admin', 'admin'].includes(user?.role || '') && seller?.id && (
-                    <button
-                      onClick={async () => {
-                        const newVal = !seller.manuallyVerified;
-                        const action = newVal ? 'verify' : 'unverify';
-                        try {
-                          const idToken = await auth.currentUser?.getIdToken();
-                          if (!idToken) return;
-                          const resp = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(seller.id)}/${action}`, {
-                            method: 'POST',
-                            headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-                            body: '{}',
-                          });
-                          if (!resp.ok) {
-                            const err = await resp.json().catch(() => ({}));
-                            throw new Error(err?.error || `Failed to ${action} seller`);
-                          }
-                          setSeller((prev) => prev ? { ...prev, manuallyVerified: newVal } : prev);
-                        } catch (err) {
-                          console.error('Failed to update verification:', err);
-                        }
-                      }}
-                      className="text-[9px] font-black uppercase tracking-widest text-accent hover:underline text-left"
-                    >
-                      {seller.manuallyVerified ? 'Remove Manual Verification' : 'Manually Verify Seller'}
-                    </button>
-                  )}
-                </div>
-
-                <Link to={dealerPath || `/dealers/${safeSellerId}`} className="btn-industrial w-full mt-8 py-3">
+                <Link to={dealerPath || `/dealers/${safeSellerId}`} className="btn-industrial w-full mt-4 py-3">
                   {t('listingDetail.viewFullProfile', 'View Full Profile')}
                 </Link>
               </div>

@@ -488,12 +488,6 @@ export function SellerProfile() {
                   <StorefrontRoleIcon size={14} className="text-accent" />
                   <span>Managed Storefront</span>
                 </div>
-                {seller.verified && (
-                  <div className="flex items-center space-x-2 text-data text-[10px] font-black uppercase tracking-widest">
-                    <ShieldCheck size={14} />
-                    <span>Verified Storefront</span>
-                  </div>
-                )}
               </div>
 
               <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 leading-none">
@@ -832,7 +826,7 @@ export function SellerProfile() {
         })()}
 
         {compareList.length > 0 && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-bg px-6 py-3 rounded-sm shadow-2xl flex items-center gap-4">
+          <div className="fixed bottom-6 left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-sm border border-line bg-bg/95 px-5 py-3 text-ink shadow-[0_18px_42px_rgba(28,25,23,0.16)] backdrop-blur-xl sm:w-auto sm:flex-nowrap">
             <span className="text-[10px] font-black uppercase tracking-widest">{compareList.length} selected</span>
             <Link
               to={`/compare?ids=${compareList.join(',')}`}
@@ -840,7 +834,7 @@ export function SellerProfile() {
             >
               Compare
             </Link>
-            <button onClick={() => setCompareList([])} className="text-[10px] font-black uppercase tracking-widest text-muted hover:text-bg">
+            <button onClick={() => setCompareList([])} className="text-[10px] font-black uppercase tracking-widest text-muted hover:text-ink">
               Clear
             </button>
           </div>
