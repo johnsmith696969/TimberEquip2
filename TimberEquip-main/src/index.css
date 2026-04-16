@@ -217,9 +217,17 @@ main#main:focus {
 
 /* Inputs */
 .input-industrial {
-  @apply bg-surface border px-4 py-2.5 text-[10px] font-bold text-ink outline-none transition-all rounded-sm placeholder:text-muted/40;
+  @apply bg-surface border px-4 py-2.5 text-[10px] font-bold text-ink outline-none transition-all rounded-sm;
   border-color: transparent;
   box-shadow: inset 0 0 0 1px var(--line), var(--shadow-input);
+}
+
+.input-industrial::placeholder {
+  color: var(--muted);
+  opacity: 0.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .input-industrial:focus::placeholder {

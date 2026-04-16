@@ -1346,9 +1346,9 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                 {inventoryCopy.description}
               </p>
             </div>
-            <div className="inline-flex w-fit items-center border border-accent/30 bg-accent/10 px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-accent">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted whitespace-nowrap">
               {inventoryCopy.countLabel}
-            </div>
+            </span>
           </div>
         </div>
       </div>

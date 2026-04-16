@@ -173,7 +173,7 @@ export function buildSearchPageCopy({
 
   const title = `${subject} For Sale`;
   const countLabel = formatMachineCountLabel(resultCount);
-  const description = `Browse new and used ${subject} for sale on Forestry Equipment Sales. Filter by year, hours, price, location, manufacturer, and technical specifications.`;
+  const description = `Find new and used ${subject} for sale on Forestry Equipment Sales. Filter by year, hours, price, location, manufacturer, and technical specifications.`;
 
   return {
     title,

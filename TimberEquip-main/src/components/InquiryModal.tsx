@@ -141,7 +141,7 @@ export function InquiryModal({ isOpen, onClose, listing }: InquiryModalProps) {
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="bg-bg border border-line relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden"
           >
-            <div className={`p-8 flex justify-between items-center ${theme === 'dark' ? 'bg-ink text-white' : 'bg-surface border-b border-line text-ink'}`}>
+            <div className="p-8 flex justify-between items-center bg-surface border-b border-line text-ink">
               <div className="flex flex-col">
                 <span className="text-accent text-[10px] font-black uppercase tracking-[0.2em] mb-1">Inquiry Form</span>
                 <h3 id="inquiry-dialog-title" className="text-2xl font-black tracking-tighter uppercase">Contact Seller</h3>
