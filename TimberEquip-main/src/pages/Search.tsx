@@ -49,6 +49,7 @@ import {
   type ResolvedEquipmentTaxonomySelection,
 } from '../utils/equipmentTaxonomy';
 import { buildSearchPageCopy } from '../utils/searchPageCopy';
+import { CategoryFilterModal } from '../components/CategoryFilterModal';
 
 type SortBy = 'newest' | 'price_asc' | 'price_desc' | 'relevance' | 'popular' | 'nearest' | 'year_asc' | 'year_desc' | 'hours_asc' | 'hours_desc';
 type SearchViewMode = 'grid' | 'list';
@@ -486,6 +487,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
   const [inventoryError, setInventoryError] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [pendingSaveSearch, setPendingSaveSearch] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   const handleToggleFavorite = (id: string) => {
     const normalizedId = normalizeListingId(id);
@@ -1464,37 +1466,19 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                   </button>
                   <FilterSectionPanel open={openSections.equipment}>
                       <div className="flex flex-col space-y-2">
-                        <label htmlFor="search-category" className="label-micro">Category</label>
-                        <select
-                          id="search-category"
-                          value={draftFilters.category}
-                          onChange={(e) => handleDraftFilterChange('category', e.target.value)}
-                          className="select-industrial w-full"
+                        <label className="label-micro">Category</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowCategoryModal(true)}
+                          className="select-industrial w-full text-left flex items-center justify-between"
                         >
-                          <option value="">All Categories</option>
-                          {categoryOptions.map((category) => (
-                            <option key={category} value={category}>
-                              {category}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="flex flex-col space-y-2">
-                        <label htmlFor="search-subcategory" className="label-micro">Subcategory</label>
-                        <select
-                          id="search-subcategory"
-                          value={draftFilters.subcategory}
-                          onChange={(e) => handleDraftFilterChange('subcategory', e.target.value)}
-                          className="select-industrial w-full"
-                        >
-                          <option value="">All Subcategories</option>
-                          {subcategoryOptions.map((sub) => (
-                            <option key={sub} value={sub}>
-                              {sub}
-                            </option>
-                          ))}
-                        </select>
+                          <span className={draftFilters.category ? 'text-ink' : 'text-muted/50'}>
+                            {draftFilters.category
+                              ? (draftFilters.subcategory ? `${draftFilters.category} / ${draftFilters.subcategory}` : draftFilters.category)
+                              : 'All Categories'}
+                          </span>
+                          <ChevronDown size={14} className="text-muted" />
+                        </button>
                       </div>
 
                       <div className="flex flex-col space-y-2">
@@ -2172,6 +2156,21 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
       />
 
       <ConfirmDialog {...dialogProps} />
+
+      <CategoryFilterModal
+        open={showCategoryModal}
+        onClose={() => setShowCategoryModal(false)}
+        taxonomy={fullTaxonomy}
+        selectedCategory={draftFilters.category}
+        selectedSubcategory={draftFilters.subcategory}
+        onSelect={(category, subcategory) => {
+          handleDraftFilterChange('category', category);
+          handleDraftFilterChange('subcategory', subcategory);
+          handleFilterChange('category', category);
+          handleFilterChange('subcategory', subcategory);
+        }}
+        facetedCounts={facetedCounts}
+      />
     </div>
   );
 }
