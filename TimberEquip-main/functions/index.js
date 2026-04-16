@@ -16995,8 +16995,8 @@ exports.apiProxy = onRequest(
 
         const [posts, media, contentBlocks] = await Promise.all([
           loadQuotaSafeContentSection('posts', async () => {
-            const db = getDb();
-            // Try ordered query first, fall back to unordered if index doesn't exist
+            // Force named database instance directly to avoid any caching issues
+            const db = getFirestore('ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c');
             let snapshot;
             try {
               snapshot = await db.collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
