@@ -115,9 +115,9 @@ export function CategoryFilterModal({
                 <span className="text-sm font-black uppercase tracking-widest text-ink">All Categories</span>
               </label>
 
-              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+              <div className="mt-2 sm:columns-2 sm:gap-x-8">
                 {categoriesWithSubs.map(({ category, subcategories, count }) => (
-                  <div key={category} className="mb-4">
+                  <div key={category} className="mb-3 break-inside-avoid">
                     {/* Parent category - bold */}
                     <label className="flex items-center gap-3 py-1.5 cursor-pointer group">
                       <input
