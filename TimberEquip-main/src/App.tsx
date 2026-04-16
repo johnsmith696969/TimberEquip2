@@ -164,6 +164,7 @@ function App() {
                     <Route path="/about-us" element={<About />} />
                     <Route path="/faq" element={<Faq />} />
                     <Route path="/help" element={<HelpCenter />} />
+                    <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/help/:slug" element={<HelpArticle />} />
                     <Route path="/our-team" element={<OurTeam />} />
                     <Route path="/about/our-team" element={<OurTeam />} />

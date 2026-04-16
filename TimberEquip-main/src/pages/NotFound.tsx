@@ -46,7 +46,7 @@ export function NotFound() {
                 className="inline-flex items-center gap-2 rounded-sm border border-line bg-surface px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-ink transition hover:border-accent hover:text-accent"
               >
                 <Search className="h-4 w-4" />
-                Browse Inventory
+                Search Inventory
               </Link>
               <Link
                 to="/categories"
