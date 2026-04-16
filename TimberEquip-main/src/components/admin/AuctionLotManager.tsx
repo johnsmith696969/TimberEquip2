@@ -353,7 +353,7 @@ export function AuctionLotManager({ auction, onAuctionUpdated }: AuctionLotManag
   }
 
   return (
-    <div className="mt-4 grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
+    <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)]">
       <div className="border border-line rounded-sm bg-surface">
         <div className="border-b border-line px-5 py-4">
           <h4 className="text-sm font-black uppercase tracking-widest">Add Auction Lots</h4>

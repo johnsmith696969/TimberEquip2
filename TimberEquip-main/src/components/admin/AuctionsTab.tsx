@@ -783,10 +783,10 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
                 const isManagingLots = managedAuctionId === auction.id;
                 return (
                 <React.Fragment key={auction.id}>
-                <div className="border border-line rounded-sm p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <span className={`inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
+                <div className="border border-line rounded-sm p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`inline-block shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
                         auction.status === 'active' ? 'bg-accent/10 text-accent' :
                         auction.status === 'preview' ? 'bg-data/10 text-data' :
                         auction.status === 'draft' ? 'bg-muted/10 text-muted' :
@@ -795,20 +795,19 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
                       }`}>
                         {auction.status}
                       </span>
+                      <div className="min-w-0">
+                        <h3 className="font-black text-sm truncate">{auction.title}</h3>
+                        <p className="text-[10px] text-muted truncate">
+                          {auction.lotCount} lots · {auction.totalBids} bids
+                          {auction.startTime && ` · Starts ${new Date(auction.startTime).toLocaleDateString()}`}
+                          {auction.endTime && ` · Ends ${new Date(auction.endTime).toLocaleString()}`}
+                          {Number.isFinite(Number(auction.totalGMV || 0)) && Number(auction.totalGMV || 0) > 0
+                            ? ` · GMV $${Number(auction.totalGMV || 0).toLocaleString()}`
+                            : ''}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-black text-sm">{auction.title}</h3>
-                      <p className="text-[10px] text-muted">
-                        {auction.lotCount} lots · {auction.totalBids} bids
-                        {auction.startTime && ` · Starts ${new Date(auction.startTime).toLocaleDateString()}`}
-                        {auction.endTime && ` · Ends ${new Date(auction.endTime).toLocaleString()}`}
-                        {Number.isFinite(Number(auction.totalGMV || 0)) && Number(auction.totalGMV || 0) > 0
-                          ? ` · GMV $${Number(auction.totalGMV || 0).toLocaleString()}`
-                          : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                     {auction.status === 'draft' && (
                       <button
                         className="btn-industrial btn-outline text-[9px]"
@@ -865,10 +864,11 @@ export function AuctionsTab({ onFeedback, confirm, formatPrice }: AuctionsTabPro
                     >
                       Edit
                     </button>
+                    </div>
                   </div>
                 </div>
                 {isManagingLots && (
-                  <div className="border border-line border-t-0 rounded-b-sm bg-bg/40 p-4">
+                  <div className="border border-line border-t-0 rounded-b-sm bg-bg/40 p-4 overflow-x-auto">
                     <AuctionLotManager auction={auction} onAuctionUpdated={loadAuctions} />
                   </div>
                 )}
