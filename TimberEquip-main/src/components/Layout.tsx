@@ -109,7 +109,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const footerSocialLinks = [
     { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales', filled: true },
-    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline', filled: false },
+    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline', filled: true },
     { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales', filled: true },
     { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com', filled: false },
   ];

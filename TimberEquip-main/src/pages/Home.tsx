@@ -390,10 +390,44 @@ export function Home() {
           },
         },
         {
+          '@type': 'WebPage',
+          '@id': buildSiteUrl('/#webpage'),
+          name: 'Logging Equipment For Sale | Forestry Equipment Sales',
+          description: HOMEPAGE_SEO_DESCRIPTION,
+          url: buildSiteUrl('/'),
+          isPartOf: { '@id': buildSiteUrl('/#website') },
+          about: { '@id': buildSiteUrl('/#organization') },
+          primaryImageOfPage: {
+            '@type': 'ImageObject',
+            url: buildSiteUrl('/Forestry_Equipment_Sales_Logo.png?v=20260405c'),
+          },
+        },
+        {
           '@type': 'CollectionPage',
           name: 'Forestry Equipment For Sale | Equipment Marketplace',
           description: HOMEPAGE_SEO_DESCRIPTION,
           url: buildSiteUrl('/'),
+          isPartOf: { '@id': buildSiteUrl('/#website') },
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: buildSiteUrl('/') },
+          ],
+        },
+        {
+          '@type': 'SiteNavigationElement',
+          name: 'Main Navigation',
+          url: buildSiteUrl('/'),
+          hasPart: [
+            { '@type': 'WebPage', name: 'Search Inventory', url: buildSiteUrl('/search') },
+            { '@type': 'WebPage', name: 'Equipment Categories', url: buildSiteUrl('/categories') },
+            { '@type': 'WebPage', name: 'Ad Programs', url: buildSiteUrl('/ad-programs') },
+            { '@type': 'WebPage', name: 'Hosted Websites', url: buildSiteUrl('/dealer-hosting') },
+            { '@type': 'WebPage', name: 'Financing', url: buildSiteUrl('/financing') },
+            { '@type': 'WebPage', name: 'Dealers', url: buildSiteUrl('/dealers') },
+            { '@type': 'WebPage', name: 'Equipment News', url: buildSiteUrl('/blog') },
+          ],
         },
         {
           '@type': 'ItemList',
@@ -1052,63 +1086,34 @@ export function Home() {
       {/* About Us */}
       <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">
         <div className="max-w-[1600px] mx-auto relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div className="overflow-hidden border border-line bg-bg shadow-[var(--shadow-card)]">
-              <img
-                src="/page-photos/about-us.webp"
-                alt="Forestry equipment professionals standing with logging machinery"
-                className="aspect-[5/4] h-full w-full object-cover"
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-            <div>
+          <div className="max-w-3xl">
               <span className="label-micro text-accent mb-4 block">About Us</span>
               <h2 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none mb-8 text-ink">
                 Built For <br />
                 <span className="text-accent">Forestry Equipment</span>
               </h2>
-              <p className="text-lg font-medium mb-12 max-w-lg text-muted">
+              <p className="text-base font-medium mb-6 max-w-2xl text-muted leading-relaxed">
                 Forestry Equipment Sales helps buyers, sellers, and dealers move logging equipment with stronger listing presentation, better marketplace visibility, and practical support across financing, logistics, and lead generation.
               </p>
-              <div className="space-y-5 mb-12">
-                {[
-                  {
-                    label: 'Marketplace Focus',
-                    value: 'New and used forestry, logging, land clearing, sawmill, truck, trailer, and attachment inventory.',
-                    icon: Globe,
-                  },
-                  {
-                    label: 'Dealer Support',
-                    value: 'Listing tools, dealer websites, lead delivery, and merchandising support built around equipment sellers.',
-                    icon: ShieldCheck,
-                  },
-                  {
-                    label: 'Buyer Services',
-                    value: 'Equipment discovery, financing coordination, and logistics help for serious buyers across regional and national markets.',
-                    icon: Truck,
-                  },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-start gap-4 border-t border-line pt-5 first:border-t-0 first:pt-0">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-line bg-bg text-accent">
-                      <item.icon size={18} />
-                    </div>
-                    <div>
-                      <span className="label-micro block mb-2 text-muted">{item.label}</span>
-                      <p className="text-sm font-medium leading-relaxed text-muted max-w-xl">{item.value}</p>
-                    </div>
-                  </div>
-                ))}
+              <div className="space-y-4 mb-10 max-w-2xl">
+                <p className="text-sm font-medium text-muted leading-relaxed">
+                  <span className="font-black text-ink">Marketplace Focus</span> — New and used forestry, logging, land clearing, sawmill, truck, trailer, and attachment inventory.
+                </p>
+                <p className="text-sm font-medium text-muted leading-relaxed">
+                  <span className="font-black text-ink">Dealer Support</span> — Listing tools, dealer websites, lead delivery, and merchandising support built around equipment sellers.
+                </p>
+                <p className="text-sm font-medium text-muted leading-relaxed">
+                  <span className="font-black text-ink">Buyer Services</span> — Equipment discovery, financing coordination, and logistics help for serious buyers across regional and national markets.
+                </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link to="/about" className="btn-industrial btn-accent py-5 px-10">
+              <div className="flex flex-wrap gap-4">
+                <Link to="/about" className="btn-industrial btn-accent">
                   About Us
                 </Link>
-                <Link to="/contact" className="btn-industrial py-5 px-10">
+                <Link to="/contact" className="btn-industrial">
                   Contact Us
                 </Link>
               </div>
-            </div>
           </div>
         </div>
       </section>
