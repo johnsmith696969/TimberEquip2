@@ -186,6 +186,26 @@ if (PRIVILEGED_ADMIN_EMAILS_SECRET) {
 
 let configuredSendGridApiKey = '';
 const geocodeCache = new Map();
+const GEOCODE_CACHE_MAX_SIZE = 500;
+const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getGeocodeFromCache(key) {
+  const entry = geocodeCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > GEOCODE_CACHE_TTL_MS) {
+    geocodeCache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function setGeocodeCache(key, value) {
+  if (geocodeCache.size >= GEOCODE_CACHE_MAX_SIZE) {
+    const oldest = geocodeCache.keys().next().value;
+    geocodeCache.delete(oldest);
+  }
+  geocodeCache.set(key, { value, ts: Date.now() });
+}
 let publicNewsCache = null;
 const PUBLIC_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
 const EMAIL_PREFERENCE_RECIPIENTS_COLLECTION = 'emailPreferenceRecipients';
@@ -976,13 +996,14 @@ async function geocodeLocation(address) {
   }
 
   const cacheKey = normalize(normalizedAddress);
-  if (geocodeCache.has(cacheKey)) {
-    return geocodeCache.get(cacheKey);
+  const cached = getGeocodeFromCache(cacheKey);
+  if (cached !== undefined) {
+    return cached;
   }
 
   const apiKey = String(GOOGLE_MAPS_API_KEY.value() || '').trim();
   if (!apiKey) {
-    geocodeCache.set(cacheKey, null);
+    setGeocodeCache(cacheKey, null);
     return null;
   }
 
@@ -993,7 +1014,7 @@ async function geocodeLocation(address) {
 
   const payload = await response.json();
   if (payload.status !== 'OK' || !Array.isArray(payload.results) || payload.results.length === 0) {
-    geocodeCache.set(cacheKey, null);
+    setGeocodeCache(cacheKey, null);
     return null;
   }
 
@@ -1008,7 +1029,7 @@ async function geocodeLocation(address) {
       }
     : null;
 
-  geocodeCache.set(cacheKey, geocoded);
+  setGeocodeCache(cacheKey, geocoded);
   return geocoded;
 }
 
@@ -4642,29 +4663,37 @@ async function getPublicDealerListings(sellerUid, options = {}) {
   return listings;
 }
 
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+}
+
 function renderDealerEmbedHtml({ dealer, listings, feedUrl, featuredOnly }) {
   const cards = listings.map((listing) => {
     const priceValue = Number(listing.price || 0);
     const formattedPrice = priceValue > 0
       ? `${listing.currency || 'USD'} ${priceValue.toLocaleString()}`
       : 'Request Price';
-    const location = listing.location || 'Location available on request';
-    const subtitle = [listing.year, listing.make || listing.manufacturer, listing.model].filter(Boolean).join(' ');
+    const location = escapeHtml(listing.location || 'Location available on request');
+    const subtitle = escapeHtml([listing.year, listing.make || listing.manufacturer, listing.model].filter(Boolean).join(' '));
+    const safeTitle = escapeHtml(listing.title);
+    const safeCategory = escapeHtml(listing.category || 'Equipment');
+    const safeListingUrl = escapeHtml(listing.listingUrl);
+    const safeImageUrl = escapeHtml(listing.image);
     const badge = listing.featured ? '<span class="te-badge">Featured</span>' : '';
     const image = listing.image
-      ? `<img src="${listing.image}" alt="${listing.title}" loading="lazy" />`
+      ? `<img src="${safeImageUrl}" alt="${safeTitle}" loading="lazy" />`
       : '<div class="te-image-placeholder">Inventory</div>';
 
     return `
       <article class="te-card">
-        <a class="te-card-link" href="${listing.listingUrl}" target="_blank" rel="noopener noreferrer">
+        <a class="te-card-link" href="${safeListingUrl}" target="_blank" rel="noopener noreferrer">
           <div class="te-image-wrap">${image}</div>
           <div class="te-card-body">
-            <div class="te-card-top">${badge}<span class="te-category">${listing.category || 'Equipment'}</span></div>
-            <h3>${listing.title}</h3>
+            <div class="te-card-top">${badge}<span class="te-category">${safeCategory}</span></div>
+            <h3>${safeTitle}</h3>
             <p class="te-subtitle">${subtitle || 'Equipment listing'}</p>
             <div class="te-meta">
-              <span>${formattedPrice}</span>
+              <span>${escapeHtml(formattedPrice)}</span>
               <span>${location}</span>
             </div>
           </div>
@@ -4678,7 +4707,7 @@ function renderDealerEmbedHtml({ dealer, listings, feedUrl, featuredOnly }) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${dealer.storefrontName} Inventory</title>
+    <title>${escapeHtml(dealer.storefrontName)} Inventory</title>
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
@@ -13631,6 +13660,10 @@ exports.apiProxy = onRequest(
         const decodedToken = await getDecodedUserFromBearer(req);
         if (!decodedToken) {
           return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        if (!decodedToken.email_verified) {
+          return res.status(403).json({ error: 'Email verification is required before placing bids.' });
         }
 
         const userUid = normalizeNonEmptyString(decodedToken.uid);

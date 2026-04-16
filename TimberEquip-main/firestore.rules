@@ -888,9 +888,9 @@ service cloud.firestore {
           allow read: if true;
           allow write: if false; // All writes via Cloud Functions
 
-          // Bids: authenticated users can read bids on lots they're involved in
+          // Bids: only the bidder and admins can read individual bid records
           match /bids/{bidId} {
-            allow read: if isAuthenticated();
+            allow read: if isAdmin() || (isAuthenticated() && resource.data.bidderId == request.auth.uid);
             allow write: if false; // All writes via Cloud Functions
           }
         }

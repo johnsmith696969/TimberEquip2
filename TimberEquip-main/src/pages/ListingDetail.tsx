@@ -741,7 +741,9 @@ export function ListingDetail() {
     [detailImageSources],
   );
 
-  const activeGalleryImageSource = galleryImageSources[activeImage] || LISTING_IMAGE_PLACEHOLDER;
+  const activeGalleryImageSource = (activeImage >= 0 && activeImage < galleryImageSources.length)
+    ? galleryImageSources[activeImage]
+    : LISTING_IMAGE_PLACEHOLDER;
 
   const markGalleryImageLoaded = React.useCallback((src: string) => {
     const normalizedSrc = String(src || '').trim();
