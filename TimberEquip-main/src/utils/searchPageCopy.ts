@@ -161,8 +161,8 @@ export function buildSearchPageCopy({
     subject = `${selectedManufacturer} Equipment`;
     eyebrow = 'Manufacturer Inventory';
   } else if (selectedSubcategory) {
-    subject = joinSubject([selectedCategory, selectedSubcategory]);
-    eyebrow = 'Filtered Equipment';
+    subject = selectedSubcategory;
+    eyebrow = selectedCategory || 'Equipment Category';
   } else if (selectedCategory) {
     subject = selectedCategory;
     eyebrow = 'Filtered Equipment';
@@ -171,9 +171,13 @@ export function buildSearchPageCopy({
     eyebrow = 'Search Results';
   }
 
-  const title = `${subject} For Sale`;
+  // Add state/location to title when a single state is selected
+  const selectedState = singleValue(filters.state);
+  const locationSuffix = selectedState ? ` In ${selectedState}` : '';
+
+  const title = `${subject} For Sale${locationSuffix}`;
   const countLabel = formatMachineCountLabel(resultCount);
-  const description = `Find new and used ${subject} for sale on Forestry Equipment Sales. Filter by year, hours, price, location, manufacturer, and technical specifications.`;
+  const description = `Find new and used ${subject} for sale${locationSuffix ? ` ${locationSuffix.trim().toLowerCase()}` : ''} on Forestry Equipment Sales. Filter by year, hours, price, location, manufacturer, and technical specifications.`;
 
   return {
     title,

@@ -2199,15 +2199,17 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
       <CategoryFilterModal
         open={showCategoryModal}
-        onClose={() => setShowCategoryModal(false)}
+        onClose={() => {
+          setShowCategoryModal(false);
+          handleFilterChange('category', draftFilters.category);
+          handleFilterChange('subcategory', draftFilters.subcategory);
+        }}
         taxonomy={fullTaxonomy}
         selectedCategory={draftFilters.category}
         selectedSubcategory={draftFilters.subcategory}
         onSelect={(category, subcategory) => {
           handleDraftFilterChange('category', category);
           handleDraftFilterChange('subcategory', subcategory);
-          handleFilterChange('category', category);
-          handleFilterChange('subcategory', subcategory);
         }}
         facetedCounts={facetedCounts}
       />
