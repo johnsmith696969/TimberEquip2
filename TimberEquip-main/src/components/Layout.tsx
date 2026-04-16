@@ -108,10 +108,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasAdminAccess = defaultAccountWorkspacePath === '/admin';
   const hasDealerOsAccess = canAccessDealerOs(user) && !hasAdminAccess;
   const footerSocialLinks = [
-    { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales' },
-    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline' },
-    { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales' },
-    { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com' },
+    { icon: Facebook, label: 'Facebook', url: 'https://www.facebook.com/ForestryEquipmentSales', filled: true },
+    { icon: Youtube, label: 'YouTube', url: 'https://www.youtube.com/@ForestryequipmentsalesOnline', filled: false },
+    { icon: Linkedin, label: 'LinkedIn', url: 'https://linkedin.com/company/forestryequipmentsales', filled: true },
+    { icon: Mail, label: 'Email', url: 'mailto:info@forestryequipmentsales.com', filled: false },
   ];
 
   useEffect(() => {
@@ -572,9 +572,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {t('layout.footerBlurb', 'The premier industrial marketplace for professional logging equipment. Connecting global forestry operations with verified assets, institutional financing, and precision logistics.')}
               </p>
               <div className="flex flex-wrap gap-4">
-                {footerSocialLinks.map(({ icon: Icon, label, url }) => (
-                  <a 
-                    key={label} 
+                {footerSocialLinks.map(({ icon: Icon, label, url, filled }) => (
+                  <a
+                    key={label}
                     href={url}
                     aria-label={label}
                     title={label}
@@ -582,7 +582,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     rel={url.startsWith('http') ? 'noopener noreferrer' : undefined}
                     className="w-10 h-10 border border-line flex items-center justify-center hover:bg-ink hover:text-bg transition-all group"
                   >
-                    <Icon size={18} fill="currentColor" strokeWidth={0} className="group-hover:scale-110 transition-transform" />
+                    <Icon size={18} {...(filled ? { fill: 'currentColor', strokeWidth: 0 } : { strokeWidth: 2 })} className="group-hover:scale-110 transition-transform" />
                   </a>
                 ))}
               </div>

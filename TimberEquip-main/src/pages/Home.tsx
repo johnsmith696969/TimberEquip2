@@ -345,8 +345,10 @@ export function Home() {
           description: HOMEPAGE_SEO_DESCRIPTION,
           address: {
             '@type': 'PostalAddress',
+            streetAddress: '1518 E Superior St',
             addressLocality: 'Duluth',
             addressRegion: 'MN',
+            postalCode: '55812',
             addressCountry: 'US',
           },
           sameAs: [
