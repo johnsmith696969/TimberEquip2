@@ -96,6 +96,8 @@ interface SearchFilters {
   feature: string;
   stockNumber: string;
   serialNumber: string;
+  listedAfter: string;
+  listedBefore: string;
   sortBy: SortBy;
 }
 
@@ -124,6 +126,8 @@ const DEFAULT_FILTERS: SearchFilters = {
   feature: '',
   stockNumber: '',
   serialNumber: '',
+  listedAfter: '',
+  listedBefore: '',
   sortBy: 'newest'
 };
 
@@ -329,6 +333,8 @@ const getInitialFilters = (params: URLSearchParams): SearchFilters => ({
   locationCenterLat: params.get('locationCenterLat') || '',
   locationCenterLng: params.get('locationCenterLng') || '',
   locationRadius: params.get('locationRadius') || DEFAULT_FILTERS.locationRadius,
+  listedAfter: params.get('listedAfter') || '',
+  listedBefore: params.get('listedBefore') || '',
   attachment: params.get('attachment') || '',
   feature: params.get('feature') || '',
   stockNumber: params.get('stockNumber') || '',
@@ -897,6 +903,15 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
       if (filters.stockNumber && !normalize(listing.stockNumber).includes(normalize(filters.stockNumber))) return false;
       if (filters.serialNumber && !normalize(listing.serialNumber).includes(normalize(filters.serialNumber))) return false;
+
+      if (filters.listedAfter) {
+        const listedDate = new Date(listing.createdAt || listing.publishedAt || 0).getTime();
+        if (listedDate < new Date(filters.listedAfter).getTime()) return false;
+      }
+      if (filters.listedBefore) {
+        const listedDate = new Date(listing.createdAt || listing.publishedAt || 0).getTime();
+        if (listedDate > new Date(filters.listedBefore + 'T23:59:59').getTime()) return false;
+      }
 
       return true;
     };
@@ -1594,6 +1609,29 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                             className="input-industrial w-full"
                             value={draftFilters.maxHours}
                             onChange={(e) => handleDraftFilterChange('maxHours', e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col space-y-2">
+                          <label htmlFor="search-listed-after" className="label-micro">Listed After</label>
+                          <input
+                            id="search-listed-after"
+                            type="date"
+                            className="input-industrial w-full"
+                            value={draftFilters.listedAfter}
+                            onChange={(e) => handleDraftFilterChange('listedAfter', e.target.value)}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <label htmlFor="search-listed-before" className="label-micro">Listed Before</label>
+                          <input
+                            id="search-listed-before"
+                            type="date"
+                            className="input-industrial w-full"
+                            value={draftFilters.listedBefore}
+                            onChange={(e) => handleDraftFilterChange('listedBefore', e.target.value)}
                           />
                         </div>
                       </div>
