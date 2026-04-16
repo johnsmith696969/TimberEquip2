@@ -235,9 +235,9 @@ export function States() {
                     <span className="label-micro mb-2 block">State Market</span>
                     <h3 className="text-2xl font-black uppercase tracking-tighter text-ink">{state.name}</h3>
                   </div>
-                  <div className="rounded-sm border border-accent/20 bg-accent/8 px-4 py-3 text-right">
-                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-accent">Active Listings</div>
-                    <div className="mt-2 text-2xl font-black tracking-tight text-ink">{formatNumber.format(state.count)}</div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-black uppercase tracking-[0.18em] text-muted">Active Listings</span>
+                    <span className="ml-2 text-lg font-black tracking-tight text-ink">{formatNumber.format(state.count)}</span>
                   </div>
                 </div>
 

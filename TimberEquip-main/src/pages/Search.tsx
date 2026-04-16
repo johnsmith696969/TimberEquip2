@@ -1784,7 +1784,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           <label className="label-micro">State / Province</label>
                           <MultiSelectDropdown
                             label="States / Provinces"
-                            placeholder="All States"
+                            placeholder="All States / Provinces"
                             options={stateMultiOptions}
                             selected={parseMultiValue(draftFilters.state)}
                             onChange={(sel) => handleDraftMultiSelect('state', sel)}

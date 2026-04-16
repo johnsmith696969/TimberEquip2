@@ -684,11 +684,11 @@ export function Dealers() {
             {/* Filter row */}
             <div className="flex flex-wrap items-end gap-4">
               <FilterDropdown
-                label="State"
+                label="State / Province"
                 value={stateFilter}
                 options={stateOptions}
                 onChange={(v) => { setStateFilter(v); setDisplayCount(20); }}
-                placeholder="All States"
+                placeholder="All States / Provinces"
               />
 
               <FilterDropdown
