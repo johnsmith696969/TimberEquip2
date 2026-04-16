@@ -16995,7 +16995,15 @@ exports.apiProxy = onRequest(
 
         const [posts, media, contentBlocks] = await Promise.all([
           loadQuotaSafeContentSection('posts', async () => {
-            const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
+            const db = getDb();
+            // Try ordered query first, fall back to unordered if index doesn't exist
+            let snapshot;
+            try {
+              snapshot = await db.collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
+            } catch (orderErr) {
+              logger.warn('blogPosts orderBy failed, falling back to unordered query', { error: orderErr?.message });
+              snapshot = await db.collection('blogPosts').limit(200).get();
+            }
             return snapshot.docs.map((docSnapshot) => serializeBlogPostRecord(docSnapshot));
           }),
           loadQuotaSafeContentSection('media', async () => {
@@ -17026,7 +17034,12 @@ exports.apiProxy = onRequest(
           return res.status(actor.status).json({ error: actor.error });
         }
 
-        const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
+        let snapshot;
+        try {
+          snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
+        } catch (orderErr) {
+          snapshot = await getDb().collection('blogPosts').limit(200).get();
+        }
         return res.status(200).json(snapshot.docs.map((docSnapshot) => serializeBlogPostRecord(docSnapshot)));
       }
 
