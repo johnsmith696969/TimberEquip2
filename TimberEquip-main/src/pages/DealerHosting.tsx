@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Globe, Code, RefreshCw, Phone, Mail, BarChart3, Shield, Palette, ArrowRight } from 'lucide-react';
+import { Globe, Code, RefreshCw, Phone, Mail, BarChart3, Shield, Palette, ArrowRight, Check } from 'lucide-react';
 import { Seo } from '../components/Seo';
 
 const SETUP_FEE = '$500';
@@ -17,28 +17,33 @@ export function DealerHosting() {
       <div className="bg-bg min-h-screen">
         {/* Hero */}
         <section className="bg-surface border-b border-line">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
-            <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-ink mb-6">
-              Your Equipment. Your Website.<br className="hidden sm:block" /> Our Platform.
-            </h1>
-            <p className="text-base sm:text-lg text-muted max-w-2xl mx-auto mb-8 leading-relaxed">
-              Embed a fully customizable inventory widget on your dealer website. Listings stay in sync
-              with Forestry Equipment Sales, and every inquiry and call is tracked in your dashboard.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/contact" className="inline-flex items-center gap-2 bg-accent text-white font-bold text-sm uppercase tracking-widest px-8 py-3 rounded-sm hover:bg-accent/90 transition-colors">
-                Get Started <ArrowRight size={16} />
-              </Link>
-              <Link to="/dealer-onboarding" className="inline-flex items-center gap-2 border-2 border-line text-ink font-bold text-sm uppercase tracking-widest px-8 py-3 rounded-sm hover:border-accent hover:text-accent transition-colors">
-                Become a Dealer
-              </Link>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+            <div className="max-w-3xl">
+              <span className="label-micro text-accent mb-4 block">Dealer Solutions</span>
+              <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tighter leading-none text-ink mb-8">
+                YOUR EQUIPMENT.<br />
+                <span className="text-muted">YOUR WEBSITE.</span>
+              </h1>
+              <p className="text-base sm:text-lg text-muted max-w-2xl mb-10 leading-relaxed">
+                Embed a fully customizable inventory widget on your dealer website. Listings stay in sync
+                with Forestry Equipment Sales, and every inquiry and call is tracked in your dashboard.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <Link to="/contact" className="btn-industrial btn-accent inline-flex items-center gap-2">
+                  Get Started <ArrowRight size={16} />
+                </Link>
+                <Link to="/dealer-onboarding" className="btn-industrial inline-flex items-center gap-2">
+                  Become a Dealer
+                </Link>
+              </div>
             </div>
           </div>
         </section>
 
         {/* How It Works */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-ink text-center mb-4">How It Works</h2>
+          <span className="label-micro text-accent mb-3 block text-center">Getting Started</span>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-ink text-center mb-4">HOW IT WORKS</h2>
           <p className="text-sm text-muted text-center mb-12 max-w-xl mx-auto">Three steps to live inventory on your website.</p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -59,7 +64,8 @@ export function DealerHosting() {
         {/* Feature Grid */}
         <section className="bg-surface border-t border-b border-line">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-ink text-center mb-12">Built for Dealers</h2>
+            <span className="label-micro text-accent mb-3 block text-center">Platform Features</span>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-ink text-center mb-12">BUILT FOR DEALERS</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
@@ -90,7 +96,8 @@ export function DealerHosting() {
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-ink mb-4">Inventory Import Options</h2>
+              <span className="label-micro text-accent mb-3 block">Feed Integration</span>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-ink mb-4">INVENTORY IMPORT OPTIONS</h2>
               <p className="text-sm text-muted mb-6 leading-relaxed">
                 Connect your existing inventory management system or upload directly. We support multiple formats
                 and can pull from your API on a schedule.
@@ -105,7 +112,7 @@ export function DealerHosting() {
                   'Dry-run preview \u2014 validate before going live',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2 text-xs text-ink">
-                    <span className="text-accent font-bold mt-0.5">\u2713</span>
+                    <Check size={14} className="text-accent flex-shrink-0 mt-0.5" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -134,7 +141,8 @@ export function DealerHosting() {
         {/* CTA */}
         <section className="bg-surface border-t border-line">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-ink mb-4">Ready to Get Started?</h2>
+            <span className="label-micro text-accent mb-3 block">Next Steps</span>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-ink mb-4">READY TO GET STARTED?</h2>
             <p className="text-sm text-muted mb-8 max-w-lg mx-auto">
               Join the Forestry Equipment Sales dealer network. List your inventory, host it on your website,
               and let our platform handle the leads, calls, and reporting.
@@ -152,7 +160,8 @@ export function DealerHosting() {
 
         {/* FAQ */}
         <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-          <h2 className="text-2xl font-black tracking-tight text-ink text-center mb-10">Frequently Asked Questions</h2>
+          <span className="label-micro text-accent mb-3 block text-center">Support</span>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-ink text-center mb-10">FREQUENTLY ASKED QUESTIONS</h2>
           <div className="space-y-6">
             {[
               { q: 'What website builders work with the widget?', a: 'Any platform that supports custom HTML or script embeds \u2014 WordPress, Squarespace, Wix, Webflow, Shopify, or any custom-built site.' },
