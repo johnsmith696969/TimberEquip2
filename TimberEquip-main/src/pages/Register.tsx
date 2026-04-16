@@ -307,11 +307,19 @@ export function Register() {
                   <AlertMessage severity="error">{error}</AlertMessage>
                 )}
 
-                <div className="flex items-center space-x-3">
-                  <input type="checkbox" required className="w-4 h-4 border-line rounded-sm accent-accent" id="terms" />
-                  <label htmlFor="terms" className="text-[10px] font-bold text-muted uppercase tracking-widest cursor-pointer leading-relaxed">
-                    I accept the Forestry Equipment Sales <Link to="/terms" className="text-accent underline">Terms of Service</Link> and <Link to="/privacy" className="text-accent underline">Privacy Policy</Link>.
-                  </label>
+                <div className="space-y-3">
+                  <div className="flex items-start space-x-3">
+                    <input type="checkbox" required className="w-4 h-4 mt-0.5 border-line rounded-sm accent-accent flex-shrink-0" id="terms" />
+                    <label htmlFor="terms" className="text-[10px] font-bold text-muted leading-relaxed cursor-pointer">
+                      I agree to the Forestry Equipment Sales <Link to="/terms" className="text-accent underline" target="_blank">Terms of Service</Link> and <Link to="/privacy" className="text-accent underline" target="_blank">Privacy Policy</Link>. If you are a California resident, please review our <Link to="/privacy" className="text-accent underline" target="_blank">Privacy Policy</Link> for information on how we process personal information.
+                    </label>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <input type="checkbox" required className="w-4 h-4 mt-0.5 border-line rounded-sm accent-accent flex-shrink-0" id="communications" />
+                    <label htmlFor="communications" className="text-[10px] font-bold text-muted leading-relaxed cursor-pointer">
+                      I consent that communications and phone calls placed by me, received by me, or forwarded to me by Forestry Equipment Sales through our telecommunications system may be recorded, transcribed, analyzed, monitored, and stored for quality assurance, service delivery, and marketing purposes. Please review the call recording provisions in our <Link to="/terms" className="text-accent underline" target="_blank">Terms of Service</Link>.
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex space-x-4">
