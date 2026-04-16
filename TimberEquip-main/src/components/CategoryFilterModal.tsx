@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { FullEquipmentTaxonomy } from '../utils/equipmentTaxonomy';
 
 interface CategoryFilterModalProps {
@@ -25,6 +27,15 @@ export function CategoryFilterModal({
   facetedCounts,
 }: CategoryFilterModalProps) {
   const [filter, setFilter] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } else {
+      setFilter('');
+    }
+  }, [open]);
 
   const categoriesWithSubs = useMemo(() => {
     const entries = Object.entries(taxonomy)
@@ -51,114 +62,130 @@ export function CategoryFilterModal({
       .filter(Boolean) as typeof entries;
   }, [taxonomy, filter, facetedCounts]);
 
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[150] flex items-start justify-center pt-[10vh] px-4 animate-[fadeIn_150ms_ease-out]" onClick={onClose}>
-      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
-      <div
-        className="relative bg-bg border border-line rounded-sm shadow-2xl w-full max-w-2xl max-h-[70vh] flex flex-col animate-[slideUp_150ms_ease-out]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
-          <h2 className="text-lg font-black tracking-tighter uppercase">Category</h2>
-          <button onClick={onClose} className="p-1 text-muted hover:text-ink transition-colors" aria-label="Close">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Filter input */}
-        <div className="px-6 py-3 border-b border-line">
-          <input
-            type="text"
-            placeholder="Filter categories..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="input-industrial w-full"
-            autoFocus
+  const modal = createPortal(
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-ink/80 backdrop-blur-sm"
           />
-        </div>
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-sm border border-line bg-bg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-line">
+              <h2 className="text-lg font-black tracking-tighter uppercase">Category</h2>
+              <button onClick={onClose} className="p-1 text-muted hover:text-ink transition-colors" aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
 
-        {/* Category list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* All Categories option */}
-          <label className="flex items-center gap-3 py-2 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={!selectedCategory && !selectedSubcategory}
-              onChange={() => { onSelect('', ''); onClose(); }}
-              className="w-4 h-4 accent-accent flex-shrink-0"
-            />
-            <span className="text-sm font-black uppercase tracking-widest text-ink">All Categories</span>
-          </label>
+            {/* Filter input */}
+            <div className="px-6 py-3 border-b border-line">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Filter categories..."
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="input-industrial w-full"
+              />
+            </div>
 
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-            {categoriesWithSubs.map(({ category, subcategories, count }) => (
-              <div key={category} className="mb-4">
-                {/* Parent category - bold */}
-                <label className="flex items-center gap-3 py-1.5 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={selectedCategory === category && !selectedSubcategory}
-                    onChange={() => {
-                      if (selectedCategory === category && !selectedSubcategory) {
-                        onSelect('', '');
-                      } else {
-                        onSelect(category, '');
-                      }
-                    }}
-                    className="w-4 h-4 accent-accent flex-shrink-0"
-                  />
-                  <span className="text-xs font-black text-ink group-hover:text-accent transition-colors">
-                    {category}
-                    {count > 0 && <span className="text-muted font-bold ml-1">({count})</span>}
-                  </span>
-                </label>
+            {/* Category list */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {/* All Categories option */}
+              <label className="flex items-center gap-3 py-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={!selectedCategory && !selectedSubcategory}
+                  onChange={() => { onSelect('', ''); onClose(); }}
+                  className="w-4 h-4 accent-accent flex-shrink-0"
+                />
+                <span className="text-sm font-black uppercase tracking-widest text-ink">All Categories</span>
+              </label>
 
-                {/* Subcategories - regular weight, indented */}
-                {subcategories.map((sub) => {
-                  const subCount = facetedCounts?.subcategory?.get(sub) || 0;
-                  return (
-                    <label key={sub} className="flex items-center gap-3 py-1 pl-7 cursor-pointer group">
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                {categoriesWithSubs.map(({ category, subcategories, count }) => (
+                  <div key={category} className="mb-4">
+                    {/* Parent category - bold */}
+                    <label className="flex items-center gap-3 py-1.5 cursor-pointer group">
                       <input
                         type="checkbox"
-                        checked={selectedCategory === category && selectedSubcategory === sub}
+                        checked={selectedCategory === category && !selectedSubcategory}
                         onChange={() => {
-                          if (selectedCategory === category && selectedSubcategory === sub) {
-                            onSelect(category, '');
+                          if (selectedCategory === category && !selectedSubcategory) {
+                            onSelect('', '');
                           } else {
-                            onSelect(category, sub);
+                            onSelect(category, '');
                           }
                         }}
-                        className="w-3.5 h-3.5 accent-accent flex-shrink-0"
+                        className="w-4 h-4 accent-accent flex-shrink-0"
                       />
-                      <span className="text-[11px] font-medium text-muted group-hover:text-ink transition-colors">
-                        {sub}
-                        {subCount > 0 && <span className="ml-1">({subCount})</span>}
+                      <span className="text-xs font-black text-ink group-hover:text-accent transition-colors">
+                        {category}
+                        {count > 0 && <span className="text-muted font-bold ml-1">({count})</span>}
                       </span>
                     </label>
-                  );
-                })}
+
+                    {/* Subcategories - regular weight, indented */}
+                    {subcategories.map((sub) => {
+                      const subCount = facetedCounts?.subcategory?.get(sub) || 0;
+                      return (
+                        <label key={sub} className="flex items-center gap-3 py-1 pl-7 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={selectedCategory === category && selectedSubcategory === sub}
+                            onChange={() => {
+                              if (selectedCategory === category && selectedSubcategory === sub) {
+                                onSelect(category, '');
+                              } else {
+                                onSelect(category, sub);
+                              }
+                            }}
+                            className="w-3.5 h-3.5 accent-accent flex-shrink-0"
+                          />
+                          <span className="text-[11px] font-medium text-muted group-hover:text-ink transition-colors">
+                            {sub}
+                            {subCount > 0 && <span className="ml-1">({subCount})</span>}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {categoriesWithSubs.length === 0 && (
-            <p className="text-sm text-muted text-center py-8">No categories match "{filter}"</p>
-          )}
-        </div>
+              {categoriesWithSubs.length === 0 && (
+                <p className="text-sm text-muted text-center py-8">No categories match "{filter}"</p>
+              )}
+            </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-line">
-          <button
-            onClick={onClose}
-            className="btn-industrial btn-accent w-full py-3"
-          >
-            Apply Filter & Close
-          </button>
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-line">
+              <button
+                onClick={onClose}
+                className="btn-industrial btn-accent w-full py-3"
+              >
+                Apply Filter & Close
+              </button>
+            </div>
+          </motion.div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>,
+    document.body
   );
+
+  return modal;
 }

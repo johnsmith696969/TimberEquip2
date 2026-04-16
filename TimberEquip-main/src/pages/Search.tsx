@@ -1487,7 +1487,7 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                           onClick={() => setShowCategoryModal(true)}
                           className="select-industrial w-full text-left flex items-center justify-between"
                         >
-                          <span className={draftFilters.category ? 'text-ink' : 'text-muted/50'}>
+                          <span className={`truncate ${draftFilters.category ? 'text-ink' : 'text-muted'}`}>
                             {draftFilters.category
                               ? (draftFilters.subcategory ? `${draftFilters.category} / ${draftFilters.subcategory}` : draftFilters.category)
                               : 'All Categories'}
