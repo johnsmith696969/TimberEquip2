@@ -420,7 +420,7 @@ export function Login() {
                   type="email"
                   placeholder="EMAIL@EXAMPLE.COM"
                   autoComplete="email"
-                  className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 uppercase tracking-wider"
+                  className="flex-1 bg-transparent border-none py-4 pl-2 text-sm font-bold focus:ring-0 uppercase tracking-wider"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={disablePrimaryAuth}
@@ -454,7 +454,7 @@ export function Login() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="************"
                   autoComplete="current-password"
-                  className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-widest"
+                  className="flex-1 bg-transparent border-none py-4 pl-2 text-sm font-bold focus:ring-0 tracking-widest"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={disablePrimaryAuth}
@@ -530,7 +530,7 @@ export function Login() {
                     type="text"
                     inputMode="numeric"
                     placeholder="123456"
-                    className="flex-1 bg-transparent border-none py-4 text-sm font-bold focus:ring-0 tracking-[0.35em]"
+                    className="min-w-0 flex-1 bg-transparent border-none px-4 py-4 text-sm font-bold tracking-[0.35em] focus:ring-0"
                     value={mfaCode}
                     onChange={(e) => setMfaCode(e.target.value)}
                   />

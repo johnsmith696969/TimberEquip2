@@ -973,12 +973,16 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
 
   // Build MultiSelectOption arrays from options + faceted counts
   const manufacturerMultiOptions: MultiSelectOption[] = useMemo(
-    () => manufacturerOptions.map((v) => ({ value: v, count: facetedCounts.manufacturer.get(v) || 0 })),
+    () => manufacturerOptions
+      .map((v) => ({ value: v, count: facetedCounts.manufacturer.get(v) || 0 }))
+      .filter((opt) => opt.count > 0),
     [manufacturerOptions, facetedCounts.manufacturer]
   );
 
   const modelMultiOptions: MultiSelectOption[] = useMemo(
-    () => modelOptions.map((v) => ({ value: v, count: facetedCounts.model.get(v) || 0 })),
+    () => modelOptions
+      .map((v) => ({ value: v, count: facetedCounts.model.get(v) || 0 }))
+      .filter((opt) => opt.count > 0),
     [modelOptions, facetedCounts.model]
   );
 
