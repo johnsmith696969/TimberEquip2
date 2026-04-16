@@ -16995,15 +16995,7 @@ exports.apiProxy = onRequest(
 
         const [posts, media, contentBlocks] = await Promise.all([
           loadQuotaSafeContentSection('posts', async () => {
-            // Force named database instance directly to avoid any caching issues
-            const db = getFirestore('ai-studio-206e8e62-feaa-4921-875f-79ff275fa93c');
-            let snapshot;
-            try {
-              snapshot = await db.collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
-            } catch (orderErr) {
-              logger.warn('blogPosts orderBy failed, falling back to unordered query', { error: orderErr?.message });
-              snapshot = await db.collection('blogPosts').limit(200).get();
-            }
+            const snapshot = await getDb().collection('blogPosts').orderBy('updatedAt', 'desc').limit(200).get();
             return snapshot.docs.map((docSnapshot) => serializeBlogPostRecord(docSnapshot));
           }),
           loadQuotaSafeContentSection('media', async () => {
