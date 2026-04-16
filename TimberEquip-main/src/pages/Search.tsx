@@ -1617,28 +1617,38 @@ export function Search({ categoryRoute }: { categoryRoute?: CategoryRouteInfo } 
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-listed-after" className="label-micro">From Date</label>
+                      <div className="flex flex-col space-y-2">
+                        <label className="label-micro">Date Range</label>
+                        <div className="flex items-center gap-2">
                           <input
                             id="search-listed-after"
                             type="date"
-                            className="input-industrial w-full cursor-pointer"
+                            className="input-industrial flex-1 cursor-pointer text-[9px]"
                             value={draftFilters.listedAfter}
                             onChange={(e) => handleDraftFilterChange('listedAfter', e.target.value)}
                             onKeyDown={(e) => e.preventDefault()}
+                            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                           />
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <label htmlFor="search-listed-before" className="label-micro">To Date</label>
+                          <span className="text-[9px] font-bold text-muted">to</span>
                           <input
                             id="search-listed-before"
                             type="date"
-                            className="input-industrial w-full cursor-pointer"
+                            className="input-industrial flex-1 cursor-pointer text-[9px]"
                             value={draftFilters.listedBefore}
                             onChange={(e) => handleDraftFilterChange('listedBefore', e.target.value)}
                             onKeyDown={(e) => e.preventDefault()}
+                            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                           />
+                          {(draftFilters.listedAfter || draftFilters.listedBefore) && (
+                            <button
+                              type="button"
+                              onClick={() => { handleDraftFilterChange('listedAfter', ''); handleDraftFilterChange('listedBefore', ''); }}
+                              className="p-1 text-muted hover:text-ink"
+                              aria-label="Clear dates"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
                         </div>
                       </div>
                   </FilterSectionPanel>

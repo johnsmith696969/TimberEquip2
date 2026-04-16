@@ -1083,6 +1083,47 @@ export function Home() {
 
       {marketIntelligenceSection}
 
+      {/* Recent Listings */}
+      {allListings.length > 0 && (
+        <section className="py-24 px-4 md:px-8 bg-bg">
+          <div className="max-w-[1600px] mx-auto">
+            <div className="flex items-end justify-between mb-12">
+              <div>
+                <span className="label-micro text-accent mb-3 block">Fresh Inventory</span>
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter uppercase text-ink">
+                  Recent <span className="text-muted">Listings</span>
+                </h2>
+              </div>
+              <Link to="/search" className="btn-industrial btn-accent hidden sm:inline-flex items-center gap-2">
+                View All <ArrowRight size={14} />
+              </Link>
+            </div>
+            <Suspense fallback={null}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[...allListings]
+                  .sort((a, b) => {
+                    // Featured first, then by createdAt descending
+                    const featDiff = Number(!!b.featured) - Number(!!a.featured);
+                    if (featDiff !== 0) return featDiff;
+                    const aTime = new Date(a.createdAt || 0).getTime();
+                    const bTime = new Date(b.createdAt || 0).getTime();
+                    return bTime - aTime;
+                  })
+                  .slice(0, 4)
+                  .map((listing) => (
+                    <ListingCard key={listing.id} listing={listing} viewMode="grid" />
+                  ))}
+              </div>
+            </Suspense>
+            <div className="mt-8 sm:hidden">
+              <Link to="/search" className="btn-industrial btn-accent w-full inline-flex items-center justify-center gap-2">
+                View All Inventory <ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* About Us */}
       <section className="py-24 px-4 md:px-8 relative overflow-hidden bg-surface border-y border-line">
         <div className="max-w-[1600px] mx-auto relative z-10">
